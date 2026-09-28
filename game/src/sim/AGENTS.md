@@ -23,11 +23,22 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   fixed-rate market (`marketTrade`), tax collection. Pure w.r.t.
   rendering.
 - `digest.ts` — FNV-1a canonical encoding, including full city state.
-- `snapshot.ts` — versioned snapshots (v2 adds city state).
+- `snapshot.ts` — versioned snapshots (v3 adds units + pathfinding state).
 - `terrain.ts` — seeded mapgen (not snapshotted); `spatial.ts` — hash grid.
+- `units.ts` — `UnitRecord` store (stable ids, owner/kind/speed/state),
+  `spawnUnit` command. Placeholder kinds `civilian` (6 u/s) / `soldier`
+  (8 u/s); the real roster lands in step 7. Movement state (`path`,
+  `fieldId`, `destX/Z`, `arriveX/Z`) lives here too.
+- `pathfinding.ts` — deterministic 8-direction A* (octile heuristic,
+  corner-cut prevention, water blocking, roads ×0.5) + chunked Dijkstra
+  flow fields with early exit + the time-sliced coordinator
+  (`PATHS_PER_TICK=3` A*, `FIELD_POPS_PER_TICK=600`).
+- `movement.ts` — the pathfinding + movement systems (registered in that
+  order), `moveUnit` / `moveGroup` / `stopUnit` commands, waypoint and
+  field following, arrival slowdown, formation slots, spatial-hash
+  separation.
 
 ## City/economy conventions
-
 - All rates in `BUILDING_DEFS` are **per sim-second**; the economy system
   advances them once per 30 ticks (`ECONOMY_TICKS`).
 - Utility allocation is id-ordered and per-player; providers (plants,
@@ -36,6 +47,29 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 - Balance numbers in `BUILDING_DEFS` / `MARKET_PRICES` are Phase 1
   engineering choices — tune them, but keep the tests' reference-city
   invariants (net-positive materials/food, tax differential) green.
+
+## Movement/pathfinding conventions
+
+- **System order: pathfinding BEFORE movement** every tick. Movement
+  consumes freshly completed paths/fields the same tick they land.
+- **A* is for single units; flow fields for groups.** A* caps at
+  `ASTAR_MAX_EXPANDED` (1000) and falls back to a chunked field; the
+  field flood is reverse Dijkstra (charge cost of *entering* the popped
+  cell) with early exit at a one-cell margin around waiting units.
+- **Directions are derived, not stored during the flood:** each reached
+  cell points along argmin(forward step cost + neighbor dist), ties to
+  the lowest direction index, with the corner-cut rule. Never point at
+  raw neighbor dist alone — road/diagonal costs make that suboptimal.
+- **Groups arrive on formation slots** (`slotOffset`: concentric square
+  rings, 2.5 apart, no trig) — one unit per slot, never stacked.
+  `arriveX/Z` is the unit's own slot; `destX/Z` the ordered point.
+- **Separation never fights arrival:** only `moving` units are in the
+  separation hash (parked units are invisible to it), and a unit inside
+  `SLOW_RADIUS` of its slot ignores pushes. Separation radius (6) >
+  slot spacing (2.5) would otherwise deadlock arrival.
+- **Loud failures:** unreachable destinations fail at the coordinator
+  (`no path`, `unreachable by flow field`) with the unit unmoved — never
+  silent, never partial.
 
 ## Determinism contract (non-negotiable)
 

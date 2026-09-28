@@ -65,7 +65,33 @@ fun in 30–60 minute sessions. Build order:
    per-zone tax rates 0–100%. Snapshot v2 + city digest. 36 new tests,
    131/131 green; typecheck/build green; AGPL stamps verified. All exact
    numbers are Phase 1 engineering choices, not locked design.)
-6. Time-sliced pathfinding + movement; hand-rolled ECS vs apecs measurement
+6. Time-sliced pathfinding + movement; hand-rolled ECS vs apecs measurement — **COMPLETE 2026-09-28**
+   (`game/src/sim/units.ts`: stable-id unit store, `civilian` 6 u/s /
+   `soldier` 8 u/s placeholders for the step-7 roster, `spawnUnit`;
+   `game/src/sim/pathfinding.ts`: deterministic 8-dir A* — octile
+   heuristic, corner-cut prevention, water blocking, roads ×0.5,
+   cross-component instant fail via memoized land components; capped at
+   1000 expansions (≈2.9 ms dev VM) with fallback to chunked reverse-
+   Dijkstra flow fields (600 pops/tick ≈ 0.5 ms, early exit at a
+   one-cell margin around waiting units); time-sliced FIFO coordinator:
+   3 A*/tick + 600 flood pops/tick, ≤2 ms/tick budget;
+   `game/src/sim/movement.ts`: pathfinding-then-movement systems per
+   tick, A* waypoint following + field following with derived directions
+   (argmin forward step cost + neighbor dist), arrival slowdown within
+   12 of slot, terrain-following height, spatial-hash separation
+   (radius 6, only moving units participate, units inside the slowdown
+   radius ignore pushes so separation never deadlocks arrival);
+   `moveUnit` / `moveGroup` (formation slots: concentric square rings,
+   2.5 apart, one unit per slot — groups arrive as formations, never
+   stacked) / `stopUnit`; unreachable destinations fail loudly, unit
+   unmoved. Snapshot v3 + digest cover units, queues, fields, partial
+   field builds. No JPS: measured A* (0.1–0.7 ms typical) made it
+   unnecessary; the ~58 ms full-grid flood the research assumed was
+   sub-millisecond is why fields are chunked (see ARCHITECTURE.md §5).
+   19 new tests, 150/150 green; typecheck/build green; AGPL stamps
+   verified. Hand-rolled ECS vs apecs: units stay a plain spawn-ordered
+   array (linear scan "fine until the ECS perf step") — the ECS choice
+   itself is still an open measurement for the perf pass in step 12.)
 7. Units (8 land + 3 air) + combat with counters + Classic AI 1–3
 8. Ages (Foundation → Connectivity) + 1 National Program choice
 9. UI: HUD, camera, selection, orders, advisor, menus, settings

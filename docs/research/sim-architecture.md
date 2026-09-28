@@ -497,7 +497,10 @@ Our sim is dominated by **branchy game logic** — AI decisions, economy
 rules, order processing, tech trees — exactly the workload class where V8's
 JIT is excellent and WASM gains nothing. The numerically dense candidates
 (flow-field flood fills, spatial queries) are:
-1. already cheap in JS (a 256×256 Dijkstra flood fill is sub-millisecond),
+1. already cheap in JS (a 256×256 Dijkstra flood fill is ~58 ms
+   unchunked / ~34k pops on the dev VM — NOT sub-millisecond as first
+   assumed; the sim therefore time-slices it at 600 pops/tick ≈ 0.5 ms,
+   see step 6),
 2. called infrequently relative to per-entity logic,
 3. subject to the boundary tax if moved out.
 

@@ -42,12 +42,16 @@ import type { EntityRecord, World } from './world';
 import { createWorld } from './world';
 import type { RngState } from './rng';
 import type { BuildingRecord, CityState, PlayerState } from './city';
+import type { UnitRecord } from './units';
+import type { FieldBuild, FieldRequest, FlowField, PathfindingState, PathRequest } from './pathfinding';
+import { initPathfinding } from './pathfinding';
 
 /**
  * Snapshot format version. Bump on any breaking change to the shape below.
  * v2: city state (roads/zones/buildings/players) added (Phase 1, step 5).
+ * v3: units + pathfinding coordinator state added (Phase 1, step 6).
  */
-export const SNAPSHOT_VERSION = 2;
+export const SNAPSHOT_VERSION = 3;
 
 /** Plain-data snapshot of the world at a tick boundary. */
 export interface Snapshot {
@@ -59,6 +63,8 @@ export interface Snapshot {
   entities: EntityRecord[];
   rng: RngState;
   city: CityState;
+  units: UnitRecord[];
+  pathfinding: PathfindingState;
 }
 
 /** Thrown when a snapshot's version doesn't match. Names expected vs found. */
@@ -115,6 +121,60 @@ function copyCity(city: CityState): CityState {
   };
 }
 
+function copyUnit(u: UnitRecord): UnitRecord {
+  return {
+    id: u.id, kind: u.kind, owner: u.owner, x: u.x, z: u.z,
+    speed: u.speed, state: u.state, failReason: u.failReason,
+    destX: u.destX, destZ: u.destZ, arriveX: u.arriveX, arriveZ: u.arriveZ,
+    path: [...u.path], pathAt: u.pathAt,
+    fieldId: u.fieldId,
+  };
+}
+
+function copyPathRequest(r: PathRequest): PathRequest {
+  return { unitId: r.unitId, destCell: r.destCell };
+}
+
+function copyFieldRequest(r: FieldRequest): FieldRequest {
+  return { fieldId: r.fieldId, destCell: r.destCell, unitIds: [...r.unitIds] };
+}
+
+function copyFlowField(f: FlowField): FlowField {
+  return { id: f.id, destCell: f.destCell, dirs: [...f.dirs] };
+}
+
+/**
+ * Deep-copy an in-progress field build. All arrays are plain JSON-safe
+ * data (FLOOD_INF instead of Infinity — real Infinity would become null
+ * in JSON), so the copy resumes bit-identically.
+ */
+function copyFieldBuild(b: FieldBuild): FieldBuild {
+  return {
+    fieldId: b.fieldId,
+    destCell: b.destCell,
+    unitIds: [...b.unitIds],
+    waitMark: [...b.waitMark],
+    waitingCount: b.waitingCount,
+    dist: [...b.dist],
+    closed: [...b.closed],
+    heapCells: [...b.heapCells],
+    heapPris: [...b.heapPris],
+    heapTies: [...b.heapTies],
+    nextTie: b.nextTie,
+    earlyExit: b.earlyExit,
+  };
+}
+
+function copyPathfinding(pf: PathfindingState): PathfindingState {
+  return {
+    queue: pf.queue.map(copyPathRequest),
+    fieldQueue: pf.fieldQueue.map(copyFieldRequest),
+    activeBuild: pf.activeBuild ? copyFieldBuild(pf.activeBuild) : null,
+    fields: pf.fields.map(copyFlowField),
+    nextFieldId: pf.nextFieldId,
+  };
+}
+
 /** Deep-copy the world's sim state into a versioned, JSON-safe snapshot. */
 export function takeSnapshot(world: World): Snapshot {
   return {
@@ -126,6 +186,8 @@ export function takeSnapshot(world: World): Snapshot {
     entities: copyEntities(world.entities),
     rng: copyRng(world.rng),
     city: copyCity(world.city),
+    units: world.units.map(copyUnit),
+    pathfinding: copyPathfinding(world.pathfinding),
   };
 }
 
@@ -147,5 +209,9 @@ export function restoreSnapshot(snap: Snapshot): World {
   world.entities = copyEntities(snap.entities);
   world.rng = copyRng(snap.rng);
   world.city = copyCity(snap.city);
+  world.units = (snap.units ?? []).map(copyUnit);
+  // Defensive: a hand-built v3 snapshot might omit pathfinding state —
+  // init instead of crashing on undefined.
+  world.pathfinding = snap.pathfinding ? copyPathfinding(snap.pathfinding) : initPathfinding();
   return world;
 }

@@ -41,6 +41,9 @@ import { createRngBank } from './rng';
 import type { RngBank } from './rng';
 import type { CityState } from './city';
 import { initCity } from './city';
+import type { UnitRecord } from './units';
+import type { PathfindingState } from './pathfinding';
+import { initPathfinding } from './pathfinding';
 
 /** Minimal per-entity record. Later steps add components; the shape stays plain. */
 export interface EntityRecord {
@@ -69,6 +72,10 @@ export interface World {
   rng: RngState;
   /** City state: roads, zones, buildings, players. Snapshotted + digested. */
   city: CityState;
+  /** Mobile units, in spawn order. Snapshotted + digested. */
+  units: UnitRecord[];
+  /** Pathfinding coordinator state (queues + live flow fields). Snapshotted + digested. */
+  pathfinding: PathfindingState;
 }
 
 /** First assignable entity id (0 stays reserved as the "no entity" sentinel). */
@@ -84,6 +91,8 @@ export function createWorld(seed: number): World {
     entities: [],
     rng: {},
     city: initCity(),
+    units: [],
+    pathfinding: initPathfinding(),
   };
 }
 

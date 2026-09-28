@@ -1,0 +1,484 @@
+/*!
+ * NOVATERRA — Copyright (C) 2026 Gumb Dames
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, version 3 of the License.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
+ * NOVATERRA — sim/movement.ts — unit movement + move orders.
+ *
+ * Responsibilities:
+ *  - Two systems, registered in this order every tick:
+ *    1. `createPathfindingSystem` — drains the time-sliced pathfinding
+ *       queue (`runPathfinding`, see `pathfinding.ts`).
+ *    2. `createMovementSystem` — rebuilds the spatial hash from unit
+ *       positions (the research recommends a per-tick rebuild over
+ *       incremental updates), then integrates every `moving` unit along
+ *       its A* waypoints or flow-field direction, with local separation
+ *       steering so units don't stack.
+ *  - Move commands: `moveUnit` (one unit, A*), `moveGroup` (many units,
+ *    one shared flow field), `stopUnit`. Validated at enqueue AND apply.
+ *
+ * Steering model (all Phase 1 engineering choices, documented here):
+ *  - Seek: velocity toward the current waypoint/field step at unit speed,
+ *    slowing inside SLOW_RADIUS of the final destination (min 30%).
+ *  - Separation: neighbors within SEPARATION_RADIUS push apart with a
+ *    (1 - d/R) falloff; the push is added to the seek velocity and the
+ *    sum is clamped to the unit's speed. Neighbors come from the spatial
+ *    hash in ascending id order, so the result is deterministic.
+ *  - Water guard: a step that would enter water (or leave the map) is
+ *    cancelled — the unit simply doesn't move that tick. Separation can
+ *    never shove a unit into the river.
+ *  - Arrival: within ARRIVAL_RADIUS of the ordered destination the unit
+ *    snaps to the destination and goes idle; exhausting an A* path or
+ *    reaching the flow field's destination cell arrives the same way.
+ *
+ * Pure module: no DOM, no three.js, no wall clock. Safe under Node/vitest.
+ */
+
+import type { World } from './world';
+import type { TerrainData } from './terrain';
+import { heightAt, isWater } from './terrain';
+import {
+  CITY_GRID_CELLS,
+  MAP_HALF_SIZE,
+  cellCenterWorld,
+  cellCoords,
+} from './city';
+import type { CommandQueue } from './commands';
+import {
+  DIRS,
+  FIELD_DESTINATION,
+  FIELD_UNREACHABLE,
+  dropUnitRequests,
+  findField,
+  landComponents,
+  requestField,
+  requestPath,
+  runPathfinding,
+  worldToCell,
+} from './pathfinding';
+import type { FlowField } from './pathfinding';
+import { clearUnitOrder, failUnitOrder, findUnit } from './units';
+import type { UnitRecord } from './units';
+import { createSpatialHash, shInsert, shQueryRadius } from './spatial';
+import type { SpatialHash } from './spatial';
+
+/** Neighbor push-apart radius, world units (spatial cell is 16; §D10). */
+export const SEPARATION_RADIUS = 6;
+/** Separation velocity contribution, world units/second at zero distance. */
+export const SEPARATION_FORCE = 10;
+/** Snap-to-destination radius, world units. */
+export const ARRIVAL_RADIUS = 2;
+/** Slow down inside this distance of the final destination. */
+export const SLOW_RADIUS = 8;
+/** Minimum speed factor while inside the slow radius. */
+const MIN_SLOW_FACTOR = 0.3;
+/** Waypoint considered reached inside this distance, world units. */
+const WAYPOINT_REACH = 1.2;
+/** Formation slot ring spacing, world units (square rings, see slotOffset). */
+const SLOT_SPACING = 2.5;
+/** Max slot-rank scan when hunting a land slot (deterministic bound). */
+const SLOT_SCAN_MAX = 256;
+
+/**
+ * Deterministic formation offset for the `rank`-th unit of a group (0 =
+ * the destination itself). Concentric square rings: ring k ≥ 1 holds 8k
+ * slots at half-side `SLOT_SPACING * k`, spaced ~SLOT_SPACING apart, so
+ * arrived group members never stack. Pure integer/rational math — no
+ * transcendental functions, bit-identical on every engine.
+ */
+export function slotOffset(rank: number): [number, number] {
+  if (rank <= 0) return [0, 0];
+  let k = 1;
+  let r = rank - 1; // 0-based within its ring: ring 1 = ranks 1..8, ring 2 = 9..24, …
+  while (r >= 8 * k) {
+    r -= 8 * k;
+    k += 1;
+  }
+  const s = SLOT_SPACING * k;
+  const side = Math.floor(r / (2 * k)); // 0..3
+  const along = r % (2 * k); // 0..2k-1
+  const o = -s + (along / (2 * k)) * 2 * s;
+  switch (side) {
+    case 0: return [o, -s];
+    case 1: return [s, o];
+    case 2: return [-o, s];
+    default: return [-s, -o];
+  }
+}
+
+/** Pathfinding coordinator as a tick system. Runs before movement. */
+export function createPathfindingSystem(t: TerrainData): (world: World, dt: number) => void {
+  return (world: World, _dt: number) => {
+    runPathfinding(world, t);
+  };
+}
+
+/** Clamp a world position inside the map bounds. */
+function clampToMap(x: number, z: number): [number, number] {
+  const m = MAP_HALF_SIZE - 0.01;
+  return [Math.min(Math.max(x, -m), m), Math.min(Math.max(z, -m), m)];
+}
+
+/** Steering target for a unit this tick, or null when it should arrive/fail. */
+function steeringTarget(
+  world: World,
+  unit: UnitRecord,
+): { x: number; z: number; arrived: boolean; fail: string | null } {
+  if (unit.path.length > 0) {
+    // A* waypoints.
+    if (unit.pathAt >= unit.path.length) {
+      return { x: unit.destX, z: unit.destZ, arrived: true, fail: null };
+    }
+    const cell = unit.path[unit.pathAt] as number;
+    const { cx, cz } = cellCoords(cell);
+    return { x: cellCenterWorld(cx), z: cellCenterWorld(cz), arrived: false, fail: null };
+  }
+  // Flow field.
+  const field = findField(world, unit.fieldId) as FlowField | undefined;
+  if (!field) {
+    return { x: 0, z: 0, arrived: false, fail: 'flow field gone' };
+  }
+  const cell = worldToCell(unit.x, unit.z);
+  const dir = field.dirs[cell] as number;
+  if (dir === FIELD_DESTINATION) {
+    return { x: unit.destX, z: unit.destZ, arrived: true, fail: null };
+  }
+  if (dir === FIELD_UNREACHABLE) {
+    return { x: 0, z: 0, arrived: false, fail: 'flow field dead end' };
+  }
+  // DIRS order (0=E … 7=NE) is shared with pathfinding.ts.
+  const [dxy, dzy] = DIRS[dir] as readonly [number, number];
+  const { cx, cz } = cellCoords(cell);
+  const nx = Math.min(Math.max(cx + dxy, 0), CITY_GRID_CELLS - 1);
+  const nz = Math.min(Math.max(cz + dzy, 0), CITY_GRID_CELLS - 1);
+  return {
+    x: cellCenterWorld(nx),
+    z: cellCenterWorld(nz),
+    arrived: false,
+    fail: null,
+  };
+}
+
+/** Mark a unit arrived: snap to its slot, clear order, idle. */
+function arriveUnit(unit: UnitRecord): void {
+  unit.x = unit.arriveX;
+  unit.z = unit.arriveZ;
+  clearUnitOrder(unit);
+  unit.state = 'idle';
+  unit.failReason = null;
+}
+
+function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: UnitRecord, dt: number): void {
+  // 1. Arrival backstop: close enough to the unit's own slot.
+  const dxFinal = unit.arriveX - unit.x;
+  const dzFinal = unit.arriveZ - unit.z;
+  const distFinal = Math.hypot(dxFinal, dzFinal);
+  if (distFinal < ARRIVAL_RADIUS) {
+    arriveUnit(unit);
+    return;
+  }
+
+  // 2. Steering target (waypoint or field step).
+  const target = steeringTarget(world, unit);
+  if (target.fail !== null) {
+    failUnitOrder(unit, target.fail);
+    return;
+  }
+  if (target.arrived) {
+    arriveUnit(unit);
+    return;
+  }
+
+  // 3. Consume reached A* waypoints.
+  if (unit.path.length > 0) {
+    const dxw = target.x - unit.x;
+    const dzw = target.z - unit.z;
+    if (Math.hypot(dxw, dzw) < WAYPOINT_REACH) {
+      unit.pathAt += 1;
+      if (unit.pathAt >= unit.path.length) {
+        arriveUnit(unit);
+        return;
+      }
+      // Recompute target for the new waypoint next tick; steer at the
+      // reached one this tick (harmless — it's within 1.2 units).
+    }
+  }
+
+  // 4. Seek velocity with arrival slowdown.
+  let vx = target.x - unit.x;
+  let vz = target.z - unit.z;
+  const dist = Math.hypot(vx, vz);
+  let speed = unit.speed;
+  if (distFinal < SLOW_RADIUS) {
+    const factor = Math.max(MIN_SLOW_FACTOR, distFinal / SLOW_RADIUS);
+    speed *= factor;
+  }
+  if (dist > 1e-9) {
+    vx = (vx / dist) * speed;
+    vz = (vz / dist) * speed;
+  } else {
+    vx = 0;
+    vz = 0;
+  }
+
+  // 5. Separation: push apart from neighbors (ascending id order).
+  //    A unit docking inside SLOW_RADIUS of its slot ignores pushes:
+  //    formation slots sit ~2.5 apart but the separation radius is 6, so
+  //    repelling near the destination would deadlock arrival (push and
+  //    pull balance short of the slot). The unit stays in the hash, so it
+  //    still pushes others away — it just can't be pushed off its slot.
+  const neighbors = shQueryRadius(hash, unit.x, unit.z, SEPARATION_RADIUS);
+  let sx = 0;
+  let sz = 0;
+  if (distFinal >= SLOW_RADIUS) {
+    for (const nid of neighbors) {
+      if (nid === unit.id) continue;
+      const other = findUnit(world, nid);
+      if (!other) continue;
+      const ox = unit.x - other.x;
+      const oz = unit.z - other.z;
+      const d = Math.hypot(ox, oz);
+      if (d < 1e-9 || d >= SEPARATION_RADIUS) continue;
+      const push = (1 - d / SEPARATION_RADIUS) * SEPARATION_FORCE;
+      sx += (ox / d) * push;
+      sz += (oz / d) * push;
+    }
+  }
+  vx += sx;
+  vz += sz;
+
+  // 6. Clamp to unit speed and integrate; water/map guard.
+  const vmag = Math.hypot(vx, vz);
+  if (vmag > unit.speed && vmag > 1e-9) {
+    vx = (vx / vmag) * unit.speed;
+    vz = (vz / vmag) * unit.speed;
+  }
+  const [nx, nz] = clampToMap(unit.x + vx * dt, unit.z + vz * dt);
+  if (!isWater(t, nx, nz)) {
+    unit.x = nx;
+    unit.z = nz;
+  }
+  // else: the step is cancelled; the unit holds position this tick.
+}
+
+/** Movement system: rebuild the hash, then integrate every moving unit. */
+export function createMovementSystem(t: TerrainData): (world: World, dt: number) => void {
+  return (world: World, dt: number) => {
+    // Only actively moving units separate: idle/failed/awaitingPath units
+    // are parked (or stationary) and invisible to separation. Otherwise
+    // already-parked units form a repulsion "wall" that newcomers can
+    // never cross to reach their own nearby slots.
+    const hash = createSpatialHash(16);
+    for (const unit of world.units) {
+      if (unit.state !== 'moving') continue;
+      shInsert(hash, unit.id, unit.x, unit.z);
+    }
+    for (const unit of world.units) {
+      if (unit.state !== 'moving') continue;
+      moveUnitTick(world, t, hash, unit, dt);
+    }
+  };
+}
+
+/**
+ * Terrain-following height for a unit (world units). Units store only x/z;
+ * render interpolates y from this each frame. Not part of the digest —
+ * it's a pure function of terrain + position.
+ */
+export function unitGroundHeight(t: TerrainData, unit: UnitRecord): number {
+  return heightAt(t, unit.x, unit.z);
+}
+
+// ---------------------------------------------------------------------------
+// Move commands.
+// ---------------------------------------------------------------------------
+
+function payloadUnitIds(payload: Record<string, unknown>): number[] | null {
+  const v = payload['unitIds'];
+  if (!Array.isArray(v) || v.length === 0 || v.length > 500) return null;
+  const out: number[] = [];
+  for (const id of v) {
+    if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) return null;
+    out.push(id);
+  }
+  return out;
+}
+
+function validateDestination(t: TerrainData, x: unknown, z: unknown): string | null {
+  if (typeof x !== 'number' || !Number.isFinite(x)) return 'payload.x must be a finite number';
+  if (typeof z !== 'number' || !Number.isFinite(z)) return 'payload.z must be a finite number';
+  if (Math.abs(x) > MAP_HALF_SIZE || Math.abs(z) > MAP_HALF_SIZE) {
+    return `destination (${x}, ${z}) is outside the map`;
+  }
+  // Terrain is static: a validate-time water check cannot go stale.
+  if (isWater(t, x, z)) return `destination (${x}, ${z}) is water`;
+  return null;
+}
+
+function validateOwnedUnit(world: World, unitId: unknown, owner: unknown, kind: string): UnitRecord | string {
+  if (typeof unitId !== 'number' || !Number.isInteger(unitId) || unitId <= 0) {
+    return `${kind}: payload.unitId must be a positive integer`;
+  }
+  if (typeof owner !== 'number' || !Number.isInteger(owner)) {
+    return `${kind}: payload.owner must be an integer`;
+  }
+  const unit = findUnit(world, unitId);
+  if (!unit) return `${kind}: no unit with id ${unitId}`;
+  if (unit.owner !== owner) return `${kind}: unit ${unitId} is not owned by player ${owner}`;
+  return unit;
+}
+
+/** Shared apply logic: retask one unit to (x, z) via A*. */
+function retaskSingle(world: World, unit: UnitRecord, x: number, z: number): void {
+  dropUnitRequests(world, unit.id);
+  clearUnitOrder(unit);
+  unit.destX = x;
+  unit.destZ = z;
+  unit.arriveX = x;
+  unit.arriveZ = z;
+  unit.failReason = null;
+  if (worldToCell(x, z) === worldToCell(unit.x, unit.z)) {
+    unit.state = 'idle'; // already in the destination cell
+    return;
+  }
+  unit.state = 'awaitingPath';
+  requestPath(world, unit.id, worldToCell(x, z));
+}
+
+/**
+ * Assign deterministic formation slots to group members. Units already
+ * sitting in the destination cell keep rank 0..k (they stay put); waiting
+ * units take the following ranks. Each candidate slot must be in-bounds,
+ * land, and in the destination's land component — otherwise the next rank
+ * is tried (bounded scan, deterministic). Falls back to the destination
+ * itself if nothing is found (pathological).
+ */
+function assignGroupSlots(world: World, t: TerrainData, waiting: UnitRecord[], atDestCount: number, x: number, z: number): void {
+  const destCell = worldToCell(x, z);
+  const comps = landComponents(t);
+  const destComp = comps[destCell] as number;
+  // Id order (spawn order) — canonical and deterministic.
+  const ordered = [...waiting].sort((a, b) => a.id - b.id);
+  let rank = atDestCount;
+  for (const unit of ordered) {
+    let r = rank;
+    let sx = x;
+    let sz = z;
+    for (let scan = 0; scan < SLOT_SCAN_MAX; scan++) {
+      const [ox, oz] = slotOffset(r);
+      const cx = x + ox;
+      const cz = z + oz;
+      const ok =
+        Math.abs(cx) <= MAP_HALF_SIZE &&
+        Math.abs(cz) <= MAP_HALF_SIZE &&
+        !isWater(t, cx, cz) &&
+        (comps[worldToCell(cx, cz)] as number) === destComp;
+      if (ok) {
+        sx = cx;
+        sz = cz;
+        break;
+      }
+      r += 1;
+    }
+    unit.arriveX = sx;
+    unit.arriveZ = sz;
+    rank = r + 1;
+  }
+}
+
+export function registerMovementCommands(queue: CommandQueue, t: TerrainData): void {
+  queue.register('moveUnit', {
+    validate(cmd, world): string | null {
+      const unit = validateOwnedUnit(world, cmd.payload['unitId'], cmd.payload['owner'], 'moveUnit');
+      if (typeof unit === 'string') return unit;
+      return validateDestination(t, cmd.payload['x'], cmd.payload['z']);
+    },
+    apply(cmd, world): unknown {
+      const unit = findUnit(world, cmd.payload['unitId'] as number) as UnitRecord;
+      retaskSingle(world, unit, cmd.payload['x'] as number, cmd.payload['z'] as number);
+      return unit.id;
+    },
+  });
+
+  queue.register('moveGroup', {
+    validate(cmd, world): string | null {
+      const ids = payloadUnitIds(cmd.payload);
+      if (ids === null) return 'moveGroup: payload.unitIds must be a non-empty array of up to 500 positive integers';
+      const owner = cmd.payload['owner'];
+      if (typeof owner !== 'number' || !Number.isInteger(owner)) {
+        return 'moveGroup: payload.owner must be an integer';
+      }
+      for (const id of ids) {
+        const unit = findUnit(world, id);
+        if (!unit) return `moveGroup: no unit with id ${id}`;
+        if (unit.owner !== owner) return `moveGroup: unit ${id} is not owned by player ${owner}`;
+      }
+      return validateDestination(t, cmd.payload['x'], cmd.payload['z']);
+    },
+    apply(cmd, world): unknown {
+      const ids = cmd.payload['unitIds'] as number[];
+      const x = cmd.payload['x'] as number;
+      const z = cmd.payload['z'] as number;
+      const destCell = worldToCell(x, z);
+      const waiting: number[] = [];
+      const waitingUnits: UnitRecord[] = [];
+      let atDestCount = 0;
+      for (const id of ids) {
+        const unit = findUnit(world, id) as UnitRecord;
+        dropUnitRequests(world, id);
+        clearUnitOrder(unit);
+        unit.destX = x;
+        unit.destZ = z;
+        unit.arriveX = x; // refined to a formation slot below
+        unit.arriveZ = z;
+        unit.failReason = null;
+        if (worldToCell(unit.x, unit.z) === destCell) {
+          unit.state = 'idle'; // already there
+          atDestCount += 1;
+        } else {
+          unit.state = 'awaitingPath';
+          waiting.push(id);
+          waitingUnits.push(unit);
+        }
+      }
+      // Formation slots: deterministic ranks; units already at the
+      // destination occupy the first ranks so nobody stacks onto them.
+      // Id order keeps the assignment deterministic.
+      assignGroupSlots(world, t, waitingUnits, atDestCount, x, z);
+      if (waiting.length === 0) return [];
+      const fieldId = requestField(world, waiting, destCell);
+      for (const id of waiting) {
+        (findUnit(world, id) as UnitRecord).fieldId = fieldId;
+      }
+      return fieldId;
+    },
+  });
+
+  queue.register('stopUnit', {
+    validate(cmd, world): string | null {
+      const unit = validateOwnedUnit(world, cmd.payload['unitId'], cmd.payload['owner'], 'stopUnit');
+      if (typeof unit === 'string') return unit;
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const unit = findUnit(world, cmd.payload['unitId'] as number) as UnitRecord;
+      dropUnitRequests(world, unit.id);
+      clearUnitOrder(unit);
+      unit.state = 'idle';
+      unit.failReason = null;
+      return unit.id;
+    },
+  });
+}

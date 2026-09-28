@@ -88,6 +88,32 @@ export function canonicalizeWorld(world: World): string {
     out += `${p.taxRates.join(',')},${p.population};`;
   }
   out += `|shortage=${world.city.foodShortage ? 1 : 0}`;
+  // Units: spawn order; floats canonicalized. failReason is a plain string.
+  out += `|units=${world.units.length}|`;
+  for (const u of world.units) {
+    out += `u${u.id},${u.kind},${u.owner},${canonicalNumber(u.x)},${canonicalNumber(u.z)},`;
+    out += `${canonicalNumber(u.speed)},${u.state},${u.failReason ?? ''},`;
+    out += `${canonicalNumber(u.destX)},${canonicalNumber(u.destZ)},`;
+    out += `${canonicalNumber(u.arriveX)},${canonicalNumber(u.arriveZ)},`;
+    out += `${u.path.join('.')},${u.pathAt},${u.fieldId};`;
+  }
+  // Pathfinding: queues in FIFO order, fields in creation order; dirs are
+  // small ints so they join cheaply. The active build's dist array is
+  // included (canonicalized) so digests diverge if flood progress differs.
+  const pf = world.pathfinding;
+  out += `|pfq=${pf.queue.map((r) => `${r.unitId}:${r.destCell}`).join(',')};`;
+  out += `pffq=${pf.fieldQueue.map((r) => `${r.fieldId}:${r.destCell}:${r.unitIds.join('.')}`).join(',')};`;
+  out += `nextF=${pf.nextFieldId}|`;
+  const ab = pf.activeBuild;
+  if (ab) {
+    out += `build=${ab.fieldId},${ab.destCell},${ab.unitIds.join('.')},${ab.waitingCount},${ab.nextTie},${ab.earlyExit ? 1 : 0},`;
+    out += `${ab.dist.map(canonicalNumber).join(',')};`;
+  } else {
+    out += `build=-;`;
+  }
+  for (const f of pf.fields) {
+    out += `f${f.id},${f.destCell},${f.dirs.join('')};`;
+  }
   return out;
 }
 

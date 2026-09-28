@@ -90,10 +90,37 @@ they never mutate sim state.
 
 ## 5. Key subsystem decisions
 
-- **Pathfinding (layered):** domain grids (land/sea/air) → hierarchical
-  A*/JPS for long range → flow fields for group moves (cost O(grid), not
-  O(units)) → local steering. All path requests go through a **time-sliced
-  queue (≤2 ms/tick)** — order-spam can never break the frame budget.
+- **Pathfinding + movement (step 6, implemented 2026-09-28):** the
+  research's layered sketch became concrete code in
+  `sim/pathfinding.ts` / `sim/movement.ts` / `sim/units.ts`.
+  Deterministic 8-direction A* (octile heuristic, ties by cell index,
+  corner-cut prevention — no diagonal may clip a blocked orthogonal
+  pair; water blocks, roads cost ×0.5) for single-unit orders; Dijkstra
+  flow fields (reverse flood from the destination, chunked at 600 pops/
+  tick, early exit once every waiting unit's cell — plus a one-cell
+  margin — is reached) for group orders. No JPS: measured A* on the dev
+  VM is 0.1–0.7 ms for typical orders and ~2.9 ms at the 1000-expansion
+  cap (which falls back to a field instead of blowing the budget); the
+  full-grid flood the research assumed was "sub-millisecond" actually
+  measures ~58 ms, which is exactly why it is time-sliced. All path
+  requests go through a time-sliced FIFO coordinator — 3 A* + 600 flood
+  pops per tick, ≤2 ms/tick — so order-spam can never break the frame
+  budget; cross-component requests fail instantly (0 expansions) via the
+  memoized land-component map. Movement: A* waypoint following with
+  per-waypoint arrival cut (2.0), flow-field following that steers by
+  derived direction (argmin of forward step cost + neighbor dist — never
+  raw dist, which misguides on roads/diagonals), slowdown within 12 of
+  the slot, terrain-following height, map clamp, water guard. Group
+  orders land units on formation slots (concentric square rings, 2.5
+  apart, one unit per slot) so armies arrive as formations, never
+  stacked. Separation (radius 6, spatial-hash neighbors, id-ordered push)
+  is designed not to fight arrival: only moving units participate, and
+  units inside the slowdown radius ignore pushes — separation radius >
+  slot spacing would otherwise deadlock docking. Systems run pathfinding
+  then movement each tick; snapshot v3 + digest cover units, queues,
+  fields and partial field builds. `moveUnit` / `moveGroup` / `stopUnit`
+  commands validate at enqueue and at apply; unreachable destinations
+  fail loudly with the unit unmoved.
 - **Spatial queries:** uniform spatial hash grid (cell 16 world units,
   insert/remove/move, radius + rect queries, results always sorted by entity
   id for determinism). Serves combat, economy, steering, obstacles, render
