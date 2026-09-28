@@ -89,6 +89,7 @@ import { evaluateAdvisor, type AdvisorItem } from './advisor';
 import { HUD, type BuildTool } from './hud';
 import { PauseMenu, type QualityLevel } from './menus';
 import { STRINGS } from './strings';
+import { AudioEngine } from '../audio/engine';
 
 export interface GameOptions {
   seed: number;
@@ -192,6 +193,8 @@ class GameController {
   private readonly opts: GameOptions;
   private readonly hud: HUD;
   private readonly pauseMenu: PauseMenu;
+  private readonly audio: AudioEngine;
+  private unbindUiClicks: (() => void) | null = null;
   private cameraState: CameraState = createCameraState();
   private selection: Selection = clearSelection();
   private placement: PlacementMode = null;
@@ -203,6 +206,13 @@ class GameController {
   private readonly raycaster = new THREE.Raycaster();
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private dragStart: { x: number; y: number } | null = null;
+  /** Combat/building polling state for SFX + adaptive music. */
+  private lastMusicUpdate = 0;
+  private lastShotSfx = 0;
+  private prevPlayerUnitCount = -1;
+  private prevPlayerBuildingCount = -1;
+  private prevTotalBuildingCount = -1;
+  private prevAdvisorTop: string | null = null;
   private dragRect: HTMLElement | null = null;
   /** Last known pointer position in client px (for edge pan). */
   private mouseClient: { x: number; y: number } | null = null;
@@ -256,6 +266,23 @@ class GameController {
       onResume: () => this.setPaused(false),
       onExitToMenu: () => this.exitToMenu(),
       onQualityChange: (q) => applyQuality(this.renderer, q),
+      onAudioChange: (patch) => this.audio.updateSettings(patch),
+    });
+
+    // Audio: created here, unlocked on the first user gesture (autoplay
+    // policy). UI clicks anywhere in the game container play the click cue.
+    this.audio = new AudioEngine();
+    this.unbindUiClicks = this.audio.bindUiClicks(container);
+    const unlockOnce = (): void => {
+      this.audio.unlock();
+      window.removeEventListener('pointerdown', unlockOnce);
+      window.removeEventListener('keydown', unlockOnce);
+    };
+    window.addEventListener('pointerdown', unlockOnce);
+    window.addEventListener('keydown', unlockOnce);
+    this.removeListeners.push(() => {
+      window.removeEventListener('pointerdown', unlockOnce);
+      window.removeEventListener('keydown', unlockOnce);
     });
 
     this.bindInput();
@@ -287,8 +314,60 @@ class GameController {
       this.entities.setSelected(this.selection.unitIds);
       this.entities.updateSelectionRings(EntityRenderer.unitMap(world));
       this.hud.update(world, this.selection, this.advisorItems, this.paused, this.speed);
+      this.pollAudioEvents(world, now);
       this.renderer.render(this.scene, this.camera);
     });
+  }
+
+  /**
+   * Poll sim state for audio events (UI-layer only; never mutates the sim):
+   * adaptive music mood ~2×/sec, death/explosion/building-complete cues,
+   * throttled distant weapon-fire while anyone is fighting.
+   */
+  private pollAudioEvents(world: World, nowMs: number): void {
+    // Adaptive music.
+    if (nowMs - this.lastMusicUpdate > 500) {
+      this.lastMusicUpdate = nowMs;
+      this.audio.updateMusic(world, HUMAN_PLAYER_ID);
+    }
+
+    let playerUnits = 0;
+    let playerBuildings = 0;
+    let totalBuildings = 0;
+    let anyFighting = false;
+    const liveIds = new Set<number>();
+    for (const u of world.units) if (u.hp > 0) liveIds.add(u.id);
+    for (const u of world.units) {
+      if (u.hp <= 0) continue;
+      if (u.owner === HUMAN_PLAYER_ID) {
+        playerUnits++;
+        if (u.targetId !== 0 && liveIds.has(u.targetId)) anyFighting = true;
+      }
+    }
+    for (const b of world.city.buildings) {
+      totalBuildings++;
+      if (b.owner === HUMAN_PLAYER_ID) playerBuildings++;
+    }
+
+    // First poll just records baselines (no cues on game start).
+    if (this.prevPlayerUnitCount === -1) {
+      this.prevPlayerUnitCount = playerUnits;
+      this.prevPlayerBuildingCount = playerBuildings;
+      this.prevTotalBuildingCount = totalBuildings;
+      return;
+    }
+    if (playerUnits < this.prevPlayerUnitCount) this.audio.playSfx('unitDown');
+    if (playerBuildings > this.prevPlayerBuildingCount) this.audio.playSfx('buildComplete');
+    if (totalBuildings < this.prevTotalBuildingCount) this.audio.playSfx('explosion');
+    this.prevPlayerUnitCount = playerUnits;
+    this.prevPlayerBuildingCount = playerBuildings;
+    this.prevTotalBuildingCount = totalBuildings;
+
+    // Distant battle ambience: throttled shots while fighting.
+    if (anyFighting && nowMs - this.lastShotSfx > 450) {
+      this.lastShotSfx = nowMs;
+      this.audio.playSfx('shot');
+    }
   }
 
   setQuality(q: QualityLevel): void {
@@ -302,6 +381,9 @@ class GameController {
     this.removeListeners = [];
     this.hud.dispose();
     this.pauseMenu.hide();
+    this.unbindUiClicks?.();
+    this.unbindUiClicks = null;
+    this.audio.dispose();
     this.entities.dispose();
     this.dragRect?.remove();
     this.renderer.dispose();
@@ -312,6 +394,9 @@ class GameController {
 
   private setPaused(paused: boolean, showMenu = false): void {
     this.paused = paused;
+    // Pause = suspend the AudioContext (zero CPU, everything freezes).
+    if (paused) this.audio.suspend();
+    else this.audio.resume();
     if (paused && showMenu) this.pauseMenu.show();
     else if (!paused) this.pauseMenu.hide();
   }
@@ -339,6 +424,7 @@ class GameController {
     } catch (e) {
       const reason = e instanceof CommandRejectedError ? e.reason : String(e);
       this.hud.toast(reason);
+      this.audio.playSfx('error');
     }
   }
 
@@ -351,6 +437,7 @@ class GameController {
   private issueAdvanceAge(program: 'fiberGrid' | 'signalsGrid'): void {
     this.enqueue(buildAdvanceAgeOrder(HUMAN_PLAYER_ID, program));
     this.hud.toast(STRINGS.orders.ageAdvanced);
+    this.audio.playSfx('ageFanfare');
   }
 
   /** Right-click: attack an enemy unit, or move to open ground. */
@@ -377,9 +464,11 @@ class GameController {
       for (const cmd of buildAttackOrders(attackers, HUMAN_PLAYER_ID, clicked.id)) {
         this.enqueue(cmd);
       }
+      this.audio.playSfx('attackOrder');
       return;
     }
     this.enqueue(buildMoveOrder(ownIds, HUMAN_PLAYER_ID, worldX, worldZ));
+    this.audio.playSfx('moveOrder');
   }
 
   // ---- selection ----
@@ -399,10 +488,12 @@ class GameController {
     // Placement modes consume the click first.
     if (this.placement?.kind === 'train') {
       this.enqueue(buildTrainOrder(this.placement.unitKind, HUMAN_PLAYER_ID, point.x, point.z));
+      this.audio.playSfx('place');
       return;
     }
     if (this.placement?.kind === 'build') {
       this.handleBuildClick(point.x, point.z);
+      this.audio.playSfx('place');
       return;
     }
 
@@ -412,6 +503,7 @@ class GameController {
       const building = this.buildingAt(point.x, point.z);
       if (building && !shift) {
         this.selection = selectBuilding(building.id);
+        this.audio.playSfx('select');
       } else if (!shift) {
         this.selection = clearSelection();
       }
@@ -422,6 +514,7 @@ class GameController {
     } else {
       this.selection = selectUnits([clicked.id]);
     }
+    this.audio.playSfx('select');
   }
 
   private buildingAt(x: number, z: number): { id: number } | null {
@@ -698,6 +791,13 @@ class GameController {
 
   private refreshAdvisor(world: World): void {
     this.advisorItems = evaluateAdvisor(world, HUMAN_PLAYER_ID);
+    // Ping when the top (worst) problem changes to something new.
+    const top = this.advisorItems.length > 0 ? this.advisorItems[0]?.title ?? null : null;
+    if (top !== null && top !== this.prevAdvisorTop) {
+      // Don't ping on the very first evaluation (game start).
+      if (this.prevAdvisorTop !== null) this.audio.playSfx('advisorPing');
+    }
+    this.prevAdvisorTop = top;
   }
 }
 

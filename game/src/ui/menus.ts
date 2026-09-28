@@ -35,6 +35,11 @@
 import { GAME_TAGLINE, GAME_TITLE } from '../config';
 import type { AIDifficulty } from '../sim/ai';
 import { STRINGS } from './strings';
+import {
+  loadAudioSettings,
+  saveAudioSettings,
+  type AudioSettings,
+} from '../audio/engine';
 
 /** Graphics quality levels. */
 export type QualityLevel = 'low' | 'medium' | 'high';
@@ -79,6 +84,8 @@ export interface MenuActions {
   onExitToMenu(): void;
   /** Graphics quality changed. */
   onQualityChange(quality: QualityLevel): void;
+  /** Audio settings changed (live-apply when a game is running). Optional. */
+  onAudioChange?: (patch: Partial<AudioSettings>) => void;
 }
 
 function el(tag: string, className: string, text?: string): HTMLElement {
@@ -124,6 +131,7 @@ export class MainMenu {
     missions.title = s.missionsLocked;
     const settings = menuButton(s.settings, () => new SettingsPanel(this.root, {
       onQualityChange: (q) => this.actions.onQualityChange(q),
+      onAudioChange: this.actions.onAudioChange,
       onClose: () => this.show(),
     }).show());
     buttons.append(skirmish, missions, settings);
@@ -179,6 +187,7 @@ export class PauseMenu {
       menuButton(s.settings, () =>
         new SettingsPanel(this.root, {
           onQualityChange: (q) => this.actions.onQualityChange(q),
+          onAudioChange: this.actions.onAudioChange,
           onClose: () => this.show(),
         }).show(),
       ),
@@ -199,19 +208,25 @@ export class PauseMenu {
   }
 }
 
-/** Settings panel: quality select + controls reference. */
+/** Settings panel: quality select + audio controls + controls reference. */
 export class SettingsPanel {
   private readonly root: HTMLElement;
   private readonly onQualityChange: (q: QualityLevel) => void;
+  private readonly onAudioChange: ((patch: Partial<AudioSettings>) => void) | undefined;
   private readonly onClose: () => void;
   private el: HTMLElement | null = null;
 
   constructor(
     root: HTMLElement,
-    opts: { onQualityChange: (q: QualityLevel) => void; onClose: () => void },
+    opts: {
+      onQualityChange: (q: QualityLevel) => void;
+      onAudioChange?: (patch: Partial<AudioSettings>) => void;
+      onClose: () => void;
+    },
   ) {
     this.root = root;
     this.onQualityChange = opts.onQualityChange;
+    this.onAudioChange = opts.onAudioChange;
     this.onClose = opts.onClose;
   }
 
@@ -243,6 +258,40 @@ export class SettingsPanel {
     });
     label.append(select);
     panel.append(label);
+
+    // --- Audio ---
+    panel.append(el('h3', '', s.audioTitle));
+    const audio = loadAudioSettings();
+    const applyAudio = (patch: Partial<AudioSettings>): void => {
+      const next = { ...loadAudioSettings(), ...patch };
+      saveAudioSettings(next);
+      this.onAudioChange?.(patch);
+    };
+    const sliderRow = (
+      labelText: string,
+      value: number,
+      onInput: (v: number) => void,
+    ): HTMLElement => {
+      const row = el('label', 'settings-row', `${labelText}: `);
+      const input = document.createElement('input');
+      input.type = 'range';
+      input.min = '0';
+      input.max = '100';
+      input.value = String(Math.round(value * 100));
+      input.addEventListener('input', () => onInput(Number(input.value) / 100));
+      row.append(input);
+      return row;
+    };
+    panel.append(sliderRow(s.masterVolume, audio.master, (v) => applyAudio({ master: v })));
+    panel.append(sliderRow(s.musicVolume, audio.music, (v) => applyAudio({ music: v })));
+    panel.append(sliderRow(s.sfxVolume, audio.sfx, (v) => applyAudio({ sfx: v })));
+    const muteRow = el('label', 'settings-row', `${s.mute}: `);
+    const muteBox = document.createElement('input');
+    muteBox.type = 'checkbox';
+    muteBox.checked = audio.muted;
+    muteBox.addEventListener('change', () => applyAudio({ muted: muteBox.checked }));
+    muteRow.append(muteBox);
+    panel.append(muteRow);
 
     panel.append(el('h3', '', s.keysTitle));
     const keys = el('div', 'settings-keys');

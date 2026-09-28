@@ -29,7 +29,7 @@ rewritten. Last updated: 2026-09-28 (v1, post-Phase-0-research).
 | Language | TypeScript 7 strict (`no-explicit-any`, `no-non-null-assertion`) | Deterministic sim needs the strictness; tsgo is fast |
 | Build/test | Vite 8 + Vitest 3 | One pipeline; `vite build` emits static assets for GitHub Pages (`/novaterra/` base) |
 | Audio | Raw Web Audio, own `audio/` module, no runtime library | Adaptive stem engine needs bespoke lookahead scheduling; Howler/Tone.js rejected (see `docs/research/audio.md`) |
-| Music source | Tallbeard "Abstraction" CC0 loop bundle (primary) + re-verified Pixabay cinematic tracks | Content-ID-free for let's-players; ~15–25 MB shipped; licenses in `assets/audio/LICENSES.yml` |
+| Music source | Kevin MacLeod "Meditation Impromptu 01" (peace) + "Volatile Reaction" (war), CC BY 4.0, ~5.4 MB shipped | Incompetech direct downloads verified 2026-09-29; attribution in `THIRD_PARTY_NOTICES.md` + `docs/HOW_TO_PLAY.md`; research-stage Tallbeard/Pixabay plan superseded |
 | Save storage | IndexedDB (one compressed Blob per save, single tx) + export/import file fallback | Large late-game saves; `navigator.storage.persist()` |
 | WASM | **None in Phase 1** | Evidence: wasm-bindgen slower than JS on our workload shape; no WASM threads on Pages (no COOP/COEP) |
 | Threads | Sim single-threaded on main thread (Phase 1); workers only for periphery (audio decode, save serialize, asset load, seeded mapgen before tick 0) | Worker completion order is nondeterministic; clone tax; debugging tax (see Decision Log D3) |
@@ -59,8 +59,8 @@ game/src/
     scene.ts renderer.ts instancing.ts terrain.ts effects.ts lod.ts ...
   ui/             # HUD, menus, dialogs, camera, selection, orders, advisor,
                   # session assembly — commands go to sim, never direct mutation
-  audio/          # adaptive music engine (lookahead scheduler, stem states
-                  # PEACE→TENSION→WAR→VICTORY + MENU/DEFEAT), 32-voice SFX pool
+  audio/          # adaptive music engine (peace/war crossfade between two
+                  # looping tracks), procedural SFX pool (Web Audio synth)
   net_save/       # IndexedDB driver, export/import, save slots UI data
   main.ts         # boot, menu backdrop + menus, wiring (game loop lives in ui/game.ts)
 game/tests/

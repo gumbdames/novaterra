@@ -105,6 +105,11 @@ export const STRINGS = {
     qualityHigh: 'High',
     close: 'Close',
     keysTitle: 'Controls',
+    audioTitle: 'Audio',
+    masterVolume: 'Master volume',
+    musicVolume: 'Music volume',
+    sfxVolume: 'Sound effects volume',
+    mute: 'Mute all',
   },
   help: {
     keys: [

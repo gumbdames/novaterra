@@ -30,3 +30,20 @@ packages; each remains under its own license, which applies to that package only
 
 Full license texts: MIT — https://opensource.org/licenses/MIT ;
 Apache-2.0 — https://www.apache.org/licenses/LICENSE-2.0
+
+## Game audio assets (shipped in game/public/audio/)
+
+Both tracks by Kevin MacLeod (https://incompetech.com), licensed
+**CC BY 4.0** (https://creativecommons.org/licenses/by/4.0/) — free for
+commercial use including games, with attribution (this notice and the
+Sound section of docs/HOW_TO_PLAY.md).
+
+- `peace.mp3` — "Meditation Impromptu 01" by Kevin MacLeod.
+  Source: https://incompetech.com/music/royalty-free/mp3-royaltyfree/Meditation%20Impromptu%2001.mp3
+  License: CC BY 4.0. Re-encoded to 96 kbps with 2 s baked fades.
+- `war.mp3` — "Volatile Reaction" by Kevin MacLeod.
+  Source: https://incompetech.com/music/royalty-free/mp3-royaltyfree/Volatile%20Reaction.mp3
+  License: CC BY 4.0. Re-encoded to 128 kbps with 2 s baked fades.
+
+All sound effects are synthesized procedurally at runtime with the Web Audio
+API (game/src/audio/sfx.ts) — no third-party samples.

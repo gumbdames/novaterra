@@ -1,7 +1,7 @@
 # How to Play — novaterra
 
 > The 0.1 Alpha skirmish guide. Kept **clear, short and simple** per the
-> design brief. Last updated: 2026-09-28 (step 9: playable UI).
+> design brief. Last updated: 2026-09-29 (step 10: audio).
 
 ## Your goal
 
@@ -52,3 +52,10 @@ so your units see farther. The choice is permanent.
   see enemy fighters.
 - Tanks beat infantry; artillery beats tanks; spectres are fast
   tank-hunters. Build counters, not just more of the same.
+
+## Sound
+
+Music changes when your units enter combat. Open **Settings** (pause
+menu) to adjust master, music, and sound-effect volumes, or mute all.
+Music: "Meditation Impromptu 01" and "Volatile Reaction" by Kevin
+MacLeod (incompetech.com), CC BY 4.0.

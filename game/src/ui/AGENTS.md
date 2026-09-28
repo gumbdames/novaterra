@@ -20,6 +20,12 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   the controller stamps `issuer: 'player'` at enqueue.
 - `advisor.ts` — pure `evaluateAdvisor(world, playerId)`, worst-first.
 - `strings.ts` — all UI copy in one place (English now, Hebrew later).
+- Audio: `game.ts` owns an `AudioEngine` (see `src/audio/AGENTS.md`) —
+  unlocked on first pointer/key gesture, `updateMusic(world, playerId)`
+  polled ~2×/sec, SFX on select/orders/placement/age-advance/rejections/
+  deaths/buildings/advisor changes, pause = `audio.suspend()`.
+  `menus.ts` SettingsPanel has master/music/SFX sliders + mute (persisted,
+  live-applied in game).
 
 ## Rules
 
