@@ -75,7 +75,7 @@ describe('AI levels 4-5', () => {
       const system = createAISystem(queue);
       world.tick = 0;
       // Should not throw.
-      system(world);
+      system(world, 1/30);
     }
     expect(true).toBe(true); // All difficulties ran without throwing.
   });

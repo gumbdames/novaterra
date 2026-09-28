@@ -116,10 +116,14 @@ thousands of entities; save/resume/pause verified; docs current.
 pass, the build is green, and all previous steps' smoke tests still pass
 (see `AGENTS.md` §2 — no step starts until the previous one is verified).
 
-### Phase 1.5 — Skirmish complete
+### Phase 1.5 — Skirmish complete ✅ (2026-09-28)
 
-Navy + sea gameplay, remaining 7 maps (5%→60% water variance), Classic AI
-levels 4–5, remaining resources (Goods, Influence, Manpower), ages 3–5.
+- ✅ Goods, Influence, Manpower resources (commit 8797970)
+- ✅ Ages 3–5: Industry, Information, Ascendance with National Programs (commit 86047cd)
+- ✅ Navy + sea gameplay: Patrol Boat, Destroyer, Transport Ship (commit 1414efc)
+- ✅ 7 additional maps: 8 presets spanning 5%–60% water (commit 01ccfd0)
+- ✅ Classic AI levels 4–5: General and Marshal (commit e6868bc)
+- Full suite: 364/364 tests green, typecheck clean, production build succeeds.
 
 ### Phase 2 — Campaign + Mode 2
 
