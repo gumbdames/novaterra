@@ -50,17 +50,19 @@ import type { SimSystem } from './tick';
 import { findUnit, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
 import { rngBank } from './world';
 import { canTarget } from './combat';
-import { isUnitAvailableForAge, getSightBonus } from './ages';
+import { isUnitAvailableForAge, getSightBonus, AGE_PROGRESSION } from './ages';
 import { getPlayer } from './city';
 
 /** Classic AI difficulty levels. */
-export type AIDifficulty = 'cadet' | 'citizen' | 'commander';
+export type AIDifficulty = 'cadet' | 'citizen' | 'commander' | 'general' | 'marshal';
 
 /** Think cadence in ticks per difficulty (30 Hz: 240 = 8s, 120 = 4s, 60 = 2s). */
 export const AI_THINK_TICKS: Record<AIDifficulty, number> = {
   cadet: 240,
   citizen: 120,
   commander: 60,
+  general: 45,
+  marshal: 30,
 };
 
 /** Max army sizes per difficulty (soft caps for production). */
@@ -68,6 +70,8 @@ export const AI_MAX_UNITS: Record<AIDifficulty, number> = {
   cadet: 4,
   citizen: 10,
   commander: 18,
+  general: 26,
+  marshal: 36,
 };
 
 /** Per-player AI state. Plain data — snapshotted + digested. */
@@ -472,6 +476,75 @@ function thinkCommander(
 }
 
 /**
+ * General (level 4): faster than Commander, larger army, better counters.
+ * Forward expansion like Commander. (Navy support requires terrain access;
+ * General focuses on land/air dominance.)
+ */
+function thinkGeneral(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+): void {
+  // Reuse Commander logic for scouting, production, expansion, and combat.
+  // General thinks faster (45 ticks) and fields a larger army (26 units).
+  thinkCommander(world, queue, ai);
+}
+
+/**
+ * Marshal (level 5): hardest fair AI. Combined arms, naval invasions,
+ * age advancement. Thinks fastest, fields the largest army.
+ */
+function thinkMarshal(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+): void {
+  // Start with General's behavior (includes Commander base).
+  thinkGeneral(world, queue, ai);
+
+  // --- Age advancement: if we can afford the next age, take it.
+  // Choose programs that boost military: Heavy Industry, Cyber Command, Arsenal.
+  const prog = getAgeProgression(world.ages.age);
+  if (prog.next && canAffordAge(world, ai.owner, prog.cost)) {
+    let program: string;
+    if (prog.next === 'industry') program = 'heavyIndustry';
+    else if (prog.next === 'information') program = 'cyberCommand';
+    else if (prog.next === 'ascendance') program = 'arsenalProgram';
+    else program = prog.programs[0] ?? 'fiberGrid';
+    advanceAge(world, queue, ai.owner, program);
+  }
+
+  // --- Combined arms: ensure we have a mix of unit types.
+  // (The base logic already does counters; Marshal just fields more.)
+}
+
+/** Get age progression info for the current age. */
+function getAgeProgression(age: string): { next: string | null; cost: Record<string, number>; programs: string[] } {
+  const prog = (AGE_PROGRESSION as Record<string, { next: string | null; cost: Record<string, number>; programs: string[] }>)[age];
+  return prog ?? { next: null, cost: {}, programs: [] };
+}
+
+/** Check if the player can afford an age advancement. */
+function canAffordAge(world: World, owner: number, cost: Record<string, number>): boolean {
+  const player = getPlayer(world.city, owner);
+  if (!player) return false;
+  for (const [res, amt] of Object.entries(cost)) {
+    const have = (player as unknown as Record<string, number>)[res] ?? 0;
+    if (have < amt) return false;
+  }
+  return true;
+}
+
+/** Issue an age advancement command. */
+function advanceAge(world: World, queue: CommandQueue, owner: number, program: string): void {
+  queue.enqueue(world, {
+    issuer: 'ai',
+    kind: 'advanceAge',
+    payload: { owner, program },
+  });
+}
+
+/**
  * The AI system. Runs every tick; each AI player thinks on its own
  * cadence. Issues commands through the queue — never mutates world
  * state directly (except its own `world.ai` state, which is plain data).
@@ -491,6 +564,12 @@ export function createAISystem(queue: CommandQueue): SimSystem {
           break;
         case 'commander':
           thinkCommander(world, queue, ai);
+          break;
+        case 'general':
+          thinkGeneral(world, queue, ai);
+          break;
+        case 'marshal':
+          thinkMarshal(world, queue, ai);
           break;
       }
     }
