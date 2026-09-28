@@ -1,6 +1,153 @@
-# Architecture — awesome-sim-game
+# Architecture — awesome-sim-game (working title: NOVATERRA)
 
-> To be written once Phase 0 research concludes. It will document the module
-> map (`sim/`, `render/`, `ui/`, `audio/`, save system), the fixed-timestep
-> deterministic sim design, the save format, and the interface contracts between
-> layers. Last updated: 2026-09-28 (stub).
+Living document. Locked decisions are dated; when a decision changes, the old
+one moves to the Decision Log with its superseded date — history is never
+rewritten. Last updated: 2026-09-28 (v1, post-Phase-0-research).
+
+## 1. Principles
+
+1. **The sim is deterministic and decoupled from rendering.** Fixed 30 Hz
+   timestep, accumulator pattern (Gaffer-on-Games), render interpolates
+   between the last two ticks. No gameplay logic in `render/`; no rendering
+   assumptions in `sim/`.
+2. **Same-machine determinism** (single-player): identical inputs ⇒ identical
+   sim. Buys us replays (command log), save/load integrity (state hash),
+   reproducible bugs, testable AI. No cross-machine lockstep needed — IEEE-754
+   doubles are fine; fixed-point parked behind a `sim/math.ts` seam.
+3. **Plain-data sim state.** Everything the sim owns is serializable plain
+   data (no class instances with behavior in hot state) — required for
+   snapshots, save/load, and any future worker transport.
+4. **Boring technology by default.** Exotic tech only on profiling evidence
+   (recorded in `docs/research/`).
+5. **Perf budgets are tests.** CI fails when a perf scenario exceeds budget.
+
+## 2. Locked stack (2026-09-28)
+
+| Layer | Choice | Why (one line) |
+|---|---|---|
+| Rendering | three.js pinned exact (`three@0.186.1`), `three/webgpu` import: **WebGPURenderer primary + automatic WebGL2 fallback**, custom shaders in pure TSL only | One codebase, one scene graph; 15–25% of users get WebGL2 free; mobile tier forces WebGL2 via runtime flag |
+| Language | TypeScript 7 strict (`no-explicit-any`, `no-non-null-assertion`) | Deterministic sim needs the strictness; tsgo is fast |
+| Build/test | Vite 8 + Vitest 3 | One pipeline; `vite build` emits static assets for GitHub Pages (`/awesome-sim-game/` base) |
+| Audio | Raw Web Audio, own `audio/` module, no runtime library | Adaptive stem engine needs bespoke lookahead scheduling; Howler/Tone.js rejected (see `docs/research/audio.md`) |
+| Music source | Tallbeard "Abstraction" CC0 loop bundle (primary) + re-verified Pixabay cinematic tracks | Content-ID-free for let's-players; ~15–25 MB shipped; licenses in `assets/audio/LICENSES.yml` |
+| Save storage | IndexedDB (one compressed Blob per save, single tx) + export/import file fallback | Large late-game saves; `navigator.storage.persist()` |
+| WASM | **None in Phase 1** | Evidence: wasm-bindgen slower than JS on our workload shape; no WASM threads on Pages (no COOP/COEP) |
+| Threads | Sim single-threaded on main thread (Phase 1); workers only for periphery (audio decode, save serialize, asset load, seeded mapgen before tick 0) | Worker completion order is nondeterministic; clone tax; debugging tax (see Decision Log D3) |
+
+## 3. Module map (`game/src/`)
+
+```
+game/src/
+  sim/            # deterministic simulation — no DOM, no three.js, no Audio
+    tick.ts       # fixed-timestep driver (accumulator, catch-up cap, slow-mo)
+    rng.ts        # sim-owned mulberry32; state is part of every snapshot
+    math.ts       # seam: float today, fixed-point if ever needed
+    world.ts      # entity store: hand-rolled SoA for hot entities
+                  # (units/citizens/projectiles), OOP for strategic layer
+                  # (cities, mayors, cabinets) — prototype vs apecs first
+    commands.ts   # all player/AI input as tick-aligned command structs
+    systems/      # movement, combat, economy, growth, diplomacy, ai/ ...
+    pathing/      # domain grids + hierarchical A*/JPS + flow fields +
+                  # local steering; time-sliced request queue (≤2 ms/tick)
+    spatial.ts    # uniform spatial hash grid (rebuilt per tick)
+    digest.ts     # per-tick state hash (save integrity, desync detect, tests)
+    serialize.ts  # snapshot <-> SaveFile (versioned, migrated)
+  render/         # read-only view of last two sim ticks + alpha; three.js only
+    scene.ts renderer.ts instancing.ts terrain.ts effects.ts lod.ts ...
+  ui/             # HUD, menus, dialogs, camera, selection — commands go to sim
+  audio/          # adaptive music engine (lookahead scheduler, stem states
+                  # PEACE→TENSION→WAR→VICTORY + MENU/DEFEAT), 32-voice SFX pool
+  net_save/       # IndexedDB driver, export/import, save slots UI data
+  main.ts         # boot, game loop, wiring
+game/tests/
+  unit/           # sim logic tests (Vitest, headless)
+  sim/            # scripted gameplay scenarios (replays via command log)
+  perf/           # perf scenarios; budgets enforced in CI
+game/assets/     # art/audio + manifests (LICENSES.yml for audio)
+tools/           # map tooling, asset pipeline, balance spreadsheets
+```
+
+**Data flow:** `ui` → `commands.ts` (tick-aligned queue) → `sim/tick.ts` →
+systems mutate plain-data world → `digest.ts` → snapshot → `render/`
+interpolates prev/current with alpha. `audio/` and `ui/` observe sim events;
+they never mutate sim state.
+
+## 4. Tick design
+
+- 30 Hz fixed step; accumulator with **catch-up clamped** (max 5 steps, then
+  slow-motion + log — never spiral-of-death).
+- Inputs (player orders, AI decisions) enter a **tick-aligned command queue**;
+  sim consumes whole commands only at tick boundaries.
+- Render interpolates entity transforms between tick N−1 and N with alpha;
+  UI/HUD reads the latest snapshot.
+- Tab hidden ⇒ auto-pause (freeze accumulator; rendering/UI stay alive).
+- Pause = freeze accumulator. Save = snapshot at a tick boundary (includes
+  RNG state, AI brains, music bar position). Load = verify state hash, then
+  resume ticking.
+
+## 5. Key subsystem decisions
+
+- **Pathfinding (layered):** domain grids (land/sea/air) → hierarchical
+  A*/JPS for long range → flow fields for group moves (cost O(grid), not
+  O(units)) → local steering. All path requests go through a **time-sliced
+  queue (≤2 ms/tick)** — order-spam can never break the frame budget.
+- **Spatial queries:** uniform spatial hash grid, rebuilt per tick, sorted
+  pair emission for determinism. Serves combat, economy, steering, obstacles,
+  render culling.
+- **Economy tick:** part of the sim tick (not wall-clock); resource flows
+  computed on cohorts + sampled visible agents (full per-citizen agents
+  rejected on perf grounds — see game-design.md C4/A1).
+- **AI:** Classic AI = decision-quality ladder across 5 levels (Cadet→Legend;
+  disclosed handicaps only at extremes). **Mode 2 "Muse persona"** =
+  personality-driven adaptive AI director (strategic memory, visible threat
+  meter, ~150 event taunts) — a pure function of sim state with serializable
+  brain (an LLM in the tick would break determinism, offline play and budget).
+  Mode 2 ships in Phase 2; data model reserves the slot in Phase 1.
+- **Ages/tech:** 5 near-future ages; age-ups are costly commitments with
+  landmark-style National Program choices (positive framing: bonuses, never
+  lockouts). MVP: 2 ages.
+- **Chain of command:** mayors/generals/cabinet are appointed bureaucrats
+  with competence stats; all delegation opt-in per function, seize-back
+  anytime, intent narrated before irreversible AI acts. Phase 3 UI; Phase 1
+  data model reserves the slots.
+- **Cheat:** `prosperity now` — typed in the cheat console, single-player
+  only, flags the session (disables achievements), documented as the official
+  easy mode.
+
+## 6. Rendering strategy (summary)
+
+One `InstancedMesh` per unit/building type per map chunk (chunking = culling
+granularity); KTX2/Basis texture atlases; merged static geometry per city
+block; greedy-meshed chunked heightmap terrain (built in workers);
+**global zoom-tier LOD** (not per-object); 2048² directional shadow map +
+instanced blob shadows + baked vertex AO (CSM high-tier only); ACES tone
+mapping + bloom (no SSAO/volumetrics); day/night via sun/sky/fog; weather via
+fog + GPU rain points. Touch input designed in from day one (tap/command-wheel,
+no drag-select); mobile 30fps tier with adaptive quality governor — ships only
+if playtests show it's fun (brief's own condition).
+
+Perf budgets (initial; replaced by measured numbers before content scale-up):
+draw calls ≤100–200 desktop / ≤60 mobile; tris ≤300k–750k / ≤400k; VRAM
+≤256 MB / ≤96 MB; sim tick p95 ≤ 8 ms @30 Hz; pathfinding ≤ 2 ms/tick;
+save with no visible hitch; load ≤ 3 s.
+
+## 7. Decision log
+
+| ID | Date | Decision | Rationale | Supersedes |
+|---|---|---|---|---|
+| D1 | 2026-09-28 | three.js (pinned) WebGPU-primary/WebGL2-fallback | Only option with zero-cost fallback from one codebase; 4–5× community; smallest bundle | — |
+| D2 | 2026-09-28 | No WASM in Phase 1 | Measured slower on our workload shape; no threads on Pages; revisit only on ≥3× profiling evidence behind a coarse typed-array API | — |
+| D3 | 2026-09-28 | Sim single-threaded on **main thread** for Phase 1 (not in a worker) | Resolves the research tension: sim-arch proved workers hurt determinism/debugging; tech-stack's worker proposal assumed render-jank protection we get cheaper via time-sliced ticks (≤8 ms p95). The sim↔render boundary is already snapshot-based, so moving the sim to a dedicated worker later is a transport change, not an architecture change. Revisit if profiling shows tick overruns. | tech-stack §7 worker split (deferred, not rejected) |
+| D4 | 2026-09-28 | Raw Web Audio, no runtime audio lib | Bespoke lookahead scheduling needed; Howler stale (2023), Tone.js fights our scheduler | — |
+| D5 | 2026-09-28 | Same-machine determinism; doubles OK | Single-player: no lockstep; fixed-point seam kept in `sim/math.ts` | — |
+| D6 | 2026-09-28 | Hand-rolled SoA hot store + OOP strategic layer (prototype vs apecs before committing) | Must own system iteration order for the determinism contract | — |
+| D7 | 2026-09-28 | Mode 2 = "Muse persona" adaptive AI director, not a live model | Offline browser game cannot host a model in the loop; LLM-in-tick breaks determinism/offline/budget | — |
+
+## 8. Open questions (carried into Phase 1)
+
+1. Tick rate 30 Hz is proposed, not proven — the perf harness decides.
+2. Hand-rolled ECS vs apecs: one afternoon of measurement before committing.
+3. WebGPU-vs-WebGL2 default backend: benchmark our real scenes on both, early.
+4. Tallbeard loops vs "modern 2026 cinematic" bar: listening test in Phase 1.
+5. Mobile tier numbers: verify on physical devices before the tier ships.
+6. Game name (NOVATERRA recommended) and Mode-2 confirmation: pending user.

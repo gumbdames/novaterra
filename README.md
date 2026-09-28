@@ -7,7 +7,8 @@ found cities, grow the economy, research through the ages, command armies on lan
 sea and air — or play a fully peaceful game with war disabled.
 
 - **Play:** https://gumbdames.github.io/awesome-sim-game/ (deploys from `main`)
-- **Status:** Phase 0 — deep research in progress (see `docs/PLAN.md`)
+- **Status:** Phase 0 research complete; Phase 1 (core engine + skirmish MVP) scoped in `docs/PLAN.md`, awaiting go-ahead
+- **Working title:** NOVATERRA (proposed — see `docs/research/game-design.md`)
 - **Design docs:** `docs/` · **Research notes:** `docs/research/`
 
 ## Repo layout
