@@ -92,6 +92,14 @@ fun in 30–60 minute sessions. Build order:
    verified. Hand-rolled ECS vs apecs: units stay a plain spawn-ordered
    array (linear scan "fine until the ECS perf step") — the ECS choice
    itself is still an open measurement for the perf pass in step 12.)
+   Deferred from step-6 review (non-blocking; file as work items for step 7
+   or the step-12 perf pass): digest doesn't canonically encode active-build
+   `waitMark`/`closed`/heap state (snapshot does); `moveGroup` accepts
+   duplicate ids; exact-overlap separation skips zero-distance neighbors;
+   same-cell `moveUnit` stops silently instead of docking to the exact point;
+   `finishFieldBuild` publishes directions for unclosed frontier cells in
+   early-exit builds; live `city.roads` is read during multi-tick field
+   builds (frozen vs. invalidation semantics TBD).
 7. Units (8 land + 3 air) + combat with counters + Classic AI 1–3
 8. Ages (Foundation → Connectivity) + 1 National Program choice
 9. UI: HUD, camera, selection, orders, advisor, menus, settings
