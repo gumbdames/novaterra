@@ -75,6 +75,37 @@ export const MERIDIAN_PLAINS = {
   spawnBCandidate: { x: 128, z: 128 },
 } as const;
 
+/**
+ * Map preset definition: a named, seeded terrain configuration.
+ * The 8 presets span 5%–60% water coverage for varied land/naval play.
+ */
+export interface MapPreset {
+  /** Display name. */
+  name: string;
+  /** Canonical seed for this preset. */
+  seed: number;
+  /** Target water coverage fraction (0.05–0.60). */
+  waterTargetFraction: number;
+  /** Short description for the map select UI. */
+  blurb: string;
+}
+
+export const MAP_PRESETS: readonly MapPreset[] = [
+  { name: 'Meridian Plains', seed: 20260928, waterTargetFraction: 0.05, blurb: 'Classic land map — 5% water' },
+  { name: 'Riverlands', seed: 20260929, waterTargetFraction: 0.12, blurb: 'Winding rivers — 12% water' },
+  { name: 'Lake Country', seed: 20260930, waterTargetFraction: 0.20, blurb: 'Scattered lakes — 20% water' },
+  { name: 'Coastline', seed: 20260931, waterTargetFraction: 0.30, blurb: 'Coastal waters — 30% water' },
+  { name: 'Archipelago', seed: 20261001, waterTargetFraction: 0.40, blurb: 'Island chains — 40% water' },
+  { name: 'Shattered Isles', seed: 20261002, waterTargetFraction: 0.50, blurb: 'Fragmented isles — 50% water' },
+  { name: 'Inland Sea', seed: 20261003, waterTargetFraction: 0.55, blurb: 'Vast inland sea — 55% water' },
+  { name: 'Ocean World', seed: 20261004, waterTargetFraction: 0.60, blurb: 'Mostly ocean — 60% water' },
+] as const;
+
+/** Get a preset by name, or the default (Meridian Plains). */
+export function getMapPreset(name: string): MapPreset {
+  return MAP_PRESETS.find((p) => p.name === name) ?? MAP_PRESETS[0]!;
+}
+
 /** Per-vertex biome ids. The renderer maps these to vertex colors. */
 export const Biome = {
   WATER_BED: 0,
@@ -210,9 +241,9 @@ function findLand(
     if (v === undefined) throw new Error('terrain: findLand index out of range');
     return v;
   };
-  for (let ring = 0; ring <= 20; ring++) {
+  for (let ring = 0; ring <= 80; ring++) {
     const radius = ring * 3;
-    const steps = ring === 0 ? 1 : 12;
+    const steps = ring === 0 ? 1 : 16;
     for (let k = 0; k < steps; k++) {
       const a = (k / steps) * Math.PI * 2;
       const x = cx + Math.cos(a) * radius;
@@ -229,8 +260,10 @@ function findLand(
  * Generate Meridian Plains deterministically from a seed.
  * Pure function of `seed`: same seed ⇒ bit-identical TerrainData.
  */
-export function generateTerrain(seed: number): TerrainData {
+export function generateTerrain(seed: number, preset?: MapPreset): TerrainData {
   const P = MERIDIAN_PLAINS;
+  // Override the water target if a preset is given.
+  const waterTarget = preset?.waterTargetFraction ?? P.waterTargetFraction;
   const V = P.cellsPerSide + 1; // 257
   const N = V * V;
   const bank = createRngBank(seed >>> 0);
@@ -294,7 +327,7 @@ export function generateTerrain(seed: number): TerrainData {
 
   // --- Water level: 5th percentile ⇒ ~5% water by construction. ---
   const sorted = Array.from(heights).sort((a, b) => a - b);
-  const pctIndex = Math.floor(P.waterTargetFraction * N);
+  const pctIndex = Math.floor(waterTarget * N);
   const waterLevel = sorted[pctIndex] as number;
 
   // --- Spawns: land search + gentle flattening for future city placement. ---
