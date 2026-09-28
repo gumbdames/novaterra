@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    // NOVATERRA — TypeScript 7 (tsgo) strict config.
+    // The deterministic sim (src/sim) depends on this strictness:
+    // no implicit any, no unchecked indexed access, no non-null assertions
+    // (the last two are enforced by convention + review until
+    // typescript-eslint supports TS 7 — see game report 2026-09-28).
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "useDefineForClassFields": true,
+    "types": []
+  },
+  "include": ["src", "tests", "vite.config.ts"]
+}
