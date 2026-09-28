@@ -315,10 +315,17 @@ describe('age-gated units', () => {
     expect(UNIT_DEFS.fighter.minAge).toBe('connectivity');
   });
 
-  it('all other units are available in Foundation', () => {
+  it('non-naval, non-fighter units are available in Foundation', () => {
+    const skip = new Set(['fighter', 'patrolBoat', 'destroyer', 'transportShip']);
     for (const [kind, def] of Object.entries(UNIT_DEFS)) {
-      if (kind === 'fighter') continue;
+      if (skip.has(kind)) continue;
       expect(def.minAge).toBe('foundation');
+    }
+  });
+
+  it('naval units require the Industry age', () => {
+    for (const kind of ['patrolBoat', 'destroyer', 'transportShip'] as const) {
+      expect(UNIT_DEFS[kind].minAge).toBe('industry');
     }
   });
 
@@ -328,7 +335,7 @@ describe('age-gated units', () => {
     const reason = rejectionReason(() =>
       enqueue(ctx, [{ kind: 'spawnUnit', payload: { kind: 'fighter', owner: 0, x: pos.x, z: pos.z } }]),
     );
-    expect(reason).toMatch(/requires the Connectivity age/);
+    expect(reason).toMatch(/requires the connectivity age/);
   });
 
   it('can spawn a fighter after advancing to Connectivity', () => {

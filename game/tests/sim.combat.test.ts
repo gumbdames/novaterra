@@ -145,18 +145,21 @@ function advanceToConnectivity(ctx: Ctx, owner = 0): void {
 }
 
 describe('roster', () => {
-  it('has exactly the 11 MVP kinds (8 land + 3 air)', () => {
+  it('has exactly the 14 kinds (8 land + 3 air + 3 sea)', () => {
     const kinds = Object.keys(UNIT_DEFS).sort();
     expect(kinds).toEqual(
       [
         'artillery', 'drone', 'engineer', 'fighter', 'hauler',
         'aa', 'hq', 'rifles', 'spectre', 'tank', 'transport',
+        'patrolBoat', 'destroyer', 'transportShip',
       ].sort(),
     );
     const land = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'land');
     const air = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'air');
+    const sea = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'sea');
     expect(land).toHaveLength(8);
     expect(air).toHaveLength(3);
+    expect(sea).toHaveLength(3);
   });
 
   it('spawns with full hp, zero cooldown, no target', () => {

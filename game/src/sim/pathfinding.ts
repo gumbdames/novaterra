@@ -163,6 +163,22 @@ export function passabilityMask(t: TerrainData): Uint8Array {
   return mask;
 }
 
+/** Sea passability mask: 1 = water (passable for ships), 0 = land. */
+const seaMaskCache = new WeakMap<TerrainData, Uint8Array>();
+export function seaPassabilityMask(t: TerrainData): Uint8Array {
+  let mask = seaMaskCache.get(t);
+  if (!mask) {
+    mask = new Uint8Array(GRID_CELLS);
+    for (let cz = 0; cz < CITY_GRID_CELLS; cz++) {
+      for (let cx = 0; cx < CITY_GRID_CELLS; cx++) {
+        mask[cellIndex(cx, cz)] = cellIsWater(t, cx, cz) ? 1 : 0;
+      }
+    }
+    seaMaskCache.set(t, mask);
+  }
+  return mask;
+}
+
 /**
  * Cost of ENTERING a cell: Infinity for water/out-of-bounds, 0.5 on roads,
  * 1.0 otherwise. Hot path — pure array lookups, no height math.

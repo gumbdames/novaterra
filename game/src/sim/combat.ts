@@ -59,7 +59,13 @@ import { orderMoveTo } from './movement';
 /** Can this weapon be aimed at that target's domain? */
 export function canTarget(def: UnitDef, target: UnitRecord): boolean {
   if (def.targets === 'none' || def.damage <= 0) return false;
-  if (target.domain === 'air') return def.targets === 'air' || def.targets === 'both';
+  if (target.domain === 'air') {
+    return def.targets === 'air' || def.targets === 'both' || def.targets === 'seaAir';
+  }
+  if (target.domain === 'sea') {
+    return def.targets === 'sea' || def.targets === 'seaAir';
+  }
+  // Ground target (land domain).
   return def.targets === 'ground' || def.targets === 'both';
 }
 

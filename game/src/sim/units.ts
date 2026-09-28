@@ -42,6 +42,7 @@ import { isWater } from './terrain';
 import { getPlayer, MAP_HALF_SIZE } from './city';
 import type { CommandQueue } from './commands';
 import type { Age } from './ages';
+import { isUnitAvailableForAge } from './ages';
 
 /**
  * The Phase-1 MVP roster (C12): 8 land + 3 air. Land: engineer (utility),
@@ -62,17 +63,20 @@ export const UNIT_KINDS = [
   'fighter',
   'transport',
   'drone',
+  'patrolBoat',
+  'destroyer',
+  'transportShip',
 ] as const;
 export type UnitKind = (typeof UNIT_KINDS)[number];
 
 /** Which map layer a unit lives on. Air units fly over terrain and water. */
-export type UnitDomain = 'land' | 'air';
+export type UnitDomain = 'land' | 'air' | 'sea';
 
 /** How tough a unit is against incoming fire (see `vsLight/vsMedium/vsHeavy`). */
 export type ArmorClass = 'light' | 'medium' | 'heavy';
 
 /** What a weapon can be aimed at. `none` = unarmed (hauler, transport). */
-export type TargetClass = 'ground' | 'air' | 'both' | 'none';
+export type TargetClass = 'ground' | 'air' | 'both' | 'none' | 'sea' | 'seaAir';
 
 /** Order lifecycle. `failed` always carries a `failReason` — never silent. */
 export type UnitState = 'idle' | 'awaitingPath' | 'moving' | 'failed';
@@ -187,6 +191,24 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {
     damage: 9, range: 13, minRange: 0, cooldownTicks: 22, targets: 'both',
     vsLight: 0.9, vsMedium: 0.5, vsHeavy: 0.3, vsAir: 1.0, sight: 26, minAge: 'foundation',
     manpowerCost: 0,
+  },
+  patrolBoat: {
+    kind: 'patrolBoat', name: 'Patrol Boat', domain: 'sea', hp: 220, speed: 14, armor: 'light',
+    damage: 18, range: 20, minRange: 0, cooldownTicks: 25, targets: 'sea',
+    vsLight: 1.2, vsMedium: 0.8, vsHeavy: 0.5, vsAir: 0.8, sight: 30, minAge: 'industry',
+    manpowerCost: 3,
+  },
+  destroyer: {
+    kind: 'destroyer', name: 'Destroyer', domain: 'sea', hp: 600, speed: 11, armor: 'heavy',
+    damage: 45, range: 26, minRange: 0, cooldownTicks: 40, targets: 'seaAir',
+    vsLight: 1.3, vsMedium: 1.1, vsHeavy: 1.0, vsAir: 1.8, sight: 34, minAge: 'industry',
+    manpowerCost: 6,
+  },
+  transportShip: {
+    kind: 'transportShip', name: 'Transport Ship', domain: 'sea', hp: 350, speed: 9, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 22, minAge: 'industry',
+    manpowerCost: 2,
   },
 };
 
@@ -325,15 +347,18 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
         return `spawnUnit: position (${x}, ${z}) is outside the map`;
       }
       // Terrain is static, so a validate-time water check is stable: it
-      // cannot go stale between enqueue and apply. Air units fly, so only
-      // land units are blocked by water.
+      // cannot go stale between enqueue and apply. Air units fly; land units
+      // are blocked by water; sea units require water.
       const def = UNIT_DEFS[kind as UnitKind];
       if (def.domain === 'land' && isWater(t, x, z)) {
         return `spawnUnit: cannot spawn a land unit in water at (${x}, ${z})`;
       }
-      // Age gating: units requiring Connectivity can't be built in Foundation.
-      if (def.minAge === 'connectivity' && world.ages.age !== 'connectivity') {
-        return `spawnUnit: ${kind} requires the Connectivity age`;
+      if (def.domain === 'sea' && !isWater(t, x, z)) {
+        return `spawnUnit: cannot spawn a sea unit on land at (${x}, ${z})`;
+      }
+      // Age gating: units require their minimum age (or later).
+      if (!isUnitAvailableForAge(world, def.minAge)) {
+        return `spawnUnit: ${kind} requires the ${def.minAge} age`;
       }
       // Manpower: military units cost manpower from the player's stockpile.
       if (def.manpowerCost > 0) {

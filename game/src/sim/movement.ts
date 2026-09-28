@@ -190,7 +190,7 @@ function arriveUnit(unit: UnitRecord): void {
  * water checks — they fly over everything. Separation applies against
  * other air units only (ground units are below them, literally).
  */
-function moveAirUnitTick(world: World, hash: SpatialHash, unit: UnitRecord, dt: number): void {
+function moveAirUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: UnitRecord, dt: number): void {
   const dxFinal = unit.arriveX - unit.x;
   const dzFinal = unit.arriveZ - unit.z;
   const distFinal = Math.hypot(dxFinal, dzFinal);
@@ -246,16 +246,21 @@ function moveAirUnitTick(world: World, hash: SpatialHash, unit: UnitRecord, dt: 
     vz = (vz / vmag) * unit.speed;
   }
   const [nx, nz] = clampToMap(unit.x + vx * dt, unit.z + vz * dt);
+  // Sea units can only move on water; air units fly anywhere.
+  if (unit.domain === 'sea' && !isWater(t, nx, nz)) {
+    return; // hold position; the step is cancelled
+  }
   unit.x = nx;
   unit.z = nz;
 }
 
 function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: UnitRecord, dt: number): void {
-  // Air units fly straight to their slot: no pathfinding, no water checks,
-  // no terrain following. They still separate (from other air units) and
-  // arrive exactly like ground units.
-  if (unit.domain === 'air') {
-    moveAirUnitTick(world, hash, unit, dt);
+  // Air and sea units move straight to their slot: no pathfinding.
+  // Air flies over everything; sea is constrained to water by the integration
+  // guard below. They still separate (from same-domain units) and arrive
+  // exactly like ground units.
+  if (unit.domain === 'air' || unit.domain === 'sea') {
+    moveAirUnitTick(world, t, hash, unit, dt);
     return;
   }
   // 1. Arrival backstop: close enough to the unit's own slot.
@@ -355,7 +360,11 @@ function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: Uni
     vz = (vz / vmag) * unit.speed;
   }
   const [nx, nz] = clampToMap(unit.x + vx * dt, unit.z + vz * dt);
-  if (!isWater(t, nx, nz)) {
+  const destIsWater = isWater(t, nx, nz);
+  // Domain movement rules: land stays on land, sea stays on water.
+  // (Air and sea units return early via moveAirUnitTick and never reach here.)
+  // Land units cannot enter water.
+  if (!destIsWater) {
     unit.x = nx;
     unit.z = nz;
   }
@@ -405,15 +414,17 @@ function payloadUnitIds(payload: Record<string, unknown>): number[] | null {
   return out;
 }
 
-function validateDestination(t: TerrainData, x: unknown, z: unknown, allowWater = false): string | null {
+function validateDestination(t: TerrainData, x: unknown, z: unknown, domain: string = 'land'): string | null {
   if (typeof x !== 'number' || !Number.isFinite(x)) return 'payload.x must be a finite number';
   if (typeof z !== 'number' || !Number.isFinite(z)) return 'payload.z must be a finite number';
   if (Math.abs(x) > MAP_HALF_SIZE || Math.abs(z) > MAP_HALF_SIZE) {
     return `destination (${x}, ${z}) is outside the map`;
   }
   // Terrain is static: a validate-time water check cannot go stale.
-  // Air units fly over water, so they skip this check.
-  if (!allowWater && isWater(t, x, z)) return `destination (${x}, ${z}) is water`;
+  // Air units fly anywhere; land units cannot enter water; sea units require water.
+  const destIsWater = isWater(t, x, z);
+  if (domain === 'land' && destIsWater) return `destination (${x}, ${z}) is water`;
+  if (domain === 'sea' && !destIsWater) return `destination (${x}, ${z}) is land (sea units need water)`;
   return null;
 }
 
@@ -527,7 +538,7 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
       const unit = validateOwnedUnit(world, cmd.payload['unitId'], cmd.payload['owner'], 'moveUnit');
       if (typeof unit === 'string') return unit;
       // Air units fly over water; ground units can't be ordered into it.
-      return validateDestination(t, cmd.payload['x'], cmd.payload['z'], unit.domain === 'air');
+      return validateDestination(t, cmd.payload['x'], cmd.payload['z'], unit.domain);
     },
     apply(cmd, world): unknown {
       const unit = findUnit(world, cmd.payload['unitId'] as number) as UnitRecord;
@@ -574,7 +585,7 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
         unit.arriveX = x; // refined to a formation slot below
         unit.arriveZ = z;
         unit.failReason = null;
-        if (unit.domain === 'air') {
+        if (unit.domain === 'air' || unit.domain === 'sea') {
           const d = Math.hypot(x - unit.x, z - unit.z);
           if (d < ARRIVAL_RADIUS) {
             unit.state = 'idle'; // already there
