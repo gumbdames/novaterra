@@ -2,7 +2,7 @@
 
 > Player-facing mechanics reference. Written alongside implementation in
 > Phase 1 — kept **clear, short and simple** per the design brief.
-> Last updated: 2026-09-28 (city building + economy).
+> Last updated: 2026-09-28 (ages: Foundation → Connectivity).
 
 ## Building your city
 
@@ -46,3 +46,18 @@ selling pays 20% less — so only trade when you need to, not for profit.
 A healthy city grows on its own: new buildings appear in zoned areas
 every few seconds, as long as people are fed and you can afford them.
 If food runs out, growth stops until farms catch up.
+
+## Ages: Foundation → Connectivity
+
+Your nation develops through ages. You start in the **Foundation** age.
+When you're ready (and can afford it), advance to **Connectivity** by
+picking one **National Program** — a permanent choice:
+
+- **Fiber Grid** (economy): +25% income from taxes. Pick this to get rich.
+- **Signals Grid** (intel): your units see 8 units farther. Pick this to
+  out-scout and out-maneuver the enemy.
+
+Advancing costs 3,000 Funds + 1,200 Materials — spend it wisely, because
+that army you're not building leaves you exposed. Connectivity also
+unlocks **fighters** (fast air units). Choose carefully: you can't switch
+programs later.

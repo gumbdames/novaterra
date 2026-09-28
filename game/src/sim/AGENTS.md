@@ -43,7 +43,19 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `moveGroup`, `attackUnit`) through the queue. Think cadence: 240/120/60
   ticks. State (`AIPlayerState`: owner, difficulty, base, nextThinkTick,
   forwardBase, scoutIndex, builtCounts) is plain data — snapshotted (v4)
-  and digested.
+  and digested. `getVisibleEnemies` adds the Signals Grid sight bonus.
+  The AI stays in Foundation: its spawn choices are filtered by
+  `isUnitAvailableForAge` (commander falls back from fighter to AA).
+- `ages.ts` — Ages (Foundation → Connectivity) + National Program choice
+  (Step 8). `AgeState` (`age`, `program`) lives on `World.ages`, plain
+  data — snapshotted (v4) and digested. `advanceAge` command validates:
+  current age is Foundation, program is fiberGrid/signalsGrid, and the
+  player can afford the cost (3000 funds + 1200 materials). The choice is
+  permanent. Effects: Fiber Grid ×1.25 tax income (`getTaxMultiplier`,
+  applied in `economy.ts` `runTaxes`); Signals Grid +8 sight
+  (`getSightBonus`, applied in `ai.ts` `getVisibleEnemies`). `UnitDef`
+  carries `minAge`; fighter requires Connectivity (gated in `spawnUnit`
+  validation).
 - `pathfinding.ts` — deterministic 8-direction A* (octile heuristic,
   corner-cut prevention, water blocking, roads ×0.5) + chunked Dijkstra
   flow fields with early exit + the time-sliced coordinator

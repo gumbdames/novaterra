@@ -46,6 +46,8 @@ import type { PathfindingState } from './pathfinding';
 import { initPathfinding } from './pathfinding';
 import type { AIState } from './ai';
 import { initAI } from './ai';
+import type { AgeState } from './ages';
+import { initAges } from './ages';
 
 /** Minimal per-entity record. Later steps add components; the shape stays plain. */
 export interface EntityRecord {
@@ -80,6 +82,8 @@ export interface World {
   pathfinding: PathfindingState;
   /** Classic AI state (per-player difficulty, timers, strategy). Snapshotted + digested. */
   ai: AIState;
+  /** Age state (Foundation → Connectivity + National Program). Snapshotted + digested. */
+  ages: AgeState;
 }
 
 /** First assignable entity id (0 stays reserved as the "no entity" sentinel). */
@@ -98,6 +102,7 @@ export function createWorld(seed: number): World {
     units: [],
     pathfinding: initPathfinding(),
     ai: initAI(),
+    ages: initAges(),
   };
 }
 

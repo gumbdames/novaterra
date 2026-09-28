@@ -210,11 +210,12 @@ describe('citizen', () => {
     const ctx = setup();
     const base = findLandNear(ctx.terrain, -100, -100);
     addAIPlayer(ctx.world, 1, 'citizen', base.x, base.z);
-    // Enemy fighter (air) near the AI base — visible once AI has units.
+    // Enemy drone (air) near the AI base — visible once AI has units.
+    // (Drone is used instead of fighter: fighter requires Connectivity.)
     const enemyPos = findLandNear(ctx.terrain, -90, -100);
-    // Fighters can be over water; spawn directly.
+    // Drones can be over water; spawn directly.
     const id = ctx.world.nextId;
-    enqueue(ctx, [{ kind: 'spawnUnit', payload: { kind: 'fighter', owner: 0, x: enemyPos.x, z: enemyPos.z } }]);
+    enqueue(ctx, [{ kind: 'spawnUnit', payload: { kind: 'drone', owner: 0, x: enemyPos.x, z: enemyPos.z } }]);
     runTicks(ctx, 1);
     expect(findUnit(ctx.world, id)).toBeDefined();
     // Run several think cycles.

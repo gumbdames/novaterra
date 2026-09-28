@@ -39,6 +39,7 @@ import type { World } from './world';
 import { rngBank } from './world';
 import type { SimSystem } from './tick';
 import type { CommandQueue, CommandSpec } from './commands';
+import { getTaxMultiplier } from './ages';
 import {
   BUILDING_DEFS,
   UTILITY_PENALTY,
@@ -261,8 +262,11 @@ function runFood(city: CityState): void {
 }
 
 /** Collect taxes every tax period. Utilities are not taxed (D11). */
-function runTaxes(city: CityState, economyTickIndex: number): void {
+function runTaxes(world: World, economyTickIndex: number): void {
   if (economyTickIndex % TAX_PERIOD_ECONOMY_TICKS !== 0) return;
+  const city = world.city;
+  // Fiber Grid (Connectivity age) boosts tax income by 25%.
+  const mult = getTaxMultiplier(world);
   for (const b of city.buildings) {
     if (b.progress < 1 || !b.operational) continue;
     const def = BUILDING_DEFS[b.kind];
@@ -270,7 +274,7 @@ function runTaxes(city: CityState, economyTickIndex: number): void {
     const player = getPlayer(city, b.owner);
     if (!player) continue;
     const rate = player.taxRates[def.zone] as number;
-    player.funds += rate * def.taxBasePerSec * levelMult(b) * TAX_PERIOD_SECONDS;
+    player.funds += rate * def.taxBasePerSec * levelMult(b) * TAX_PERIOD_SECONDS * mult;
   }
 }
 
@@ -323,7 +327,7 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   const { powerHeadroom, waterHeadroom } = allocateUtilities(city);
   runProduction(city);
   runFood(city);
-  runTaxes(city, economyTickIndex(world));
+  runTaxes(world, economyTickIndex(world));
   runLevels(world);
   runGrowth(t, world, powerHeadroom, waterHeadroom);
 }

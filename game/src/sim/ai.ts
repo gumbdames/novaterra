@@ -50,6 +50,7 @@ import type { SimSystem } from './tick';
 import { findUnit, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
 import { rngBank } from './world';
 import { canTarget } from './combat';
+import { isUnitAvailableForAge, getSightBonus } from './ages';
 
 /** Classic AI difficulty levels. */
 export type AIDifficulty = 'cadet' | 'citizen' | 'commander';
@@ -130,14 +131,17 @@ export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
   if (own.length === 0) return [];
   const out: UnitRecord[] = [];
   const seen = new Set<number>();
+  // Signals Grid (Connectivity age) grants +sight to all units.
+  const sightBonus = getSightBonus(world);
   for (const e of world.units) {
     if (e.owner === owner || e.hp <= 0) continue;
     for (const o of own) {
       const def = UNIT_DEFS[o.kind as UnitKind];
+      const sight = def.sight + sightBonus;
       const dx = e.x - o.x;
       const dz = e.z - o.z;
       // Compare squared distances; sight is in world units.
-      if (dx * dx + dz * dz <= def.sight * def.sight) {
+      if (dx * dx + dz * dz <= sight * sight) {
         if (!seen.has(e.id)) {
           seen.add(e.id);
           out.push(e);
@@ -369,6 +373,13 @@ function thinkCommander(
     else if (art < 3) kind = 'artillery';
     else if (aa < 2) kind = 'aa';
     else kind = 'tank';
+
+    // Age gating (Step 8): the AI stays in Foundation, so if the chosen
+    // unit requires Connectivity (e.g. fighter), fall back to a
+    // Foundation-available counter instead of issuing a rejected command.
+    if (!isUnitAvailableForAge(world, UNIT_DEFS[kind].minAge)) {
+      kind = 'aa';
+    }
 
     // Spawn at forward base if established, else at main base.
     const bx = ai.forwardBase ? ai.forwardBase.x : ai.baseX;

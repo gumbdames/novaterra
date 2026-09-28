@@ -125,6 +125,8 @@ export function canonicalizeWorld(world: World): string {
     const keys = Object.keys(p.builtCounts).sort();
     out += keys.map((k) => `${k}:${p.builtCounts[k]}`).join(',') + ';';
   }
+  // Ages: current age + chosen National Program.
+  out += `|ages=${world.ages.age},${world.ages.program ?? '-'}|`;
   return out;
 }
 

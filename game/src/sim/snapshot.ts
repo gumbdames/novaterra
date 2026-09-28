@@ -47,13 +47,17 @@ import type { FieldBuild, FieldRequest, FlowField, PathfindingState, PathRequest
 import { initPathfinding } from './pathfinding';
 import type { AIState } from './ai';
 import { encodeAIState, decodeAIState, initAI } from './ai';
+import type { AgeState } from './ages';
+import { encodeAgeState, decodeAgeState, initAges } from './ages';
 
 /**
  * Snapshot format version. Bump on any breaking change to the shape below.
  * v2: city state (roads/zones/buildings/players) added (Phase 1, step 5).
  * v3: units + pathfinding coordinator state added (Phase 1, step 6).
+ *     (Classic AI state was added in step 7 without a version bump.)
+ * v4: Age state (Foundation → Connectivity + National Program) added (Phase 1, step 8).
  */
-export const SNAPSHOT_VERSION = 3;
+export const SNAPSHOT_VERSION = 4;
 
 /** Plain-data snapshot of the world at a tick boundary. */
 export interface Snapshot {
@@ -68,6 +72,7 @@ export interface Snapshot {
   units: UnitRecord[];
   pathfinding: PathfindingState;
   ai: AIState;
+  ages: AgeState;
 }
 
 /** Thrown when a snapshot's version doesn't match. Names expected vs found. */
@@ -194,6 +199,7 @@ export function takeSnapshot(world: World): Snapshot {
     units: world.units.map(copyUnit),
     pathfinding: copyPathfinding(world.pathfinding),
     ai: encodeAIState(world.ai) as AIState,
+    ages: encodeAgeState(world.ages) as AgeState,
   };
 }
 
@@ -221,5 +227,7 @@ export function restoreSnapshot(snap: Snapshot): World {
   world.pathfinding = snap.pathfinding ? copyPathfinding(snap.pathfinding) : initPathfinding();
   // Defensive: older snapshots lack AI state — init instead of crashing.
   world.ai = snap.ai ? decodeAIState(snap.ai) : initAI();
+  // Defensive: older snapshots lack age state — init instead of crashing.
+  world.ages = snap.ages ? decodeAgeState(snap.ages) : initAges();
   return world;
 }

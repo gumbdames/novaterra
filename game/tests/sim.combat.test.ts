@@ -53,6 +53,8 @@ import {
 } from '../src/sim/combat';
 import { digestWorld } from '../src/sim/digest';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
+import { registerAgeCommands, CONNECTIVITY_COST } from '../src/sim/ages';
+import { getPlayer } from '../src/sim/city';
 
 interface Ctx {
   terrain: TerrainData;
@@ -75,6 +77,7 @@ function setup(seed = 20260928): Ctx {
   registerUnitCommands(queue, terrain);
   registerMovementCommands(queue, terrain);
   registerCombatCommands(queue);
+  registerAgeCommands(queue);
   const driver = createTickDriver({
     queue,
     systems: [
@@ -131,6 +134,16 @@ function spawnAt(ctx: Ctx, x: number, z: number, kind: UnitKind = 'rifles', owne
   return id;
 }
 
+/** Advance the world to Connectivity (for tests that need age-gated units). */
+function advanceToConnectivity(ctx: Ctx, owner = 0): void {
+  const player = getPlayer(ctx.world.city, owner)!;
+  player.funds = CONNECTIVITY_COST.funds + 1000;
+  player.materials = CONNECTIVITY_COST.materials + 1000;
+  enqueue(ctx, [{ kind: 'advanceAge', payload: { owner, program: 'fiberGrid' } }]);
+  runTicks(ctx, 1);
+  expect(ctx.world.ages.age).toBe('connectivity');
+}
+
 describe('roster', () => {
   it('has exactly the 11 MVP kinds (8 land + 3 air)', () => {
     const kinds = Object.keys(UNIT_DEFS).sort();
@@ -175,7 +188,7 @@ describe('roster', () => {
       enqueue(ctx, [{ kind: 'spawnUnit', payload: { kind: 'tank', owner: 0, x: wx, z: wz } }]),
     );
     expect(landReason).toMatch(/water/i);
-    const airId = spawnAt(ctx, wx, wz, 'fighter', 0);
+    const airId = spawnAt(ctx, wx, wz, 'drone', 0);
     expect(findUnit(ctx.world, airId)!.domain).toBe('air');
   });
 });
@@ -293,6 +306,8 @@ describe('combat resolution', () => {
 
   it('mobile AA only damages air (canTarget), fighter hits both', () => {
     const ctx = setup();
+    // Fighter requires Connectivity (age is per-world).
+    advanceToConnectivity(ctx, 0);
     const a = findLandNear(ctx.terrain, 0, 0);
     spawnAt(ctx, a.x, a.z, 'aa', 0);
     const ground = spawnAt(ctx, a.x + 10, a.z, 'rifles', 1);
@@ -403,7 +418,7 @@ describe('air movement', () => {
       }
     }
     expect(found).toBe(true);
-    const f = spawnAt(ctx, wx - 30, wz, 'fighter', 0);
+    const f = spawnAt(ctx, wx - 30, wz, 'drone', 0);
     const u0 = findUnit(ctx.world, f)!;
     const x0 = u0.x;
     enqueue(ctx, [{ kind: 'moveUnit', payload: { unitId: f, owner: 0, x: wx + 30, z: wz } }]);
@@ -418,11 +433,11 @@ describe('air movement', () => {
     const a = findLandNear(ctx.terrain, 0, 0);
     const b = findLandNear(ctx.terrain, 80, 0);
     const tank = spawnAt(ctx, a.x, a.z, 'tank', 0);
-    const fighter = spawnAt(ctx, a.x + 3, a.z, 'fighter', 0);
+    const fighter = spawnAt(ctx, a.x + 3, a.z, 'drone', 0);
     // Command accepted without rejection; air flies direct, ground paths.
     enqueue(ctx, [{ kind: 'moveGroup', payload: { unitIds: [tank, fighter], owner: 0, x: b.x, z: b.z } }]);
     runTicks(ctx, 1);
-    // Fighter always flies direct and should be moving.
+    // Drone always flies direct and should be moving.
     expect(findUnit(ctx.world, fighter)!.state).toBe('moving');
     // Tank got a ground order (moving if reachable, failed if the
     // destination is on another landmass — both are valid processing).

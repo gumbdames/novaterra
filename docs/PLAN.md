@@ -101,7 +101,7 @@ fun in 30–60 minute sessions. Build order:
    early-exit builds; live `city.roads` is read during multi-tick field
    builds (frozen vs. invalidation semantics TBD).
 7. Units (8 land + 3 air) + combat with counters + Classic AI 1–3 — **COMPLETE 2026-09-28** (0.1 Alpha; `game/src/sim/`: `units.ts` 11-unit MVP roster with combat stats, `combat.ts` deterministic resolution with armor/domain counters + HQ aura, `ai.ts` Classic AI cadet/citizen/commander — deterministic, fair via `getVisibleEnemies()`, think cadence 240/120/60 ticks; AI state in `world.ai`, snapshot v4, canonical digest; 16 combat tests + 14 AI tests, 183/183 green; typecheck/build green)
-8. Ages (Foundation → Connectivity) + 1 National Program choice
+8. Ages (Foundation → Connectivity) + 1 National Program choice — **COMPLETE 2026-09-28** (0.1 Alpha; `game/src/sim/ages.ts`: `AgeState` on `World.ages`, `advanceAge` command with cost validation (3000 funds + 1200 materials), permanent fiberGrid/signalsGrid choice; Fiber Grid ×1.25 tax income, Signals Grid +8 sight; `UnitDef.minAge` — fighter requires Connectivity, gated in `spawnUnit`; AI spawn choices filtered by age (commander falls back to AA); snapshot v4 + digest cover ages; 24 new tests, 207/207 green; typecheck/build green)
 9. UI: HUD, camera, selection, orders, advisor, menus, settings
 10. Audio v1: adaptive engine + sourced music + SFX pool
 11. Save/exit/resume, pause, speed controls, cheat console, IndexedDB

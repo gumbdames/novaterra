@@ -41,6 +41,7 @@ import type { TerrainData } from './terrain';
 import { isWater } from './terrain';
 import { getPlayer, MAP_HALF_SIZE } from './city';
 import type { CommandQueue } from './commands';
+import type { Age } from './ages';
 
 /**
  * The Phase-1 MVP roster (C12): 8 land + 3 air. Land: engineer (utility),
@@ -114,63 +115,65 @@ export interface UnitDef {
   vsAir: number;
   /** How far the unit notices enemies (for AI; combat fires at `range`). */
   sight: number;
+  /** Minimum age required to build this unit. Fighters need Connectivity. */
+  minAge: Age;
 }
 
 export const UNIT_DEFS: Record<UnitKind, UnitDef> = {
   engineer: {
     kind: 'engineer', name: 'Engineer', domain: 'land', hp: 80, speed: 6, armor: 'light',
     damage: 5, range: 10, minRange: 0, cooldownTicks: 30, targets: 'ground',
-    vsLight: 1.0, vsMedium: 0.6, vsHeavy: 0.4, vsAir: 1.0, sight: 18,
+    vsLight: 1.0, vsMedium: 0.6, vsHeavy: 0.4, vsAir: 1.0, sight: 18, minAge: 'foundation',
   },
   rifles: {
     kind: 'rifles', name: 'Rifles', domain: 'land', hp: 110, speed: 9, armor: 'light',
     damage: 9, range: 15, minRange: 0, cooldownTicks: 20, targets: 'ground',
-    vsLight: 1.0, vsMedium: 0.55, vsHeavy: 0.3, vsAir: 1.0, sight: 22,
+    vsLight: 1.0, vsMedium: 0.55, vsHeavy: 0.3, vsAir: 1.0, sight: 22, minAge: 'foundation',
   },
   tank: {
     kind: 'tank', name: 'Main Battle Tank', domain: 'land', hp: 500, speed: 10, armor: 'heavy',
     damage: 50, range: 19, minRange: 0, cooldownTicks: 50, targets: 'ground',
-    vsLight: 1.3, vsMedium: 1.0, vsHeavy: 0.9, vsAir: 1.0, sight: 26,
+    vsLight: 1.3, vsMedium: 1.0, vsHeavy: 0.9, vsAir: 1.0, sight: 26, minAge: 'foundation',
   },
   artillery: {
     kind: 'artillery', name: 'Artillery', domain: 'land', hp: 160, speed: 6, armor: 'medium',
     damage: 95, range: 48, minRange: 12, cooldownTicks: 100, targets: 'ground',
-    vsLight: 1.0, vsMedium: 1.4, vsHeavy: 1.6, vsAir: 1.0, sight: 30,
+    vsLight: 1.0, vsMedium: 1.4, vsHeavy: 1.6, vsAir: 1.0, sight: 30, minAge: 'foundation',
   },
   aa: {
     kind: 'aa', name: 'Mobile AA', domain: 'land', hp: 200, speed: 10, armor: 'medium',
     damage: 40, range: 28, minRange: 0, cooldownTicks: 25, targets: 'air',
-    vsLight: 0.3, vsMedium: 0.3, vsHeavy: 0.3, vsAir: 2.2, sight: 34,
+    vsLight: 0.3, vsMedium: 0.3, vsHeavy: 0.3, vsAir: 2.2, sight: 34, minAge: 'foundation',
   },
   hauler: {
     kind: 'hauler', name: 'Hauler', domain: 'land', hp: 160, speed: 9, armor: 'medium',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
-    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 16,
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 16, minAge: 'foundation',
   },
   spectre: {
     kind: 'spectre', name: 'Spectre', domain: 'land', hp: 130, speed: 12, armor: 'light',
     damage: 75, range: 10, minRange: 0, cooldownTicks: 45, targets: 'ground',
-    vsLight: 1.0, vsMedium: 1.6, vsHeavy: 1.3, vsAir: 1.0, sight: 24,
+    vsLight: 1.0, vsMedium: 1.6, vsHeavy: 1.3, vsAir: 1.0, sight: 24, minAge: 'foundation',
   },
   hq: {
     kind: 'hq', name: 'Mobile HQ', domain: 'land', hp: 400, speed: 7, armor: 'heavy',
     damage: 12, range: 13, minRange: 0, cooldownTicks: 30, targets: 'ground',
-    vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 1.0, sight: 28,
+    vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 1.0, sight: 28, minAge: 'foundation',
   },
   fighter: {
     kind: 'fighter', name: 'Fighter', domain: 'air', hp: 170, speed: 26, armor: 'light',
     damage: 32, range: 24, minRange: 0, cooldownTicks: 28, targets: 'both',
-    vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 1.6, sight: 40,
+    vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 1.6, sight: 40, minAge: 'connectivity',
   },
   transport: {
     kind: 'transport', name: 'Transport', domain: 'air', hp: 240, speed: 22, armor: 'medium',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
-    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20,
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'foundation',
   },
   drone: {
     kind: 'drone', name: 'Drone', domain: 'air', hp: 55, speed: 20, armor: 'light',
     damage: 9, range: 13, minRange: 0, cooldownTicks: 22, targets: 'both',
-    vsLight: 0.9, vsMedium: 0.5, vsHeavy: 0.3, vsAir: 1.0, sight: 26,
+    vsLight: 0.9, vsMedium: 0.5, vsHeavy: 0.3, vsAir: 1.0, sight: 26, minAge: 'foundation',
   },
 };
 
@@ -314,6 +317,10 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
       const def = UNIT_DEFS[kind as UnitKind];
       if (def.domain === 'land' && isWater(t, x, z)) {
         return `spawnUnit: cannot spawn a land unit in water at (${x}, ${z})`;
+      }
+      // Age gating: units requiring Connectivity can't be built in Foundation.
+      if (def.minAge === 'connectivity' && world.ages.age !== 'connectivity') {
+        return `spawnUnit: ${kind} requires the Connectivity age`;
       }
       return null;
     },
