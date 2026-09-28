@@ -64,7 +64,7 @@ import {
 import { createCombatSystem, registerCombatCommands } from '../sim/combat';
 import { registerAgeCommands } from '../sim/ages';
 import { registerCheatCommands } from '../sim/cheats';
-import { addAIPlayer, createAISystem, type AIDifficulty } from '../sim/ai';
+import { addAIPlayer, AI_MAX_UNITS, createAISystem, type AIDifficulty } from '../sim/ai';
 import { restoreSnapshot, type Snapshot } from '../sim/snapshot';
 import type { OrderIntent } from './orders';
 
@@ -140,6 +140,7 @@ function startingForces(
   owner: number,
   issuer: string,
   at: { x: number; z: number },
+  maxUnits?: number,
 ): void {
   const specs: Array<{ kind: string; dx: number; dz: number }> = [
     { kind: 'engineer', dx: -4, dz: -4 },
@@ -149,7 +150,10 @@ function startingForces(
     { kind: 'rifles', dx: 8, dz: 4 },
     { kind: 'rifles', dx: 0, dz: 10 },
   ];
-  for (const s of specs) {
+  // The AI's production cap counts all its units: starting forces must not
+  // already exceed it, or the AI would never build (cadet cap is 4).
+  const list = maxUnits !== undefined ? specs.slice(0, maxUnits) : specs;
+  for (const s of list) {
     const cmd: NewCommand = {
       kind: 'spawnUnit',
       issuer,
@@ -195,7 +199,11 @@ export function createSession(options: SessionOptions): GameSession {
   const aiBase = findLandNear(terrain, AI_CORNER.x, AI_CORNER.z);
   const humanBase = findLandNear(terrain, HUMAN_CORNER.x, HUMAN_CORNER.z);
   if (!options.snapshot) {
-    startingForces(queue, world, AI_PLAYER_ID, 'ai-setup', aiBase);
+    // The AI's production cap counts all its units: starting forces must
+    // leave headroom under the cap, or the AI would never build.
+    // Cadet (cap 4) gets 2 starters; citizen/commander get the full 6.
+    const aiStarters = aiDifficulty === 'cadet' ? 2 : AI_MAX_UNITS[aiDifficulty];
+    startingForces(queue, world, AI_PLAYER_ID, 'ai-setup', aiBase, aiStarters);
     startingForces(queue, world, HUMAN_PLAYER_ID, 'player', humanBase);
     addAIPlayer(world, AI_PLAYER_ID, aiDifficulty, aiBase.x, aiBase.z);
 

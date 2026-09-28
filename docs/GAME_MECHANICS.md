@@ -2,7 +2,7 @@
 
 > Player-facing mechanics reference. Written alongside implementation in
 > Phase 1 — kept **clear, short and simple** per the design brief.
-> Last updated: 2026-09-28 (ages: Foundation → Connectivity).
+> Last updated: 2026-09-29 (step 12: perf + playtest, Phase 1 complete).
 
 ## Building your city
 

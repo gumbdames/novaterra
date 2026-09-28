@@ -63,7 +63,7 @@ export const AI_THINK_TICKS: Record<AIDifficulty, number> = {
 };
 
 /** Max army sizes per difficulty (soft caps for production). */
-const AI_MAX_UNITS: Record<AIDifficulty, number> = {
+export const AI_MAX_UNITS: Record<AIDifficulty, number> = {
   cadet: 4,
   citizen: 10,
   commander: 18,
