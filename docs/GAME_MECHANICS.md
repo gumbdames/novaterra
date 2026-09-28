@@ -2,7 +2,7 @@
 
 > Player-facing mechanics reference. Written alongside implementation in
 > Phase 1 — kept **clear, short and simple** per the design brief.
-> Last updated: 2026-09-29 (Phase 1.5: navy, maps, AI 4–5, new resources).
+> Last updated: 2026-09-29 (Phase 3: delegation, superweapons, advanced economy, accessibility).
 
 ## Building your city
 
@@ -176,3 +176,38 @@ in Settings and Muse will offer strategic advice from a live summary
 of your game. The key stays in your browser only, and the live model
 is advisory — it can never take over your game. Not wired yet in
 0.1 Alpha; the offline Muse covers you meanwhile.
+
+## Phase 3: Chain of command
+
+**Mayors** (opt-in): appoint a mayor to automate your tax policy. Three
+policies: **Balanced** (15% all zones), **Growth** (low taxes to attract
+people), **Revenue** (high taxes for maximum income). Dismiss anytime
+to take back manual control. No mayor = no automation (the default).
+
+**Generals** (opt-in): select units, then appoint a general to command
+them. Three stances: **Aggressive** (hunts visible enemies),
+**Defensive** (engages near your base, radius 45), **Hold** (stays put,
+never chases). The general reassesses every 2 seconds using only what
+your units can see — no fog cheating. Dismiss to resume direct control.
+
+## Phase 3: Superweapons (Ascendance age)
+
+**Aegis Control** (5,000 funds + 2,000 materials, 120s build): fire the
+**Aegis** shield — blocks ALL damage to your units for 60 seconds.
+10-minute cooldown. The Marshal AI builds and uses it fairly.
+
+**Storm Array** (6,000 funds + 2,500 materials, 150s build): fire the
+**Storm Engine** — 8 lightning strikes over 12 seconds at your target
+point (±3 scatter, 120 damage, radius 10). 10-minute cooldown. Aegis
+shields block storm damage too.
+
+## Phase 3: Advanced economy
+
+**City specialization**: focus your city — **Industrial** (+25% factory
+output, −10% other zones), **Commercial** (+25% shops), **Residential**
+(+25% homes), or **Balanced** (no bonus, no penalty). Utility buildings
+are unaffected.
+
+**Trade routes**: establish routes with other players (500 funds setup).
+Each active route pays 3 funds/sec — but only while both you and your
+partner have working commercial buildings. Cancel anytime.

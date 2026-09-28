@@ -52,6 +52,8 @@ import { rngBank } from './world';
 import { canTarget } from './combat';
 import { isUnitAvailableForAge, getSightBonus, AGE_PROGRESSION } from './ages';
 import { getPlayer } from './city';
+import { isAegisReady, isStormReady } from './superweapons';
+import { CommandRejectedError } from './commands';
 
 /** Classic AI difficulty levels. */
 export type AIDifficulty = 'cadet' | 'citizen' | 'commander' | 'general' | 'marshal';
@@ -91,6 +93,13 @@ export interface AIPlayerState {
   scoutIndex: number;
   /** How many of each kind this AI has built (for composition logic). */
   builtCounts: Record<string, number>;
+  /**
+   * Phase 3 superweapon construction (Marshal only). The AI places no
+   * physical buildings in 0.1 Alpha; it pays the facility's full cost
+   * upfront and the facility comes online after the building's build
+   * time. 0 = not built. Plain data — snapshotted + digested.
+   */
+  superweapons: { aegisReadyTick: number; stormReadyTick: number };
 }
 
 /** AI state for the world. Plain data — snapshotted + digested. */
@@ -123,6 +132,7 @@ export function addAIPlayer(
     forwardBase: null,
     scoutIndex: 0,
     builtCounts: {},
+    superweapons: { aegisReadyTick: 0, stormReadyTick: 0 },
   });
 }
 
@@ -516,6 +526,67 @@ function thinkMarshal(
 
   // --- Combined arms: ensure we have a mix of unit types.
   // (The base logic already does counters; Marshal just fields more.)
+
+  // --- Superweapons: build the facilities, then use them fairly.
+  thinkSuperweapons(world, queue, ai);
+}
+
+/**
+ * Marshal-only superweapon play (Phase 3). Construction goes through the
+ * `constructSuperweaponFacility` command (same cost and build time as the
+ * player's buildings); firing goes through `fireAegis` / `fireStorm`.
+ * Targeting uses only visible enemies — no fog cheating — and the Storm
+ * needs a real cluster (3+ visible enemies) so it isn't wasted.
+ */
+function thinkSuperweapons(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+): void {
+  if (world.ages.age !== 'ascendance') return;
+  const enqueue = (kind: string, payload: Record<string, unknown>): void => {
+    try {
+      queue.enqueue(world, { issuer: 'ai', kind, payload });
+    } catch (e) {
+      if (!(e instanceof CommandRejectedError)) throw e;
+      // Validation failed (still building, on cooldown, can't afford):
+      // reassess next think tick. Never crash the tick on a weapon order.
+    }
+  };
+  // Build each facility once, storm first (offense wins games).
+  if (ai.superweapons.stormReadyTick === 0) {
+    enqueue('constructSuperweaponFacility', { owner: ai.owner, kind: 'storm' });
+  } else if (ai.superweapons.aegisReadyTick === 0) {
+    enqueue('constructSuperweaponFacility', { owner: ai.owner, kind: 'aegis' });
+  }
+  // Fire the Storm at the largest visible enemy cluster.
+  if (isStormReady(world, ai.owner)) {
+    const visible = getVisibleEnemies(world, ai.owner);
+    if (visible.length >= 3) {
+      let x = 0;
+      let z = 0;
+      for (const e of visible) {
+        x += e.x;
+        z += e.z;
+      }
+      enqueue('fireStorm', {
+        owner: ai.owner,
+        x: x / visible.length,
+        z: z / visible.length,
+      });
+    }
+  }
+  // Raise the Aegis when the army is hurting.
+  if (isAegisReady(world, ai.owner)) {
+    const hurt = world.units.some((u) => {
+      if (u.owner !== ai.owner || u.hp <= 0) return false;
+      const def = UNIT_DEFS[u.kind as UnitKind];
+      return def !== undefined && u.hp < def.hp * 0.5;
+    });
+    if (hurt) {
+      enqueue('fireAegis', { owner: ai.owner });
+    }
+  }
 }
 
 /** Get age progression info for the current age. */
@@ -590,6 +661,10 @@ export function encodeAIState(ai: AIState): unknown {
       nextThinkTick: p.nextThinkTick,
       forwardBase: p.forwardBase ? { x: p.forwardBase.x, z: p.forwardBase.z } : null,
       scoutIndex: p.scoutIndex,
+      superweapons: {
+        aegisReadyTick: p.superweapons?.aegisReadyTick ?? 0,
+        stormReadyTick: p.superweapons?.stormReadyTick ?? 0,
+      },
       builtCounts: Object.keys(p.builtCounts).sort().reduce<Record<string, number>>(
         (acc, k) => {
           const v = p.builtCounts[k];
@@ -614,6 +689,7 @@ export function decodeAIState(data: unknown): AIState {
       forwardBase: { x: number; z: number } | null;
       scoutIndex: number;
       builtCounts: Record<string, number>;
+      superweapons?: { aegisReadyTick: number; stormReadyTick: number };
     }[];
   };
   return {
@@ -626,6 +702,10 @@ export function decodeAIState(data: unknown): AIState {
       forwardBase: p.forwardBase ? { x: p.forwardBase.x, z: p.forwardBase.z } : null,
       scoutIndex: p.scoutIndex,
       builtCounts: { ...p.builtCounts },
+      superweapons: {
+        aegisReadyTick: p.superweapons?.aegisReadyTick ?? 0,
+        stormReadyTick: p.superweapons?.stormReadyTick ?? 0,
+      },
     })),
   };
 }

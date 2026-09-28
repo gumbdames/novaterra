@@ -45,13 +45,16 @@ import {
   UTILITY_PENALTY,
   FOOD_PER_POP_PER_SEC,
   UTILITY_ZONE,
+  ZoneType,
   getPlayer,
   isRoadAdjacent,
   runGrowth,
   type BuildingRecord,
+  type CitySpecialization,
   type CityState,
   type PlayerState,
   type ResourceKey,
+  type TradeRoute,
 } from './city';
 
 /** Economy ticks run once per sim-second (30 sim ticks). */
@@ -221,6 +224,27 @@ function levelMult(b: BuildingRecord): number {
   return 1 + 0.25 * (b.level - 1);
 }
 
+/**
+ * Phase 3 city specialization multiplier. A focused city gets +25% output
+ * from buildings in the matching zone, −10% from other zoned buildings;
+ * 'balanced' and utility-zone buildings are unaffected.
+ */
+export const SPECIALIZATION_OUTPUT_BONUS = 1.25;
+export const SPECIALIZATION_OUTPUT_PENALTY = 0.9;
+
+const SPEC_ZONE: Record<Exclude<CitySpecialization, 'balanced'>, number> = {
+  industrial: ZoneType.INDUSTRIAL,
+  commercial: ZoneType.COMMERCIAL,
+  residential: ZoneType.RESIDENTIAL,
+};
+
+export function specializationMult(player: PlayerState, zone: number | string): number {
+  if (player.specialization === 'balanced' || zone === UTILITY_ZONE) return 1;
+  return SPEC_ZONE[player.specialization] === zone
+    ? SPECIALIZATION_OUTPUT_BONUS
+    : SPECIALIZATION_OUTPUT_PENALTY;
+}
+
 /** Run production/consumption for operational buildings, in id order. */
 function runProduction(world: World, city: CityState): void {
   const factoryMult = getFactoryOutputMult(world);
@@ -236,6 +260,8 @@ function runProduction(world: World, city: CityState): void {
     let mult = penalty * levelMult(b);
     // Heavy Industry boosts factory output.
     if (b.kind === 'factory') mult *= factoryMult;
+    // Phase 3: city specialization boosts/penalizes zoned output.
+    mult *= specializationMult(player, def.zone);
     // Inputs first: a building starved of fuel sits idle this tick.
     let starved = false;
     for (const key of RESOURCE_KEYS) {
@@ -289,6 +315,36 @@ function runTaxes(world: World, economyTickIndex: number): void {
     if (!player) continue;
     const rate = player.taxRates[def.zone] as number;
     player.funds += rate * def.taxBasePerSec * levelMult(b) * TAX_PERIOD_SECONDS * mult;
+  }
+}
+
+/** Funds to establish one trade route. */
+export const TRADE_ROUTE_SETUP_COST = 500;
+/** Funds per sim-second paid to the route owner while the route is active. */
+export const TRADE_ROUTE_INCOME_PER_SEC = 3;
+
+/**
+ * Phase 3 trade routes. A route is active while both ends operate at
+ * least one completed commercial-zone building (shops, media centers);
+ * the owner collects the income each economy tick. Routes are
+ * unilateral — no partner consent needed (like trading with neutrals).
+ */
+function hasTradeCapacity(city: CityState, owner: number): boolean {
+  for (const b of city.buildings) {
+    if (b.owner !== owner || b.progress < 1 || !b.operational) continue;
+    if (BUILDING_DEFS[b.kind].zone === ZoneType.COMMERCIAL) return true;
+  }
+  return false;
+}
+
+function runTradeRoutes(city: CityState): void {
+  for (const route of city.tradeRoutes) {
+    const owner = getPlayer(city, route.owner);
+    if (!owner) continue;
+    if (!getPlayer(city, route.partner)) continue;
+    if (hasTradeCapacity(city, route.owner) && hasTradeCapacity(city, route.partner)) {
+      owner.funds += TRADE_ROUTE_INCOME_PER_SEC;
+    }
   }
 }
 
@@ -353,6 +409,7 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   runProduction(world, city);
   runFood(city);
   runTaxes(world, economyTickIndex(world));
+  runTradeRoutes(city);
   runLevels(world);
   runGrowth(t, world, powerHeadroom, waterHeadroom);
 }
@@ -424,4 +481,65 @@ const marketTradeSpec: CommandSpec = {
 /** Register the market command kind on a queue. */
 export function registerEconomyCommands(queue: CommandQueue): void {
   queue.register('marketTrade', marketTradeSpec);
+  queue.register('establishTradeRoute', establishTradeRouteSpec);
+  queue.register('cancelTradeRoute', cancelTradeRouteSpec);
 }
+
+const establishTradeRouteSpec: CommandSpec = {
+  validate(cmd, world): string | null {
+    const owner = payloadInt(cmd.payload, 'owner');
+    if (owner === null || !getPlayer(world.city, owner)) {
+      return 'establishTradeRoute: unknown owner';
+    }
+    const partner = payloadInt(cmd.payload, 'partner');
+    if (partner === null || !getPlayer(world.city, partner)) {
+      return 'establishTradeRoute: unknown partner';
+    }
+    if (partner === owner) return 'establishTradeRoute: cannot trade with yourself';
+    const dup = world.city.tradeRoutes.some(
+      (r) => r.owner === owner && r.partner === partner,
+    );
+    if (dup) return 'establishTradeRoute: route already exists';
+    const player = getPlayer(world.city, owner) as PlayerState;
+    if (player.funds < TRADE_ROUTE_SETUP_COST) {
+      return `establishTradeRoute: cannot afford ${TRADE_ROUTE_SETUP_COST} funds setup`;
+    }
+    return null;
+  },
+  apply(cmd, world): unknown {
+    const owner = payloadInt(cmd.payload, 'owner') as number;
+    const partner = payloadInt(cmd.payload, 'partner') as number;
+    const player = getPlayer(world.city, owner) as PlayerState;
+    player.funds -= TRADE_ROUTE_SETUP_COST;
+    const route: TradeRoute = { owner, partner, establishedTick: world.tick };
+    world.city.tradeRoutes.push(route);
+    return { owner, partner };
+  },
+};
+
+const cancelTradeRouteSpec: CommandSpec = {
+  validate(cmd, world): string | null {
+    const owner = payloadInt(cmd.payload, 'owner');
+    if (owner === null || !getPlayer(world.city, owner)) {
+      return 'cancelTradeRoute: unknown owner';
+    }
+    const partner = payloadInt(cmd.payload, 'partner');
+    if (partner === null || !getPlayer(world.city, partner)) {
+      return 'cancelTradeRoute: unknown partner';
+    }
+    const i = world.city.tradeRoutes.findIndex(
+      (r) => r.owner === owner && r.partner === partner,
+    );
+    if (i === -1) return 'cancelTradeRoute: no such route';
+    return null;
+  },
+  apply(cmd, world): unknown {
+    const owner = payloadInt(cmd.payload, 'owner') as number;
+    const partner = payloadInt(cmd.payload, 'partner') as number;
+    const i = world.city.tradeRoutes.findIndex(
+      (r) => r.owner === owner && r.partner === partner,
+    );
+    world.city.tradeRoutes.splice(i, 1);
+    return { owner, partner };
+  },
+};

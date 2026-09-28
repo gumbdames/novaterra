@@ -151,8 +151,8 @@ describe('initial state', () => {
     expect(initAges()).toEqual({ age: 'foundation', program: null, programs: {} });
   });
 
-  it('snapshot version is 4 (ages added in step 8)', () => {
-    expect(SNAPSHOT_VERSION).toBe(4);
+  it('snapshot version is 5 (delegation/superweapons/economy added in step 9)', () => {
+    expect(SNAPSHOT_VERSION).toBe(5);
   });
 });
 

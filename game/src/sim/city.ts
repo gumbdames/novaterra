@@ -154,7 +154,23 @@ export type ZoneType = (typeof ZoneType)[keyof typeof ZoneType];
 /** 'utility' buildings (power/water) skip the zone-matching rule. */
 export const UTILITY_ZONE = 'utility' as const;
 
-/** Phase-1 building kinds. */
+/** Phase 3: city specialization focus. Plain string — snapshot-safe. */
+export type CitySpecialization = 'balanced' | 'industrial' | 'commercial' | 'residential';
+export const CITY_SPECIALIZATIONS: CitySpecialization[] = [
+  'balanced', 'industrial', 'commercial', 'residential',
+];
+
+/** A trade route between two players: bonus funds while both ends trade. */
+export interface TradeRoute {
+  /** Route owner (pays the setup cost, collects the income). */
+  owner: number;
+  /** Trading partner: another player id. */
+  partner: number;
+  /** Sim tick when the route was established. */
+  establishedTick: number;
+}
+
+/** Phase-1 building kinds, plus Phase 3 superweapon facilities. */
 export const BuildingKind = {
   HOUSE: 'house',
   APARTMENT: 'apartment',
@@ -166,6 +182,10 @@ export const BuildingKind = {
   WATER_PUMP: 'waterPump',
   MEDIA_CENTER: 'mediaCenter',
   SHIPYARD: 'shipyard',
+  /** Phase 3: Aegis superweapon control building (Ascendance only). */
+  AEGIS_CONTROL: 'aegisControl',
+  /** Phase 3: Storm Engine superweapon array (Ascendance only). */
+  STORM_ARRAY: 'stormArray',
 } as const;
 export type BuildingKind = (typeof BuildingKind)[keyof typeof BuildingKind];
 
@@ -274,6 +294,20 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 4.0,
   },
+  aegisControl: {
+    kind: 'aegisControl', name: 'Aegis Control', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 5000, costMaterials: 2000,
+    buildSeconds: 120, upkeepFundsPerSec: 5.0,
+    powerDemand: 10, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 6.0,
+  },
+  stormArray: {
+    kind: 'stormArray', name: 'Storm Array', zone: UTILITY_ZONE,
+    footprintW: 4, footprintH: 4, costFunds: 6000, costMaterials: 2500,
+    buildSeconds: 150, upkeepFundsPerSec: 6.0,
+    powerDemand: 12, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 6.0,
+  },
 };
 
 /** Defs in a fixed order (cheapest funds cost first) — used by growth. */
@@ -337,6 +371,12 @@ export interface PlayerState {
   taxRates: [number, number, number];
   /** Derived each economy tick from residential capacity. */
   population: number;
+  /**
+   * Phase 3 city specialization: 'balanced' (no modifiers) or a focus
+   * that boosts matching-zone building output by 25% at a 10% penalty
+   * to other zoned buildings. Set via the `setSpecialization` command.
+   */
+  specialization: CitySpecialization;
 }
 
 /** The whole city. Lives on `World.city`; snapshotted and digested. */
@@ -351,6 +391,8 @@ export interface CityState {
   players: PlayerState[];
   /** Set by the economy tick when food demand outruns supply. */
   foodShortage: boolean;
+  /** Phase 3: active trade routes (established via command). */
+  tradeRoutes: TradeRoute[];
 }
 
 /** Starting stockpiles for a fresh player. */
@@ -382,6 +424,7 @@ function createPlayer(id: number, name: string): PlayerState {
     manpower: STARTING_STOCKS.manpower,
     taxRates: [DEFAULT_TAX_RATE, DEFAULT_TAX_RATE, DEFAULT_TAX_RATE],
     population: 0,
+    specialization: 'balanced',
   };
 }
 
@@ -394,6 +437,7 @@ export function initCity(): CityState {
     nextBuildingId: 1,
     players: [createPlayer(0, 'Player'), createPlayer(1, 'Rival')],
     foodShortage: false,
+    tradeRoutes: [],
   };
 }
 
@@ -809,6 +853,12 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       if (owner === null || cx === null || cz === null) {
         return 'placeBuilding: payload needs kind, owner, cx, cz (facing optional)';
       }
+      // Phase 3: superweapon facilities need the Ascendance age. (Reads
+      // world.ages directly instead of importing ages.ts — that module
+      // imports getPlayer from here, so an import would be a cycle.)
+      if ((kind === 'aegisControl' || kind === 'stormArray') && world.ages.age !== 'ascendance') {
+        return `placeBuilding: ${BUILDING_DEFS[kind].name} requires the Ascendance age`;
+      }
       if (facing < 0 || facing > 3) return 'placeBuilding: facing must be 0..3';
       return validatePlacement(t, world.city, { kind, owner, cx, cz, facing: facing as 0 | 1 | 2 | 3 });
     },
@@ -869,8 +919,28 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
     },
   };
 
-  return { buildRoad, paintZone, placeBuilding: placeBuildingSpec, demolish, setTaxRate };
+  const setSpecialization: CommandSpec = {
+    validate(cmd, world): string | null {
+      const owner = payloadInt(cmd.payload, 'owner');
+      if (owner === null || !getPlayer(world.city, owner)) return 'setSpecialization: unknown owner';
+      const spec = payloadStr(cmd.payload, 'specialization');
+      if (typeof spec !== 'string' || !CITY_SPECIALIZATIONS.includes(spec as CitySpecialization)) {
+        return `setSpecialization: specialization must be one of ${CITY_SPECIALIZATIONS.join(', ')}`;
+      }
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const owner = payloadInt(cmd.payload, 'owner') as number;
+      const spec = payloadStr(cmd.payload, 'specialization') as CitySpecialization;
+      (getPlayer(world.city, owner) as PlayerState).specialization = spec;
+      return spec;
+    },
+  };
+
+  return { buildRoad, paintZone, placeBuilding: placeBuildingSpec, demolish, setTaxRate, setSpecialization };
 }
+
+/** Register the city-building command kinds on a queue. Needs the terrain for placement rules. */
 
 /** Register the city-building command kinds on a queue. Needs the terrain for placement rules. */
 export function registerCityCommands(queue: CommandQueue, t: TerrainData): void {

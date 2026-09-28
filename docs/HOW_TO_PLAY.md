@@ -1,7 +1,7 @@
 # How to Play — novaterra
 
 > The 0.1 Alpha guide. Kept **clear, short and simple** per the
-> design brief. Last updated: 2026-09-29 (Phase 2: campaign + Muse).
+> design brief. Last updated: 2026-09-29 (Phase 3: delegation, superweapons, advanced economy, accessibility).
 
 ## Your goal
 
@@ -111,3 +111,35 @@ Press **\`** (backtick) to open the cheat console. Commands:
 - `help` — lists the commands.
 
 Using any cheat marks the save as **cheated** (shown in the load list).
+
+## Phase 3 controls
+
+**Command panel** (bottom of HUD): fire **Aegis**, enter **Storm
+targeting** (then click the map), set city **Focus** (specialization),
+appoint/dismiss **Mayor** (pick a tax policy), appoint/dismiss
+**General** (select units first, pick a stance).
+
+Trade routes: established from the command panel — pick a partner
+player. Routes pay only while both sides have working shops.
+
+## Keyboard shortcuts
+
+- **Space** — pause / resume.
+- **1 / 2 / 4** — game speed (1× / 2× / 4×).
+- **Esc** — cancel placement / close panels.
+- **\`** (backtick) — cheat console.
+- **Arrow keys / WASD** — pan the camera.
+- **Mouse wheel** — zoom.
+- **Left-click** — select units / place buildings.
+- **Right-click** — move (open ground) or attack (enemy unit).
+
+## Accessibility
+
+**Settings** (pause menu) → **Accessibility**:
+
+- **Colorblind-friendly team colors** — switches rival units from
+  red to orange (blue vs orange is safe for red-green colorblindness).
+- **UI scale** — enlarges all HUD text and buttons (80%–150%).
+
+Both settings are saved and apply immediately. Touch/mobile is not
+supported in 0.1 Alpha — desktop keyboard + mouse is required.

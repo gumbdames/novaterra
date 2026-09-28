@@ -69,6 +69,26 @@ export interface HUDActions {
   /** Cancel any placement/construction mode. */
   onCancelPlacement(): void;
   onAdvanceAge(program: string): void;
+  /** Phase 3: fire the Aegis shield. */
+  onFireAegis(): void;
+  /** Phase 3: enter Storm targeting mode (click map). */
+  onStormTarget(): void;
+  /** Phase 3: set city specialization. */
+  onSetSpecialization(spec: string): void;
+  /** Phase 3: establish a trade route. */
+  onEstablishTradeRoute(partner: number): void;
+  /** Phase 3: cancel a trade route. */
+  onCancelTradeRoute(partner: number): void;
+  /** Phase 3: appoint a mayor. */
+  onAssignMayor(policy: string): void;
+  /** Phase 3: dismiss the mayor. */
+  onDismissMayor(): void;
+  /** Phase 3: appoint a general over selected units. */
+  onAssignGeneral(stance: string): void;
+  /** Phase 3: dismiss the general. */
+  onDismissGeneral(): void;
+  /** Phase 3: change general stance. */
+  onSetGeneralStance(stance: string): void;
 }
 
 /** Trainable unit kinds in display order. */
@@ -102,6 +122,9 @@ const BUILD_TOOLS: Array<{ tool: BuildTool; label: string }> = [
   { tool: 'building:farm', label: 'Farm' },
   { tool: 'building:mediaCenter', label: 'Media' },
   { tool: 'building:shipyard', label: 'Shipyard' },
+  // Phase 3: superweapon facilities (Ascendance age; the sim validates).
+  { tool: 'building:aegisControl', label: 'Aegis' },
+  { tool: 'building:stormArray', label: 'Storm' },
   { tool: 'demolish', label: 'Demolish' },
 ];
 
@@ -133,6 +156,7 @@ export class HUD {
   private readonly advisorPanel: HTMLElement;
   private readonly advisorList: HTMLElement;
   private readonly selectionPanel: HTMLElement;
+  private readonly phase3Panel: HTMLElement;
   private readonly toastEl: HTMLElement;
   private toastTimer = 0;
   private lastText = new Map<string, string>();
@@ -212,12 +236,85 @@ export class HUD {
     this.selectionPanel = el('div', 'hud-selection');
     hud.append(this.selectionPanel);
 
+    // ---- Phase 3: command, superweapons, city ----
+    this.phase3Panel = el('div', 'hud-phase3');
+    this.buildPhase3Panel();
+    hud.append(this.phase3Panel);
+
     // ---- toast ----
     this.toastEl = el('div', 'hud-toast');
     this.toastEl.id = 'hud-toast';
     hud.append(this.toastEl);
 
     root.append(hud);
+  }
+
+  /** Phase 3 panel: superweapons, specialization, trade, delegation. */
+  private buildPhase3Panel(): void {
+    const panel = this.phase3Panel;
+    panel.append(el('div', 'hud-panel-title', 'Command'));
+
+    // Superweapons.
+    const swRow = el('div', 'hud-phase3-row');
+    const aegisBtn = document.createElement('button');
+    aegisBtn.className = 'hud-btn';
+    aegisBtn.textContent = 'Fire Aegis';
+    aegisBtn.title = 'Raise the Aegis shield (Ascendance + Aegis Control)';
+    aegisBtn.addEventListener('click', () => this.actions.onFireAegis());
+    swRow.append(aegisBtn);
+    const stormBtn = document.createElement('button');
+    stormBtn.className = 'hud-btn';
+    stormBtn.textContent = 'Storm Target';
+    stormBtn.title = 'Enter Storm targeting mode, then click the map (Ascendance + Storm Array)';
+    stormBtn.addEventListener('click', () => this.actions.onStormTarget());
+    swRow.append(stormBtn);
+    panel.append(swRow);
+
+    // Specialization.
+    const specRow = el('div', 'hud-phase3-row');
+    specRow.append(el('span', 'hud-label', 'Focus:'));
+    for (const spec of ['balanced', 'industrial', 'commercial', 'residential']) {
+      const b = document.createElement('button');
+      b.className = 'hud-btn small';
+      b.textContent = spec;
+      b.addEventListener('click', () => this.actions.onSetSpecialization(spec));
+      specRow.append(b);
+    }
+    panel.append(specRow);
+
+    // Delegation: mayor.
+    const mayorRow = el('div', 'hud-phase3-row');
+    mayorRow.append(el('span', 'hud-label', 'Mayor:'));
+    for (const policy of ['balanced', 'growth', 'revenue']) {
+      const b = document.createElement('button');
+      b.className = 'hud-btn small';
+      b.textContent = policy;
+      b.addEventListener('click', () => this.actions.onAssignMayor(policy));
+      mayorRow.append(b);
+    }
+    const disMayor = document.createElement('button');
+    disMayor.className = 'hud-btn small';
+    disMayor.textContent = 'Dismiss';
+    disMayor.addEventListener('click', () => this.actions.onDismissMayor());
+    mayorRow.append(disMayor);
+    panel.append(mayorRow);
+
+    // Delegation: general.
+    const genRow = el('div', 'hud-phase3-row');
+    genRow.append(el('span', 'hud-label', 'General:'));
+    for (const stance of ['aggressive', 'defensive', 'hold']) {
+      const b = document.createElement('button');
+      b.className = 'hud-btn small';
+      b.textContent = stance;
+      b.addEventListener('click', () => this.actions.onAssignGeneral(stance));
+      genRow.append(b);
+    }
+    const disGen = document.createElement('button');
+    disGen.className = 'hud-btn small';
+    disGen.textContent = 'Dismiss';
+    disGen.addEventListener('click', () => this.actions.onDismissGeneral());
+    genRow.append(disGen);
+    panel.append(genRow);
   }
 
   /** Refresh all panels from the world. Cheap: DOM writes only on change. */

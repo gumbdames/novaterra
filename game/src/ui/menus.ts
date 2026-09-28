@@ -54,23 +54,34 @@ export type QualityLevel = 'low' | 'medium' | 'high';
 /** Persisted player settings (localStorage, never leaves the browser). */
 export interface Settings {
   quality: QualityLevel;
+  /** Phase 3: colorblind-friendly team colors. */
+  colorblind: boolean;
+  /** Phase 3: UI scale multiplier (0.8 .. 1.5). */
+  uiScale: number;
 }
 
 const SETTINGS_KEY = 'novaterra.settings.v1';
+
+const DEFAULT_SETTINGS: Settings = { quality: 'high', colorblind: false, uiScale: 1 };
 
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) {
       const parsed = JSON.parse(raw) as Partial<Settings>;
-      if (parsed.quality === 'low' || parsed.quality === 'medium' || parsed.quality === 'high') {
-        return { quality: parsed.quality };
-      }
+      const quality = parsed.quality === 'low' || parsed.quality === 'medium' || parsed.quality === 'high'
+        ? parsed.quality
+        : DEFAULT_SETTINGS.quality;
+      const colorblind = typeof parsed.colorblind === 'boolean' ? parsed.colorblind : false;
+      const uiScale = typeof parsed.uiScale === 'number' && parsed.uiScale >= 0.8 && parsed.uiScale <= 1.5
+        ? parsed.uiScale
+        : 1;
+      return { quality, colorblind, uiScale };
     }
   } catch {
     // Corrupt or unavailable storage — fall through to defaults.
   }
-  return { quality: 'high' };
+  return { ...DEFAULT_SETTINGS };
 }
 
 export function saveSettings(s: Settings): void {
@@ -91,6 +102,10 @@ export interface MenuActions {
   onExitToMenu(): void;
   /** Graphics quality changed. */
   onQualityChange(quality: QualityLevel): void;
+  /** Phase 3: colorblind-friendly team colors toggled. Optional. */
+  onColorblindChange?: (v: boolean) => void;
+  /** Phase 3: UI scale changed. Optional. */
+  onUiScaleChange?: (v: number) => void;
   /** Audio settings changed (live-apply when a game is running). Optional. */
   onAudioChange?: (patch: Partial<AudioSettings>) => void;
   /** Open the save-game slot picker (pause menu). Optional. */
@@ -157,6 +172,8 @@ export class MainMenu {
       onQualityChange: (q) => this.actions.onQualityChange(q),
       onAudioChange: this.actions.onAudioChange,
       onMuseFrequencyChange: this.actions.onMuseFrequencyChange,
+      onColorblindChange: this.actions.onColorblindChange,
+      onUiScaleChange: this.actions.onUiScaleChange,
       onClose: () => this.show(),
     }).show());
     buttons.append(skirmish, loadGame, missions, settings);
@@ -247,6 +264,8 @@ export class PauseMenu {
           onQualityChange: (q) => this.actions.onQualityChange(q),
           onAudioChange: this.actions.onAudioChange,
           onMuseFrequencyChange: this.actions.onMuseFrequencyChange,
+          onColorblindChange: this.actions.onColorblindChange,
+          onUiScaleChange: this.actions.onUiScaleChange,
           onClose: () => this.show(),
         }).show(),
       ),
@@ -302,6 +321,8 @@ export class SettingsPanel {
   private readonly onQualityChange: (q: QualityLevel) => void;
   private readonly onAudioChange: ((patch: Partial<AudioSettings>) => void) | undefined;
   private readonly onMuseFrequencyChange: ((f: MuseFrequency) => void) | undefined;
+  private readonly onColorblindChange: ((v: boolean) => void) | undefined;
+  private readonly onUiScaleChange: ((v: number) => void) | undefined;
   private readonly onClose: () => void;
   private el: HTMLElement | null = null;
 
@@ -311,6 +332,8 @@ export class SettingsPanel {
       onQualityChange: (q: QualityLevel) => void;
       onAudioChange?: (patch: Partial<AudioSettings>) => void;
       onMuseFrequencyChange?: (f: MuseFrequency) => void;
+      onColorblindChange?: (v: boolean) => void;
+      onUiScaleChange?: (v: number) => void;
       onClose: () => void;
     },
   ) {
@@ -318,6 +341,8 @@ export class SettingsPanel {
     this.onQualityChange = opts.onQualityChange;
     this.onAudioChange = opts.onAudioChange;
     this.onMuseFrequencyChange = opts.onMuseFrequencyChange;
+    this.onColorblindChange = opts.onColorblindChange;
+    this.onUiScaleChange = opts.onUiScaleChange;
     this.onClose = opts.onClose;
   }
 
@@ -344,11 +369,37 @@ export class SettingsPanel {
     }
     select.addEventListener('change', () => {
       const q = select.value as QualityLevel;
-      saveSettings({ quality: q });
+      saveSettings({ ...loadSettings(), quality: q });
       this.onQualityChange(q);
     });
     label.append(select);
     panel.append(label);
+
+    // --- Phase 3: accessibility ---
+    panel.append(el('h3', '', 'Accessibility'));
+    const cbRow = el('label', 'settings-row', 'Colorblind-friendly team colors: ');
+    const cbBox = document.createElement('input');
+    cbBox.type = 'checkbox';
+    cbBox.checked = settings.colorblind;
+    cbBox.addEventListener('change', () => {
+      saveSettings({ ...loadSettings(), colorblind: cbBox.checked });
+      this.onColorblindChange?.(cbBox.checked);
+    });
+    cbRow.append(cbBox);
+    panel.append(cbRow);
+    const scaleRow = el('label', 'settings-row', 'UI scale: ');
+    const scaleInput = document.createElement('input');
+    scaleInput.type = 'range';
+    scaleInput.min = '80';
+    scaleInput.max = '150';
+    scaleInput.value = String(Math.round(settings.uiScale * 100));
+    scaleInput.addEventListener('input', () => {
+      const v = Number(scaleInput.value) / 100;
+      saveSettings({ ...loadSettings(), uiScale: v });
+      this.onUiScaleChange?.(v);
+    });
+    scaleRow.append(scaleInput);
+    panel.append(scaleRow);
 
     // --- Audio ---
     panel.append(el('h3', '', s.audioTitle));

@@ -49,6 +49,10 @@ import type { AIState } from './ai';
 import { encodeAIState, decodeAIState, initAI } from './ai';
 import type { AgeState } from './ages';
 import { encodeAgeState, decodeAgeState, initAges } from './ages';
+import type { DelegationState } from './delegation';
+import { encodeDelegationState, decodeDelegationState, initDelegation } from './delegation';
+import type { SuperweaponState } from './superweapons';
+import { encodeSuperweaponState, decodeSuperweaponState, initSuperweapons } from './superweapons';
 
 /**
  * Snapshot format version. Bump on any breaking change to the shape below.
@@ -56,8 +60,10 @@ import { encodeAgeState, decodeAgeState, initAges } from './ages';
  * v3: units + pathfinding coordinator state added (Phase 1, step 6).
  *     (Classic AI state was added in step 7 without a version bump.)
  * v4: Age state (Foundation → Connectivity + National Program) added (Phase 1, step 8).
+ * v5: Chain-of-command state, superweapon state, city specialization and
+ *     trade routes added (Phase 3).
  */
-export const SNAPSHOT_VERSION = 4;
+export const SNAPSHOT_VERSION = 5;
 
 /** Plain-data snapshot of the world at a tick boundary. */
 export interface Snapshot {
@@ -73,6 +79,8 @@ export interface Snapshot {
   pathfinding: PathfindingState;
   ai: AIState;
   ages: AgeState;
+  delegation: DelegationState;
+  superweapons: SuperweaponState;
 }
 
 /** Thrown when a snapshot's version doesn't match. Names expected vs found. */
@@ -116,6 +124,7 @@ function copyPlayer(p: PlayerState): PlayerState {
     goods: p.goods, influence: p.influence, manpower: p.manpower,
     taxRates: [p.taxRates[0] as number, p.taxRates[1] as number, p.taxRates[2] as number],
     population: p.population,
+    specialization: p.specialization,
   };
 }
 
@@ -127,6 +136,9 @@ function copyCity(city: CityState): CityState {
     nextBuildingId: city.nextBuildingId,
     players: city.players.map(copyPlayer),
     foodShortage: city.foodShortage,
+    tradeRoutes: city.tradeRoutes.map((r) => ({
+      owner: r.owner, partner: r.partner, establishedTick: r.establishedTick,
+    })),
   };
 }
 
@@ -201,6 +213,8 @@ export function takeSnapshot(world: World): Snapshot {
     pathfinding: copyPathfinding(world.pathfinding),
     ai: encodeAIState(world.ai) as AIState,
     ages: encodeAgeState(world.ages) as AgeState,
+    delegation: encodeDelegationState(world.delegation) as DelegationState,
+    superweapons: encodeSuperweaponState(world.superweapons) as SuperweaponState,
   };
 }
 
@@ -230,5 +244,9 @@ export function restoreSnapshot(snap: Snapshot): World {
   world.ai = snap.ai ? decodeAIState(snap.ai) : initAI();
   // Defensive: older snapshots lack age state — init instead of crashing.
   world.ages = snap.ages ? decodeAgeState(snap.ages) : initAges();
+  // Defensive: older snapshots lack delegation state — init instead of crashing.
+  world.delegation = snap.delegation ? decodeDelegationState(snap.delegation) : initDelegation();
+  // Defensive: older snapshots lack superweapon state — init instead of crashing.
+  world.superweapons = snap.superweapons ? decodeSuperweaponState(snap.superweapons) : initSuperweapons();
   return world;
 }

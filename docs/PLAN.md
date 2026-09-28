@@ -150,11 +150,14 @@ Done so far:
   Muse settings in the settings panel.
 - Tests: 30 campaign + 18 muse + 3 session-campaign, all green.
 
-### Phase 3 — Depth + polish
+### Phase 3 — Depth + polish ✅ COMPLETE (2026-09-29)
 
-Chain-of-command UI (mayors, generals, cabinet — opt-in delegation),
-entrepreneurs as agents, advanced economy paths, superweapons (Aegis /
-Storm Engine), touch/mobile **only if playtests show it's fun**, accessibility.
+Chain-of-command UI (mayors, generals — opt-in delegation; cabinet via
+advisor), superweapons (Aegis / Storm Engine), advanced economy
+(specialization, trade routes), accessibility (colorblind toggle, UI
+scale). Entrepreneurs: deferred (documented in GAME_MECHANICS.md).
+Touch/mobile: skipped — no playtest evidence (documented in
+HOW_TO_PLAY.md).
 
 ## Decisions (resolved with user 2026-09-28)
 

@@ -163,3 +163,106 @@ export function buildSetTaxRateOrder(
     payload: { owner, zone, rate },
   };
 }
+
+/** Phase 3: fire the Aegis shield. */
+export function buildFireAegisOrder(owner: number): OrderIntent {
+  return {
+    kind: 'fireAegis',
+    payload: { owner },
+  };
+}
+
+/** Phase 3: fire the Storm Engine at a map point. */
+export function buildFireStormOrder(
+  owner: number,
+  x: number,
+  z: number,
+): OrderIntent {
+  return {
+    kind: 'fireStorm',
+    payload: { owner, x, z },
+  };
+}
+
+/** Phase 3: set the city's economic specialization. */
+export function buildSetSpecializationOrder(
+  owner: number,
+  specialization: string,
+): OrderIntent {
+  return {
+    kind: 'setSpecialization',
+    payload: { owner, specialization },
+  };
+}
+
+/** Phase 3: establish a trade route with another player. */
+export function buildEstablishTradeRouteOrder(
+  owner: number,
+  partner: number,
+): OrderIntent {
+  return {
+    kind: 'establishTradeRoute',
+    payload: { owner, partner },
+  };
+}
+
+/** Phase 3: cancel a trade route. */
+export function buildCancelTradeRouteOrder(
+  owner: number,
+  partner: number,
+): OrderIntent {
+  return {
+    kind: 'cancelTradeRoute',
+    payload: { owner, partner },
+  };
+}
+
+/** Phase 3: appoint a mayor with a tax policy. */
+export function buildAssignMayorOrder(
+  owner: number,
+  policy: string,
+): OrderIntent {
+  return {
+    kind: 'assignMayor',
+    payload: { owner, policy },
+  };
+}
+
+/** Phase 3: dismiss the mayor. */
+export function buildDismissMayorOrder(owner: number): OrderIntent {
+  return {
+    kind: 'dismissMayor',
+    payload: { owner },
+  };
+}
+
+/** Phase 3: appoint a general over selected units. */
+export function buildAssignGeneralOrder(
+  owner: number,
+  unitIds: number[],
+  stance: string,
+): OrderIntent {
+  return {
+    kind: 'assignGeneral',
+    payload: { owner, unitIds: [...unitIds], stance },
+  };
+}
+
+/** Phase 3: dismiss the general. */
+export function buildDismissGeneralOrder(owner: number): OrderIntent {
+  return {
+    kind: 'dismissGeneral',
+    payload: { owner },
+  };
+}
+
+/** Phase 3: change the general's stance. */
+export function buildSetGeneralStanceOrder(
+  owner: number,
+  stance: string,
+): OrderIntent {
+  return {
+    kind: 'setGeneralStance',
+    payload: { owner, stance },
+  };
+}

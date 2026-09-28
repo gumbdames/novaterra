@@ -26,6 +26,26 @@
   --accent: #57c8ff;
   --panel: rgba(8, 14, 24, 0.72);
   --panel-border: rgba(120, 180, 230, 0.22);
+  /* Phase 3: UI scale (set from settings; 1 = 100%). */
+  --ui-scale: 1;
+}
+
+/* Phase 3: colorblind-friendly team colors. The renderer reads the
+ * `colorblind` class on <html> for unit/building tint overrides (see
+ * render/palette.ts); the HUD uses high-contrast accents here. */
+html.colorblind {
+  --accent: #f0e442; /* yellow instead of cyan */
+  --panel-border: rgba(240, 228, 66, 0.35);
+}
+
+/* Phase 3: global UI scale. Applied to the HUD root; the 3D canvas is
+ * unaffected (world units don't scale with UI preferences). */
+#hud {
+  font-size: calc(14px * var(--ui-scale));
+}
+#hud .hud-btn {
+  font-size: calc(12px * var(--ui-scale));
+  padding: calc(4px * var(--ui-scale)) calc(8px * var(--ui-scale));
 }
 
 * {

@@ -124,6 +124,14 @@ export function acquireTarget(world: World, unit: UnitRecord, def: UnitDef): Uni
 /** Apply one shot from attacker to target. Returns true if the target died. */
 function fireWeapon(world: World, attacker: UnitRecord, def: UnitDef, target: UnitRecord): boolean {
   const mult = damageMultiplier(world, attacker, def, target);
+  // Phase 3: an active Aegis shield blocks all damage to the owner's units.
+  // (Reads world.superweapons directly — importing superweapons.ts here
+  // would cycle, since the storm system needs combat's killUnit.)
+  const sw = world.superweapons.players.find((p) => p.owner === target.owner);
+  if (sw && world.tick < sw.aegis.activeUntil) {
+    attacker.cooldownLeft = def.cooldownTicks;
+    return false; // shield absorbs the shot
+  }
   target.hp -= def.damage * mult;
   attacker.cooldownLeft = def.cooldownTicks;
   return target.hp <= 0;

@@ -64,8 +64,8 @@ describe('session', () => {
 
   it('registers the documented system order', () => {
     const session = createSession({ seed: 1234 });
-    // pathfinding → movement → combat → economy → AI: five systems.
-    expect(session.driver.systems).toHaveLength(5);
+    // pathfinding → movement → combat → superweapons → economy → mayors → generals → AI: eight systems.
+    expect(session.driver.systems).toHaveLength(8);
   });
 
   it('routes player intents through the command queue', () => {

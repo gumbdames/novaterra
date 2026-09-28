@@ -75,11 +75,21 @@ import {
 } from './selection';
 import {
   buildAdvanceAgeOrder,
+  buildAssignGeneralOrder,
+  buildAssignMayorOrder,
   buildAttackOrders,
+  buildCancelTradeRouteOrder,
   buildDemolishOrder,
+  buildDismissGeneralOrder,
+  buildDismissMayorOrder,
+  buildEstablishTradeRouteOrder,
+  buildFireAegisOrder,
+  buildFireStormOrder,
   buildMoveOrder,
   buildPlaceBuildingOrder,
   buildRoadOrder,
+  buildSetGeneralStanceOrder,
+  buildSetSpecializationOrder,
   buildStopOrders,
   buildTrainOrder,
   buildZoneOrder,
@@ -87,7 +97,7 @@ import {
 } from './orders';
 import { evaluateAdvisor, type AdvisorItem } from './advisor';
 import { HUD, type BuildTool } from './hud';
-import { PauseMenu, type QualityLevel } from './menus';
+import { PauseMenu, loadSettings, type QualityLevel } from './menus';
 import { STRINGS } from './strings';
 import { AudioEngine } from '../audio/engine';
 import { CheatConsole, cheatHelpText, type CheatAction } from './cheatconsole';
@@ -147,6 +157,7 @@ export interface GameOptions {
 type PlacementMode =
   | { kind: 'train'; unitKind: UnitKind }
   | { kind: 'build'; tool: BuildTool }
+  | { kind: 'storm' }
   | null;
 
 const ADVISOR_REFRESH_MS = 2000;
@@ -320,6 +331,11 @@ class GameController {
     this.saveStore = saveStore;
     this.lastAutosaveTick = session.world.tick;
 
+    // Phase 3: apply persisted accessibility settings.
+    const saved = loadSettings();
+    this.setColorblind(saved.colorblind);
+    this.setUiScale(saved.uiScale);
+
     this.hud = new HUD(container, {
       onPauseToggle: () => this.togglePause(),
       onSpeedChange: (speed) => {
@@ -340,6 +356,25 @@ class GameController {
         this.placement = null;
       },
       onAdvanceAge: (program) => this.issueAdvanceAge(program),
+      // Phase 3: superweapons, specialization, trade, delegation.
+      onFireAegis: () => this.issueOrder(buildFireAegisOrder(HUMAN_PLAYER_ID)),
+      onStormTarget: () => {
+        this.placement = { kind: 'storm' };
+        this.hud.toast('Storm targeting: left-click the map. Right-click cancels.');
+      },
+      onSetSpecialization: (spec) =>
+        this.issueOrder(buildSetSpecializationOrder(HUMAN_PLAYER_ID, spec)),
+      onEstablishTradeRoute: (partner) =>
+        this.issueOrder(buildEstablishTradeRouteOrder(HUMAN_PLAYER_ID, partner)),
+      onCancelTradeRoute: (partner) =>
+        this.issueOrder(buildCancelTradeRouteOrder(HUMAN_PLAYER_ID, partner)),
+      onAssignMayor: (policy) =>
+        this.issueOrder(buildAssignMayorOrder(HUMAN_PLAYER_ID, policy)),
+      onDismissMayor: () => this.issueOrder(buildDismissMayorOrder(HUMAN_PLAYER_ID)),
+      onAssignGeneral: (stance) => this.issueAssignGeneral(stance),
+      onDismissGeneral: () => this.issueOrder(buildDismissGeneralOrder(HUMAN_PLAYER_ID)),
+      onSetGeneralStance: (stance) =>
+        this.issueOrder(buildSetGeneralStanceOrder(HUMAN_PLAYER_ID, stance)),
     });
     this.pauseMenu = new PauseMenu(container, {
       onStartSkirmish: () => undefined,
@@ -348,6 +383,8 @@ class GameController {
       onQualityChange: (q) => applyQuality(this.renderer, q),
       onAudioChange: (patch) => this.audio.updateSettings(patch),
       onMuseFrequencyChange: (f) => this.setMuseFrequency(f),
+      onColorblindChange: (v) => this.setColorblind(v),
+      onUiScaleChange: (v) => this.setUiScale(v),
       onSaveGame: () => this.openSaveDialog(),
       onConfirmExit: (saveFirst) => void this.confirmExit(saveFirst),
     });
@@ -597,6 +634,16 @@ class GameController {
     else this.museBox?.show();
   }
 
+  /** Phase 3: apply colorblind-friendly team colors (CSS class on root). */
+  setColorblind(v: boolean): void {
+    document.documentElement.classList.toggle('colorblind', v);
+  }
+
+  /** Phase 3: apply UI scale (CSS variable on root). */
+  setUiScale(v: number): void {
+    document.documentElement.style.setProperty('--ui-scale', String(v));
+  }
+
   dispose(): void {
     this.disposed = true;
     this.renderer.setAnimationLoop(null);
@@ -774,6 +821,22 @@ class GameController {
     this.audio.playSfx('ageFanfare');
   }
 
+  /** Phase 3: issue a simple order (fire, specialization, trade, mayor). */
+  private issueOrder(intent: OrderIntent): void {
+    this.enqueue(intent);
+  }
+
+  /** Phase 3: appoint a general over the currently selected units. */
+  private issueAssignGeneral(stance: string): void {
+    const ids = this.selection.unitIds;
+    if (ids.length === 0) {
+      this.hud.toast('Select units first, then appoint a general.');
+      return;
+    }
+    this.enqueue(buildAssignGeneralOrder(HUMAN_PLAYER_ID, ids, stance));
+    this.hud.toast(`General appointed (${stance}).`);
+  }
+
   /** Right-click: attack an enemy unit, or move to open ground. */
   private issueContextOrder(worldX: number, worldZ: number): void {
     const world = this.session.world;
@@ -828,6 +891,13 @@ class GameController {
     if (this.placement?.kind === 'build') {
       this.handleBuildClick(point.x, point.z);
       this.audio.playSfx('place');
+      return;
+    }
+    if (this.placement?.kind === 'storm') {
+      this.enqueue(buildFireStormOrder(HUMAN_PLAYER_ID, point.x, point.z));
+      this.audio.playSfx('place');
+      this.placement = null;
+      this.hud.toast('Storm Engine firing.');
       return;
     }
 

@@ -69,6 +69,15 @@ import { registerAgeCommands } from '../sim/ages';
 import { registerCheatCommands } from '../sim/cheats';
 import { addAIPlayer, AI_MAX_UNITS, createAISystem, type AIDifficulty } from '../sim/ai';
 import { restoreSnapshot, type Snapshot } from '../sim/snapshot';
+import {
+  registerDelegationCommands,
+  createMayorSystem,
+  createGeneralSystem,
+} from '../sim/delegation';
+import {
+  registerSuperweaponCommands,
+  createSuperweaponSystem,
+} from '../sim/superweapons';
 import type { OrderIntent } from './orders';
 import type { MissionDef } from '../campaign/missions';
 
@@ -229,6 +238,8 @@ export function createSession(options: SessionOptions): GameSession {
   registerCombatCommands(queue);
   registerAgeCommands(queue);
   registerCheatCommands(queue);
+  registerDelegationCommands(queue);
+  registerSuperweaponCommands(queue);
 
   const driver = createTickDriver({
     queue,
@@ -236,9 +247,13 @@ export function createSession(options: SessionOptions): GameSession {
       createPathfindingSystem(terrain),
       createMovementSystem(terrain),
       createCombatSystem(),
+      createSuperweaponSystem(),
       createEconomySystem(terrain),
+      createMayorSystem(),
       // AI needs the queue to issue its orders through.
       createAISystem(queue),
+      // Generals issue orders like the AI does, after it.
+      createGeneralSystem(queue),
     ],
   });
 

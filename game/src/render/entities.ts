@@ -50,8 +50,17 @@ import {
   UTILITY_ZONE,
 } from '../sim/city';
 
-/** Team colors: human cyan-blue, rival red. */
-const TEAM_COLORS = ['#3aa0ff', '#ff5544'] as const;
+/**
+ * Team colors: human blue, rival red (default) or orange (colorblind).
+ * Blue/orange is safe for the most common color-vision deficiencies
+ * (deuteranopia/protanopia); the HTML `colorblind` class toggles it.
+ */
+function teamColors(): readonly [string, string] {
+  if (typeof document !== 'undefined' && document.documentElement.classList.contains('colorblind')) {
+    return ['#3aa0ff', '#ffaa00'] as const; // blue vs orange
+  }
+  return ['#3aa0ff', '#ff5544'] as const; // blue vs red
+}
 
 /** Hull colors per unit kind family (subtle variety under team tint). */
 function hullColorFor(kind: string): number {
@@ -356,7 +365,7 @@ export class EntityRenderer {
   private createUnitView(u: UnitRecord): UnitView {
     const group = new THREE.Group();
     const size = hullSizeFor(u.kind);
-    const team = TEAM_COLORS[u.owner] ?? '#aaaaaa';
+    const team = teamColors()[u.owner] ?? '#aaaaaa';
     const hullMat = new THREE.MeshStandardMaterial({
       color: hullColorFor(u.kind),
       roughness: 0.55,

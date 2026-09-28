@@ -48,6 +48,10 @@ import type { AIState } from './ai';
 import { initAI } from './ai';
 import type { AgeState } from './ages';
 import { initAges } from './ages';
+import type { DelegationState } from './delegation';
+import { initDelegation } from './delegation';
+import type { SuperweaponState } from './superweapons';
+import { initSuperweapons } from './superweapons';
 
 /** Minimal per-entity record. Later steps add components; the shape stays plain. */
 export interface EntityRecord {
@@ -84,6 +88,10 @@ export interface World {
   ai: AIState;
   /** Age state (Foundation → Connectivity + National Program). Snapshotted + digested. */
   ages: AgeState;
+  /** Chain-of-command delegations (mayors, generals). Snapshotted + digested. */
+  delegation: DelegationState;
+  /** Superweapon slots, scheduled strikes, fx. Snapshotted + digested. */
+  superweapons: SuperweaponState;
 }
 
 /** First assignable entity id (0 stays reserved as the "no entity" sentinel). */
@@ -103,6 +111,8 @@ export function createWorld(seed: number): World {
     pathfinding: initPathfinding(),
     ai: initAI(),
     ages: initAges(),
+    delegation: initDelegation(),
+    superweapons: initSuperweapons(),
   };
 }
 

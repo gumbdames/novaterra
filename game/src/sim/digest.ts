@@ -86,9 +86,11 @@ export function canonicalizeWorld(world: World): string {
     out += `p${p.id},${p.name},${canonicalNumber(p.funds)},${canonicalNumber(p.materials)},`;
     out += `${canonicalNumber(p.fuel)},${canonicalNumber(p.food)},${canonicalNumber(p.research)},`;
     out += `${canonicalNumber(p.goods)},${canonicalNumber(p.influence)},${canonicalNumber(p.manpower)},`;
-    out += `${p.taxRates.join(',')},${p.population};`;
+    out += `${p.taxRates.join(',')},${p.population},${p.specialization};`;
   }
   out += `|shortage=${world.city.foodShortage ? 1 : 0}`;
+  // Trade routes: owner→partner pairs in establishment order.
+  out += `|trade=${world.city.tradeRoutes.map((r) => `${r.owner}>${r.partner}@${r.establishedTick}`).join(',')};`;
   // Units: spawn order; floats canonicalized. failReason is a plain string.
   out += `|units=${world.units.length}|`;
   for (const u of world.units) {
@@ -122,7 +124,7 @@ export function canonicalizeWorld(world: World): string {
     out += `a${p.owner},${p.difficulty},${canonicalNumber(p.baseX)},${canonicalNumber(p.baseZ)},`;
     out += `${p.nextThinkTick},`;
     out += p.forwardBase ? `${canonicalNumber(p.forwardBase.x)},${canonicalNumber(p.forwardBase.z)},` : '-,';
-    out += `${p.scoutIndex},`;
+    out += `${p.scoutIndex},${p.superweapons.aegisReadyTick},${p.superweapons.stormReadyTick},`;
     const keys = Object.keys(p.builtCounts).sort();
     out += keys.map((k) => `${k}:${p.builtCounts[k]}`).join(',') + ';';
   }
@@ -134,6 +136,23 @@ export function canonicalizeWorld(world: World): string {
   for (const [age, prog] of progEntries) {
     out += `${age}:${prog};`;
   }
+  out += '|';
+  // Delegation: mayors then generals, in assignment order.
+  out += '|deleg=';
+  for (const m of world.delegation.mayors) {
+    out += `m${m.owner}:${m.policy};`;
+  }
+  for (const g of world.delegation.generals) {
+    out += `g${g.owner}:${g.stance}:${g.unitIds.join('.')};`;
+  }
+  out += '|';
+  // Superweapons: slots per player, pending strikes, live fx.
+  out += '|sw=';
+  for (const p of world.superweapons.players) {
+    out += `s${p.owner},a${p.aegis.cooldownUntil}/${p.aegis.activeUntil},t${p.storm.cooldownUntil};`;
+  }
+  out += `|strikes=${world.superweapons.strikes.map((s) => `${s.owner}:${canonicalNumber(s.x)},${canonicalNumber(s.z)}@${s.atTick}`).join(',')};`;
+  out += `|fx=${world.superweapons.fx.map((f) => `${f.kind}:${canonicalNumber(f.x)},${canonicalNumber(f.z)}@${f.untilTick}`).join(',')};`;
   out += '|';
   return out;
 }
