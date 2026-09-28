@@ -276,7 +276,22 @@ http://localhost:5173/novaterra/?bench=1&auto=1&backend=webgl2
 # then read window.__novaterra_bench in devtools.
 ```
 
-**Results — ⏳ PLACEHOLDER, to be filled after running on real hardware.**
+**Live validation — 2026-09-28 (leased cloud browser, no real GPU).**
+The harness was run end-to-end against the deployed Pages build and works:
+the scene renders, the sweep progresses point by point with no on-page
+errors, the HUD reports the backend honestly, and the auto-fallback behaves
+as designed — with `?backend=webgpu` on a browser without WebGPU support it
+reported `webgl2 (auto-fallback)` and ran the identical WebGL2 path. This
+environment renders in software (~2.5 fps on the 100-building point), so any
+frame-time numbers from it would be meaningless for the 60fps budget gate —
+**no numbers are recorded from it.** The table below still awaits a run on
+real hardware.
+
+**Results — ⏳ pending a real-hardware run.** If you have a laptop handy,
+open the two `auto=1` URLs above in Chrome/Edge (about 1–2 minutes each on
+real hardware), then copy `JSON.stringify(window.__novaterra_bench)` from
+devtools into the table. The most valuable machine is a mid-range laptop
+(Iris Xe / M1 / GTX 1650 class).
 The harness author has no browser access; the parent (or a browser task)
 runs the URLs above on a mid-range laptop and records the numbers here.
 Fill one row per sweep point per backend, plus the machine/GPU/browser.
