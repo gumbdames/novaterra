@@ -555,7 +555,7 @@ starting resource clusters near each spawn + contested expansion sites
 
 | # | Name | Size | Water | Players | Character |
 |---|---|---|---|---|---|
-| 1 | **Meridian Plains** | Medium | 5% | 2 | Learning map. Open land, one river, generous starts. |
+| 1 | **Meridian Plains** | Medium (512×512 world units, 256×256 heightfield cells) | 5% | 2 | Learning map. Open land, one river, generous starts. |
 | 2 | **Twin Rivers** | Medium | 15% | 2 | Two rivers, bridge chokepoints; land war with flanks. |
 | 3 | **The Shattered Coast** | Large | 30% | 2–3 | Long coastline; navy optional but rewarding; port cities shine. |
 | 4 | **Rustbelt Delta** | Large | 25% | 3 | Swampy, resource-rich center; fight over the delta or boom around it. |

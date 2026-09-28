@@ -50,6 +50,9 @@ game/src/
     pathing/      # domain grids + hierarchical A*/JPS + flow fields +
                   # local steering; time-sliced request queue (≤2 ms/tick)
     spatial.ts    # uniform spatial hash grid (rebuilt per tick)
+    terrain.ts    # deterministic seeded mapgen: Meridian Plains heightfield,
+                  # biomes, water level, spawn placement (regen from seed;
+                  # not part of World — see §5)
     digest.ts     # per-tick state hash (save integrity, desync detect, tests)
     serialize.ts  # snapshot <-> SaveFile (versioned, migrated)
   render/         # read-only view of last two sim ticks + alpha; three.js only
@@ -91,9 +94,24 @@ they never mutate sim state.
   A*/JPS for long range → flow fields for group moves (cost O(grid), not
   O(units)) → local steering. All path requests go through a **time-sliced
   queue (≤2 ms/tick)** — order-spam can never break the frame budget.
-- **Spatial queries:** uniform spatial hash grid, rebuilt per tick, sorted
-  pair emission for determinism. Serves combat, economy, steering, obstacles,
-  render culling.
+- **Spatial queries:** uniform spatial hash grid (cell 16 world units,
+  insert/remove/move, radius + rect queries, results always sorted by entity
+  id for determinism). Serves combat, economy, steering, obstacles, render
+  culling.
+- **Terrain/mapgen (`sim/terrain.ts`):** Meridian Plains is *generated from a
+  seed*, not stored — the 256×256 uint16 heightfield (512 world units, 2
+  units/vertex) is regenerated identically on every boot and is therefore not
+  part of `World` snapshots. Pipeline: 3-octave value noise (named RNG stream
+  `terrain`, mulberry32) → carve one N–S river + one lake → set the water
+  level at the 5th height percentile (≈5% water, tested 4–6%) → place 2
+  spawns on land (nominal (−128,−128)/(128,128), nudged to dry land,
+  flattened, ≥300 units apart, tested). Biome per vertex (water bed, shore,
+  3 grasses, highland) is a pure function of height + moisture.
+  Rendering (`render/terrain.ts`): 4×4 chunk grid, one indexed vertex-colored
+  mesh per chunk + one translucent water plane = 17 draw calls, 131,074
+  triangles total; chunk meshes share one material. Greedy meshing and
+  worker-built terrain remain future optimizations — current totals sit well
+  inside the §6 budgets.
 - **Economy tick:** part of the sim tick (not wall-clock); resource flows
   computed on cohorts + sampled visible agents (full per-citizen agents
   rejected on perf grounds — see game-design.md C4/A1).
@@ -152,6 +170,7 @@ save with no visible hitch; load ≤ 3 s.
 | D7 | 2026-09-28 | Mode 2 = "Muse persona" adaptive AI director (offline default) | Persona is a pure function of sim state (serializable brain); a model in the tick would break determinism/offline/budget | — |
 | D8 | 2026-09-28 | Optional "Live Muse link": user's own API key, digest↔directive protocol, strategic-commander only, silent fallback to persona | User request 2026-09-28; keeps offline-first intact; model never touches the tick, so determinism and offline play are preserved | — |
 | D9 | 2026-09-28 | Tick accumulator epsilon (1e-9 ms); named RNG streams | Float subtraction of TICK_MS accumulates ~1e-13 dust per tick — without the epsilon an accumulator holding exactly N ticks' worth of time compares just below TICK_MS and loses a tick (100 ms fed only 2 ticks instead of 3). Named streams (seed = FNV-1a(master, name)) keep subsystems from shifting each other's draws; all stream states live in `world.rng`, so saves capture them | — |
+| D10 | 2026-09-28 | Meridian Plains terrain: regen-from-seed, not stored in World | 256×256 uint16 heightfield regenerates identically from the map seed (5th-percentile water level ⇒ ~5% water; 2 spawns on land, ≥300 apart), so snapshots stay small and saves never store terrain. Water level is derived from the generated heights (percentile), not a tuned constant, so reseeds keep the 5% character automatically | — |
 
 ## 8. Open questions (carried into Phase 1)
 

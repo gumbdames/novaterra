@@ -38,7 +38,14 @@ fun in 30–60 minute sessions. Build order:
 1. Scaffold: Vite + TS strict + pinned three.js, Pages deploy (`/novaterra/` base — repo rename user-confirmed 2026-09-28) via `gh-pages` branch pushes (no Actions workflow — token lacks `workflow` scope; deploys are explicit, verified steps), dev loop — **COMPLETE 2026-09-28** (three 0.186.1, TS 7.0.2, Vite 8.3.1, Vitest 3.2.7; typecheck/test/build green; preview verified serving `/novaterra/`)
 2. Render micro-benchmarks on both backends (gating before content scale-up) — **COMPLETE 2026-09-28** (three 0.186.1, TS 7.0.2, Vite 8.3.1, Vitest 3.2.7; harness in `game/src/bench/`: `?bench=1&auto=1&backend=webgpu|webgl2`, 120-frame warm-up + 300-frame measurement per sweep point [100→10000 buildings, 2:1 units], orbiting camera, results as console table + `window.__novaterra_bench` JSON; budget verdict vs ARCHITECTURE.md §6; 27 new unit tests, smoke/typecheck/build green; measured numbers still to be recorded in `docs/research/tech-stack.md` §3 on real hardware)
 3. Sim core: tick driver, RNG, world store, commands, digest, snapshot/serialize — **COMPLETE 2026-09-28** (`game/src/sim/`: `rng.ts` mulberry32 + named streams, `world.ts` plain-data store, `tick.ts` 30 Hz accumulator driver, `commands.ts` tick-aligned queue, `digest.ts` FNV-1a state hash, `snapshot.ts` versioned snapshots; 43 new tests, 72/72 green; typecheck/build green)
-4. Terrain + Meridian Plains map; spatial hash grid
+4. Terrain + Meridian Plains map; spatial hash grid — **COMPLETE 2026-09-28**
+   (`game/src/sim/terrain.ts`: deterministic seeded mapgen — 512×512 world
+   units, 256×256 heightfield cells, 3-octave value noise + carved river and
+   lake, 5th-percentile water level ⇒ ~5% water, 2 spawns on land ≥300 units
+   apart; `game/src/sim/spatial.ts`: uniform spatial hash, cell 16, sorted
+   queries; `game/src/render/terrain.ts`: 16 chunk meshes + 1 water plane =
+   17 draw calls, 131,074 triangles; normal boot now shows the live map.
+   23 new tests, 95/95 green; typecheck/build green; AGPL stamps verified.)
 5. City building (roads, 3 zones, power/water, 6–8 buildings) + economy tick (Funds, Materials, Fuel, Food, Research) + market/taxes
 6. Time-sliced pathfinding + movement; hand-rolled ECS vs apecs measurement
 7. Units (8 land + 3 air) + combat with counters + Classic AI 1–3

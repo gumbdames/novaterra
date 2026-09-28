@@ -20,7 +20,8 @@
  * Responsibilities:
  *  - Create the three.js renderer (WebGPURenderer from `three/webgpu`,
  *    which auto-falls-back to a WebGL2 backend when WebGPU is unavailable —
- *    see ARCHITECTURE.md D1), the placeholder scene, and the menu stub.
+ *    see ARCHITECTURE.md D1), the Meridian Plains backdrop scene, and the
+ *    menu stub.
  *  - Nothing else. Game systems (sim/render/ui/audio) arrive in later steps
  *    behind the module boundaries in ARCHITECTURE.md §3.
  *
@@ -38,9 +39,12 @@
 import * as THREE from 'three';
 import './style.css';
 import { GAME_TAGLINE, GAME_TITLE, GAME_VERSION } from './config';
+import { generateTerrain, MERIDIAN_PLAINS } from './sim/terrain';
+import { buildTerrainView } from './render/terrain';
 
 /**
- * Boot the placeholder experience: renderer + scene + menu overlay.
+ * Boot the menu experience: renderer + Meridian Plains backdrop scene + menu
+ * overlay.
  * Async because WebGPURenderer requires `await renderer.init()`.
  * Safe to call once; throws on unrecoverable renderer failure (the caller
  * surfaces it via showFatal()).
@@ -63,14 +67,17 @@ export async function boot(): Promise<void> {
   // Cap DPR: first step of the adaptive quality governor (ARCHITECTURE.md §6).
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 
-  const scene = buildPlaceholderScene();
+  const { scene, water, waterLevel } = buildBackdropScene();
   const camera = new THREE.PerspectiveCamera(
     55,
     window.innerWidth / window.innerHeight,
     0.1,
-    2000,
+    3000,
   );
-  camera.position.set(0, 42, 95);
+  // Wide orbit over the 512-unit map so the menu sits over living terrain.
+  const orbitRadius = 300;
+  const orbitHeight = 185;
+  camera.position.set(0, orbitHeight, orbitRadius);
 
   buildMenuOverlay(app);
 
@@ -80,28 +87,39 @@ export async function boot(): Promise<void> {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  // Gentle orbital drift so the placeholder visibly "lives".
-  // The real game loop (fixed-timestep sim + interpolated render) replaces
-  // this in step 3; this is scaffolding only.
+  // Gentle orbital drift so the backdrop visibly "lives".
+  // The real game loop (fixed-timestep sim + interpolated render) takes over
+  // once gameplay starts (a later step wires it in); this menu loop is
+  // scaffolding only.
   const start = performance.now();
   renderer.setAnimationLoop(() => {
     const t = (performance.now() - start) / 1000;
-    const radius = 95;
     camera.position.set(
-      Math.sin(t * 0.05) * radius,
-      42,
-      Math.cos(t * 0.05) * radius,
+      Math.sin(t * 0.05) * orbitRadius,
+      orbitHeight,
+      Math.cos(t * 0.05) * orbitRadius,
     );
-    camera.lookAt(0, 6, 0);
+    camera.lookAt(0, 4, 0);
+    // Subtle water shimmer; render-side only, never touches the sim.
+    water.position.y = waterLevel + Math.sin(t * 0.8) * 0.15;
     renderer.render(scene, camera);
   });
 }
 
 /**
- * Placeholder diorama: gradient sky, fog, ground grid, a few "city blocks".
- * Replaced by the real terrain/city renderer in later Phase 1 steps.
+ * Menu backdrop: gradient sky, fog, lights, and the real Meridian Plains
+ * terrain (16 chunk meshes + water plane) generated deterministically from
+ * the map seed. Replaces the step-1 placeholder diorama; the menu overlay
+ * behavior is unchanged.
+ *
+ * Returns the scene plus the water mesh and level so the animation loop can
+ * bob the water without re-querying the scene graph.
  */
-function buildPlaceholderScene(): THREE.Scene {
+function buildBackdropScene(): {
+  scene: THREE.Scene;
+  water: THREE.Mesh;
+  waterLevel: number;
+} {
   const scene = new THREE.Scene();
 
   // Gradient sky baked to a canvas texture (cheap, no shader yet).
@@ -110,7 +128,7 @@ function buildPlaceholderScene(): THREE.Scene {
   skyCanvas.height = 256;
   const ctx = skyCanvas.getContext('2d');
   if (ctx === null) {
-    throw new Error('placeholder scene: 2d canvas context unavailable');
+    throw new Error('backdrop scene: 2d canvas context unavailable');
   }
   const gradient = ctx.createLinearGradient(0, 0, 0, 256);
   gradient.addColorStop(0.0, '#0b1e3a'); // zenith
@@ -122,7 +140,7 @@ function buildPlaceholderScene(): THREE.Scene {
   const skyTexture = new THREE.CanvasTexture(skyCanvas);
   skyTexture.colorSpace = THREE.SRGBColorSpace;
   scene.background = skyTexture;
-  scene.fog = new THREE.Fog(0x1a2230, 120, 520);
+  scene.fog = new THREE.Fog(0x1a2230, 320, 1150);
 
   // Lighting: hemisphere for sky bounce + one directional "sun".
   scene.add(new THREE.HemisphereLight(0x9db8dd, 0x1c2420, 0.9));
@@ -130,49 +148,17 @@ function buildPlaceholderScene(): THREE.Scene {
   sun.position.set(80, 120, 40);
   scene.add(sun);
 
-  // Ground: dark plane + grid = the future building site.
-  const ground = new THREE.Mesh(
-    new THREE.PlaneGeometry(600, 600),
-    new THREE.MeshStandardMaterial({ color: 0x11161d, roughness: 1 }),
-  );
-  ground.rotation.x = -Math.PI / 2;
-  scene.add(ground);
-  const grid = new THREE.GridHelper(600, 60, 0x57c8ff, 0x223448);
-  grid.position.y = 0.02;
-  (grid.material as THREE.Material).transparent = true;
-  (grid.material as THREE.Material).opacity = 0.35;
-  scene.add(grid);
+  // Real terrain: deterministic Meridian Plains, 16 chunks, water plane.
+  // Generation is synchronous (~66k heightfield vertices of value noise +
+  // meshing ≈ 150 ms one-time cost measured in Node on this VM's class of
+  // machine; the browser number will differ). Acceptable for the boot path;
+  // seeded mapgen-before-tick-0 is the sanctioned worker candidate later
+  // (ARCHITECTURE.md §2).
+  const terrain = generateTerrain(MERIDIAN_PLAINS.seed);
+  const view = buildTerrainView(terrain);
+  scene.add(view.group);
 
-  // A few placeholder "city blocks" so the scene has depth.
-  const blockMaterial = new THREE.MeshStandardMaterial({
-    color: 0x2c3e55,
-    roughness: 0.85,
-  });
-  const edgeMaterial = new THREE.LineBasicMaterial({ color: 0x57c8ff });
-  const blockSpecs: Array<[number, number, number, number, number]> = [
-    // [x, z, w, d, h]
-    [-28, -12, 14, 14, 10],
-    [-8, -18, 10, 10, 22],
-    [12, -8, 16, 12, 6],
-    [30, 8, 10, 10, 16],
-    [-4, 14, 12, 12, 12],
-  ];
-  for (const [x, z, w, d, h] of blockSpecs) {
-    const block = new THREE.Mesh(
-      new THREE.BoxGeometry(w, h, d),
-      blockMaterial,
-    );
-    block.position.set(x, h / 2, z);
-    scene.add(block);
-    const edges = new THREE.LineSegments(
-      new THREE.EdgesGeometry(block.geometry),
-      edgeMaterial,
-    );
-    edges.position.copy(block.position);
-    scene.add(edges);
-  }
-
-  return scene;
+  return { scene, water: view.water, waterLevel: terrain.waterLevel };
 }
 
 /**
