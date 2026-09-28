@@ -291,6 +291,13 @@ the enemy = "the Kestrel Directorate"). All subsequent sections use it.
 
 ### C2. Backstory (draft)
 
+**Setting — locked 2026-09-28 (user decision):** an alternate Earth, modern
+2026 — our planet's look, technology, and society, but fictional continents,
+countries, and maps (keeps clear of real-world politics). All human: no
+outer space, no aliens, no fantasy races. The game is fixed in 2026; the
+ages (Foundation → Connectivity → …) are *development stages* of your
+nation, not calendar years.
+
 **The setting is 2026. The place is Novaterra. You are its first President.**
 
 Ten years ago the old Federation fractured — the Fracture of 2024 left a dozen
