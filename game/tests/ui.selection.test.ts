@@ -1,0 +1,134 @@
+/*!
+ * NOVATERRA — Copyright (C) 2026 Gumb Dames
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, version 3 of the License.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
+ * NOVATERRA — selection tests (Phase 1, step 9).
+ *
+ * Pure selection state + picking helpers: box select filters, click
+ * tolerance, shift-toggle, pruning dead ids. Raycasting itself lives in
+ * ui/game.ts (needs three.js) and is not tested here.
+ */
+import { describe, expect, it } from 'vitest';
+import {
+  boxSelectUnits,
+  clearSelection,
+  createSelection,
+  isSelectionEmpty,
+  nearestUnit,
+  pruneSelection,
+  selectBuilding,
+  selectUnits,
+  toggleUnit,
+  type PickableUnit,
+} from '../src/ui/selection';
+
+function unit(id: number, x: number, z: number, owner = 0, hp = 100): PickableUnit {
+  return { id, owner, x, z, hp };
+}
+
+describe('selection state', () => {
+  it('starts empty', () => {
+    expect(isSelectionEmpty(createSelection())).toBe(true);
+    expect(isSelectionEmpty(clearSelection())).toBe(true);
+  });
+
+  it('selectUnits replaces the selection and clears buildings', () => {
+    const s = selectUnits([1, 2, 3]);
+    expect(s.unitIds).toEqual([1, 2, 3]);
+    expect(s.buildingId).toBeNull();
+    expect(isSelectionEmpty(s)).toBe(false);
+  });
+
+  it('selectBuilding clears units', () => {
+    const s = selectBuilding(42);
+    expect(s.buildingId).toBe(42);
+    expect(s.unitIds).toEqual([]);
+  });
+
+  it('toggleUnit adds and removes (shift-click)', () => {
+    let s = selectUnits([1]);
+    s = toggleUnit(s, 2);
+    expect(s.unitIds).toEqual([1, 2]);
+    s = toggleUnit(s, 1);
+    expect(s.unitIds).toEqual([2]);
+    // Toggling clears any building selection.
+    s = toggleUnit(selectBuilding(9), 5);
+    expect(s.buildingId).toBeNull();
+    expect(s.unitIds).toEqual([5]);
+  });
+});
+
+describe('boxSelectUnits', () => {
+  const units = [unit(1, 0, 0), unit(2, 5, 5), unit(3, 50, 50, 1), unit(4, 2, 2, 0, 0)];
+
+  it('selects owned living units inside the rect', () => {
+    expect(boxSelectUnits(units, -1, -1, 10, 10, 0)).toEqual([1, 2]);
+  });
+
+  it('accepts corners in any order', () => {
+    expect(boxSelectUnits(units, 10, 10, -1, -1, 0)).toEqual([1, 2]);
+  });
+
+  it('excludes enemies and the dead', () => {
+    // id 3 is enemy-owned, id 4 is dead.
+    expect(boxSelectUnits(units, -100, -100, 100, 100, 0)).toEqual([1, 2]);
+    expect(boxSelectUnits(units, -100, -100, 100, 100, 1)).toEqual([3]);
+  });
+
+  it('follows input order deterministically', () => {
+    const shuffled = [unit(2, 5, 5), unit(1, 0, 0)];
+    expect(boxSelectUnits(shuffled, -1, -1, 10, 10, 0)).toEqual([2, 1]);
+  });
+});
+
+describe('nearestUnit', () => {
+  const units = [unit(1, 0, 0), unit(2, 10, 0), unit(3, 3, 0, 0, 0)];
+
+  it('picks the closest unit within tolerance', () => {
+    expect(nearestUnit(units, 2.9, 0, 5)?.id).toBe(1);
+    expect(nearestUnit(units, 9, 0, 5)?.id).toBe(2);
+  });
+
+  it('returns null outside tolerance', () => {
+    expect(nearestUnit(units, 100, 100, 5)).toBeNull();
+  });
+
+  it('skips dead units and breaks ties by lowest id', () => {
+    // id 3 is dead at (3,0); id 1 at (0,0) wins over id 2 at equal distance.
+    const tied = [unit(2, 4, 0), unit(1, 0, 0)];
+    expect(nearestUnit(tied, 2, 0, 10)?.id).toBe(1);
+  });
+});
+
+describe('pruneSelection', () => {
+  it('drops dead units and demolished buildings', () => {
+    const sel = { unitIds: [1, 2, 3], buildingId: 7 };
+    const pruned = pruneSelection(sel, new Set([1, 3]), new Set<number>());
+    expect(pruned.unitIds).toEqual([1, 3]);
+    expect(pruned.buildingId).toBeNull();
+  });
+
+  it('keeps live buildings', () => {
+    const pruned = pruneSelection(selectBuilding(7), new Set(), new Set([7]));
+    expect(pruned.buildingId).toBe(7);
+  });
+
+  it('does not mutate the input', () => {
+    const sel = selectUnits([1, 2]);
+    pruneSelection(sel, new Set([1]), new Set());
+    expect(sel.unitIds).toEqual([1, 2]);
+  });
+});

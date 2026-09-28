@@ -31,7 +31,7 @@
 export const GAME_TITLE = 'NOVATERRA' as const;
 
 /** Semantic version of this build (matches game/package.json). */
-export const GAME_VERSION = '0.1.0' as const;
+export const GAME_VERSION = '0.1.0-alpha' as const;
 
 /** Short tagline shown under the title on the menu. */
 export const GAME_TAGLINE =

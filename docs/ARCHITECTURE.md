@@ -57,11 +57,12 @@ game/src/
     serialize.ts  # snapshot <-> SaveFile (versioned, migrated)
   render/         # read-only view of last two sim ticks + alpha; three.js only
     scene.ts renderer.ts instancing.ts terrain.ts effects.ts lod.ts ...
-  ui/             # HUD, menus, dialogs, camera, selection — commands go to sim
+  ui/             # HUD, menus, dialogs, camera, selection, orders, advisor,
+                  # session assembly — commands go to sim, never direct mutation
   audio/          # adaptive music engine (lookahead scheduler, stem states
                   # PEACE→TENSION→WAR→VICTORY + MENU/DEFEAT), 32-voice SFX pool
   net_save/       # IndexedDB driver, export/import, save slots UI data
-  main.ts         # boot, game loop, wiring
+  main.ts         # boot, menu backdrop + menus, wiring (game loop lives in ui/game.ts)
 game/tests/
   unit/           # sim logic tests (Vitest, headless)
   sim/            # scripted gameplay scenarios (replays via command log)

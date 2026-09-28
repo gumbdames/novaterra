@@ -19,3 +19,16 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   stays in range — a rejected chunk is a loud throw, never a silent seam.
 - The water plane is render-side decoration (animated wave bob); the water
   *level* itself is sim data (`TerrainData.waterLevel`).
+
+## Entity rendering conventions (`render/entities.ts`, 0.1 Alpha)
+
+- `EntityRenderer` is a read-only view: `sync(world)` rebuilds instance
+  data from plain sim records every frame; `setSelected`/`updateSelectionRings`
+  drive highlight state. It never writes to the world.
+- One `InstancedMesh` per unit kind + one for buildings + one for roads;
+  health bars and selection rings are instanced quads. Unit meshes are
+  smooth placeholder silhouettes (capsule/cylinder/cone composites) —
+  explicitly temporary 0.1 Alpha art, not final, and never blocky.
+- Roads rebuild when the road digest changes (not just the count).
+- Team colors: human = blue accent, AI = red accent (see `TEAM_COLORS`).
+- `dispose()` releases every geometry/material it created.

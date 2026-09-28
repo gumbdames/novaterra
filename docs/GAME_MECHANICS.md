@@ -61,3 +61,34 @@ Advancing costs 3,000 Funds + 1,200 Materials — spend it wisely, because
 that army you're not building leaves you exposed. Connectivity also
 unlocks **fighters** (fast air units). Choose carefully: you can't switch
 programs later.
+
+## Your army
+
+Pick a unit from the panel at the bottom-left, then click open ground
+to train it there. Every unit is strongest against something and weak
+against something else:
+
+- **Engineer** — builds everything. Protect yours.
+- **Rifles** — cheap infantry, good against other infantry.
+- **Tank** — tough all-rounder, eats infantry for breakfast.
+- **Artillery** — very long range, shreds tanks; fragile up close.
+- **AA** — the only ground unit that can hit aircraft.
+- **Spectre** — fast stealthy raider, hunts tanks and artillery.
+- **Drone** — cheap flying scout, sees far.
+- **Fighter** — fast air superiority (needs the Connectivity age).
+- **Transport / Hauler / Mobile HQ** — support: carry, supply, and a
+  moving command post that makes nearby units fight better.
+
+The rule of thumb: **tanks beat infantry, artillery beats tanks, AA
+beats anything that flies**. Scout first, then build the counter.
+
+## The enemy
+
+In skirmish you face the **Classic AI** at one of three levels:
+
+- **Cadet** — learns the ropes with you. Small armies, simple attacks.
+- **Citizen** — a fair fight. Builds counters and presses advantages.
+- **Commander** — ruthless. Big armies, smart targeting, no mercy.
+
+(In 0.1 Alpha there is no victory screen yet — the fight is the game.
+Wiping out the enemy base is its own reward.)

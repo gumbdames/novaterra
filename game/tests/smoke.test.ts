@@ -32,7 +32,7 @@ import { boot } from '../src/main';
 describe('scaffold smoke', () => {
   it('exposes game identity constants', () => {
     expect(GAME_TITLE).toBe('NOVATERRA');
-    expect(GAME_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(GAME_VERSION).toBe('0.1.0-alpha');
     expect(GAME_TAGLINE.length).toBeGreaterThan(0);
   });
 

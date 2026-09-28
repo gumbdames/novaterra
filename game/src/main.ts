@@ -38,9 +38,11 @@
 
 import * as THREE from 'three';
 import './style.css';
-import { GAME_TAGLINE, GAME_TITLE, GAME_VERSION } from './config';
 import { generateTerrain, MERIDIAN_PLAINS } from './sim/terrain';
 import { buildTerrainView } from './render/terrain';
+import { MainMenu, loadSettings, type QualityLevel } from './ui/menus';
+import { startGame } from './ui/game';
+import type { AIDifficulty } from './sim/ai';
 
 /**
  * Boot the menu experience: renderer + Meridian Plains backdrop scene + menu
@@ -48,6 +50,11 @@ import { buildTerrainView } from './render/terrain';
  * Async because WebGPURenderer requires `await renderer.init()`.
  * Safe to call once; throws on unrecoverable renderer failure (the caller
  * surfaces it via showFatal()).
+ *
+ * Menu ↔ game flow: the menu keeps its own renderer + orbital backdrop.
+ * Starting a skirmish hides the menu canvas (loop stopped) and hands the
+ * #app container to the game controller; exiting the game disposes it and
+ * the menu backdrop resumes.
  */
 export async function boot(): Promise<void> {
   const app = document.getElementById('app');
@@ -65,7 +72,7 @@ export async function boot(): Promise<void> {
   await renderer.init();
   renderer.setSize(window.innerWidth, window.innerHeight);
   // Cap DPR: first step of the adaptive quality governor (ARCHITECTURE.md §6).
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  applyMenuQuality(renderer, loadSettings().quality);
 
   const { scene, water, waterLevel } = buildBackdropScene();
   const camera = new THREE.PerspectiveCamera(
@@ -79,7 +86,28 @@ export async function boot(): Promise<void> {
   const orbitHeight = 185;
   camera.position.set(0, orbitHeight, orbitRadius);
 
-  buildMenuOverlay(app);
+  const menu = new MainMenu(app, {
+    onStartSkirmish: (difficulty: AIDifficulty) => {
+      menu.hide();
+      renderer.setAnimationLoop(null);
+      canvas.style.display = 'none';
+      const seed = (Math.random() * 0x7fffffff) | 0;
+      startGame(app, {
+        seed,
+        aiDifficulty: difficulty,
+        quality: loadSettings().quality,
+        onExitToMenu: () => {
+          canvas.style.display = '';
+          renderer.setAnimationLoop(menuLoop);
+          menu.show();
+        },
+      }).catch(showFatal);
+    },
+    onResume: () => undefined,
+    onExitToMenu: () => undefined,
+    onQualityChange: (q: QualityLevel) => applyMenuQuality(renderer, q),
+  });
+  menu.show();
 
   window.addEventListener('resize', () => {
     camera.aspect = window.innerWidth / window.innerHeight;
@@ -88,11 +116,8 @@ export async function boot(): Promise<void> {
   });
 
   // Gentle orbital drift so the backdrop visibly "lives".
-  // The real game loop (fixed-timestep sim + interpolated render) takes over
-  // once gameplay starts (a later step wires it in); this menu loop is
-  // scaffolding only.
   const start = performance.now();
-  renderer.setAnimationLoop(() => {
+  const menuLoop = (): void => {
     const t = (performance.now() - start) / 1000;
     camera.position.set(
       Math.sin(t * 0.05) * orbitRadius,
@@ -103,7 +128,17 @@ export async function boot(): Promise<void> {
     // Subtle water shimmer; render-side only, never touches the sim.
     water.position.y = waterLevel + Math.sin(t * 0.8) * 0.15;
     renderer.render(scene, camera);
-  });
+  };
+  renderer.setAnimationLoop(menuLoop);
+}
+
+/** Pixel-ratio cap for the menu backdrop, matching the game governor. */
+function applyMenuQuality(
+  renderer: { setPixelRatio(n: number): void },
+  quality: QualityLevel,
+): void {
+  const cap = quality === 'low' ? 1 : quality === 'medium' ? 1.5 : 2;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, cap));
 }
 
 /**
@@ -159,68 +194,6 @@ function buildBackdropScene(): {
   scene.add(view.group);
 
   return { scene, water: view.water, waterLevel: terrain.waterLevel };
-}
-
-/**
- * Menu stub: title + Skirmish / Missions (disabled) / Settings + version.
- * Buttons toast a "coming soon" note — the real UI (src/ui/) wires them up
- * during the vertical slice.
- */
-function buildMenuOverlay(app: HTMLElement): void {
-  const menu = document.createElement('div');
-  menu.id = 'menu';
-
-  const title = document.createElement('h1');
-  title.textContent = GAME_TITLE;
-  menu.appendChild(title);
-
-  const tagline = document.createElement('p');
-  tagline.className = 'tagline';
-  tagline.textContent = GAME_TAGLINE;
-  menu.appendChild(tagline);
-
-  const buttons = document.createElement('div');
-  buttons.className = 'buttons';
-
-  const skirmish = document.createElement('button');
-  skirmish.textContent = 'Skirmish';
-  skirmish.addEventListener('click', () => {
-    toast('Skirmish arrives with the Phase 1 vertical slice.');
-  });
-
-  const missions = document.createElement('button');
-  missions.textContent = 'Missions';
-  missions.disabled = true;
-  missions.title = 'The campaign ships in Phase 2.';
-
-  const settings = document.createElement('button');
-  settings.textContent = 'Settings';
-  settings.addEventListener('click', () => {
-    toast('Settings arrive with the vertical slice.');
-  });
-
-  buttons.append(skirmish, missions, settings);
-  menu.appendChild(buttons);
-
-  const version = document.createElement('div');
-  version.className = 'version';
-  version.textContent = `v${GAME_VERSION} · scaffold`;
-  menu.appendChild(version);
-
-  app.appendChild(menu);
-}
-
-/** Small transient note for stub buttons. */
-function toast(message: string): void {
-  let el = document.getElementById('toast');
-  if (el === null) {
-    el = document.createElement('div');
-    el.id = 'toast';
-    document.body.appendChild(el);
-  }
-  el.textContent = message;
-  el.classList.add('show');
-  window.setTimeout(() => el?.classList.remove('show'), 2200);
 }
 
 /** Full-screen, human-readable failure instead of a blank page. */
