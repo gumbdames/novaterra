@@ -16,3 +16,9 @@ entity sweep on both renderer backends.
 - Conventions: every number the harness reports is defined in `format.ts`;
   budgets live there too (mirroring ARCHITECTURE.md §6). Keep the layout
   seeds fixed — comparable numbers across runs depend on it.
+- Counter contract (learned 2026-09-28): `renderer.init()` starts three's
+  internal rAF loop, which calls `renderer.info.reset()` every frame while
+  `info.autoReset` is true. Any manual measurement loop MUST set
+  `info.autoReset = false` after init and call `info.reset()` before each
+  measured `render()` — otherwise the internal reset races the read and
+  every draws/tris sample comes back 0 (both backends).

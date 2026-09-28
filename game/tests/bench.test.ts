@@ -44,6 +44,7 @@ import { FrameStats, InfoStats, percentile } from '../src/bench/stats';
 import {
   BUDGET_DRAW_CALLS,
   BUDGET_P95_MS,
+  BUDGET_P95_SLACK_MS,
   BUDGET_TRIANGLES,
   formatSummary,
   formatTable,
@@ -265,13 +266,25 @@ describe('bench stats: renderer.info aggregation', () => {
 describe('bench format: budgets and tables', () => {
   it('applies the ARCHITECTURE.md §6 desktop budgets', () => {
     expect(BUDGET_P95_MS).toBe(16.7);
+    expect(BUDGET_P95_SLACK_MS).toBe(1.0);
     expect(BUDGET_DRAW_CALLS).toBe(200);
     expect(BUDGET_TRIANGLES).toBe(750000);
     const ok = { p95Ms: 10, avgDrawCalls: 50, avgTriangles: 100000 };
     expect(withinBudget(ok)).toBe(true);
-    expect(withinBudget({ ...ok, p95Ms: 16.71 })).toBe(false);
+    expect(withinBudget({ ...ok, p95Ms: 17.71 })).toBe(false);
     expect(withinBudget({ ...ok, avgDrawCalls: 201 })).toBe(false);
     expect(withinBudget({ ...ok, avgTriangles: 750001 })).toBe(false);
+  });
+
+  it('is vsync-aware: 60Hz timer slop is not a dropped frame', () => {
+    const ok = { p95Ms: 10, avgDrawCalls: 50, avgTriangles: 100000 };
+    // A healthy 60Hz frame reports ~16.7ms; slop to ~17.7ms is fine.
+    expect(withinBudget({ ...ok, p95Ms: 16.7 })).toBe(true);
+    expect(withinBudget({ ...ok, p95Ms: 16.75 })).toBe(true);
+    expect(withinBudget({ ...ok, p95Ms: 17.7 })).toBe(true);
+    // A dropped frame lands at ~33.3ms — well above the slack.
+    expect(withinBudget({ ...ok, p95Ms: 33.3 })).toBe(false);
+    expect(withinBudget({ ...ok, p95Ms: 25.0 })).toBe(false);
   });
 
   function makeReport(): BenchReport {

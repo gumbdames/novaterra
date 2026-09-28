@@ -194,6 +194,15 @@ async function runSweep(params: BenchParams): Promise<void> {
   });
   await renderer.init();
 
+  // The renderer starts its own internal rAF loop inside init(), and that
+  // loop calls renderer.info.reset() on every frame while info.autoReset
+  // is true (the default). Our measurement loop drives frames manually, so
+  // the internal reset races us: it lands between render() and our counter
+  // read and zeroes every draws/tris sample. Take over the counters per
+  // the documented contract for manual animation loops — no auto-reset,
+  // one explicit reset() before each measured render instead.
+  renderer.info.autoReset = false;
+
   const actual = detectActualBackend(renderer);
   const actualLabel =
     actual === 'webgl2' && params.backend === 'webgpu'
@@ -247,6 +256,10 @@ async function runSweep(params: BenchParams): Promise<void> {
     for (let i = 0; i < total; i++) {
       angle += ORBIT_PER_FRAME;
       handle.setOrbitAngle(angle);
+      // Exact per-frame counters on both backends: reset, render, read.
+      // (WebGPU accumulates across frames without the reset; the internal
+      // rAF loop's reset is disabled above via info.autoReset = false.)
+      renderer.info.reset();
       renderer.render(handle.scene, handle.camera);
       const now = await raf();
       if (i >= WARMUP_FRAMES) {

@@ -254,7 +254,16 @@ so the normal game bundle never loads it):
 - **Protocol:** 120-frame warm-up (shader compile/cache) + 300 measured
   frames per sweep point, camera on a slow orbit (never a static frame).
   Frame time = rAF-to-rAF delta; draw calls/triangles from
-  `renderer.info.render` per frame (avg + max).
+  `renderer.info.render` per frame (avg + max). Counter protocol
+  (2026-09-28 fix): the harness sets `renderer.info.autoReset = false`
+  after `init()` and calls `info.reset()` before every measured render.
+  This is required because `renderer.init()` starts three.js's internal
+  rAF loop, which resets `renderer.info` on every frame while `autoReset`
+  is true — that reset raced the manual measurement loop (landing between
+  `render()` and the counter read) and zeroed every draws/tris sample.
+  With the fix both backends report identical exact per-frame counts
+  (validated headless: 8 draws / 5,587 tris per frame on the 100-building
+  point, webgpu and webgl2 agreeing exactly).
 - **Sweep:** 100 / 500 / 1k / 2k / 5k / 10k buildings, each with half as
   many units (fixed 2:1 ratio). `?bench=1&auto=1` runs the full sweep
   unattended; without `auto` it measures one point (`&count=N` overrides).
@@ -263,7 +272,12 @@ so the normal game bundle never loads it):
 - **Output:** console table + text table + budget verdict, and the raw
   report JSON on `window.__novaterra_bench` for automated extraction.
   The verdict flags each point against the ARCHITECTURE.md §6 desktop
-  budgets (p95 ≤ 16.7ms, ≤200 draws, ≤750k tris).
+  budgets (p95 ≤ 16.7ms, ≤200 draws, ≤750k tris). The p95 check is
+  vsync-aware (2026-09-28): rAF timestamps are quantized to the display's
+  vsync interval, so a healthy 60Hz frame reports ~16.7ms and timer slop
+  can push it slightly higher without any dropped frame — the verdict
+  allows a 1.0ms slack (`BUDGET_P95_SLACK_MS` in `game/src/bench/format.ts`;
+  dropped frames land at ~33.3ms+, far above it).
 
 **How to run** (dev server or the deployed Pages build):
 ```

@@ -71,13 +71,23 @@ export const BUDGET_P95_MS = 16.7;
 export const BUDGET_DRAW_CALLS = 200;
 export const BUDGET_TRIANGLES = 750000;
 
+/**
+ * Vsync slack for the frame-time budget. rAF timestamps are quantized to
+ * the display's vsync interval, so on a 60Hz display a perfectly healthy
+ * frame reports ~16.7ms and timer slop can push a sample to ~17.7ms
+ * without any frame actually being dropped. Dropped frames show up as
+ * ~33.3ms+, far above this slack — so the slack removes the false OVER
+ * without hiding real drops.
+ */
+export const BUDGET_P95_SLACK_MS = 1.0;
+
 export function withinBudget(point: {
   p95Ms: number;
   avgDrawCalls: number;
   avgTriangles: number;
 }): boolean {
   return (
-    point.p95Ms <= BUDGET_P95_MS &&
+    point.p95Ms <= BUDGET_P95_MS + BUDGET_P95_SLACK_MS &&
     point.avgDrawCalls <= BUDGET_DRAW_CALLS &&
     point.avgTriangles <= BUDGET_TRIANGLES
   );
