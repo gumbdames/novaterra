@@ -1,1 +1,28 @@
-{"dependencies":{"three":"0.186.1"},"description":"NOVATERRA — 3D city-builder × RTS hybrid (SimCity meets Red Alert meets Age of Empires), Phase 1 scaffold.","devDependencies":{"@types/three":"0.186.0","typescript":"7.0.2","vite":"8.3.1","vitest":"3.2.7"},"engines":{"node":">=22"},"name":"novaterra","private":true,"scripts":{"build":"vite build","dev":"vite","preview":"vite preview","test":"vitest run","typecheck":"tsc --noEmit"},"type":"module","version":"0.1.0"}
+{
+  "dependencies": {
+    "three": "0.186.1"
+  },
+  "description": "NOVATERRA \u2014 3D city-builder \u00d7 RTS hybrid (SimCity meets Red Alert meets Age of Empires), Phase 1 scaffold.",
+  "devDependencies": {
+    "@types/three": "0.186.0",
+    "typescript": "7.0.2",
+    "vite": "8.3.1",
+    "vitest": "3.2.7"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "name": "novaterra",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "postbuild": "node scripts/stamp-license.mjs"
+  },
+  "type": "module",
+  "version": "0.1.0",
+  "license": "AGPL-3.0-only"
+}

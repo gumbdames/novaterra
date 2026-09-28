@@ -1,8 +1,23 @@
+/*!
+ * NOVATERRA — Copyright (C) 2026 Gumb Dames
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, version 3 of the License.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 // NOVATERRA — Vite 8 build config.
 //
-// - `base` is the GitHub Pages project-site path. The repo is being renamed
-//   to `novaterra` (user-confirmed 2026-09-28; GitHub-side rename pending),
-//   so the site will live at https://gumbdames.github.io/novaterra/.
+// - `base` is the GitHub Pages project-site path:
+//   https://gumbdames.github.io/novaterra/.
 // - `vite build` emits plain static assets into game/dist (deployed as-is).
 // - The vitest `test` section keeps one config file for build + test.
 import { defineConfig } from 'vitest/config';

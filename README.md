@@ -48,3 +48,13 @@ Read `AGENTS.md` before touching anything in this repo. The short version:
 - **Phase 3** — Chain of command depth, polish, mobile/touch if it earns it
 
 Full detail: [`docs/PLAN.md`](docs/PLAN.md).
+
+## License
+
+NOVATERRA is free software: you can redistribute it and/or modify it under the
+terms of the **GNU Affero General Public License v3.0 only**, as published by
+the Free Software Foundation. See [LICENSE](LICENSE) for the full text.
+Copyright (C) 2026 Gumb Dames.
+
+Third-party packages are listed with their licenses in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
