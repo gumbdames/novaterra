@@ -1,7 +1,7 @@
 # How to Play — novaterra
 
 > The 0.1 Alpha skirmish guide. Kept **clear, short and simple** per the
-> design brief. Last updated: 2026-09-29 (step 10: audio).
+> design brief. Last updated: 2026-09-29 (step 11: saves + cheats).
 
 ## Your goal
 
@@ -59,3 +59,25 @@ Music changes when your units enter combat. Open **Settings** (pause
 menu) to adjust master, music, and sound-effect volumes, or mute all.
 Music: "Meditation Impromptu 01" and "Volatile Reaction" by Kevin
 MacLeod (incompetech.com), CC BY 4.0.
+
+## Saving and loading
+
+- The game **autosaves every 5 minutes** of game time.
+- **Pause menu → Save game** — save to Slot 1, 2, or 3.
+- **Main menu → Load game** — resume any save.
+- Leaving via **Exit to menu** asks first: save and exit, or exit
+  without saving.
+- If your browser blocks storage (private mode), saves won't survive
+  closing the tab — the game will tell you.
+
+## Cheat console
+
+Press **\`** (backtick) to open the cheat console. Commands:
+
+- `prosperity now` — grants funds, materials, food and fuel.
+- `fast build` — finishes all your buildings under construction.
+- `reveal` — no fog of war in 0.1 Alpha; nothing to reveal.
+- `win` / `lose` — show the victory / defeat screen (for testing).
+- `help` — lists the commands.
+
+Using any cheat marks the save as **cheated** (shown in the load list).

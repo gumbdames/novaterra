@@ -8,9 +8,23 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `session.ts` — canonical skirmish assembly (terrain, world, queue,
   driver, 5 systems in fixed order, starting forces, AI rival). The one
   place the full game is wired; headless-safe (no DOM/three.js).
+  `createSession({ snapshot })` restores a saved game: no re-seeded
+  starting forces, no duplicate AI player. `session.cheated` is UI-owned
+  metadata (never sim state), stamped into save files.
 - `game.ts` — the game controller: renderer, daylight scene, camera
   input, selection, placement modes, fixed-timestep loop, pause menu.
   DOM + three.js; never imported by headless tests.
+  Step 11: owns the save store, the cheat console (backtick), the end
+  screen, and autosave (every 5 game-minutes, tick-based).
+- `cheatconsole.ts` — the cheat console overlay. `parseCheatCommand` is
+  pure and tested (case/whitespace-tolerant); the `CheatConsole` class is
+  DOM-only and emits parsed actions to the controller. Sim-affecting
+  cheats go through the command queue with `issuer: 'cheat'`; `reveal`,
+  `win`, `lose`, `help` are UI-only.
+- `endscreen.ts` — victory/defeat overlay (the hook a future conquest
+  system will call; in 0.1 Alpha only the `win`/`lose` cheats show it).
+- `saveslots.ts` — save/load slot picker dialog + pure
+  `formatSaveSummary`.
 - `hud.ts` — top bar, advisor panel, selection panel, train/build
   palettes, toasts. Calls back into the controller; never touches sim.
 - `menus.ts` — main menu (difficulty select), pause overlay, settings

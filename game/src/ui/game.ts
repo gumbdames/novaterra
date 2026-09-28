@@ -90,12 +90,20 @@ import { HUD, type BuildTool } from './hud';
 import { PauseMenu, type QualityLevel } from './menus';
 import { STRINGS } from './strings';
 import { AudioEngine } from '../audio/engine';
+import { CheatConsole, cheatHelpText, type CheatAction } from './cheatconsole';
+import { EndScreen } from './endscreen';
+import { SaveSlotsDialog } from './saveslots';
+import type { SaveFile, SaveSlotId } from '../net_save/savefile';
+import { AUTOSAVE_SLOT, createSaveFile } from '../net_save/savefile';
+import { createSaveStore, type SaveStore } from '../net_save/store';
 
 export interface GameOptions {
   seed: number;
   aiDifficulty: AIDifficulty;
   quality: QualityLevel;
   onExitToMenu: () => void;
+  /** Resume from a saved game instead of starting fresh. */
+  saveData?: SaveFile;
 }
 
 /** Placement modes entered from the HUD train/build panels. */
@@ -108,6 +116,8 @@ const ADVISOR_REFRESH_MS = 2000;
 const EDGE_PAN_PX = 10;
 const EDGE_PAN_SPEED = 220; // world units/sec
 const KEY_PAN_SPEED = 260;
+/** Autosave cadence: 5 game-minutes at 30 ticks/sec. */
+const AUTOSAVE_TICKS = 30 * 60 * 5;
 const CLICK_TOLERANCE = 4; // world units for click-pick
 
 /**
@@ -118,7 +128,15 @@ export async function startGame(
   container: HTMLElement,
   opts: GameOptions,
 ): Promise<GameController> {
-  const session = createSession({ seed: opts.seed, aiDifficulty: opts.aiDifficulty });
+  const session = createSession({
+    seed: opts.seed,
+    aiDifficulty: opts.aiDifficulty,
+    snapshot: opts.saveData?.snapshot,
+  });
+  // A loaded game resumes exactly where it was saved — including its
+  // cheated marker, which is honest metadata, not sim state.
+  if (opts.saveData) session.cheated = opts.saveData.metadata.cheated;
+  const saveStore = await createSaveStore();
 
   const { WebGPURenderer } = await import('three/webgpu');
   const canvas = document.createElement('canvas');
@@ -146,6 +164,7 @@ export async function startGame(
     entities,
     session,
     opts,
+    saveStore,
   );
   controller.start();
   return controller;
@@ -220,6 +239,13 @@ class GameController {
   private zoneDragStart: { cx: number; cz: number } | null = null;
   private disposed = false;
   private removeListeners: Array<() => void> = [];
+  // ---- step 11: saves + cheat console ----
+  private readonly saveStore: SaveStore;
+  private readonly cheatConsole: CheatConsole;
+  private readonly endScreen: EndScreen;
+  private slotsDialog: SaveSlotsDialog | null = null;
+  /** Tick of the last autosave (sim-time based, every 5 game minutes). */
+  private lastAutosaveTick = 0;
 
   constructor(
     container: HTMLElement,
@@ -230,6 +256,7 @@ class GameController {
     entities: EntityRenderer,
     session: GameSession,
     opts: GameOptions,
+    saveStore: SaveStore,
   ) {
     this.container = container;
     this.canvas = canvas;
@@ -239,6 +266,8 @@ class GameController {
     this.entities = entities;
     this.session = session;
     this.opts = opts;
+    this.saveStore = saveStore;
+    this.lastAutosaveTick = session.world.tick;
 
     this.hud = new HUD(container, {
       onPauseToggle: () => this.togglePause(),
@@ -267,6 +296,15 @@ class GameController {
       onExitToMenu: () => this.exitToMenu(),
       onQualityChange: (q) => applyQuality(this.renderer, q),
       onAudioChange: (patch) => this.audio.updateSettings(patch),
+      onSaveGame: () => this.openSaveDialog(),
+      onConfirmExit: (saveFirst) => void this.confirmExit(saveFirst),
+    });
+    this.cheatConsole = new CheatConsole(container, {
+      onCheat: (action) => this.executeCheat(action),
+    });
+    this.endScreen = new EndScreen(container, {
+      onKeepPlaying: () => undefined,
+      onExitToMenu: () => this.exitToMenu(),
     });
 
     // Audio: created here, unlocked on the first user gesture (autoplay
@@ -302,6 +340,7 @@ class GameController {
       this.updateCamera(dtSec);
       if (!this.paused) {
         this.session.driver.step(this.session.world, frameMs * this.speed);
+        this.maybeAutosave();
       }
       if (now - this.lastAdvisorRefresh > ADVISOR_REFRESH_MS) {
         this.lastAdvisorRefresh = now;
@@ -381,6 +420,10 @@ class GameController {
     this.removeListeners = [];
     this.hud.dispose();
     this.pauseMenu.hide();
+    this.cheatConsole.hide();
+    this.endScreen.hide();
+    this.slotsDialog?.hide();
+    this.slotsDialog = null;
     this.unbindUiClicks?.();
     this.unbindUiClicks = null;
     this.audio.dispose();
@@ -413,6 +456,110 @@ class GameController {
   private exitToMenu(): void {
     this.dispose();
     this.opts.onExitToMenu();
+  }
+
+  // ---- step 11: cheats ----
+
+  /** Execute one parsed cheat-console action. */
+  private executeCheat(action: CheatAction): void {
+    const s = STRINGS.cheats;
+    const world = this.session.world;
+    const markCheated = (): void => {
+      this.session.cheated = true;
+    };
+    switch (action.kind) {
+      case 'help':
+        this.cheatConsole.print(cheatHelpText());
+        return;
+      case 'unknown':
+        this.cheatConsole.print(s.unknownCommand);
+        return;
+      case 'reveal':
+        markCheated();
+        this.cheatConsole.print(s.revealMsg);
+        return;
+      case 'win':
+        markCheated();
+        this.endScreen.showVictory();
+        this.cheatConsole.print(STRINGS.end.victoryTitle);
+        return;
+      case 'lose':
+        markCheated();
+        this.endScreen.showDefeat();
+        this.cheatConsole.print(STRINGS.end.defeatTitle);
+        return;
+      case 'grant':
+      case 'instantBuild': {
+        const kind = action.kind === 'grant' ? 'cheatGrantResources' : 'cheatInstantBuild';
+        try {
+          this.session.queue.enqueue(world, {
+            kind,
+            issuer: 'cheat',
+            payload: { owner: HUMAN_PLAYER_ID },
+          });
+        } catch (e) {
+          const reason = e instanceof CommandRejectedError ? e.reason : String(e);
+          this.cheatConsole.print(`${s.failedMsg} ${reason}`);
+          this.hud.toast(s.failedMsg);
+          return;
+        }
+        markCheated();
+        this.cheatConsole.print(action.kind === 'grant' ? s.grantedMsg : s.buildMsg);
+        return;
+      }
+    }
+  }
+
+  // ---- step 11: saves ----
+
+  /** Open the save-game slot picker (from the pause menu). */
+  private async openSaveDialog(): Promise<void> {
+    const saves = await this.saveStore.list();
+    this.slotsDialog?.hide();
+    this.slotsDialog = new SaveSlotsDialog(this.container, 'save', saves, {
+      onPickSlot: (slotId) => void this.saveGame(slotId),
+      onClose: () => undefined,
+    });
+    this.slotsDialog.show();
+  }
+
+  /** Write the current session to a slot. Toasts success/failure. */
+  private async saveGame(slotId: SaveSlotId): Promise<boolean> {
+    const s = STRINGS.save;
+    const name = slotId === AUTOSAVE_SLOT ? 'Autosave' : `Slot ${slotId.replace('slot-', '')}`;
+    const file = createSaveFile(this.session, slotId, name, new Date().toISOString());
+    const ok = await this.saveStore.write(slotId, file);
+    if (ok) {
+      if (slotId !== AUTOSAVE_SLOT) this.hud.toast(s.gameSaved);
+    } else {
+      this.hud.toast(s.saveFailed);
+    }
+    if (this.saveStore.backend === 'memory' && slotId !== AUTOSAVE_SLOT) {
+      this.hud.toast(s.memoryBackendHint);
+    }
+    return ok;
+  }
+
+  /** Autosave when 5 game-minutes have passed since the last one. */
+  private maybeAutosave(): void {
+    if (this.disposed) return;
+    if (this.session.world.tick - this.lastAutosaveTick >= AUTOSAVE_TICKS) {
+      this.lastAutosaveTick = this.session.world.tick;
+      // Fire-and-forget: saveGame never throws; failure just toasts.
+      void this.saveGame(AUTOSAVE_SLOT);
+    }
+  }
+
+  /**
+   * Exit-to-menu confirmation from the pause menu.
+   * saveFirst=true writes the autosave slot before leaving.
+   */
+  private async confirmExit(saveFirst: boolean): Promise<void> {
+    if (saveFirst) {
+      const ok = await this.saveGame(AUTOSAVE_SLOT);
+      if (!ok) return; // stay in game; the failure toast is already shown
+    }
+    this.exitToMenu();
   }
 
   // ---- orders ----
@@ -689,6 +836,11 @@ class GameController {
     // --- keyboard ---
     on(window, 'keydown', (e) => {
       const k = e.key.toLowerCase();
+      if (k === '`' && !e.repeat) {
+        e.preventDefault();
+        this.cheatConsole.toggle();
+        return;
+      }
       if (k === ' ') {
         e.preventDefault();
         this.togglePause();

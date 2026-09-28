@@ -43,6 +43,9 @@ import { buildTerrainView } from './render/terrain';
 import { MainMenu, loadSettings, type QualityLevel } from './ui/menus';
 import { startGame } from './ui/game';
 import type { AIDifficulty } from './sim/ai';
+import { createSaveStore } from './net_save/store';
+import { SaveSlotsDialog } from './ui/saveslots';
+import { STRINGS } from './ui/strings';
 
 /**
  * Boot the menu experience: renderer + Meridian Plains backdrop scene + menu
@@ -102,6 +105,9 @@ export async function boot(): Promise<void> {
           menu.show();
         },
       }).catch(showFatal);
+    },
+    onShowLoadGame: () => {
+      void showLoadGame(app, menu, renderer, canvas, menuLoop);
     },
     onResume: () => undefined,
     onExitToMenu: () => undefined,
@@ -207,6 +213,61 @@ function showFatal(error: unknown): void {
     `NOVATERRA could not start: ${message}. ` +
     'Please try a browser with WebGL2 or WebGPU support.';
   document.body.appendChild(el);
+}
+
+/** Tiny transient message on the main menu (no HUD there). */
+function menuToast(root: HTMLElement, message: string): void {
+  const el = document.createElement('div');
+  el.className = 'menu-toast';
+  el.textContent = message;
+  root.appendChild(el);
+  window.setTimeout(() => el.remove(), 3000);
+}
+
+/**
+ * Main-menu "Load game": list saves, resume the picked one.
+ * The menu backdrop stays alive behind the dialog; on load it hands
+ * #app to the game controller exactly like a fresh skirmish.
+ */
+async function showLoadGame(
+  app: HTMLElement,
+  menu: MainMenu,
+  renderer: { setAnimationLoop(cb: ((time: number) => void) | null): void },
+  canvas: HTMLCanvasElement,
+  menuLoop: () => void,
+): Promise<void> {
+  const store = await createSaveStore();
+  const saves = await store.list();
+  if (saves.length === 0) {
+    menuToast(app, STRINGS.save.noSaves);
+    return;
+  }
+  new SaveSlotsDialog(app, 'load', saves, {
+    onPickSlot: (slotId) => {
+      void (async () => {
+        const file = await store.read(slotId);
+        if (file === null) {
+          menuToast(app, STRINGS.save.loadFailed);
+          return;
+        }
+        menu.hide();
+        renderer.setAnimationLoop(null);
+        canvas.style.display = 'none';
+        startGame(app, {
+          seed: file.metadata.seed,
+          aiDifficulty: file.metadata.aiDifficulty,
+          quality: loadSettings().quality,
+          saveData: file,
+          onExitToMenu: () => {
+            canvas.style.display = '';
+            renderer.setAnimationLoop(menuLoop);
+            menu.show();
+          },
+        }).catch(showFatal);
+      })();
+    },
+    onClose: () => undefined,
+  }).show();
 }
 
 // Auto-boot only in a real browser. Under vitest (Node, no document) the

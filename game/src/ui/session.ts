@@ -63,7 +63,9 @@ import {
 } from '../sim/movement';
 import { createCombatSystem, registerCombatCommands } from '../sim/combat';
 import { registerAgeCommands } from '../sim/ages';
+import { registerCheatCommands } from '../sim/cheats';
 import { addAIPlayer, createAISystem, type AIDifficulty } from '../sim/ai';
+import { restoreSnapshot, type Snapshot } from '../sim/snapshot';
 import type { OrderIntent } from './orders';
 
 /** Player 0 is always the human. */
@@ -76,6 +78,12 @@ export interface SessionOptions {
   seed: number;
   /** Classic AI difficulty for the rival (default 'citizen'). */
   aiDifficulty?: AIDifficulty;
+  /**
+   * Restore from a saved snapshot instead of a fresh world. When set,
+   * starting forces are NOT re-seeded (the snapshot already has them)
+   * and the AI player is NOT re-added (its state is in the snapshot).
+   */
+  snapshot?: Snapshot;
 }
 
 /** Everything a running game needs. Plain data + live driver/queue. */
@@ -97,6 +105,12 @@ export interface GameSession {
   enqueuePlayerIntent(intent: OrderIntent): void;
   /** Deterministic digest of the current world state (for tests/sync). */
   digest(): string;
+  /**
+   * Set once any cheat console command runs. Recorded in save metadata
+   * so a save file honestly reports it was cheated in. UI-owned, never
+   * read by the sim.
+   */
+  cheated: boolean;
 }
 
 /** AI base corner; mirrored for the human. */
@@ -154,7 +168,8 @@ export function createSession(options: SessionOptions): GameSession {
   const aiDifficulty: AIDifficulty = options.aiDifficulty ?? 'citizen';
 
   const terrain = generateTerrain(MERIDIAN_PLAINS.seed);
-  const world = createWorld(seed);
+  // Restored games resume the exact saved world; fresh games start empty.
+  const world = options.snapshot ? restoreSnapshot(options.snapshot) : createWorld(seed);
   const queue = createCommandQueue();
   registerCoreCommands(queue);
   registerCityCommands(queue, terrain);
@@ -163,6 +178,7 @@ export function createSession(options: SessionOptions): GameSession {
   registerMovementCommands(queue, terrain);
   registerCombatCommands(queue);
   registerAgeCommands(queue);
+  registerCheatCommands(queue);
 
   const driver = createTickDriver({
     queue,
@@ -178,13 +194,17 @@ export function createSession(options: SessionOptions): GameSession {
 
   const aiBase = findLandNear(terrain, AI_CORNER.x, AI_CORNER.z);
   const humanBase = findLandNear(terrain, HUMAN_CORNER.x, HUMAN_CORNER.z);
-  startingForces(queue, world, AI_PLAYER_ID, 'ai-setup', aiBase);
-  startingForces(queue, world, HUMAN_PLAYER_ID, 'player', humanBase);
-  addAIPlayer(world, AI_PLAYER_ID, aiDifficulty, aiBase.x, aiBase.z);
+  if (!options.snapshot) {
+    startingForces(queue, world, AI_PLAYER_ID, 'ai-setup', aiBase);
+    startingForces(queue, world, HUMAN_PLAYER_ID, 'player', humanBase);
+    addAIPlayer(world, AI_PLAYER_ID, aiDifficulty, aiBase.x, aiBase.z);
 
-  // Apply the starting forces now (one fixed tick) so a fresh session
-  // already has both armies on the field.
-  driver.step(world, TICK_MS);
+    // Apply the starting forces now (one fixed tick) so a fresh session
+    // already has both armies on the field.
+    driver.step(world, TICK_MS);
+  }
+  // Restored sessions skip all of the above: units, buildings, AI state,
+  // and RNG streams come back exactly as saved.
 
   return {
     sessionId: `novaterra-${seed >>> 0}-${aiDifficulty}`,
@@ -201,5 +221,6 @@ export function createSession(options: SessionOptions): GameSession {
       queue.enqueue(world, { ...intent, issuer: 'player' });
     },
     digest: () => String(digestWorld(world)),
+    cheated: false,
   };
 }

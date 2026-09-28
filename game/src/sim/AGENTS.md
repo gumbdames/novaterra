@@ -64,6 +64,11 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   order), `moveUnit` / `moveGroup` / `stopUnit` commands, waypoint and
   field following, arrival slowdown, formation slots, spatial-hash
   separation.
+- `cheats.ts` — cheat command specs (step 11): `cheatGrantResources`
+  (`prosperity now`) and `cheatInstantBuild` (`fast build`). Ordinary
+  tick-aligned command specs, `issuer: 'cheat'` enforced at validate;
+  deterministic fixed effects, no RNG. The `cheated` metadata flag is
+  UI-owned (ui/session.ts), never sim state.
 
 ## City/economy conventions
 - All rates in `BUILDING_DEFS` are **per sim-second**; the economy system

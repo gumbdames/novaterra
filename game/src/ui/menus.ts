@@ -86,6 +86,16 @@ export interface MenuActions {
   onQualityChange(quality: QualityLevel): void;
   /** Audio settings changed (live-apply when a game is running). Optional. */
   onAudioChange?: (patch: Partial<AudioSettings>) => void;
+  /** Open the save-game slot picker (pause menu). Optional. */
+  onSaveGame?: () => void;
+  /** Open the load-game slot picker (main menu). Optional. */
+  onShowLoadGame?: () => void;
+  /**
+   * Exit-to-menu confirmation: true = save first, false = discard.
+   * When present, the pause menu asks before calling onExitToMenu.
+   * When absent, onExitToMenu is called directly.
+   */
+  onConfirmExit?: (saveFirst: boolean) => void;
 }
 
 function el(tag: string, className: string, text?: string): HTMLElement {
@@ -127,6 +137,7 @@ export class MainMenu {
 
     const buttons = el('div', 'buttons');
     const skirmish = menuButton(s.skirmish, () => this.showDifficulty(buttons));
+    const loadGame = menuButton(s.loadGame, () => this.actions.onShowLoadGame?.());
     const missions = menuButton(s.missions, () => undefined, true);
     missions.title = s.missionsLocked;
     const settings = menuButton(s.settings, () => new SettingsPanel(this.root, {
@@ -134,7 +145,7 @@ export class MainMenu {
       onAudioChange: this.actions.onAudioChange,
       onClose: () => this.show(),
     }).show());
-    buttons.append(skirmish, missions, settings);
+    buttons.append(skirmish, loadGame, missions, settings);
     menu.append(buttons);
     menu.append(el('div', 'version', s.version));
     this.root.append(menu);
@@ -192,10 +203,39 @@ export class PauseMenu {
         }).show(),
       ),
     );
-    panel.append(menuButton(s.exitToMenu, () => this.actions.onExitToMenu()));
+    if (this.actions.onSaveGame) {
+      const onSaveGame = this.actions.onSaveGame;
+      panel.append(menuButton(s.saveGame, () => onSaveGame()));
+    }
+    panel.append(menuButton(s.exitToMenu, () => this.confirmExit()));
     overlay.append(panel);
     this.root.append(overlay);
     this.el = overlay;
+  }
+
+  /** Exit confirm: save-and-exit / exit-without-saving / cancel. */
+  private confirmExit(): void {
+    const confirm = this.actions.onConfirmExit;
+    if (!confirm) {
+      this.actions.onExitToMenu();
+      return;
+    }
+    const s = STRINGS.save;
+    const overlay = el('div', 'confirm-overlay');
+    const panel = el('div', 'confirm-panel');
+    panel.append(el('h2', '', s.exitConfirmTitle));
+    panel.append(el('p', '', s.exitConfirmDetail));
+    panel.append(menuButton(s.saveAndExit, () => {
+      overlay.remove();
+      confirm(true);
+    }));
+    panel.append(menuButton(s.exitWithoutSaving, () => {
+      overlay.remove();
+      confirm(false);
+    }));
+    panel.append(menuButton(s.cancel, () => overlay.remove()));
+    overlay.append(panel);
+    this.root.append(overlay);
   }
 
   hide(): void {
