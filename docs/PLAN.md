@@ -28,7 +28,7 @@ Four workstreams, all delivered to `docs/research/` with cited sources:
 | Audio | Raw Web Audio adaptive stem engine, 32-voice SFX pool, Tallbeard CC0 music primary |
 | Game design | 9 pillars, NOVATERRA name (proposed), backstory draft, 8-resource model, 5 ages, 8 missions, 8 skirmish maps, ruthless MVP cut |
 
-### Phase 1 — Core engine + skirmish MVP (next; needs user go-ahead)
+### Phase 1 — Core engine + skirmish MVP (APPROVED 2026-09-28; step 1 starting)
 
 The ruthless cut: **one big skirmish map (Meridian Plains), Classic AI levels
 1–3, land + air, city building + 5-resource economy, 2 ages, Conquest only,
@@ -60,7 +60,9 @@ levels 4–5, remaining resources (Goods, Influence, Manpower), ages 3–5.
 
 8-mission campaign "The First Term" (briefings, objectives, scripted events,
 peaceful variants, two endings) + "Muse persona" adaptive AI director
-(commentary, taunts, threat meter, dirty tricks).
+(commentary, taunts, threat meter, dirty tricks) + optional **Live Muse link**
+(online: user connects their own API key; strategic digest↔directive protocol;
+offline fallback to persona).
 
 ### Phase 3 — Depth + polish
 
@@ -68,9 +70,15 @@ Chain-of-command UI (mayors, generals, cabinet — opt-in delegation),
 entrepreneurs as agents, advanced economy paths, superweapons (Aegis /
 Storm Engine), touch/mobile **only if playtests show it's fun**, accessibility.
 
-## Open questions (pending user)
+## Decisions (resolved with user 2026-09-28)
 
-1. Mode 2 as "Muse persona" adaptive AI director (recommended) vs alternatives.
-2. Game name: NOVATERRA recommended (shortlist + rationale in `docs/research/game-design.md` C1).
-3. Build order: vertical slice as above, or different priority?
-4. Backstory: design doc has a draft — adopt, or do you have your own premise?
+1. Mode 2 = "Muse persona" adaptive AI director (offline default) + optional
+   "Live Muse link" when online (user connects their own Muse API key in
+   settings; key in `localStorage` only, never leaves the browser except to
+   the API endpoint; strategic-commander protocol that never blocks the tick;
+   silent fallback to persona when offline). Offline-first is unconditional.
+2. Game name: **NOVATERRA**. Backstory draft adopted.
+3. Build order: vertical slice as above — approved.
+4. Repo visibility: stays **private** for now; user will flip to public if
+   needed. At Pages deploy time, verify private-repo Pages works for the org;
+   if not, tell the user — it's their call.

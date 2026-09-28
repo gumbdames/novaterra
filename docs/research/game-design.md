@@ -477,6 +477,28 @@ feel like a level-4 Classic opponent who read your playbook.
 needs the Classic AI as its substrate, and the voice lines are content work,
 not engine work.
 
+### C7a. Live Muse link (online option — confirmed by user 2026-09-28)
+
+Offline-first is sacred: the persona director above is always available and
+the game never *requires* a connection. But when online, the player may
+optionally **connect their own Muse** (settings screen: paste your own API
+key, stored in `localStorage` only — it never leaves the browser except to
+the API endpoint itself; needs a CORS-capable endpoint, to be verified at
+build time).
+
+How it works: Muse acts as **strategic commander, not tick driver**. Every
+30–60 s (plus an on-demand "Request counsel" button) the game sends a compact
+digest — resources, force composition, map control, threat meter, recent
+events (a few KB of JSON, never raw per-entity state) — and receives:
+(a) strategic directives (build priorities, tech path, attack/defense timing,
+dirty-trick suggestions), (b) commentary/taunts in the Muse voice. Local
+systems execute everything tactically; **the model never blocks the sim tick
+and never mutates sim state directly**. Difficulty scales digest detail and
+consultation frequency, layered over the same decision-quality ladder. No key,
+offline, or API error → silent fallback to the persona director. Cost and
+latency are the player's own (their key, their bill); a small "LIVE" indicator
+shows when the link is active.
+
 ### C8. Campaign: 8 missions
 
 One continuous arc: **"The First Term"**. Missions alternate gimmick/constraint
@@ -661,7 +683,7 @@ sessions. Everything deferred *extends* this loop rather than completing it.
 
 | # | Question | Recommendation | Owner/Status |
 |---|---|---|---|
-| 1 | Mode 2 "play against Muse": a live Muse opponent is infeasible in an offline browser game (needs a server + the model in the loop). | Ship mode 2 as a **personality-driven adaptive AI director** with my voice (commentary, taunts, adaptive strategy, dirty tricks). See C7. | Pending user confirmation |
+| 1 | Mode 2 "play against Muse". | **Confirmed 2026-09-28:** persona director as the offline default **plus** an optional "Live Muse link" when online (user connects their own API key in settings; key in `localStorage` only; strategic-commander protocol that never blocks the tick; silent fallback to persona when offline). See C7 + C7a. | Resolved |
 | 2 | Game name (repo stays awesome-sim-game). | **NOVATERRA** (see C1 for the shortlist + rationale). | Pending user pick |
 | 3 | Faction count at launch: 1 shared roster + 2 doctrines, or fully asymmetric rosters? | 1 shared roster + 2 doctrine overlays at launch (balance cost); full asymmetry post-launch. | Design decision, recorded |
 | 4 | Mobile/touch scope. | Per brief: only if playtests show it's genuinely fun. Desktop-first; reassess after MVP playtests. | Deferred to post-MVP |

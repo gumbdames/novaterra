@@ -103,6 +103,14 @@ they never mutate sim state.
   meter, ~150 event taunts) — a pure function of sim state with serializable
   brain (an LLM in the tick would break determinism, offline play and budget).
   Mode 2 ships in Phase 2; data model reserves the slot in Phase 1.
+- **Live Muse link (online option, user-confirmed 2026-09-28):** when the
+  player connects their own API key (settings screen; stored in `localStorage`
+  only, never leaves the browser except to the API endpoint), the game
+  exchanges compact strategic digests (~KB JSON, every 30–60 s) for directives
+  + commentary. The model is a **strategic commander only**: it never blocks
+  the tick and never mutates sim state directly — local systems execute
+  tactically. No key / offline / API error ⇒ silent fallback to the persona
+  director. Offline-first is unconditional.
 - **Ages/tech:** 5 near-future ages; age-ups are costly commitments with
   landmark-style National Program choices (positive framing: bonuses, never
   lockouts). MVP: 2 ages.
@@ -141,7 +149,8 @@ save with no visible hitch; load ≤ 3 s.
 | D4 | 2026-09-28 | Raw Web Audio, no runtime audio lib | Bespoke lookahead scheduling needed; Howler stale (2023), Tone.js fights our scheduler | — |
 | D5 | 2026-09-28 | Same-machine determinism; doubles OK | Single-player: no lockstep; fixed-point seam kept in `sim/math.ts` | — |
 | D6 | 2026-09-28 | Hand-rolled SoA hot store + OOP strategic layer (prototype vs apecs before committing) | Must own system iteration order for the determinism contract | — |
-| D7 | 2026-09-28 | Mode 2 = "Muse persona" adaptive AI director, not a live model | Offline browser game cannot host a model in the loop; LLM-in-tick breaks determinism/offline/budget | — |
+| D7 | 2026-09-28 | Mode 2 = "Muse persona" adaptive AI director (offline default) | Persona is a pure function of sim state (serializable brain); a model in the tick would break determinism/offline/budget | — |
+| D8 | 2026-09-28 | Optional "Live Muse link": user's own API key, digest↔directive protocol, strategic-commander only, silent fallback to persona | User request 2026-09-28; keeps offline-first intact; model never touches the tick, so determinism and offline play are preserved | — |
 
 ## 8. Open questions (carried into Phase 1)
 
@@ -150,4 +159,6 @@ save with no visible hitch; load ≤ 3 s.
 3. WebGPU-vs-WebGL2 default backend: benchmark our real scenes on both, early.
 4. Tallbeard loops vs "modern 2026 cinematic" bar: listening test in Phase 1.
 5. Mobile tier numbers: verify on physical devices before the tier ships.
-6. Game name (NOVATERRA recommended) and Mode-2 confirmation: pending user.
+6. ~~Game name and Mode-2 confirmation~~ — RESOLVED 2026-09-28: name **NOVATERRA**
+   confirmed; backstory draft adopted; Mode 2 = persona director (offline
+   default) + optional Live Muse link (online, user's own key).
