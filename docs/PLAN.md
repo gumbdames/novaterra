@@ -125,13 +125,30 @@ pass, the build is green, and all previous steps' smoke tests still pass
 - ✅ Classic AI levels 4–5: General and Marshal (commit e6868bc)
 - Full suite: 364/364 tests green, typecheck clean, production build succeeds.
 
-### Phase 2 — Campaign + Mode 2
+### Phase 2 — Campaign + Muse (in progress, 2026-09-29)
 
 8-mission campaign "The First Term" (briefings, objectives, scripted events,
-peaceful variants, two endings) + "Muse persona" adaptive AI director
-(commentary, taunts, threat meter, dirty tricks) + optional **Live Muse link**
-(online: user connects their own API key; strategic digest↔directive protocol;
-offline fallback to persona).
+peaceful path in every mission, two endings) + offline deterministic Muse
+persona director (commentary, taunts, visible threat meter, fair dirty
+tricks, configurable chattiness) + optional **Live Muse link** scaffolding
+(user API key in localStorage only; digest → `MUSE: advise:` protocol;
+offline fallback; marked coming soon in 0.1 Alpha).
+
+Done so far:
+- `src/campaign/`: `missions.ts` (8 missions as data), `objectives.ts`
+  (pure objective/path checking), `director.ts` (mission run state,
+  scripted events, two-phase raid spawning, victory/defeat), `progress.ts`
+  (unlocking, diplomat/commander scoring, two endings, IndexedDB store
+  with memory fallback).
+- `src/muse/`: `persona.ts` (deterministic event→line hash), `director.ts`
+  (threat meter), `controller.ts` (event detection + chattiness throttle),
+  `live.ts` (digest builder, advise-only protocol, localStorage key,
+  coming-soon client).
+- `src/ui/campaignui.ts` (mission select/briefing/debrief/objective
+  tracker), `src/ui/musebox.ts` (Muse widget + threat meter), session
+  campaign setup, game-controller wiring, main-menu Missions flow,
+  Muse settings in the settings panel.
+- Tests: 30 campaign + 18 muse + 3 session-campaign, all green.
 
 ### Phase 3 — Depth + polish
 

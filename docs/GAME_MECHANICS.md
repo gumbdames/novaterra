@@ -140,3 +140,39 @@ The AI never cheats: it sees only what its own units see, and gives
 the same orders a human player would. (In 0.1 Alpha there is no victory
 screen yet — the fight is the game. Wiping out the enemy base is its
 own reward.)
+
+## The campaign: "The First Term"
+
+From the main menu, **Missions** starts the 8-mission story campaign.
+Each mission has a briefing, one or more ways to win, and scripted
+events (raids, warnings, milestones). **Every mission can be completed
+peacefully** — look for the 🕊 path on the briefing screen.
+
+- Mission 1 is a tutorial with no enemy: learn to select, move, build,
+  and grow.
+- Later missions add food pressure, border raids, naval warfare, age
+  races, two-front wars, an influence contest, and a final confrontation
+  with Marshal Dain.
+- Winning bloodlessly (no kills, no losses) earns **Diplomat** points;
+  destroying enemies earns **Commander** points. After the final
+  mission, your tally decides the ending: **The Peacemaker** or
+  **The Commander** (ties go to the Peacemaker).
+- Progress saves automatically between missions.
+
+## Muse — your chief of staff
+
+**Muse** watches your game and comments on it: buildings finished,
+ages advanced, enemies spotted, battles starting. They also run the
+**threat meter** (bottom-right): the enemy's share of total military
+power, from safe to danger.
+
+Muse is charming, never annoying: how often they speak is your call —
+**Off / Quiet / Normal / Chatty** in Settings. Quiet means milestones
+only. In campaign missions Muse also delivers the story's scripted
+messages.
+
+**Live Muse (coming soon):** connect your own language-model API key
+in Settings and Muse will offer strategic advice from a live summary
+of your game. The key stays in your browser only, and the live model
+is advisory — it can never take over your game. Not wired yet in
+0.1 Alpha; the offline Muse covers you meanwhile.

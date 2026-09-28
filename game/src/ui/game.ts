@@ -96,6 +96,39 @@ import { SaveSlotsDialog } from './saveslots';
 import type { SaveFile, SaveSlotId } from '../net_save/savefile';
 import { AUTOSAVE_SLOT, createSaveFile } from '../net_save/savefile';
 import { createSaveStore, type SaveStore } from '../net_save/store';
+import type { MissionDef, MissionPath } from '../campaign/missions';
+import {
+  createMissionRun,
+  updateMissionRun,
+  missionProgress,
+  MISSION_HUMAN_ID,
+  MISSION_AI_ID,
+  type MissionRunState,
+} from '../campaign/director';
+import { scoreMission, type CampaignProgress } from '../campaign/progress';
+import { MuseController, loadMuseFrequency } from '../muse/controller';
+import { MuseBox } from './musebox';
+import { MissionPanel, MissionDebrief } from './campaignui';
+
+/** Result of a finished campaign mission, handed to the app for scoring. */
+export interface MissionEndResult {
+  mission: MissionDef;
+  victory: boolean;
+  wonPath: MissionPath | null;
+  kills: number;
+  unitsLost: number;
+}
+
+/** Campaign wiring for one game: the mission plus its end callback. */
+export interface CampaignGameOptions {
+  mission: MissionDef;
+  /**
+   * Called exactly once when the mission ends. Records the result into
+   * the campaign progress and returns the updated progress (for the
+   * debrief screen). The app saves it asynchronously.
+   */
+  onMissionEnd(result: MissionEndResult): CampaignProgress;
+}
 
 export interface GameOptions {
   seed: number;
@@ -106,6 +139,8 @@ export interface GameOptions {
   onExitToMenu: () => void;
   /** Resume from a saved game instead of starting fresh. */
   saveData?: SaveFile;
+  /** Campaign mission mode (Phase 2). When set, the mission drives setup. */
+  campaign?: CampaignGameOptions;
 }
 
 /** Placement modes entered from the HUD train/build panels. */
@@ -135,6 +170,7 @@ export async function startGame(
     aiDifficulty: opts.aiDifficulty,
     mapPreset: opts.mapPreset,
     snapshot: opts.saveData?.snapshot,
+    campaignMission: opts.campaign?.mission,
   });
   // A loaded game resumes exactly where it was saved — including its
   // cheated marker, which is honest metadata, not sim state.
@@ -249,6 +285,18 @@ class GameController {
   private slotsDialog: SaveSlotsDialog | null = null;
   /** Tick of the last autosave (sim-time based, every 5 game minutes). */
   private lastAutosaveTick = 0;
+  // ---- Phase 2: campaign + Muse ----
+  /** Mission run state (UI-owned). Null in skirmish. */
+  private readonly missionRun: MissionRunState | null;
+  private readonly muse: MuseController | null;
+  private readonly museBox: MuseBox | null;
+  private readonly missionPanel: MissionPanel | null;
+  private readonly missionDebrief: MissionDebrief | null;
+  private lastMissionPoll = 0;
+  private lastMusePoll = 0;
+  private lastObjectivePanelRefresh = 0;
+  /** Set once the mission's victory/defeat has been reported. */
+  private missionEnded = false;
 
   constructor(
     container: HTMLElement,
@@ -299,6 +347,7 @@ class GameController {
       onExitToMenu: () => this.exitToMenu(),
       onQualityChange: (q) => applyQuality(this.renderer, q),
       onAudioChange: (patch) => this.audio.updateSettings(patch),
+      onMuseFrequencyChange: (f) => this.setMuseFrequency(f),
       onSaveGame: () => this.openSaveDialog(),
       onConfirmExit: (saveFirst) => void this.confirmExit(saveFirst),
     });
@@ -309,6 +358,41 @@ class GameController {
       onKeepPlaying: () => undefined,
       onExitToMenu: () => this.exitToMenu(),
     });
+
+    // Phase 2: campaign mission + Muse persona. The mission run is
+    // UI-owned (like session.cheated): it observes the sim and issues
+    // commands through the queue, never mutating sim state directly.
+    // Muse is always on in campaign missions; in skirmish it follows the
+    // saved frequency setting (off = no widget at all).
+    const campaignOpts = opts.campaign;
+    const museFrequency = loadMuseFrequency();
+    if (campaignOpts !== undefined) {
+      this.missionRun = createMissionRun(campaignOpts.mission, session.world);
+      this.muse = new MuseController({
+        frequency: museFrequency === 'off' ? 'normal' : museFrequency,
+        say: (text) => this.museBox?.say(text),
+      });
+      this.museBox = new MuseBox(container);
+      this.museBox.show();
+      this.missionPanel = new MissionPanel(container);
+      this.missionPanel.show();
+      this.missionDebrief = new MissionDebrief(container, {
+        onContinue: () => this.exitToMenu(),
+      });
+    } else {
+      this.missionRun = null;
+      this.muse =
+        museFrequency === 'off'
+          ? null
+          : new MuseController({
+              frequency: museFrequency,
+              say: (text) => this.museBox?.say(text),
+            });
+      this.museBox = this.muse !== null ? new MuseBox(container) : null;
+      this.museBox?.show();
+      this.missionPanel = null;
+      this.missionDebrief = null;
+    }
 
     // Audio: created here, unlocked on the first user gesture (autoplay
     // policy). UI clicks anywhere in the game container play the click cue.
@@ -357,6 +441,7 @@ class GameController {
       this.entities.updateSelectionRings(EntityRenderer.unitMap(world));
       this.hud.update(world, this.selection, this.advisorItems, this.paused, this.speed);
       this.pollAudioEvents(world, now);
+      this.pollCampaign(world, now);
       this.renderer.render(this.scene, this.camera);
     });
   }
@@ -416,6 +501,102 @@ class GameController {
     applyQuality(this.renderer, q);
   }
 
+  /**
+   * Phase 2: campaign director + Muse persona polling (UI-layer only).
+   * The mission director ticks ~2×/sec; Muse polls ~1×/sec. Neither
+   * ever mutates sim state directly — the director issues commands
+   * through the queue, Muse only reads.
+   */
+  private pollCampaign(world: World, nowMs: number): void {
+    const campaignOpts = this.opts.campaign;
+    const run = this.missionRun;
+
+    // Muse persona (campaign and skirmish alike, unless silenced).
+    if (this.muse !== null && nowMs - this.lastMusePoll > 1000) {
+      this.lastMusePoll = nowMs;
+      this.muse.update(
+        world,
+        MISSION_HUMAN_ID,
+        MISSION_AI_ID,
+        campaignOpts?.mission.name,
+      );
+      this.museBox?.setThreat(this.muse.threat);
+    }
+
+    if (run === null || campaignOpts === undefined || this.missionEnded) return;
+
+    // Objective tracker refresh ~1×/sec.
+    if (this.missionPanel !== null && nowMs - this.lastObjectivePanelRefresh > 1000) {
+      this.lastObjectivePanelRefresh = nowMs;
+      this.missionPanel.update(
+        campaignOpts.mission,
+        missionProgress(run, campaignOpts.mission, world),
+      );
+    }
+
+    // Director ~2×/sec.
+    if (nowMs - this.lastMissionPoll <= 500) return;
+    this.lastMissionPoll = nowMs;
+    const directives = updateMissionRun(
+      run,
+      campaignOpts.mission,
+      world,
+      this.session.queue,
+      this.session.terrain,
+    );
+    for (const d of directives) {
+      switch (d.kind) {
+        case 'message':
+          // Campaign scripted messages go through Muse (authored content
+          // bypasses the chattiness throttle).
+          if (this.muse !== null) this.muse.notify(d.text);
+          else this.hud.toast(d.text);
+          break;
+        case 'objectiveComplete':
+          break; // panel checkmarks cover this; no extra noise.
+        case 'victory':
+        case 'defeat': {
+          this.missionEnded = true;
+          const victory = d.kind === 'victory';
+          const result = {
+            mission: campaignOpts.mission,
+            victory,
+            wonPath: victory && d.kind === 'victory' ? d.path : null,
+            kills: run.kills,
+            unitsLost: run.unitsLost,
+          };
+          const progress = campaignOpts.onMissionEnd(result);
+          const score =
+            victory && result.wonPath !== null
+              ? scoreMission(run.kills, run.unitsLost)
+              : { diplomat: 0, commander: 0 };
+          this.missionDebrief?.show({
+            mission: campaignOpts.mission,
+            victory,
+            wonPath: result.wonPath,
+            diplomat: score.diplomat,
+            commander: score.commander,
+            isFinalMission: campaignOpts.mission.order === 8,
+            progress,
+          });
+          if (this.muse !== null) {
+            this.muse.notify(
+              victory ? 'Mission complete, President. Superb work.' : 'Mission failed. We will get them next time.',
+            );
+          }
+          break;
+        }
+      }
+    }
+  }
+
+  /** Live-apply a Muse frequency change from the settings panel. */
+  setMuseFrequency(f: Parameters<MuseController['setFrequency']>[0]): void {
+    this.muse?.setFrequency(f);
+    if (f === 'off') this.museBox?.hide();
+    else this.museBox?.show();
+  }
+
   dispose(): void {
     this.disposed = true;
     this.renderer.setAnimationLoop(null);
@@ -425,6 +606,9 @@ class GameController {
     this.pauseMenu.hide();
     this.cheatConsole.hide();
     this.endScreen.hide();
+    this.museBox?.hide();
+    this.missionPanel?.hide();
+    this.missionDebrief?.hide();
     this.slotsDialog?.hide();
     this.slotsDialog = null;
     this.unbindUiClicks?.();

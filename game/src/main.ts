@@ -46,6 +46,15 @@ import type { AIDifficulty } from './sim/ai';
 import { createSaveStore } from './net_save/store';
 import { SaveSlotsDialog } from './ui/saveslots';
 import { STRINGS } from './ui/strings';
+import type { MissionDef } from './campaign/missions';
+import {
+  createCampaignStore,
+  recordCompletion,
+  type CampaignProgress,
+  type CampaignStore,
+} from './campaign/progress';
+import { MissionSelect, MissionBriefing } from './ui/campaignui';
+import type { MissionEndResult } from './ui/game';
 
 /**
  * Boot the menu experience: renderer + Meridian Plains backdrop scene + menu
@@ -106,6 +115,9 @@ export async function boot(): Promise<void> {
           menu.show();
         },
       }).catch(showFatal);
+    },
+    onShowMissions: () => {
+      void showMissions(app, menu, renderer, canvas, menuLoop);
     },
     onShowLoadGame: () => {
       void showLoadGame(app, menu, renderer, canvas, menuLoop);
@@ -269,6 +281,72 @@ async function showLoadGame(
     },
     onClose: () => undefined,
   }).show();
+}
+
+/**
+ * Phase 2 — "The First Term" campaign flow.
+ *
+ * Mission select → briefing → startGame (with campaign opts) → debrief.
+ * Progress lives in memory for the session and persists to IndexedDB
+ * (with memory fallback) on every mission end. `onMissionEnd` updates
+ * the in-memory progress synchronously (the debrief needs it for the
+ * final-mission ending) and saves asynchronously.
+ */
+async function showMissions(
+  app: HTMLElement,
+  menu: MainMenu,
+  renderer: { setAnimationLoop(cb: ((time: number) => void) | null): void },
+  canvas: HTMLCanvasElement,
+  menuLoop: () => void,
+): Promise<void> {
+  const store: CampaignStore = await createCampaignStore();
+  let progress: CampaignProgress = await store.load();
+  const select = new MissionSelect(app, {
+    onSelect: (mission: MissionDef) => {
+      select.hide();
+      new MissionBriefing(app, {
+        onStart: (m: MissionDef) => startMission(m),
+        onBack: () => select.show(progress),
+      }).show(mission);
+    },
+    onBack: () => {
+      select.hide();
+      menu.show();
+    },
+  });
+
+  function startMission(mission: MissionDef): void {
+    menu.hide();
+    renderer.setAnimationLoop(null);
+    canvas.style.display = 'none';
+    // Mission seed: fixed per mission so every president faces the same
+    // term (deterministic campaign). Replays use the same seed.
+    const seed = (mission.order * 2654435761) >>> 0;
+    startGame(app, {
+      seed,
+      aiDifficulty: mission.aiDifficulty === 'none' ? 'citizen' : mission.aiDifficulty,
+      quality: loadSettings().quality,
+      onExitToMenu: () => {
+        canvas.style.display = '';
+        renderer.setAnimationLoop(menuLoop);
+        select.show(progress);
+      },
+      campaign: {
+        mission,
+        onMissionEnd: (result: MissionEndResult): CampaignProgress => {
+          if (result.victory) {
+            progress = recordCompletion(progress, result.mission.id, result.kills, result.unitsLost);
+            // Async save; the in-memory progress is already current for
+            // the debrief screen.
+            void store.save(progress);
+          }
+          return progress;
+        },
+      },
+    }).catch(showFatal);
+  }
+
+  select.show(progress);
 }
 
 // Auto-boot only in a real browser. Under vitest (Node, no document) the

@@ -18,7 +18,7 @@
  * NOVATERRA — ui/session.ts — full game assembly (headless-safe).
  *
  * Responsibilities:
- *  - Build a playable skirmish session: terrain, world, command queue
+ *  - Build a playable session: terrain, world, command queue
  *    (every command kind registered), and the tick driver with the
  *    canonical system order. One function, one place — the UI game loop,
  *    headless scenario tests, and future replay/save code all assemble
@@ -26,6 +26,9 @@
  *  - Seed both players' starting forces through the command queue (the
  *    same path real orders take), and register the Classic AI rival
  *    (owner 1) at a chosen difficulty. Player 0 is always the human.
+ *  - Campaign missions (Phase 2): `createSession({ campaignMission })`
+ *    drives map/AI/starting resources from the mission; 'none' AI means
+ *    no rival player, and owner 1 is always funded for scripted raids.
  *
  * Canonical system order (fixed, data-independent):
  *    pathfinding → movement → combat → economy → AI
@@ -67,6 +70,7 @@ import { registerCheatCommands } from '../sim/cheats';
 import { addAIPlayer, AI_MAX_UNITS, createAISystem, type AIDifficulty } from '../sim/ai';
 import { restoreSnapshot, type Snapshot } from '../sim/snapshot';
 import type { OrderIntent } from './orders';
+import type { MissionDef } from '../campaign/missions';
 
 /** Player 0 is always the human. */
 export const HUMAN_PLAYER_ID = 0;
@@ -90,6 +94,14 @@ export interface SessionOptions {
    * and the AI player is NOT re-added (its state is in the snapshot).
    */
   snapshot?: Snapshot;
+  /**
+   * Campaign mission setup (Phase 2). When set, the map preset, AI
+   * difficulty, and starting resources come from the mission; the AI
+   * rival is skipped entirely when the mission's difficulty is 'none'.
+   * The AI player always gets a manpower stockpile so the campaign
+   * director's scripted raids can pay the spawnUnit manpower cost.
+   */
+  campaignMission?: MissionDef;
 }
 
 /** Everything a running game needs. Plain data + live driver/queue. */
@@ -122,6 +134,14 @@ export interface GameSession {
 /** AI base corner; mirrored for the human. */
 const AI_CORNER = { x: 180, z: -180 };
 const HUMAN_CORNER = { x: -180, z: 180 };
+
+/**
+ * Manpower granted to the AI player (owner 1) in every fresh session so
+ * the campaign director's scripted raids can pay the `spawnUnit`
+ * manpower cost. Harmless in skirmish: the Classic AI spends manpower
+ * on its own production anyway.
+ */
+const RAID_MANPOWER = 10000;
 
 /**
  * Nearest land to (x, z) on a deterministic outward spiral. Base placement
@@ -177,11 +197,25 @@ function startingForces(
 /**
  * Create a fresh skirmish session. Deterministic in (seed, aiDifficulty):
  * same inputs, same world, same AI behavior.
+ *
+ * With `campaignMission` set, the mission drives the setup: its map
+ * preset, its AI difficulty ('none' = no AI rival at all), and its
+ * starting-resource overrides. The AI player (owner 1) always receives
+ * a manpower stockpile so the campaign director's scripted raids can
+ * pay the `spawnUnit` manpower cost.
  */
 export function createSession(options: SessionOptions): GameSession {
   const { seed } = options;
-  const aiDifficulty: AIDifficulty = options.aiDifficulty ?? 'citizen';
-  const preset = getMapPreset(options.mapPreset ?? 'Meridian Plains');
+  const mission = options.campaignMission;
+  const aiDifficulty: AIDifficulty =
+    mission !== undefined
+      ? mission.aiDifficulty === 'none'
+        ? 'citizen' // placeholder: no AI player is added below
+        : mission.aiDifficulty
+      : (options.aiDifficulty ?? 'citizen');
+  const preset = getMapPreset(
+    mission?.mapPreset ?? options.mapPreset ?? 'Meridian Plains',
+  );
 
   const terrain = generateTerrain(preset.seed, preset);
   // Restored games resume the exact saved world; fresh games start empty.
@@ -211,13 +245,30 @@ export function createSession(options: SessionOptions): GameSession {
   const aiBase = findLandNear(terrain, AI_CORNER.x, AI_CORNER.z);
   const humanBase = findLandNear(terrain, HUMAN_CORNER.x, HUMAN_CORNER.z);
   if (!options.snapshot) {
-    // The AI's production cap counts all its units: starting forces must
-    // leave headroom under the cap, or the AI would never build.
-    // Cadet (cap 4) gets 2 starters; citizen/commander get the full 6.
-    const aiStarters = aiDifficulty === 'cadet' ? 2 : AI_MAX_UNITS[aiDifficulty];
-    startingForces(queue, world, terrain, AI_PLAYER_ID, 'ai-setup', aiBase, aiStarters);
+    const hasAIRival = mission === undefined || mission.aiDifficulty !== 'none';
+    if (hasAIRival) {
+      // The AI's production cap counts all its units: starting forces must
+      // leave headroom under the cap, or the AI would never build.
+      // Cadet (cap 4) gets 2 starters; citizen/commander get the full 6.
+      const aiStarters = aiDifficulty === 'cadet' ? 2 : AI_MAX_UNITS[aiDifficulty];
+      startingForces(queue, world, terrain, AI_PLAYER_ID, 'ai-setup', aiBase, aiStarters);
+      addAIPlayer(world, AI_PLAYER_ID, aiDifficulty, aiBase.x, aiBase.z);
+    }
+    // Scripted raids spawn for owner 1 through the command queue, which
+    // validates manpower — fund the raiders even when no AI rival plays.
+    const aiPlayer = world.city.players[AI_PLAYER_ID];
+    if (aiPlayer !== undefined && aiPlayer.manpower < RAID_MANPOWER) {
+      aiPlayer.manpower = RAID_MANPOWER;
+    }
     startingForces(queue, world, terrain, HUMAN_PLAYER_ID, 'player', humanBase);
-    addAIPlayer(world, AI_PLAYER_ID, aiDifficulty, aiBase.x, aiBase.z);
+    if (mission?.startingResources !== undefined) {
+      const human = world.city.players[HUMAN_PLAYER_ID];
+      if (human !== undefined) {
+        for (const [key, value] of Object.entries(mission.startingResources)) {
+          (human as unknown as Record<string, number>)[key] = value;
+        }
+      }
+    }
 
     // Apply the starting forces now (one fixed tick) so a fresh session
     // already has both armies on the field.
@@ -227,7 +278,10 @@ export function createSession(options: SessionOptions): GameSession {
   // and RNG streams come back exactly as saved.
 
   return {
-    sessionId: `novaterra-${seed >>> 0}-${aiDifficulty}`,
+    sessionId:
+      mission !== undefined
+        ? `novaterra-campaign-${mission.id}-${seed >>> 0}`
+        : `novaterra-${seed >>> 0}-${aiDifficulty}`,
     seed,
     aiDifficulty,
     terrain,

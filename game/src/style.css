@@ -816,3 +816,230 @@ body {
   color: var(--ink);
   font-size: 14px;
 }
+
+/* ---- Phase 2: campaign + Muse ---- */
+
+.mission-select .mission-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(640px, 92vw);
+  max-height: 56vh;
+  overflow-y: auto;
+  pointer-events: auto;
+  text-align: left;
+}
+
+.mission-item {
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 12px 16px;
+  backdrop-filter: blur(6px);
+}
+
+.mission-item.locked { opacity: 0.55; }
+.mission-item.done { border-color: #ffd76a; }
+
+.mission-head {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.mission-order {
+  color: var(--ink-dim);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.mission-name { font-size: 17px; font-weight: 600; }
+.mission-state { margin-left: auto; color: #ffd76a; font-size: 13px; }
+.mission-blurb { margin: 6px 0 10px; color: var(--ink-dim); font-size: 13px; }
+
+.mission-foot {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  color: var(--ink-dim);
+  font-size: 13px;
+  pointer-events: auto;
+}
+
+.mission-briefing .mission-kicker {
+  color: var(--ink-dim);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  font-size: 12px;
+  margin: 0;
+}
+
+.mission-briefing .briefing-text {
+  max-width: min(620px, 92vw);
+  color: var(--ink);
+  font-size: 15px;
+  line-height: 1.55;
+  margin: 0;
+}
+
+.mission-briefing .mission-paths {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  pointer-events: auto;
+  max-width: min(720px, 94vw);
+}
+
+.path-card {
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  border-radius: 8px;
+  padding: 12px 16px;
+  text-align: left;
+  min-width: 220px;
+  max-width: 320px;
+}
+
+.path-card.peaceful { border-color: #8fd694; }
+.path-card h3 { margin: 0 0 8px; font-size: 15px; }
+.path-card ul { margin: 0; padding-left: 20px; font-size: 13px; color: var(--ink-dim); }
+
+.briefing-meta {
+  color: var(--ink-dim);
+  font-size: 13px;
+  margin: 0;
+}
+
+.mission-briefing .buttons { flex-direction: row; }
+
+.debrief-path, .debrief-score {
+  color: var(--ink) !important;
+  font-size: 15px !important;
+  margin-bottom: 12px !important;
+}
+
+.campaign-ending-title {
+  color: #ffd76a;
+  margin-top: 18px !important;
+}
+
+.campaign-ending-text {
+  font-size: 15px !important;
+  line-height: 1.6;
+}
+
+/* In-HUD mission objective tracker (top-left, below the top bar). */
+.mission-panel {
+  position: fixed;
+  top: 56px;
+  left: 12px;
+  z-index: 40;
+  max-width: 280px;
+  background: rgba(8, 14, 22, 0.88);
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  color: var(--ink);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.mission-panel h4 { margin: 0 0 8px; font-size: 13px; letter-spacing: 0.06em; }
+.mission-panel .mission-path { margin-bottom: 8px; }
+.mission-panel .path-name { font-weight: 600; margin-bottom: 2px; }
+.mission-panel .mission-path.done .path-name { color: #8fd694; }
+.mission-panel ul { margin: 0; padding-left: 4px; list-style: none; color: var(--ink-dim); }
+.mission-panel li.done { color: #8fd694; }
+
+/* Muse: chief-of-staff widget (bottom-right). */
+.muse-box {
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 40;
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  max-width: 340px;
+  background: rgba(8, 14, 22, 0.92);
+  border: 1px solid var(--panel-border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  pointer-events: none;
+}
+
+.muse-portrait {
+  font-size: 34px;
+  line-height: 1;
+  filter: drop-shadow(0 0 6px rgba(255, 215, 106, 0.35));
+}
+
+.muse-body { flex: 1; min-width: 0; }
+.muse-name {
+  font-size: 11px;
+  letter-spacing: 0.3em;
+  color: #ffd76a;
+  margin-bottom: 4px;
+}
+
+.muse-message {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--ink);
+}
+
+.muse-message.muse-idle { color: var(--ink-dim); font-style: italic; }
+
+.muse-threat { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.muse-threat-caption {
+  font-size: 10px;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+
+.muse-threat-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.muse-threat-fill {
+  height: 100%;
+  width: 50%;
+  background: #ffd76a;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.muse-threat-fill.low { background: #8fd694; }
+.muse-threat-fill.high { background: #ff7a7a; }
+.muse-threat-value { font-size: 11px; color: var(--ink-dim); white-space: nowrap; }
+
+.muse-settings .setting-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  margin: 6px 0;
+  color: var(--ink);
+  font-size: 14px;
+  pointer-events: auto;
+}
+
+.muse-settings .setting-note {
+  max-width: min(520px, 90vw);
+  color: var(--ink-dim);
+  font-size: 13px;
+}
+
+.settings-note {
+  max-width: 420px;
+  color: var(--ink-dim);
+  font-size: 12px;
+  line-height: 1.5;
+}

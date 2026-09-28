@@ -41,6 +41,12 @@ import {
   saveAudioSettings,
   type AudioSettings,
 } from '../audio/engine';
+import {
+  loadMuseFrequency,
+  saveMuseFrequency,
+  type MuseFrequency,
+} from '../muse/controller';
+import { getLiveKey, setLiveKey } from '../muse/live';
 
 /** Graphics quality levels. */
 export type QualityLevel = 'low' | 'medium' | 'high';
@@ -91,6 +97,13 @@ export interface MenuActions {
   onSaveGame?: () => void;
   /** Open the load-game slot picker (main menu). Optional. */
   onShowLoadGame?: () => void;
+  /** Open the campaign mission select (main menu). Optional. */
+  onShowMissions?: () => void;
+  /**
+   * Muse chattiness changed in settings (live-apply when a game is
+   * running). Optional.
+   */
+  onMuseFrequencyChange?: (f: MuseFrequency) => void;
   /**
    * Exit-to-menu confirmation: true = save first, false = discard.
    * When present, the pause menu asks before calling onExitToMenu.
@@ -139,11 +152,11 @@ export class MainMenu {
     const buttons = el('div', 'buttons');
     const skirmish = menuButton(s.skirmish, () => this.showSkirmishSetup(buttons));
     const loadGame = menuButton(s.loadGame, () => this.actions.onShowLoadGame?.());
-    const missions = menuButton(s.missions, () => undefined, true);
-    missions.title = s.missionsLocked;
+    const missions = menuButton(s.missions, () => this.actions.onShowMissions?.());
     const settings = menuButton(s.settings, () => new SettingsPanel(this.root, {
       onQualityChange: (q) => this.actions.onQualityChange(q),
       onAudioChange: this.actions.onAudioChange,
+      onMuseFrequencyChange: this.actions.onMuseFrequencyChange,
       onClose: () => this.show(),
     }).show());
     buttons.append(skirmish, loadGame, missions, settings);
@@ -233,6 +246,7 @@ export class PauseMenu {
         new SettingsPanel(this.root, {
           onQualityChange: (q) => this.actions.onQualityChange(q),
           onAudioChange: this.actions.onAudioChange,
+          onMuseFrequencyChange: this.actions.onMuseFrequencyChange,
           onClose: () => this.show(),
         }).show(),
       ),
@@ -287,6 +301,7 @@ export class SettingsPanel {
   private readonly root: HTMLElement;
   private readonly onQualityChange: (q: QualityLevel) => void;
   private readonly onAudioChange: ((patch: Partial<AudioSettings>) => void) | undefined;
+  private readonly onMuseFrequencyChange: ((f: MuseFrequency) => void) | undefined;
   private readonly onClose: () => void;
   private el: HTMLElement | null = null;
 
@@ -295,12 +310,14 @@ export class SettingsPanel {
     opts: {
       onQualityChange: (q: QualityLevel) => void;
       onAudioChange?: (patch: Partial<AudioSettings>) => void;
+      onMuseFrequencyChange?: (f: MuseFrequency) => void;
       onClose: () => void;
     },
   ) {
     this.root = root;
     this.onQualityChange = opts.onQualityChange;
     this.onAudioChange = opts.onAudioChange;
+    this.onMuseFrequencyChange = opts.onMuseFrequencyChange;
     this.onClose = opts.onClose;
   }
 
@@ -366,6 +383,51 @@ export class SettingsPanel {
     muteBox.addEventListener('change', () => applyAudio({ muted: muteBox.checked }));
     muteRow.append(muteBox);
     panel.append(muteRow);
+
+    // --- Muse ---
+    panel.append(el('h3', '', s.museTitle));
+    const museFreqLabel = el('label', 'settings-row', `${s.museFrequency}: `);
+    const museFreq = document.createElement('select');
+    const freqOptions: Array<[MuseFrequency, string]> = [
+      ['off', s.museOff],
+      ['quiet', s.museQuiet],
+      ['normal', s.museNormal],
+      ['chatty', s.museChatty],
+    ];
+    const currentFreq = loadMuseFrequency();
+    for (const [value, text] of freqOptions) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = text;
+      opt.selected = currentFreq === value;
+      museFreq.append(opt);
+    }
+    museFreq.addEventListener('change', () => {
+      const f = museFreq.value as MuseFrequency;
+      saveMuseFrequency(f);
+      this.onMuseFrequencyChange?.(f);
+    });
+    museFreqLabel.append(museFreq);
+    panel.append(museFreqLabel);
+
+    panel.append(el('h3', '', s.liveMuseTitle));
+    panel.append(el('p', 'settings-note', s.liveMuseNote));
+    const liveKeyLabel = el('label', 'settings-row', `${s.liveKeyLabel}: `);
+    const liveKey = document.createElement('input');
+    liveKey.type = 'password';
+    liveKey.placeholder = s.liveKeyPlaceholder;
+    liveKey.autocomplete = 'off';
+    liveKey.value = getLiveKey();
+    liveKey.addEventListener('change', () => setLiveKey(liveKey.value.trim()));
+    liveKeyLabel.append(liveKey);
+    panel.append(liveKeyLabel);
+    const liveEnableLabel = el('label', 'settings-row', '');
+    const liveEnable = document.createElement('input');
+    liveEnable.type = 'checkbox';
+    liveEnable.disabled = true; // not wired yet in 0.1 Alpha
+    liveEnable.title = s.liveMuseTitle;
+    liveEnableLabel.append(liveEnable, document.createTextNode(` ${s.liveEnableLabel}`));
+    panel.append(liveEnableLabel);
 
     panel.append(el('h3', '', s.keysTitle));
     const keys = el('div', 'settings-keys');

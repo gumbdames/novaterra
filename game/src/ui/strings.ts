@@ -34,7 +34,7 @@ export const STRINGS = {
     loadGame: 'Load game',
     missions: 'Missions',
     settings: 'Settings',
-    missionsLocked: 'The campaign ships in Phase 2.',
+    chooseMission: 'The First Term — choose your mission',
     chooseDifficulty: 'Choose your rival',
     difficultyCadet: 'Cadet — learns the ropes',
     difficultyCitizen: 'Citizen — a fair fight',
@@ -127,6 +127,18 @@ export const STRINGS = {
     musicVolume: 'Music volume',
     sfxVolume: 'Sound effects volume',
     mute: 'Mute all',
+    museTitle: 'Muse — your chief of staff',
+    museFrequency: 'Chattiness',
+    museOff: 'Off — Muse stays silent',
+    museQuiet: 'Quiet — milestones only',
+    museNormal: 'Normal — events and updates',
+    museChatty: 'Chatty — taunts and commentary',
+    liveMuseTitle: 'Live Muse (coming soon)',
+    liveMuseNote:
+      'Point Muse at a live language model for strategic advice. The live model is advisory only — it can never drive the game. Not wired yet in 0.1 Alpha; the offline Muse covers you meanwhile.',
+    liveKeyLabel: 'API key',
+    liveKeyPlaceholder: 'Stored only in this browser',
+    liveEnableLabel: 'Enable Live Muse (coming soon)',
   },
   help: {
     keys: [

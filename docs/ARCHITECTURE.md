@@ -59,8 +59,20 @@ game/src/
     scene.ts renderer.ts instancing.ts terrain.ts effects.ts lod.ts ...
   ui/             # HUD, menus, dialogs, camera, selection, orders, advisor,
                   # session assembly — commands go to sim, never direct mutation
+                  # campaignui.ts: mission select/briefing/debrief/objectives
+                  # musebox.ts: Muse widget + threat meter (DOM only)
   audio/          # adaptive music engine (peace/war crossfade between two
                   # looping tracks), procedural SFX pool (Web Audio synth)
+  campaign/       # Phase 2: mission data (missions.ts), pure objective
+                  # checking (objectives.ts), mission director — tracks kills,
+                  # fires scripted events, spawns raids via ordinary commands
+                  # (director.ts), progress/scoring/endings + persistence
+                  # (progress.ts). Reads sim state, never mutates it directly.
+  muse/           # Phase 2: deterministic persona lines (persona.ts), threat
+                  # meter + trick narration from visible state only (director.ts),
+                  # event detection + chattiness throttle (controller.ts), live
+                  # Muse advisory protocol scaffold (live.ts). Advisory only:
+                  # never drives ticks or mutates sim state.
   net_save/       # IndexedDB driver, export/import, save slots UI data
   main.ts         # boot, menu backdrop + menus, wiring (game loop lives in ui/game.ts)
 game/tests/

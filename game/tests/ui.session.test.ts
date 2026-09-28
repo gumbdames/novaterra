@@ -119,3 +119,41 @@ describe('session', () => {
     expect(canTarget(UNIT_DEFS[attacker.kind as UnitKind], target)).toBe(true);
   });
 });
+
+describe('session (campaign)', () => {
+  it('builds a mission session from the mission def', async () => {
+    const { getMission } = await import('../src/campaign/missions');
+    const mission = getMission('northern-border')!;
+    const session = createSession({ seed: 42, campaignMission: mission });
+    // Mission map + difficulty drive the setup.
+    expect(session.sessionId).toBe('novaterra-campaign-northern-border-42');
+    expect(session.aiDifficulty).toBe(mission.aiDifficulty);
+    // Starting resources applied to the human player.
+    const human = session.world.city.players[HUMAN_PLAYER_ID]!;
+    expect(human.funds).toBe(5000);
+    expect(human.materials).toBe(2000);
+    // The AI player is funded for scripted raids (its own starting
+    // forces spend a little of the stockpile first).
+    const ai = session.world.city.players[AI_PLAYER_ID]!;
+    expect(ai.manpower).toBeGreaterThanOrEqual(9000);
+  });
+
+  it('skips the AI rival entirely when the mission difficulty is none', async () => {
+    const { getMission } = await import('../src/campaign/missions');
+    const mission = getMission('first-day')!;
+    expect(mission.aiDifficulty).toBe('none');
+    const session = createSession({ seed: 42, campaignMission: mission });
+    const aiUnits = session.world.units.filter((u) => u.owner === AI_PLAYER_ID);
+    expect(aiUnits).toHaveLength(0);
+    const humanUnits = session.world.units.filter((u) => u.owner === HUMAN_PLAYER_ID);
+    expect(humanUnits.length).toBeGreaterThan(0);
+  });
+
+  it('a mission session stays deterministic for the same seed', async () => {
+    const { getMission } = await import('../src/campaign/missions');
+    const mission = getMission('bread-and-power')!;
+    const a = createSession({ seed: 99, campaignMission: mission });
+    const b = createSession({ seed: 99, campaignMission: mission });
+    expect(a.digest()).toBe(b.digest());
+  });
+});

@@ -42,6 +42,21 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `camera.ts` / `selection.ts` — pure state + transitions, fully tested.
 - `orders.ts` — gesture → `OrderIntent` (`NewCommand` minus issuer);
   the controller stamps `issuer: 'player'` at enqueue.
+- `campaignui.ts` — campaign screens (Phase 2): `MissionSelect`
+  (locked/unlocked/done), `MissionBriefing` (paths with 🕊/⚔ markers),
+  `MissionDebrief` (debrief copy + diplomat/commander score + the two
+  campaign endings), `MissionPanel` (in-HUD objective tracker).
+- `musebox.ts` — the Muse widget: portrait, speech bubble, threat
+  meter. Pure DOM; `MuseController` decides what to say.
+- `session.ts` also assembles campaign missions:
+  `createSession({ campaignMission })` — map/AI/starting resources from
+  the mission, no AI rival when difficulty is 'none', owner 1 always
+  funded with manpower for scripted raids.
+- `game.ts` (Phase 2): owns the mission run + `MuseController` +
+  `MuseBox` + `MissionPanel`; polls the campaign director ~2×/sec and
+  Muse ~1×/sec in the game loop. Victory/defeat → debrief overlay →
+  `onMissionEnd` records progress. Muse settings (frequency + live key)
+  live in the settings panel, live-applied in game.
 - `advisor.ts` — pure `evaluateAdvisor(world, playerId)`, worst-first.
 - `strings.ts` — all UI copy in one place (English now, Hebrew later).
 - Audio: `game.ts` owns an `AudioEngine` (see `src/audio/AGENTS.md`) —

@@ -1,14 +1,23 @@
 # How to Play — novaterra
 
-> The 0.1 Alpha skirmish guide. Kept **clear, short and simple** per the
-> design brief. Last updated: 2026-09-29 (Phase 1.5: navy, maps, AI 4–5).
+> The 0.1 Alpha guide. Kept **clear, short and simple** per the
+> design brief. Last updated: 2026-09-29 (Phase 2: campaign + Muse).
 
 ## Your goal
 
-Build a city, grow an economy, raise an army, and destroy the enemy
-base across the map. You start with 2 engineers and 4 soldiers.
+**Missions** (recommended): play "The First Term", 8 story missions —
+briefings, objectives, and two endings. Every mission has a peaceful
+path (🕊).
+
+**Skirmish**: build a city, grow an economy, raise an army, and destroy
+the enemy base across the map. You start with 2 engineers and 4 soldiers.
 
 ## Starting a game
+
+**Missions** → pick an unlocked mission → read the **briefing** (it
+lists every way to win — 🕊 is the peaceful one) → **Start Mission**.
+The objective tracker (top-left) shows your progress. Win or lose,
+the debrief explains what happened.
 
 **Skirmish** → pick a **map** (8 to choose from, 5% to 60% water —
 more water means more naval fighting) → pick your **rival**:
