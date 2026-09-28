@@ -41,9 +41,13 @@
 import type { EntityRecord, World } from './world';
 import { createWorld } from './world';
 import type { RngState } from './rng';
+import type { BuildingRecord, CityState, PlayerState } from './city';
 
-/** Snapshot format version. Bump on any breaking change to the shape below. */
-export const SNAPSHOT_VERSION = 1;
+/**
+ * Snapshot format version. Bump on any breaking change to the shape below.
+ * v2: city state (roads/zones/buildings/players) added (Phase 1, step 5).
+ */
+export const SNAPSHOT_VERSION = 2;
 
 /** Plain-data snapshot of the world at a tick boundary. */
 export interface Snapshot {
@@ -54,6 +58,7 @@ export interface Snapshot {
   nextId: number;
   entities: EntityRecord[];
   rng: RngState;
+  city: CityState;
 }
 
 /** Thrown when a snapshot's version doesn't match. Names expected vs found. */
@@ -82,6 +87,34 @@ function copyRng(rng: RngState): RngState {
   return out;
 }
 
+function copyBuilding(b: BuildingRecord): BuildingRecord {
+  return {
+    id: b.id, kind: b.kind, owner: b.owner, cx: b.cx, cz: b.cz,
+    facing: b.facing, progress: b.progress, level: b.level,
+    operational: b.operational, powered: b.powered, watered: b.watered,
+  };
+}
+
+function copyPlayer(p: PlayerState): PlayerState {
+  return {
+    id: p.id, name: p.name, funds: p.funds, materials: p.materials,
+    fuel: p.fuel, food: p.food, research: p.research,
+    taxRates: [p.taxRates[0] as number, p.taxRates[1] as number, p.taxRates[2] as number],
+    population: p.population,
+  };
+}
+
+function copyCity(city: CityState): CityState {
+  return {
+    roads: [...city.roads],
+    zones: city.zones.map((z) => ({ cell: z.cell, zone: z.zone })),
+    buildings: city.buildings.map(copyBuilding),
+    nextBuildingId: city.nextBuildingId,
+    players: city.players.map(copyPlayer),
+    foodShortage: city.foodShortage,
+  };
+}
+
 /** Deep-copy the world's sim state into a versioned, JSON-safe snapshot. */
 export function takeSnapshot(world: World): Snapshot {
   return {
@@ -92,6 +125,7 @@ export function takeSnapshot(world: World): Snapshot {
     nextId: world.nextId,
     entities: copyEntities(world.entities),
     rng: copyRng(world.rng),
+    city: copyCity(world.city),
   };
 }
 
@@ -112,5 +146,6 @@ export function restoreSnapshot(snap: Snapshot): World {
   world.nextId = snap.nextId;
   world.entities = copyEntities(snap.entities);
   world.rng = copyRng(snap.rng);
+  world.city = copyCity(snap.city);
   return world;
 }

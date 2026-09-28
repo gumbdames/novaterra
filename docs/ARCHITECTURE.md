@@ -112,9 +112,38 @@ they never mutate sim state.
   triangles total; chunk meshes share one material. Greedy meshing and
   worker-built terrain remain future optimizations — current totals sit well
   inside the §6 budgets.
-- **Economy tick:** part of the sim tick (not wall-clock); resource flows
-  computed on cohorts + sampled visible agents (full per-citizen agents
-  rejected on perf grounds — see game-design.md C4/A1).
+- **City + economy (`sim/city.ts`, `sim/economy.ts`):** city grid = terrain
+  grid (256×256 cells, 2 world units/cell). Roads: 5 Funds + 2 Materials
+  per cell, paved cells kept sorted, 4-way connectivity BFS. Zones
+  (residential/commercial/industrial) painted as rects at 1 Fund/cell;
+  buildings validate zone match + road adjacency + land-only + no overlap
+  at enqueue AND at apply; demolition refunds nothing and frees the
+  footprint. 8-building roster (Phase 1): House (2×2, 120₣/40⛏, 10 s,
+  0.15₣/s upkeep, 6 pop), Apartment (3×3, 450₣/160⛏, 30 s, 0.7₣/s, 30
+  pop), Shop (2×2, 220₣/70⛏, 15 s, 0.4₣/s, +1.2₣/s income), Research Lab
+  (2×2, 650₣/220⛏, 45 s, 1.2₣/s, +0.4🔬/s), Factory (3×3, 550₣/220⛏,
+  40 s, 1.6₣/s, 0.4⛽→2.5⛏/s), Farm (3×3, 300₣/80⛏, 15 s, 0.6₣/s,
+  +3.0🌾/s), Power Plant (3×3, 900₣/350⛏, 60 s, 0.8₣/s, 25 power, burns
+  1⛽/s, needs 2 water), Water Pump (2×2, 350₣/120⛏, 20 s, 0.4₣/s,
+  25 water, needs 2 power) — all figures Phase 1 engineering choices, not
+  locked design. Economy runs once per sim-second inside the tick, fixed
+  order per player: construction → upkeep funding (newest-first shutdown
+  on shortfall) → power/water capacity pools allocated in building-id
+  order (providers must be road-adjacent; unpowered ×0.25 output,
+  unwatered ×0.25) → production/consumption (starved inputs = idle) →
+  food (0.02/pop/s; shortage stalls growth) → taxes every 60 s
+  (rate × taxBase × 60 s, utilities exempt) → building levels 1→3
+  (×1.25/level for thriving buildings) → organic growth pulses every
+  10 s (desirability 0.55 × tax factor, ×0.25 per missing utility
+  headroom; stalled by food shortage). Taxes: per-zone 0–100% rates, the
+  player's lever against growth. Market: fixed rates (Materials 2, Fuel 3,
+  Food 1, Research 12 Funds) with ±20% spread — a buy-then-sell round trip
+  returns 2/3 of funds, so the market is a lever, not free money
+  (dynamic pricing deferred). Balance target: a sensible powered city runs
+  net-positive on Materials/Food/Research and viable on Funds at moderate
+  taxes, while upkeep punishes reckless sprawl (reference city verified in
+  tests). Snapshots v2 include full city state; digest covers roads, zones,
+  buildings (id order), players, stockpiles, tax rates, population.
 - **AI:** Classic AI = decision-quality ladder across 5 levels (Cadet→Legend;
   disclosed handicaps only at extremes). **Mode 2 "Muse persona"** =
   personality-driven adaptive AI director (strategic memory, visible threat

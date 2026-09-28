@@ -39,6 +39,8 @@
 import type { RngState } from './rng';
 import { createRngBank } from './rng';
 import type { RngBank } from './rng';
+import type { CityState } from './city';
+import { initCity } from './city';
 
 /** Minimal per-entity record. Later steps add components; the shape stays plain. */
 export interface EntityRecord {
@@ -65,6 +67,8 @@ export interface World {
   entities: EntityRecord[];
   /** All RNG stream states. Part of every snapshot. */
   rng: RngState;
+  /** City state: roads, zones, buildings, players. Snapshotted + digested. */
+  city: CityState;
 }
 
 /** First assignable entity id (0 stays reserved as the "no entity" sentinel). */
@@ -79,6 +83,7 @@ export function createWorld(seed: number): World {
     nextId: FIRST_ENTITY_ID,
     entities: [],
     rng: {},
+    city: initCity(),
   };
 }
 

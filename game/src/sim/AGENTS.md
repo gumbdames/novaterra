@@ -5,6 +5,38 @@ tick driver, commands, systems, pathfinding, spatial index, digest, serialize.
 No DOM, no three.js, no Web Audio — the sim must run headless in Node for
 tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 
+## Module map
+
+- `rng.ts` — mulberry32 + named streams via `createRngBank` / `rngBank`.
+- `world.ts` — the `World` store; owns `city: CityState` (imports
+  `initCity` from `city.ts`).
+- `tick.ts` — 30 Hz accumulator driver, fixed system registration order.
+- `commands.ts` — tick-aligned queue, `{ validate, apply }` specs,
+  validate-at-enqueue-AND-apply, loud rejections.
+- `city.ts` — city grid, roads, zones, buildings, players, placement
+  validation, growth. Registers `buildRoad`, `paintZone`,
+  `placeBuilding`, `demolish`, `setTaxRate`. Imports `World` type-only —
+  this is what breaks the `world.ts` ⇄ `city.ts` cycle (`city.ts` takes
+  `createRngBank` directly from `rng.ts` instead of `rngBank` from
+  `world.ts`).
+- `economy.ts` — the 1 Hz economy system (`createEconomySystem`),
+  fixed-rate market (`marketTrade`), tax collection. Pure w.r.t.
+  rendering.
+- `digest.ts` — FNV-1a canonical encoding, including full city state.
+- `snapshot.ts` — versioned snapshots (v2 adds city state).
+- `terrain.ts` — seeded mapgen (not snapshotted); `spatial.ts` — hash grid.
+
+## City/economy conventions
+
+- All rates in `BUILDING_DEFS` are **per sim-second**; the economy system
+  advances them once per 30 ticks (`ECONOMY_TICKS`).
+- Utility allocation is id-ordered and per-player; providers (plants,
+  pumps) must be road-adjacent to count.
+- Growth draws only from the `'city'` RNG stream.
+- Balance numbers in `BUILDING_DEFS` / `MARKET_PRICES` are Phase 1
+  engineering choices — tune them, but keep the tests' reference-city
+  invariants (net-positive materials/food, tax differential) green.
+
 ## Determinism contract (non-negotiable)
 
 Same seed + same commands ⇒ identical state, on the same machine/engine.

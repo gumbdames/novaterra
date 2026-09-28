@@ -70,6 +70,24 @@ export function canonicalizeWorld(world: World): string {
   for (const name of names) {
     out += `${name}=${(world.rng[name] as number) >>> 0}|`;
   }
+  // City state: sorted structures serialize in canonical order already;
+  // buildings are in placement (id) order; floats use canonicalNumber.
+  out += '|city:';
+  out += `roads=${world.city.roads.join(',')};`;
+  out += `zones=${world.city.zones.map((z) => `${z.cell}:${z.zone}`).join(',')};`;
+  out += `nextBldg=${world.city.nextBuildingId}|`;
+  for (const b of world.city.buildings) {
+    out += `b${b.id},${b.kind},${b.owner},${b.cx},${b.cz},${b.facing},`;
+    out += `${canonicalNumber(b.progress)},${b.level},`;
+    out += `${b.operational ? 1 : 0},${b.powered ? 1 : 0},${b.watered ? 1 : 0};`;
+  }
+  out += '|players:';
+  for (const p of world.city.players) {
+    out += `p${p.id},${p.name},${canonicalNumber(p.funds)},${canonicalNumber(p.materials)},`;
+    out += `${canonicalNumber(p.fuel)},${canonicalNumber(p.food)},${canonicalNumber(p.research)},`;
+    out += `${p.taxRates.join(',')},${p.population};`;
+  }
+  out += `|shortage=${world.city.foodShortage ? 1 : 0}`;
   return out;
 }
 

@@ -46,7 +46,25 @@ fun in 30–60 minute sessions. Build order:
    queries; `game/src/render/terrain.ts`: 16 chunk meshes + 1 water plane =
    17 draw calls, 131,074 triangles; normal boot now shows the live map.
    23 new tests, 95/95 green; typecheck/build green; AGPL stamps verified.)
-5. City building (roads, 3 zones, power/water, 6–8 buildings) + economy tick (Funds, Materials, Fuel, Food, Research) + market/taxes
+5. City building (roads, 3 zones, power/water, 6–8 buildings) + economy tick (Funds, Materials, Fuel, Food, Research) + market/taxes — **COMPLETE 2026-09-28**
+   (`game/src/sim/city.ts`: city grid = terrain grid (256×256 cells);
+   roads cost 5 Funds + 2 Materials/cell, kept sorted, 4-way connectivity;
+   3 zone types (residential/commercial/industrial) painted as rects at
+   1 Fund/cell; 8 buildings — House, Apartment, Shop, Research Lab,
+   Factory, Farm, Power Plant, Water Pump — with costs, build times
+   (10–60 s) and upkeep (Funds/s); placement validates land-only,
+   road-adjacency, zone match, no overlap at enqueue AND at apply;
+   demolition refunds nothing. `game/src/sim/economy.ts`: economy runs
+   once per sim-second — construction → upkeep funding (newest-first
+   shutdown on shortfall) → power/water capacity pools allocated in
+   building-id order (unpowered ×0.25 output, unwatered ×0.25) →
+   production/consumption → food (0.02/pop/s; shortage stalls growth) →
+   taxes every 60 s → building levels 1→3 (×1.25/level) → organic growth
+   pulses every 10 s (desirability falls with taxes and missing utility
+   headroom). Fixed-rate market with ±20% spread (round trips lose value);
+   per-zone tax rates 0–100%. Snapshot v2 + city digest. 36 new tests,
+   131/131 green; typecheck/build green; AGPL stamps verified. All exact
+   numbers are Phase 1 engineering choices, not locked design.)
 6. Time-sliced pathfinding + movement; hand-rolled ECS vs apecs measurement
 7. Units (8 land + 3 air) + combat with counters + Classic AI 1–3
 8. Ages (Foundation → Connectivity) + 1 National Program choice
