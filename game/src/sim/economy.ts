@@ -39,7 +39,7 @@ import type { World } from './world';
 import { rngBank } from './world';
 import type { SimSystem } from './tick';
 import type { CommandQueue, CommandSpec } from './commands';
-import { getTaxMultiplier } from './ages';
+import { getTaxMultiplier, getFactoryOutputMult, getInfluenceMult, getGoodsOutputMult, getUpkeepMult, getUtilityDemandMult, getTaxMultiplierFull } from './ages';
 import {
   BUILDING_DEFS,
   UTILITY_PENALTY,
@@ -222,7 +222,10 @@ function levelMult(b: BuildingRecord): number {
 }
 
 /** Run production/consumption for operational buildings, in id order. */
-function runProduction(city: CityState): void {
+function runProduction(world: World, city: CityState): void {
+  const factoryMult = getFactoryOutputMult(world);
+  const influenceMult = getInfluenceMult(world);
+  const goodsMult = getGoodsOutputMult(world);
   const ordered = [...city.buildings].sort((a, b) => a.id - b.id);
   for (const b of ordered) {
     if (!b.operational || b.progress < 1) continue;
@@ -230,7 +233,9 @@ function runProduction(city: CityState): void {
     const player = getPlayer(city, b.owner);
     if (!player) continue;
     const penalty = (b.powered ? 1 : UTILITY_PENALTY) * (b.watered ? 1 : UTILITY_PENALTY);
-    const mult = penalty * levelMult(b);
+    let mult = penalty * levelMult(b);
+    // Heavy Industry boosts factory output.
+    if (b.kind === 'factory') mult *= factoryMult;
     // Inputs first: a building starved of fuel sits idle this tick.
     let starved = false;
     for (const key of RESOURCE_KEYS) {
@@ -246,7 +251,10 @@ function runProduction(city: CityState): void {
       if (need > 0) addStock(player, key, -need);
     }
     for (const key of RESOURCE_KEYS) {
-      const gain = (def.output[key] ?? 0) * mult;
+      let gain = (def.output[key] ?? 0) * mult;
+      // Apply age program multipliers to specific resources.
+      if (key === 'influence') gain *= influenceMult;
+      if (key === 'goods') gain *= goodsMult;
       if (gain > 0) addStock(player, key, gain);
     }
   }
@@ -342,7 +350,7 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   generateManpower(city);
   runConstruction(city);
   const { powerHeadroom, waterHeadroom } = allocateUtilities(city);
-  runProduction(city);
+  runProduction(world, city);
   runFood(city);
   runTaxes(world, economyTickIndex(world));
   runLevels(world);

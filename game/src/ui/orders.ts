@@ -144,7 +144,7 @@ export function buildDemolishOrder(owner: number, cx: number, cz: number): Order
 /** HUD age button: advance to Connectivity with a National Program. */
 export function buildAdvanceAgeOrder(
   owner: number,
-  program: Exclude<NationalProgram, null>,
+  program: string,
 ): OrderIntent {
   return {
     kind: 'advanceAge',

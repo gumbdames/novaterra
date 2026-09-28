@@ -128,6 +128,13 @@ export function canonicalizeWorld(world: World): string {
   }
   // Ages: current age + chosen National Program.
   out += `|ages=${world.ages.age},${world.ages.program ?? '-'}|`;
+  // Programs chosen for past ages (sorted for determinism).
+  const progEntries = Object.entries(world.ages.programs).sort(([a], [b]) => a < b ? -1 : 1);
+  out += '|agePrograms=';
+  for (const [age, prog] of progEntries) {
+    out += `${age}:${prog};`;
+  }
+  out += '|';
   return out;
 }
 

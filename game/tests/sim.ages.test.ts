@@ -148,7 +148,7 @@ describe('initial state', () => {
   });
 
   it('initAges returns Foundation with null program', () => {
-    expect(initAges()).toEqual({ age: 'foundation', program: null });
+    expect(initAges()).toEqual({ age: 'foundation', program: null, programs: {} });
   });
 
   it('snapshot version is 4 (ages added in step 8)', () => {
@@ -230,16 +230,17 @@ describe('advancing to Connectivity', () => {
     expect(ctx.world.ages.program).toBe('signalsGrid');
   });
 
-  it('the choice is permanent: cannot re-advance', () => {
+  it('the choice is permanent: cannot switch programs within an age', () => {
     const ctx = setup();
     fundPlayer(ctx);
     enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'fiberGrid' } }]);
     runTicks(ctx, 1);
     expect(ctx.world.ages.age).toBe('connectivity');
+    // Cannot re-choose a Connectivity program (must pick an Industry program to advance).
     const reason = rejectionReason(() =>
       enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'signalsGrid' } }]),
     );
-    expect(reason).toMatch(/already at connectivity/);
+    expect(reason).toMatch(/program must be one of heavyIndustry, greenTech/);
     // Program did not change.
     expect(ctx.world.ages.program).toBe('fiberGrid');
   });

@@ -50,22 +50,35 @@ import type { CommandQueue } from './commands';
 import { getPlayer } from './city';
 
 /** Development stages of the player's nation (fixed 2026 setting). */
-export type Age = 'foundation' | 'connectivity';
+export type Age = 'foundation' | 'connectivity' | 'industry' | 'information' | 'ascendance';
 
 /** The permanent National Program choice. Null until Connectivity is chosen. */
-export type NationalProgram = 'fiberGrid' | 'signalsGrid' | null;
+export type NationalProgram =
+  | 'fiberGrid' | 'signalsGrid'
+  | 'heavyIndustry' | 'greenTech'
+  | 'cyberCommand' | 'globalMedia'
+  | 'arsenalProgram' | 'prosperityProgram'
+  | null;
 
 /** Age state for the world. Plain data — snapshotted + digested. */
 export interface AgeState {
   /** Current age. Starts at 'foundation'. */
   age: Age;
-  /** The chosen National Program. Null in Foundation. */
+  /** The chosen National Program for the current age. Null in Foundation. */
   program: NationalProgram;
+  /** Programs chosen for each past age (age -> program). Permanent choices. */
+  programs: Partial<Record<Age, NationalProgram>>;
 }
 
 /** Create fresh age state: Foundation, no program chosen. */
 export function initAges(): AgeState {
-  return { age: 'foundation', program: null };
+  return { age: 'foundation', program: null, programs: {} };
+}
+
+/** Get the program chosen for a specific age (null if not yet chosen). */
+export function getProgramForAge(world: World, age: Age): NationalProgram {
+  if (world.ages.age === age) return world.ages.program;
+  return world.ages.programs[age] ?? null;
 }
 
 /** Cost to advance from Foundation to Connectivity (funds + materials). */
@@ -85,8 +98,7 @@ export const SIGNALS_GRID_SIGHT_BONUS = 8;
  * 1.0 otherwise.
  */
 export function getTaxMultiplier(world: World): number {
-  const ages = world.ages;
-  if (ages.age === 'connectivity' && ages.program === 'fiberGrid') {
+  if (getProgramForAge(world, 'connectivity') === 'fiberGrid') {
     return FIBER_GRID_TAX_MULTIPLIER;
   }
   return 1.0;
@@ -97,23 +109,195 @@ export function getTaxMultiplier(world: World): number {
  * 0 otherwise.
  */
 export function getSightBonus(world: World): number {
-  const ages = world.ages;
-  if (ages.age === 'connectivity' && ages.program === 'signalsGrid') {
+  if (getProgramForAge(world, 'connectivity') === 'signalsGrid') {
     return SIGNALS_GRID_SIGHT_BONUS;
   }
   return 0;
+}
+
+/** Industry age advancement cost. */
+export const INDUSTRY_COST = {
+  funds: 6000,
+  materials: 2500,
+  influence: 100,
+} as const;
+
+/** Heavy Industry: factory output multiplier (+50% materials/goods). */
+export const HEAVY_INDUSTRY_OUTPUT_MULT = 1.5;
+/** Heavy Industry: upkeep cost multiplier (+25% funds/sec). */
+export const HEAVY_INDUSTRY_UPKEEP_MULT = 1.25;
+
+/** Green Tech: utility demand multiplier (-30% power/water). */
+export const GREEN_TECH_UTILITY_MULT = 0.7;
+/** Green Tech: influence generation multiplier (+50%). */
+export const GREEN_TECH_INFLUENCE_MULT = 1.5;
+
+/** Information age advancement cost. */
+export const INFORMATION_COST = {
+  funds: 12000,
+  materials: 5000,
+  influence: 250,
+} as const;
+
+/** Cyber Command: spectre damage multiplier (+50%). */
+export const CYBER_COMMAND_SPECTRE_MULT = 1.5;
+/** Cyber Command: military sight bonus (+4). */
+export const CYBER_COMMAND_SIGHT_BONUS = 4;
+
+/** Global Media: influence generation multiplier (+100%). */
+export const GLOBAL_MEDIA_INFLUENCE_MULT = 2.0;
+
+/** Ascendance age advancement cost. */
+export const ASCENDANCE_COST = {
+  funds: 25000,
+  materials: 10000,
+  influence: 500,
+} as const;
+
+/** Arsenal Program: manpower cost multiplier (-30%). */
+export const ARSENAL_MANPOWER_MULT = 0.7;
+/** Arsenal Program: military damage multiplier (+25%). */
+export const ARSENAL_DAMAGE_MULT = 1.25;
+
+/** Prosperity Program: tax income multiplier (+50%). */
+export const PROSPERITY_TAX_MULT = 1.5;
+/** Prosperity Program: goods output multiplier (+50%). */
+export const PROSPERITY_GOODS_MULT = 1.5;
+
+/**
+ * Factory output multiplier. Returns 1.5 with Heavy Industry, 1.0 otherwise.
+ */
+export function getFactoryOutputMult(world: World): number {
+  if (getProgramForAge(world, 'industry') === 'heavyIndustry') {
+    return HEAVY_INDUSTRY_OUTPUT_MULT;
+  }
+  return 1.0;
+}
+
+/**
+ * Building upkeep multiplier. Returns 1.25 with Heavy Industry, 1.0 otherwise.
+ */
+export function getUpkeepMult(world: World): number {
+  if (getProgramForAge(world, 'industry') === 'heavyIndustry') {
+    return HEAVY_INDUSTRY_UPKEEP_MULT;
+  }
+  return 1.0;
+}
+
+/**
+ * Utility demand multiplier. Returns 0.7 with Green Tech, 1.0 otherwise.
+ */
+export function getUtilityDemandMult(world: World): number {
+  if (getProgramForAge(world, 'industry') === 'greenTech') {
+    return GREEN_TECH_UTILITY_MULT;
+  }
+  return 1.0;
+}
+
+/**
+ * Influence generation multiplier. Stacks Green Tech (1.5x) and Global Media (2.0x).
+ */
+export function getInfluenceMult(world: World): number {
+  let mult = 1.0;
+  if (getProgramForAge(world, 'industry') === 'greenTech') {
+    mult *= GREEN_TECH_INFLUENCE_MULT;
+  }
+  if (getProgramForAge(world, 'information') === 'globalMedia') {
+    mult *= GLOBAL_MEDIA_INFLUENCE_MULT;
+  }
+  return mult;
+}
+
+/**
+ * Spectre damage multiplier. Returns 1.5 with Cyber Command, 1.0 otherwise.
+ */
+export function getSpectreDamageMult(world: World): number {
+  if (getProgramForAge(world, 'information') === 'cyberCommand') {
+    return CYBER_COMMAND_SPECTRE_MULT;
+  }
+  return 1.0;
+}
+
+/**
+ * Military sight bonus. Returns 4 with Cyber Command, 0 otherwise.
+ * Stacks with Signals Grid.
+ */
+export function getMilitarySightBonus(world: World): number {
+  if (getProgramForAge(world, 'information') === 'cyberCommand') {
+    return CYBER_COMMAND_SIGHT_BONUS;
+  }
+  return 0;
+}
+
+/**
+ * Manpower cost multiplier. Returns 0.7 with Arsenal Program, 1.0 otherwise.
+ */
+export function getManpowerCostMult(world: World): number {
+  if (getProgramForAge(world, 'ascendance') === 'arsenalProgram') {
+    return ARSENAL_MANPOWER_MULT;
+  }
+  return 1.0;
+}
+
+/**
+ * Military damage multiplier. Returns 1.25 with Arsenal Program, 1.0 otherwise.
+ */
+export function getMilitaryDamageMult(world: World): number {
+  if (getProgramForAge(world, 'ascendance') === 'arsenalProgram') {
+    return ARSENAL_DAMAGE_MULT;
+  }
+  return 1.0;
+}
+
+/**
+ * Goods output multiplier. Returns 1.5 with Prosperity Program, 1.0 otherwise.
+ */
+export function getGoodsOutputMult(world: World): number {
+  if (getProgramForAge(world, 'ascendance') === 'prosperityProgram') {
+    return PROSPERITY_GOODS_MULT;
+  }
+  return 1.0;
+}
+
+/**
+ * Extended tax multiplier: Fiber Grid (1.25x) stacks with Prosperity (1.5x).
+ */
+export function getTaxMultiplierFull(world: World): number {
+  let mult = getTaxMultiplier(world);
+  if (getProgramForAge(world, 'ascendance') === 'prosperityProgram') {
+    mult *= PROSPERITY_TAX_MULT;
+  }
+  return mult;
 }
 
 /**
  * Check if a unit kind is available at the world's current age.
  * Used by spawn validation and the AI's spawn choices.
  */
+/** Age ordering for gating: higher index = later age. */
+export const AGE_ORDER: Age[] = ['foundation', 'connectivity', 'industry', 'information', 'ascendance'];
+
 export function isUnitAvailableForAge(world: World, minAge: Age): boolean {
-  if (minAge === 'foundation') return true;
-  return world.ages.age === 'connectivity';
+  const have = AGE_ORDER.indexOf(world.ages.age);
+  const need = AGE_ORDER.indexOf(minAge);
+  return have >= need;
+}
+
+/** Check if a building kind is available in the world's current age. */
+export function isBuildingAvailableForAge(world: World, minAge: Age): boolean {
+  return isUnitAvailableForAge(world, minAge);
 }
 
 /** Register the `advanceAge` command. */
+/** Age progression: each age maps to its successor, valid programs, and cost. */
+export const AGE_PROGRESSION: Record<Age, { next: Age | null; programs: string[]; cost: Record<string, number> }> = {
+  foundation: { next: 'connectivity', programs: ['fiberGrid', 'signalsGrid'], cost: CONNECTIVITY_COST as unknown as Record<string, number> },
+  connectivity: { next: 'industry', programs: ['heavyIndustry', 'greenTech'], cost: INDUSTRY_COST as unknown as Record<string, number> },
+  industry: { next: 'information', programs: ['cyberCommand', 'globalMedia'], cost: INFORMATION_COST as unknown as Record<string, number> },
+  information: { next: 'ascendance', programs: ['arsenalProgram', 'prosperityProgram'], cost: ASCENDANCE_COST as unknown as Record<string, number> },
+  ascendance: { next: null, programs: [], cost: {} },
+};
+
 export function registerAgeCommands(queue: CommandQueue): void {
   queue.register('advanceAge', {
     validate(cmd, world): string | null {
@@ -125,43 +309,54 @@ export function registerAgeCommands(queue: CommandQueue): void {
       if (!player) {
         return 'advanceAge: unknown owner';
       }
-      // Can only advance from Foundation (no Age 3 in Phase 1).
-      if (world.ages.age !== 'foundation') {
-        return `advanceAge: already at ${world.ages.age}, cannot advance further in Phase 1`;
+      const prog = AGE_PROGRESSION[world.ages.age];
+      if (!prog.next) {
+        return `advanceAge: already at ${world.ages.age}, cannot advance further`;
       }
-      // Program choice is required for Connectivity.
+      // Program choice is required and must match the next age.
       const program = cmd.payload['program'];
-      if (program !== 'fiberGrid' && program !== 'signalsGrid') {
-        return "advanceAge: program must be 'fiberGrid' or 'signalsGrid'";
+      if (typeof program !== 'string' || !prog.programs.includes(program)) {
+        return `advanceAge: program must be one of ${prog.programs.join(', ')}`;
       }
-      // Must afford the cost.
-      if (player.funds < CONNECTIVITY_COST.funds) {
-        return `advanceAge: cannot afford ${CONNECTIVITY_COST.funds} funds (have ${player.funds.toFixed(0)})`;
-      }
-      if (player.materials < CONNECTIVITY_COST.materials) {
-        return `advanceAge: cannot afford ${CONNECTIVITY_COST.materials} materials (have ${player.materials.toFixed(0)})`;
+      // Must afford the cost (funds, materials, and influence for ages 3+).
+      for (const [res, amount] of Object.entries(prog.cost)) {
+        const have = (player as unknown as Record<string, number>)[res] ?? 0;
+        if (have < amount) {
+          return `advanceAge: cannot afford ${amount} ${res} (have ${have.toFixed(0)})`;
+        }
       }
       return null;
     },
     apply(cmd, world): unknown {
       const owner = cmd.payload['owner'] as number;
-      const program = cmd.payload['program'] as 'fiberGrid' | 'signalsGrid';
+      const program = cmd.payload['program'] as NationalProgram;
       const player = getPlayer(world.city, owner);
       if (!player) {
         throw new Error('advanceAge: unknown owner at apply');
       }
+      const prog = AGE_PROGRESSION[world.ages.age];
+      if (!prog.next) {
+        throw new Error('advanceAge: already at max age at apply time');
+      }
       // Re-check affordability at apply (state may have changed since enqueue).
-      if (player.funds < CONNECTIVITY_COST.funds || player.materials < CONNECTIVITY_COST.materials) {
-        throw new Error('advanceAge: cannot afford the cost at apply time');
+      for (const [res, amount] of Object.entries(prog.cost)) {
+        const have = (player as unknown as Record<string, number>)[res] ?? 0;
+        if (have < amount) {
+          throw new Error(`advanceAge: cannot afford ${res} at apply time`);
+        }
       }
-      if (world.ages.age !== 'foundation') {
-        throw new Error('advanceAge: already advanced at apply time');
+      for (const [res, amount] of Object.entries(prog.cost)) {
+        const stocks = player as unknown as Record<string, number>;
+        stocks[res] = (stocks[res] ?? 0) - amount;
       }
-      player.funds -= CONNECTIVITY_COST.funds;
-      player.materials -= CONNECTIVITY_COST.materials;
-      world.ages.age = 'connectivity';
-      world.ages.program = program;
-      return { age: 'connectivity', program };
+      // Save the program choice for the age we're leaving.
+      const leavingAge = world.ages.age;
+      if (world.ages.program) {
+        world.ages.programs[leavingAge] = world.ages.program;
+      }
+      world.ages.age = prog.next!;
+      world.ages.program = program as NationalProgram;
+      return { age: prog.next, program };
     },
   });
 }
@@ -170,14 +365,31 @@ export function registerAgeCommands(queue: CommandQueue): void {
  * Canonical JSON-safe encoding of age state for snapshots and digests.
  */
 export function encodeAgeState(ages: AgeState): unknown {
-  return { age: ages.age, program: ages.program };
+  return { age: ages.age, program: ages.program, programs: { ...ages.programs } };
 }
+
+/** Valid ages and programs for snapshot decoding. */
+const VALID_AGES: Age[] = ['foundation', 'connectivity', 'industry', 'information', 'ascendance'];
+const VALID_PROGRAMS: string[] = [
+  'fiberGrid', 'signalsGrid',
+  'heavyIndustry', 'greenTech',
+  'cyberCommand', 'globalMedia',
+  'arsenalProgram', 'prosperityProgram',
+];
 
 /** Restore age state from a snapshot payload (see snapshot.ts). */
 export function decodeAgeState(data: unknown): AgeState {
-  const d = data as { age: Age; program: NationalProgram };
-  return {
-    age: d.age === 'connectivity' ? 'connectivity' : 'foundation',
-    program: d.program === 'fiberGrid' || d.program === 'signalsGrid' ? d.program : null,
-  };
+  const d = data as { age: Age; program: NationalProgram; programs?: Partial<Record<Age, NationalProgram>> };
+  const age = VALID_AGES.includes(d.age) ? d.age : 'foundation';
+  const program = (typeof d.program === 'string' && VALID_PROGRAMS.includes(d.program))
+    ? (d.program as NationalProgram) : null;
+  const programs: Partial<Record<Age, NationalProgram>> = {};
+  if (d.programs && typeof d.programs === 'object') {
+    for (const [k, v] of Object.entries(d.programs)) {
+      if (VALID_AGES.includes(k as Age) && typeof v === 'string' && VALID_PROGRAMS.includes(v)) {
+        programs[k as Age] = v as NationalProgram;
+      }
+    }
+  }
+  return { age, program, programs };
 }

@@ -41,7 +41,7 @@ import type { World } from '../sim/world';
 import { getPlayer } from '../sim/city';
 import { UNIT_DEFS, type UnitKind } from '../sim/units';
 import { BUILDING_DEFS, BuildingKind } from '../sim/city';
-import { CONNECTIVITY_COST } from '../sim/ages';
+import { AGE_PROGRESSION } from '../sim/ages';
 import type { Selection } from './selection';
 import type { AdvisorItem } from './advisor';
 import { STRINGS } from './strings';
@@ -68,7 +68,7 @@ export interface HUDActions {
   onBuildTool(tool: BuildTool): void;
   /** Cancel any placement/construction mode. */
   onCancelPlacement(): void;
-  onAdvanceAge(program: 'fiberGrid' | 'signalsGrid'): void;
+  onAdvanceAge(program: string): void;
 }
 
 /** Trainable unit kinds in display order. */
@@ -122,6 +122,7 @@ export class HUD {
   private readonly resEls = new Map<string, HTMLElement>();
   private readonly ageEl: HTMLElement;
   private readonly ageBtn: HTMLButtonElement;
+  private currentAge: string = 'foundation';
   private readonly pauseBtn: HTMLButtonElement;
   private readonly speedBtns: HTMLButtonElement[] = [];
   private readonly advisorPanel: HTMLElement;
@@ -234,25 +235,46 @@ export class HUD {
       this.setText('population', fmt(player.population), this.resEls.get('population'));
     }
     const s = STRINGS.hud;
+    // Age display names and program names.
+    const ageNames: Record<string, string> = {
+      foundation: s.ageFoundation,
+      connectivity: s.ageConnectivity,
+      industry: s.ageIndustry,
+      information: s.ageInformation,
+      ascendance: s.ageAscendance,
+    };
+    const programNames: Record<string, string> = {
+      fiberGrid: s.programFiber,
+      signalsGrid: s.programSignals,
+      heavyIndustry: s.programHeavyIndustry,
+      greenTech: s.programGreenTech,
+      cyberCommand: s.programCyberCommand,
+      globalMedia: s.programGlobalMedia,
+      arsenalProgram: s.programArsenal,
+      prosperityProgram: s.programProsperity,
+    };
     const ageName =
       world.ages.age === 'foundation'
         ? s.ageFoundation
-        : `${s.ageConnectivity} · ${
-            world.ages.program === 'fiberGrid' ? s.programFiber : s.programSignals
-          }`;
+        : `${ageNames[world.ages.age]} · ${programNames[world.ages.program ?? ''] ?? ''}`;
     this.setText('age', ageName, this.ageEl);
+    this.currentAge = world.ages.age;
 
-    // Advance-age button: visible in Foundation when affordable; offers
-    // both National Programs (the choice is permanent — label says so).
-    if (world.ages.age === 'foundation' && player) {
-      const affordable =
-        player.funds >= CONNECTIVITY_COST.funds &&
-        player.materials >= CONNECTIVITY_COST.materials;
+    // Advance-age button: visible when a next age exists; shows cost and programs.
+    const prog = AGE_PROGRESSION[world.ages.age];
+    if (prog.next && player) {
+      const cost = prog.cost;
+      const affordable = Object.entries(cost).every(([res, amt]) => {
+        const have = (player as unknown as Record<string, number>)[res] ?? 0;
+        return have >= amt;
+      });
+      const costStr = Object.entries(cost).map(([res, amt]) => `${amt} ${res}`).join(' + ');
+      const progStr = prog.programs.map(p => programNames[p] ?? p).join(' or ');
       this.ageBtn.style.display = '';
       this.ageBtn.disabled = !affordable;
       this.ageBtn.title = affordable
-        ? `Fiber Grid (+25% taxes) or Signals Grid (+8 sight). Permanent choice. Cost: ${CONNECTIVITY_COST.funds} funds + ${CONNECTIVITY_COST.materials} materials.`
-        : `Needs ${CONNECTIVITY_COST.funds} funds + ${CONNECTIVITY_COST.materials} materials.`;
+        ? `${progStr}. Permanent choice. Cost: ${costStr}.`
+        : `Needs ${costStr}.`;
     } else {
       this.ageBtn.style.display = 'none';
     }
@@ -269,10 +291,24 @@ export class HUD {
   /** Show the two National Program choices (called by the age button). */
   private onAgeButton(): void {
     const s = STRINGS.hud;
-    const fiber = window.confirm(
-      `${s.advanceAge}: OK = ${s.programFiber} (+25% tax income), Cancel = ${s.programSignals} (+8 unit sight). This choice is permanent.`,
+    const prog = AGE_PROGRESSION[this.currentAge as keyof typeof AGE_PROGRESSION];
+    if (!prog || !prog.next) return;
+    const programNames: Record<string, string> = {
+      fiberGrid: s.programFiber,
+      signalsGrid: s.programSignals,
+      heavyIndustry: s.programHeavyIndustry,
+      greenTech: s.programGreenTech,
+      cyberCommand: s.programCyberCommand,
+      globalMedia: s.programGlobalMedia,
+      arsenalProgram: s.programArsenal,
+      prosperityProgram: s.programProsperity,
+    };
+    const p1 = prog.programs[0] ?? '';
+    const p2 = prog.programs[1] ?? '';
+    const chooseFirst = window.confirm(
+      `${s.advanceAge} to ${prog.next}: OK = ${programNames[p1] ?? p1}, Cancel = ${programNames[p2] ?? p2}. This choice is permanent.`,
     );
-    this.actions.onAdvanceAge(fiber ? 'fiberGrid' : 'signalsGrid');
+    this.actions.onAdvanceAge(chooseFirst ? p1 : p2);
   }
 
   private updateAdvisor(items: AdvisorItem[]): void {
