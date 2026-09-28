@@ -147,6 +147,9 @@ export class HUD {
       ['materials', s.materials],
       ['food', s.food],
       ['fuel', s.fuel],
+      ['goods', s.goods],
+      ['influence', s.influence],
+      ['manpower', s.manpower],
       ['population', s.population],
     ] as Array<[string, string]>) {
       const chip = el('div', 'hud-chip');
@@ -225,6 +228,9 @@ export class HUD {
       this.setText('materials', fmt(player.materials), this.resEls.get('materials'));
       this.setText('food', fmt(player.food), this.resEls.get('food'));
       this.setText('fuel', fmt(player.fuel), this.resEls.get('fuel'));
+      this.setText('goods', fmt(player.goods), this.resEls.get('goods'));
+      this.setText('influence', fmt(player.influence), this.resEls.get('influence'));
+      this.setText('manpower', fmt(player.manpower), this.resEls.get('manpower'));
       this.setText('population', fmt(player.population), this.resEls.get('population'));
     }
     const s = STRINGS.hud;

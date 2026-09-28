@@ -117,6 +117,8 @@ export interface UnitDef {
   sight: number;
   /** Minimum age required to build this unit. Fighters need Connectivity. */
   minAge: Age;
+  /** Manpower cost to train (0 for civilian/unmanned units). Deducted from player.manpower. */
+  manpowerCost: number;
 }
 
 export const UNIT_DEFS: Record<UnitKind, UnitDef> = {
@@ -124,56 +126,67 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {
     kind: 'engineer', name: 'Engineer', domain: 'land', hp: 80, speed: 6, armor: 'light',
     damage: 5, range: 10, minRange: 0, cooldownTicks: 30, targets: 'ground',
     vsLight: 1.0, vsMedium: 0.6, vsHeavy: 0.4, vsAir: 1.0, sight: 18, minAge: 'foundation',
+    manpowerCost: 0,
   },
   rifles: {
     kind: 'rifles', name: 'Rifles', domain: 'land', hp: 110, speed: 9, armor: 'light',
     damage: 9, range: 15, minRange: 0, cooldownTicks: 20, targets: 'ground',
     vsLight: 1.0, vsMedium: 0.55, vsHeavy: 0.3, vsAir: 1.0, sight: 22, minAge: 'foundation',
+    manpowerCost: 2,
   },
   tank: {
     kind: 'tank', name: 'Main Battle Tank', domain: 'land', hp: 500, speed: 10, armor: 'heavy',
     damage: 50, range: 19, minRange: 0, cooldownTicks: 50, targets: 'ground',
     vsLight: 1.3, vsMedium: 1.0, vsHeavy: 0.9, vsAir: 1.0, sight: 26, minAge: 'foundation',
+    manpowerCost: 5,
   },
   artillery: {
     kind: 'artillery', name: 'Artillery', domain: 'land', hp: 160, speed: 6, armor: 'medium',
     damage: 95, range: 48, minRange: 12, cooldownTicks: 100, targets: 'ground',
     vsLight: 1.0, vsMedium: 1.4, vsHeavy: 1.6, vsAir: 1.0, sight: 30, minAge: 'foundation',
+    manpowerCost: 4,
   },
   aa: {
     kind: 'aa', name: 'Mobile AA', domain: 'land', hp: 200, speed: 10, armor: 'medium',
     damage: 40, range: 28, minRange: 0, cooldownTicks: 25, targets: 'air',
     vsLight: 0.3, vsMedium: 0.3, vsHeavy: 0.3, vsAir: 2.2, sight: 34, minAge: 'foundation',
+    manpowerCost: 4,
   },
   hauler: {
     kind: 'hauler', name: 'Hauler', domain: 'land', hp: 160, speed: 9, armor: 'medium',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 16, minAge: 'foundation',
+    manpowerCost: 0,
   },
   spectre: {
     kind: 'spectre', name: 'Spectre', domain: 'land', hp: 130, speed: 12, armor: 'light',
     damage: 75, range: 10, minRange: 0, cooldownTicks: 45, targets: 'ground',
     vsLight: 1.0, vsMedium: 1.6, vsHeavy: 1.3, vsAir: 1.0, sight: 24, minAge: 'foundation',
+    manpowerCost: 3,
   },
   hq: {
     kind: 'hq', name: 'Mobile HQ', domain: 'land', hp: 400, speed: 7, armor: 'heavy',
     damage: 12, range: 13, minRange: 0, cooldownTicks: 30, targets: 'ground',
     vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 1.0, sight: 28, minAge: 'foundation',
+    manpowerCost: 2,
   },
   fighter: {
     kind: 'fighter', name: 'Fighter', domain: 'air', hp: 170, speed: 26, armor: 'light',
     damage: 32, range: 24, minRange: 0, cooldownTicks: 28, targets: 'both',
     vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 1.6, sight: 40, minAge: 'connectivity',
+    manpowerCost: 3,
   },
   transport: {
     kind: 'transport', name: 'Transport', domain: 'air', hp: 240, speed: 22, armor: 'medium',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'foundation',
+    manpowerCost: 2,
   },
   drone: {
     kind: 'drone', name: 'Drone', domain: 'air', hp: 55, speed: 20, armor: 'light',
     damage: 9, range: 13, minRange: 0, cooldownTicks: 22, targets: 'both',
     vsLight: 0.9, vsMedium: 0.5, vsHeavy: 0.3, vsAir: 1.0, sight: 26, minAge: 'foundation',
+    manpowerCost: 0,
   },
 };
 
@@ -322,9 +335,22 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
       if (def.minAge === 'connectivity' && world.ages.age !== 'connectivity') {
         return `spawnUnit: ${kind} requires the Connectivity age`;
       }
+      // Manpower: military units cost manpower from the player's stockpile.
+      if (def.manpowerCost > 0) {
+        const player = getPlayer(world.city, owner as number);
+        if (!player || player.manpower < def.manpowerCost) {
+          return `spawnUnit: not enough manpower (need ${def.manpowerCost})`;
+        }
+      }
       return null;
     },
     apply(cmd, world): unknown {
+      const def = UNIT_DEFS[cmd.payload['kind'] as UnitKind];
+      // Deduct manpower (validated above; re-check defensively for determinism).
+      if (def.manpowerCost > 0) {
+        const player = getPlayer(world.city, cmd.payload['owner'] as number);
+        if (player) player.manpower -= def.manpowerCost;
+      }
       const unit = spawnUnit(
         world,
         cmd.payload['kind'] as string,

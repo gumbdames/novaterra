@@ -51,6 +51,7 @@ import { findUnit, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
 import { rngBank } from './world';
 import { canTarget } from './combat';
 import { isUnitAvailableForAge, getSightBonus } from './ages';
+import { getPlayer } from './city';
 
 /** Classic AI difficulty levels. */
 export type AIDifficulty = 'cadet' | 'citizen' | 'commander';
@@ -175,7 +176,7 @@ function totalUnits(world: World, owner: number): number {
   return n;
 }
 
-/** Issue a spawnUnit command through the queue. */
+/** Issue a spawnUnit command through the queue. Skips if the AI lacks manpower. */
 function spawn(
   world: World,
   queue: CommandQueue,
@@ -184,6 +185,11 @@ function spawn(
   x: number,
   z: number,
 ): void {
+  const def = UNIT_DEFS[kind];
+  if (def.manpowerCost > 0) {
+    const player = getPlayer(world.city, owner);
+    if (!player || player.manpower < def.manpowerCost) return;
+  }
   queue.enqueue(world, { issuer: 'ai', kind: 'spawnUnit', payload: { kind, owner, x, z } });
 }
 

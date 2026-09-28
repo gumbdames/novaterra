@@ -85,6 +85,7 @@ export function canonicalizeWorld(world: World): string {
   for (const p of world.city.players) {
     out += `p${p.id},${p.name},${canonicalNumber(p.funds)},${canonicalNumber(p.materials)},`;
     out += `${canonicalNumber(p.fuel)},${canonicalNumber(p.food)},${canonicalNumber(p.research)},`;
+    out += `${canonicalNumber(p.goods)},${canonicalNumber(p.influence)},${canonicalNumber(p.manpower)},`;
     out += `${p.taxRates.join(',')},${p.population};`;
   }
   out += `|shortage=${world.city.foodShortage ? 1 : 0}`;

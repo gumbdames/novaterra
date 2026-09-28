@@ -44,6 +44,8 @@ import { createSession } from '../src/ui/session';
 
 /** Spawn `count` land units on valid terrain, skipping rejected spots. */
 function spawnLoad(session: ReturnType<typeof createSession>, count: number): number {
+  // Grant abundant manpower: perf tests spawn hundreds of units without an economy.
+  for (const p of session.world.city.players) p.manpower = 100000;
   let spawned = 0;
   let i = 0;
   while (spawned < count && i < count * 20) {
@@ -108,6 +110,8 @@ describe('sim tick performance budgets', () => {
 
   it('combat at scale does not blow the tick budget', () => {
     const session = createSession({ seed: 7, aiDifficulty: 'cadet' });
+    // Grant abundant manpower for the 200-unit combat scenario.
+    for (const p of session.world.city.players) p.manpower = 100000;
     // Two opposing forces in range so weapons actually fire every tick.
     let spawned = 0;
     let i = 0;

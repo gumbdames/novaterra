@@ -41,7 +41,7 @@ import {
   isWater,
   type TerrainData,
 } from '../src/sim/terrain';
-import { MAP_HALF_SIZE } from '../src/sim/city';
+import { MAP_HALF_SIZE, getPlayer } from '../src/sim/city';
 import { findUnit, registerUnitCommands, UNIT_DEFS, type UnitKind } from '../src/sim/units';
 import {
   createPathfindingSystem,
@@ -75,6 +75,8 @@ function getTerrain(): TerrainData {
 function setup(seed = 20260928): Ctx {
   const terrain = getTerrain();
   const world = createWorld(seed);
+  // Grant manpower for AI unit construction (tests don't run the economy).
+  for (const p of world.city.players) p.manpower = 100;
   const queue = createCommandQueue();
   registerCoreCommands(queue);
   registerUnitCommands(queue, terrain);

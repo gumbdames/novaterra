@@ -130,13 +130,16 @@ function sortedInsert(sorted: number[], value: number): void {
 // Resources, zones, building roster
 // ---------------------------------------------------------------------------
 
-/** The five Phase-1 stockpile resources. */
+/** The Phase-1 stockpile resources plus Phase-1.5 additions (goods, influence, manpower). */
 export const ResourceKey = {
   FUNDS: 'funds',
   MATERIALS: 'materials',
   FUEL: 'fuel',
   FOOD: 'food',
   RESEARCH: 'research',
+  GOODS: 'goods',
+  INFLUENCE: 'influence',
+  MANPOWER: 'manpower',
 } as const;
 export type ResourceKey = (typeof ResourceKey)[keyof typeof ResourceKey];
 
@@ -161,6 +164,8 @@ export const BuildingKind = {
   FARM: 'farm',
   POWER_PLANT: 'powerPlant',
   WATER_PUMP: 'waterPump',
+  MEDIA_CENTER: 'mediaCenter',
+  SHIPYARD: 'shipyard',
 } as const;
 export type BuildingKind = (typeof BuildingKind)[keyof typeof BuildingKind];
 
@@ -218,7 +223,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     footprintW: 2, footprintH: 2, costFunds: 220, costMaterials: 70,
     buildSeconds: 15, upkeepFundsPerSec: 0.4,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
-    output: { funds: 1.2 }, input: {}, population: 0, taxBasePerSec: 6.0,
+    output: { funds: 1.8 }, input: { goods: 0.5 }, population: 0, taxBasePerSec: 6.0,
   },
   lab: {
     kind: 'lab', name: 'Research Lab', zone: ZoneType.COMMERCIAL,
@@ -232,7 +237,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     footprintW: 3, footprintH: 3, costFunds: 550, costMaterials: 220,
     buildSeconds: 40, upkeepFundsPerSec: 1.6,
     powerDemand: 5, powerSupply: 0, waterDemand: 3, waterSupply: 0,
-    output: { materials: 2.5 }, input: { fuel: 0.4 }, population: 0, taxBasePerSec: 8.0,
+    output: { materials: 2.5, goods: 1.5 }, input: { fuel: 0.4 }, population: 0, taxBasePerSec: 8.0,
   },
   farm: {
     kind: 'farm', name: 'Farm', zone: ZoneType.INDUSTRIAL,
@@ -254,6 +259,20 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 20, upkeepFundsPerSec: 0.4,
     powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 25,
     output: {}, input: {}, population: 0, taxBasePerSec: 1.5,
+  },
+  mediaCenter: {
+    kind: 'mediaCenter', name: 'Media Center', zone: ZoneType.COMMERCIAL,
+    footprintW: 2, footprintH: 2, costFunds: 800, costMaterials: 300,
+    buildSeconds: 45, upkeepFundsPerSec: 1.0,
+    powerDemand: 4, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: { influence: 0.8 }, input: {}, population: 0, taxBasePerSec: 7.0,
+  },
+  shipyard: {
+    kind: 'shipyard', name: 'Shipyard', zone: UTILITY_ZONE,
+    footprintW: 4, footprintH: 3, costFunds: 1200, costMaterials: 500,
+    buildSeconds: 60, upkeepFundsPerSec: 1.5,
+    powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 4.0,
   },
 };
 
@@ -311,6 +330,9 @@ export interface PlayerState {
   fuel: number;
   food: number;
   research: number;
+  goods: number;
+  influence: number;
+  manpower: number;
   /** Tax rates 0..1 for [residential, commercial, industrial]. */
   taxRates: [number, number, number];
   /** Derived each economy tick from residential capacity. */
@@ -338,6 +360,9 @@ export const STARTING_STOCKS = {
   fuel: 400,
   food: 500,
   research: 0,
+  goods: 0,
+  influence: 0,
+  manpower: 20,
 } as const;
 
 /** Default tax rate per zone (10%). */
@@ -352,6 +377,9 @@ function createPlayer(id: number, name: string): PlayerState {
     fuel: STARTING_STOCKS.fuel,
     food: STARTING_STOCKS.food,
     research: STARTING_STOCKS.research,
+    goods: STARTING_STOCKS.goods,
+    influence: STARTING_STOCKS.influence,
+    manpower: STARTING_STOCKS.manpower,
     taxRates: [DEFAULT_TAX_RATE, DEFAULT_TAX_RATE, DEFAULT_TAX_RATE],
     population: 0,
   };

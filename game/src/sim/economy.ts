@@ -92,6 +92,9 @@ export function getStock(player: PlayerState, resource: ResourceKey): number {
     case 'fuel': return player.fuel;
     case 'food': return player.food;
     case 'research': return player.research;
+    case 'goods': return player.goods;
+    case 'influence': return player.influence;
+    case 'manpower': return player.manpower;
   }
 }
 
@@ -103,10 +106,13 @@ export function addStock(player: PlayerState, resource: ResourceKey, amount: num
     case 'fuel': player.fuel += amount; break;
     case 'food': player.food += amount; break;
     case 'research': player.research += amount; break;
+    case 'goods': player.goods += amount; break;
+    case 'influence': player.influence += amount; break;
+    case 'manpower': player.manpower += amount; break;
   }
 }
 
-const RESOURCE_KEYS: ResourceKey[] = ['funds', 'materials', 'fuel', 'food', 'research'];
+const RESOURCE_KEYS: ResourceKey[] = ['funds', 'materials', 'fuel', 'food', 'research', 'goods', 'influence', 'manpower'];
 
 /** Funds to buy `amount` units of a market resource. */
 export function marketBuyCost(resource: MarketResource, amount: number): number {
@@ -301,6 +307,16 @@ function recountPopulation(city: CityState): void {
   }
 }
 
+/** Manpower trickles in from population: 2% of population per sim-second. */
+export const MANPOWER_PER_POP_PER_SEC = 0.02;
+
+/** Add manpower from population (called after recountPopulation each economy tick). */
+function generateManpower(city: CityState): void {
+  for (const player of city.players) {
+    player.manpower += player.population * MANPOWER_PER_POP_PER_SEC;
+  }
+}
+
 /** Advance construction progress by one economy tick (one sim-second). */
 function runConstruction(city: CityState): void {
   for (const b of city.buildings) {
@@ -323,6 +339,7 @@ function economyTickIndex(world: World): number {
 export function runEconomyTick(world: World, t: TerrainData): void {
   const city = world.city;
   recountPopulation(city);
+  generateManpower(city);
   runConstruction(city);
   const { powerHeadroom, waterHeadroom } = allocateUtilities(city);
   runProduction(city);

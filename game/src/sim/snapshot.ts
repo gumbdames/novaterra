@@ -113,6 +113,7 @@ function copyPlayer(p: PlayerState): PlayerState {
   return {
     id: p.id, name: p.name, funds: p.funds, materials: p.materials,
     fuel: p.fuel, food: p.food, research: p.research,
+    goods: p.goods, influence: p.influence, manpower: p.manpower,
     taxRates: [p.taxRates[0] as number, p.taxRates[1] as number, p.taxRates[2] as number],
     population: p.population,
   };

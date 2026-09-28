@@ -89,6 +89,8 @@ function getTerrain(): TerrainData {
 function setup(seed = 20260928): Ctx {
   const terrain = getTerrain();
   const world = createWorld(seed);
+  // Grant manpower for unit spawning (tests don't run the economy).
+  for (const p of world.city.players) p.manpower = 100000;
   const queue = createCommandQueue();
   registerCoreCommands(queue);
   registerUnitCommands(queue, terrain);

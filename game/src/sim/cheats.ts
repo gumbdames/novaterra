@@ -48,6 +48,9 @@ export const CHEAT_GRANT_AMOUNTS: Record<ResourceKey, number> = {
   food: 1000,
   fuel: 1000,
   research: 0,
+  goods: 500,
+  influence: 0,
+  manpower: 0,
 };
 
 /** Grant resources to a player. Deterministic: fixed amounts, no RNG. */
