@@ -1,4 +1,4 @@
-# AGENTS.md — awesome-sim-game
+# AGENTS.md — novaterra
 
 Operating manual for everyone (human or agent) working in this repo. This file is
 about *how we work here*. Game design lives in `docs/`, player docs in
@@ -70,7 +70,8 @@ one. Testing after each step is how `main` stays shippable.
 - **No secrets, tokens, keys or credentials in the repo — ever.** Not in code,
   not in docs, not in git history. GitHub auth uses a token supplied at runtime
   via the `GH_TOKEN` environment variable only, e.g.:
-  `GH_TOKEN=... git -c http.extraHeader="Authorization: Bearer $GH_TOKEN" push`.
+  `BASIC=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0) && git -c http.extraHeader="Authorization: Basic $BASIC" push`
+  (git-over-HTTPS needs Basic auth; Bearer does not work for push).
   Never embed tokens in remote URLs.
 
 ## 5. Ask vs. decide

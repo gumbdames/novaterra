@@ -1,4 +1,4 @@
-# Game Mechanics — awesome-sim-game
+# Game Mechanics — novaterra
 
 > Player-facing mechanics reference. Written alongside implementation in
 > Phase 1 — kept **clear, short and simple** per the design brief.

@@ -1,0 +1,67 @@
+# Deploy NOVATERRA to GitHub Pages
+#
+# On every push to main: install, build game/, upload game/dist as a Pages
+# artifact, and deploy via the official actions/deploy-pages flow.
+# NOTE: the repo is currently private — if the org plan does not allow Pages
+# on private repos, this workflow will fail at the deploy step and the repo
+# must be flipped public (user's call).
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: game/package-lock.json
+
+      - name: Install dependencies
+        working-directory: game
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: game
+        run: npm run typecheck
+
+      - name: Test
+        working-directory: game
+        run: npm test
+
+      - name: Build
+        working-directory: game
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: game/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

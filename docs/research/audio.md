@@ -1,4 +1,4 @@
-# Audio Research — awesome-sim-game
+# Audio Research — novaterra
 
 > **Status:** complete (research concluded 2026-09-28; firm recommendation in §7).
 > This note is updated continuously as findings land; decisions feed into

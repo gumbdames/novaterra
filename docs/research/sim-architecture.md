@@ -6,7 +6,7 @@ pending Phase 1 prototype validation (perf harness) and cross-workstream review.
 **Last updated:** 2026-09-28
 
 This note investigates how the deterministic simulation at the heart of
-awesome-sim-game should be built: fixed-timestep loop, ECS vs OOP, determinism
+novaterra should be built: fixed-timestep loop, ECS vs OOP, determinism
 in JS/TS, save/load design, pathfinding at scale, spatial partitioning, and
 whether WASM / Web Workers earn their complexity. Every recommendation below is
 sourced; dead ends are recorded in §12.

@@ -1,4 +1,4 @@
-# Plan — awesome-sim-game (working title: NOVATERRA)
+# Plan — novaterra
 
 Living plan. Updated whenever reality changes. Last updated: 2026-09-28.
 
@@ -35,7 +35,7 @@ The ruthless cut: **one big skirmish map (Meridian Plains), Classic AI levels
 save/load/pause, cheat `prosperity now`** — the complete core loop, genuinely
 fun in 30–60 minute sessions. Build order:
 
-1. Scaffold: Vite + TS strict + pinned three.js, Pages deploy (`/awesome-sim-game/` base), dev loop, CI
+1. Scaffold: Vite + TS strict + pinned three.js, Pages deploy (`/novaterra/` base — repo rename user-confirmed 2026-09-28), dev loop, CI — **COMPLETE 2026-09-28** (three 0.186.1, TS 7.0.2, Vite 8.3.1, Vitest 3.2.7; typecheck/test/build green; preview verified serving `/novaterra/`)
 2. Render micro-benchmarks on both backends (gating before content scale-up)
 3. Sim core: tick driver, RNG, world store, commands, digest, snapshot/serialize
 4. Terrain + Meridian Plains map; spatial hash grid

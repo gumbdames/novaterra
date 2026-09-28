@@ -1,4 +1,4 @@
-# Game Design — awesome-sim-game
+# Game Design — novaterra
 
 > Living game-design research + synthesis. Updated continuously as findings
 > evolve; sources cited inline; dead ends recorded at the bottom.
@@ -270,8 +270,9 @@ for our game; every mechanic in Part C must serve at least one of them.
 
 ### C1. Name options
 
-The repo stays `awesome-sim-game`; the *game* needs a name. Criteria: modern,
-presidential, ownable, works in a URL. Five options:
+The game needed a name (repo: `novaterra`). Criteria: modern,
+presidential, ownable, works in a URL. Five options were considered —
+**selected 2026-09-28: NOVATERRA**:
 
 1. **NOVATERRA** — "new land". Short, ownable, URL-friendly
    (`novaterra.game`). Tagline: *"Build the nation. Defend the future."*
@@ -684,7 +685,7 @@ sessions. Everything deferred *extends* this loop rather than completing it.
 | # | Question | Recommendation | Owner/Status |
 |---|---|---|---|
 | 1 | Mode 2 "play against Muse". | **Confirmed 2026-09-28:** persona director as the offline default **plus** an optional "Live Muse link" when online (user connects their own API key in settings; key in `localStorage` only; strategic-commander protocol that never blocks the tick; silent fallback to persona when offline). See C7 + C7a. | Resolved |
-| 2 | Game name (repo stays awesome-sim-game). | **NOVATERRA** (see C1 for the shortlist + rationale). | Pending user pick |
+| 2 | Game name. | **NOVATERRA** (see C1 for the shortlist + rationale). | Resolved 2026-09-28: NOVATERRA confirmed; repo renamed to `novaterra` |
 | 3 | Faction count at launch: 1 shared roster + 2 doctrines, or fully asymmetric rosters? | 1 shared roster + 2 doctrine overlays at launch (balance cost); full asymmetry post-launch. | Design decision, recorded |
 | 4 | Mobile/touch scope. | Per brief: only if playtests show it's genuinely fun. Desktop-first; reassess after MVP playtests. | Deferred to post-MVP |
 | 5 | Citizen simulation depth: full agents vs statistical cohorts? | Recommend cohorts + sampled visible agents (perf); sim-architecture workstream to decide. | → sim-architecture.md |

@@ -1,4 +1,4 @@
-# Architecture — awesome-sim-game (working title: NOVATERRA)
+# Architecture — novaterra
 
 Living document. Locked decisions are dated; when a decision changes, the old
 one moves to the Decision Log with its superseded date — history is never
@@ -27,7 +27,7 @@ rewritten. Last updated: 2026-09-28 (v1, post-Phase-0-research).
 |---|---|---|
 | Rendering | three.js pinned exact (`three@0.186.1`), `three/webgpu` import: **WebGPURenderer primary + automatic WebGL2 fallback**, custom shaders in pure TSL only | One codebase, one scene graph; 15–25% of users get WebGL2 free; mobile tier forces WebGL2 via runtime flag |
 | Language | TypeScript 7 strict (`no-explicit-any`, `no-non-null-assertion`) | Deterministic sim needs the strictness; tsgo is fast |
-| Build/test | Vite 8 + Vitest 3 | One pipeline; `vite build` emits static assets for GitHub Pages (`/awesome-sim-game/` base) |
+| Build/test | Vite 8 + Vitest 3 | One pipeline; `vite build` emits static assets for GitHub Pages (`/novaterra/` base) |
 | Audio | Raw Web Audio, own `audio/` module, no runtime library | Adaptive stem engine needs bespoke lookahead scheduling; Howler/Tone.js rejected (see `docs/research/audio.md`) |
 | Music source | Tallbeard "Abstraction" CC0 loop bundle (primary) + re-verified Pixabay cinematic tracks | Content-ID-free for let's-players; ~15–25 MB shipped; licenses in `assets/audio/LICENSES.yml` |
 | Save storage | IndexedDB (one compressed Blob per save, single tx) + export/import file fallback | Large late-game saves; `navigator.storage.persist()` |

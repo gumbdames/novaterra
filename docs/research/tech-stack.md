@@ -5,7 +5,7 @@ sourced; dead ends recorded. Budget numbers to be replaced by in-project
 micro-benchmarks before content scale-up.
 **Last updated:** 2026-09-28
 **Purpose:** Choose the rendering engine, language, build tool, rendering
-techniques, and art pipeline for awesome-sim-game (3D browser RTS/city-builder
+techniques, and art pipeline for novaterra (3D browser RTS/city-builder
 hybrid — SimCity × Red Alert × Age of Empires — single-player, 60fps with
 thousands of entities, static GitHub Pages deploy).
 **Convention:** every factual claim cites a source URL; unverifiable claims are
@@ -141,7 +141,7 @@ hand-roll); compute is WebGPU-only (CPU fallback path needed); silent
   config; ~4.2× faster than Jest per the cited benchmarks.
 - **Deploy fit:** `vite build` emits plain static assets (JS/CSS/assets) — a
   perfect match for GitHub Pages. No SSR, no server, no lock-in. Base path
-  configured for `https://gumbdames.github.io/awesome-sim-game/`.
+  configured for `https://gumbdames.github.io/novaterra/`.
 
 ### WASM — where it does and doesn't help
 - WASM **cannot touch the GPU directly**; it does not accelerate rendering.
@@ -361,7 +361,7 @@ faster than TS 5; strict mode + lint rules (`no-explicit-any`,
 **Build/dev/test: Vite 8** (Rolldown-powered) + **Vitest 3** (same pipeline,
 zero duplicate config). `vite build` emits plain static assets — exact fit
 for GitHub Pages (set the base path for
-`https://gumbdames.github.io/awesome-sim-game/`).
+`https://gumbdames.github.io/novaterra/`).
 
 **Rendering architecture:**
 - One `InstancedMesh` per unit/building type per map chunk (chunking =
