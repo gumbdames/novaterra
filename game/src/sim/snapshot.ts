@@ -45,6 +45,8 @@ import type { BuildingRecord, CityState, PlayerState } from './city';
 import type { UnitRecord } from './units';
 import type { FieldBuild, FieldRequest, FlowField, PathfindingState, PathRequest } from './pathfinding';
 import { initPathfinding } from './pathfinding';
+import type { AIState } from './ai';
+import { encodeAIState, decodeAIState, initAI } from './ai';
 
 /**
  * Snapshot format version. Bump on any breaking change to the shape below.
@@ -65,6 +67,7 @@ export interface Snapshot {
   city: CityState;
   units: UnitRecord[];
   pathfinding: PathfindingState;
+  ai: AIState;
 }
 
 /** Thrown when a snapshot's version doesn't match. Names expected vs found. */
@@ -124,6 +127,8 @@ function copyCity(city: CityState): CityState {
 function copyUnit(u: UnitRecord): UnitRecord {
   return {
     id: u.id, kind: u.kind, owner: u.owner, x: u.x, z: u.z,
+    domain: u.domain, hp: u.hp, cooldownLeft: u.cooldownLeft,
+    targetId: u.targetId, chasing: u.chasing,
     speed: u.speed, state: u.state, failReason: u.failReason,
     destX: u.destX, destZ: u.destZ, arriveX: u.arriveX, arriveZ: u.arriveZ,
     path: [...u.path], pathAt: u.pathAt,
@@ -188,6 +193,7 @@ export function takeSnapshot(world: World): Snapshot {
     city: copyCity(world.city),
     units: world.units.map(copyUnit),
     pathfinding: copyPathfinding(world.pathfinding),
+    ai: encodeAIState(world.ai) as AIState,
   };
 }
 
@@ -213,5 +219,7 @@ export function restoreSnapshot(snap: Snapshot): World {
   // Defensive: a hand-built v3 snapshot might omit pathfinding state —
   // init instead of crashing on undefined.
   world.pathfinding = snap.pathfinding ? copyPathfinding(snap.pathfinding) : initPathfinding();
+  // Defensive: older snapshots lack AI state — init instead of crashing.
+  world.ai = snap.ai ? decodeAIState(snap.ai) : initAI();
   return world;
 }

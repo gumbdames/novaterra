@@ -44,6 +44,8 @@ import { initCity } from './city';
 import type { UnitRecord } from './units';
 import type { PathfindingState } from './pathfinding';
 import { initPathfinding } from './pathfinding';
+import type { AIState } from './ai';
+import { initAI } from './ai';
 
 /** Minimal per-entity record. Later steps add components; the shape stays plain. */
 export interface EntityRecord {
@@ -76,6 +78,8 @@ export interface World {
   units: UnitRecord[];
   /** Pathfinding coordinator state (queues + live flow fields). Snapshotted + digested. */
   pathfinding: PathfindingState;
+  /** Classic AI state (per-player difficulty, timers, strategy). Snapshotted + digested. */
+  ai: AIState;
 }
 
 /** First assignable entity id (0 stays reserved as the "no entity" sentinel). */
@@ -93,6 +97,7 @@ export function createWorld(seed: number): World {
     city: initCity(),
     units: [],
     pathfinding: initPathfinding(),
+    ai: initAI(),
   };
 }
 

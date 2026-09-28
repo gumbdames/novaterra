@@ -151,7 +151,7 @@ function findLandNear(t: TerrainData, x: number, z: number): { x: number; z: num
 }
 
 /** Spawn a unit and return its id. */
-function spawnAt(ctx: Ctx, x: number, z: number, kind = 'civilian', owner = 1): number {
+function spawnAt(ctx: Ctx, x: number, z: number, kind = 'rifles', owner = 1): number {
   const id = ctx.world.nextId;
   enqueue(ctx, [{ kind: 'spawnUnit', payload: { kind, owner, x, z } }]);
   runTicks(ctx, 1);
@@ -463,6 +463,70 @@ describe('group movement on one flow field', () => {
   });
 });
 
+describe('separation at exact overlap', () => {
+  it('pushes exactly-overlapping units apart instead of stacking them', () => {
+    const ctx = setup(4242);
+    const t = ctx.terrain;
+    const comps = landComponents(t);
+    const base = findLandNear(t, -200, -200);
+    const dest = findLandNear(t, base.x + 80, base.z);
+    expect(comps[worldToCell(base.x, base.z)]).toBe(comps[worldToCell(dest.x, dest.z)]);
+    // Two units on the exact same point — the Step 6 gap this covers:
+    // combat funnels units onto one target point, and a zero-distance
+    // neighbor used to be skipped, stacking them forever. moveGroup is
+    // used (not two moveUnits) so both units share one flow field and
+    // start moving on the same tick, at exact overlap.
+    const idA = spawnAt(ctx, base.x, base.z);
+    const idB = spawnAt(ctx, base.x, base.z);
+    const lo = Math.min(idA, idB);
+    const hi = Math.max(idA, idB);
+    enqueue(ctx, [
+      { kind: 'moveGroup', payload: { unitIds: [idA, idB], owner: 1, x: dest.x, z: dest.z } },
+    ]);
+    // Step until both units are moving (shared field => same tick).
+    let bothMoving = false;
+    for (let i = 0; i < 500 && !bothMoving; i++) {
+      runTicks(ctx, 1);
+      bothMoving =
+        findUnit(ctx.world, lo)?.state === 'moving' &&
+        findUnit(ctx.world, hi)?.state === 'moving';
+    }
+    expect(bothMoving).toBe(true);
+    const a = findUnit(ctx.world, lo)!;
+    const b = findUnit(ctx.world, hi)!;
+    // Separated on the very first shared moving tick — deterministically:
+    // lower id toward -x, higher toward +x.
+    expect(dist2(a.x, a.z, b.x, b.z)).toBeGreaterThan(0);
+    expect(a.x).toBeLessThan(base.x);
+    expect(b.x).toBeGreaterThan(base.x);
+  });
+
+  it('resolves the overlap identically on repeated runs', () => {
+    const runOnce = (): [number, number, number, number] => {
+      const ctx = setup(4242);
+      const base = findLandNear(ctx.terrain, -200, -200);
+      const dest = findLandNear(ctx.terrain, base.x + 80, base.z);
+      const idA = spawnAt(ctx, base.x, base.z);
+      const idB = spawnAt(ctx, base.x, base.z);
+      enqueue(ctx, [
+        { kind: 'moveGroup', payload: { unitIds: [idA, idB], owner: 1, x: dest.x, z: dest.z } },
+      ]);
+      let bothMoving = false;
+      for (let i = 0; i < 500 && !bothMoving; i++) {
+        runTicks(ctx, 1);
+        bothMoving =
+          findUnit(ctx.world, idA)?.state === 'moving' &&
+          findUnit(ctx.world, idB)?.state === 'moving';
+      }
+      expect(bothMoving).toBe(true);
+      const a = findUnit(ctx.world, idA)!;
+      const b = findUnit(ctx.world, idB)!;
+      return [a.x, a.z, b.x, b.z];
+    };
+    expect(runOnce()).toEqual(runOnce());
+  });
+});
+
 describe('time-sliced request processing', () => {
   it('drains 200 queued path requests within a deterministic bound', () => {
     const ctx = setup(4242);
@@ -483,7 +547,7 @@ describe('time-sliced request processing', () => {
     // command order — so the ids are firstId .. firstId+199.
     const firstId = ctx.world.nextId;
     for (const s of spots) {
-      ctx.queue.enqueue(ctx.world, { issuer: 'player', kind: 'spawnUnit', payload: { kind: 'civilian', owner: 1, x: s.x, z: s.z } });
+      ctx.queue.enqueue(ctx.world, { issuer: 'player', kind: 'spawnUnit', payload: { kind: 'rifles', owner: 1, x: s.x, z: s.z } });
     }
     runTicks(ctx, 1);
     const ids = spots.map((_, i) => firstId + i);
@@ -678,7 +742,7 @@ describe('determinism', () => {
       const ids: number[] = [];
       for (let i = 0; i < 6; i++) {
         const p = findLandNear(t, base.x + i * 3, base.z + (i % 2) * 3);
-        ids.push(spawnAt(ctx, p.x, p.z, i % 2 === 0 ? 'civilian' : 'soldier'));
+        ids.push(spawnAt(ctx, p.x, p.z, i % 2 === 0 ? 'rifles' : 'tank'));
       }
       const d1 = findLandNear(t, base.x + 50, base.z);
       const d2 = findLandNear(t, base.x + 10, base.z + 50);

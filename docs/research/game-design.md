@@ -292,16 +292,17 @@ the enemy = "the Kestrel Directorate"). All subsequent sections use it.
 
 ### C2. Backstory (draft)
 
-**Setting — locked 2026-09-28 (user decision):** an alternate Earth, modern
-2026 — our planet's look, technology, and society, but fictional continents,
-countries, and maps (keeps clear of real-world politics). All human: no
-outer space, no aliens, no fantasy races. The game is fixed in 2026; the
-ages (Foundation → Connectivity → …) are *development stages* of your
-nation, not calendar years.
+**Setting — locked 2026-09-28 (user decision):** modern 2026 — our planet's
+look, technology, and society. All human: no outer space, no aliens, no
+fantasy races. The game is fixed in 2026; the ages (Foundation →
+Connectivity → …) are *development stages* of your nation, not calendar
+years. Exact geography is still undecided — Earth with fictional
+countries/maps/continents is on the table (keeps clear of real-world
+politics), but nothing is locked yet.
 
 **The setting is 2026. The place is Novaterra. You are its first President.**
 
-Ten years ago the old Federation fractured — the Fracture of 2024 left a dozen
+Two years ago the old Federation fractured — the Fracture of 2024 left a dozen
 coastal city-states bankrupt, blacked out, and blockaded by warlords and
 privateers. In the winter of 2025 they did something desperate: they voted
 themselves into a new republic and elected *you*, an outsider engineer-mayor
@@ -389,18 +390,20 @@ official "super duper easy mode".
 
 ### C5. Ages & tech progression
 
-Five ages, near-future, each gated by building a **National Program** landmark
-— a real building on the map with a real choice (A3: pick 1 of 2, both viable,
-framed positively). Age-up costs funds + research + a construction effort, so
-it competes with army-building for the same resources (the AoE2 tension, A3).
+Five ages — development stages of your nation within the fixed 2026
+setting (not calendar years) — each gated by building a **National
+Program** landmark — a real building on the map with a real choice (A3:
+pick 1 of 2, both viable, framed positively). Age-up costs funds +
+research + a construction effort, so it competes with army-building for
+the same resources (the AoE2 tension, A3).
 
-| # | Age | Years | National Program choice (pick 1) | Unlocks (civil / military) |
-|---|---|---|---|---|
-| 1 | **Foundation** | 2026 | — (start here) | roads, zoning, power/water, infantry, patrol boats |
-| 2 | **Connectivity** | 2027–29 | **Fiber Grid** (economy: +bandwidth, digital firms) *or* **Orbital Uplink** (intel: satellites, recon) | universities, trade port, fighters, destroyers |
-| 3 | **Green Transition** | 2030–33 | **Fusion Pilot** (clean power abundance) *or* **Agri Arcologies** (food independence + growth) | vertical farms, recycling, special ops, submarines |
-| 4 | **Autonomy** | 2034–37 | **Drone Works** (autonomous logistics + drone swarms) *or* **Civic AI** (automation boosts, smarter mayors) | carriers, bombers, missile artillery, smart defenses |
-| 5 | **Ascendance** | 2038+ | **Skyhook** (orbital economy, prestige) *or* **Aegis Shield** (theater missile defense) | superweapons, wonder victory, elite units |
+| # | Age | National Program choice (pick 1) | Unlocks (civil / military) |
+|---|---|---|---|
+| 1 | **Foundation** | — (start here) | roads, zoning, power/water, infantry, patrol boats |
+| 2 | **Connectivity** | **Fiber Grid** (economy: +bandwidth, digital firms) *or* **Signals Grid** (intel: listening posts, recon drones) | universities, trade port, fighters, destroyers |
+| 3 | **Green Transition** | **Fusion Pilot** (clean power abundance) *or* **Agri Arcologies** (food independence + growth) | vertical farms, recycling, special ops, submarines |
+| 4 | **Autonomy** | **Drone Works** (autonomous logistics + drone swarms) *or* **Civic AI** (automation boosts, smarter mayors) | carriers, bombers, missile artillery, smart defenses |
+| 5 | **Ascendance** | **Meridian Spire** (prestige megastructure, economy) *or* **Aegis Shield** (theater missile defense) | superweapons, wonder victory, elite units |
 
 Tech tree shape: a **full shared base tree** (nobody is locked out of anything,
 A3 "full tech tree is good") + **doctrine bonuses** layered on top
@@ -411,7 +414,7 @@ A3 "full tech tree is good") + **doctrine bonuses** layered on top
 
 - **Skirmish:** selectable victory — **Conquest** (destroy all enemy HQs +
   production), **Capital** (hold the enemy capital for 5 minutes), or
-  **Ascendance** (complete the Skyhook/Monument wonder and survive the
+  **Ascendance** (complete the Monument wonder and survive the
   10-minute countdown, RA2-superweapon pacing per A2). Lose: your last HQ falls
   (war on), or in builder mode there is no lose — only a prosperity score.
 - **Campaign:** per-mission objectives (C8); campaign lose = mission failed
@@ -648,8 +651,9 @@ research), Mobile HQ (command aura).
 transport, AWACS (sensor aura), Drone swarm (cheap, expendable).
 **Signature units:** Republic — *Aegis Battery* (theater missile defense,
 doubles as superweapon counter); Kestrel — *Tempest Cannon* (very-long-range
-artillery). **Superweapons:** Republic *Aegis Shield* (defensive) /
-*Skyhook Strike* (orbital); Kestrel *Storm Engine* (weather) — all follow the
+artillery). **Superweapons:** Republic *Aegis Shield* (defensive) / *Longbow Strike*
+(conventional long-range precision strike); Kestrel *Firestorm Barrage*
+(thermobaric saturation) — all follow the
 A2 clock rules (long charge, global warning, revealed location).
 
 Roster discipline (A2): every unit has a clear counter; no unit without a

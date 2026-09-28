@@ -25,9 +25,14 @@
  *       positions (the research recommends a per-tick rebuild over
  *       incremental updates), then integrates every `moving` unit along
  *       its A* waypoints or flow-field direction, with local separation
- *       steering so units don't stack.
- *  - Move commands: `moveUnit` (one unit, A*), `moveGroup` (many units,
- *    one shared flow field), `stopUnit`. Validated at enqueue AND apply.
+ *       steering so units don't stack. Air units fly straight to their
+ *       destination instead: no pathfinding, no water checks.
+ *  - Move commands: `moveUnit` (one unit, A* or direct flight),
+ *    `moveGroup` (many units, one shared flow field for ground; air
+ *    units fly straight in formation), `stopUnit`. Validated at enqueue
+ *    AND apply.
+ *  - `orderMoveTo` — a low-level "move this unit to (x, z)" used by the
+ *    combat system for attack-order chasing (see `combat.ts`).
  *
  * Steering model (all Phase 1 engineering choices, documented here):
  *  - Seek: velocity toward the current waypoint/field step at unit speed,
@@ -180,7 +185,79 @@ function arriveUnit(unit: UnitRecord): void {
   unit.failReason = null;
 }
 
+/**
+ * Straight-line flight for air units. No waypoints, no flow fields, no
+ * water checks — they fly over everything. Separation applies against
+ * other air units only (ground units are below them, literally).
+ */
+function moveAirUnitTick(world: World, hash: SpatialHash, unit: UnitRecord, dt: number): void {
+  const dxFinal = unit.arriveX - unit.x;
+  const dzFinal = unit.arriveZ - unit.z;
+  const distFinal = Math.hypot(dxFinal, dzFinal);
+  if (distFinal < ARRIVAL_RADIUS) {
+    arriveUnit(unit);
+    return;
+  }
+  let vx = dxFinal;
+  let vz = dzFinal;
+  const dist = Math.hypot(vx, vz);
+  let speed = unit.speed;
+  if (distFinal < SLOW_RADIUS) {
+    const factor = Math.max(MIN_SLOW_FACTOR, distFinal / SLOW_RADIUS);
+    speed *= factor;
+  }
+  if (dist > 1e-9) {
+    vx = (vx / dist) * speed;
+    vz = (vz / dist) * speed;
+  } else {
+    vx = 0;
+    vz = 0;
+  }
+  // Separation: air units push apart from other air units only.
+  const neighbors = shQueryRadius(hash, unit.x, unit.z, SEPARATION_RADIUS);
+  let sx = 0;
+  let sz = 0;
+  if (distFinal >= SLOW_RADIUS) {
+    for (const nid of neighbors) {
+      if (nid === unit.id) continue;
+      const other = findUnit(world, nid);
+      // Ground units only push against ground units — aircraft fly above
+      // them (the air branch filters the other way).
+      if (!other || other.domain !== unit.domain) continue;
+      const ox = unit.x - other.x;
+      const oz = unit.z - other.z;
+      const d = Math.hypot(ox, oz);
+      if (d >= SEPARATION_RADIUS) continue;
+      if (d < 1e-9) {
+        const dir = unit.id < other.id ? -1 : 1;
+        sx += dir * SEPARATION_FORCE;
+        continue;
+      }
+      const push = (1 - d / SEPARATION_RADIUS) * SEPARATION_FORCE;
+      sx += (ox / d) * push;
+      sz += (oz / d) * push;
+    }
+  }
+  vx += sx;
+  vz += sz;
+  const vmag = Math.hypot(vx, vz);
+  if (vmag > unit.speed && vmag > 1e-9) {
+    vx = (vx / vmag) * unit.speed;
+    vz = (vz / vmag) * unit.speed;
+  }
+  const [nx, nz] = clampToMap(unit.x + vx * dt, unit.z + vz * dt);
+  unit.x = nx;
+  unit.z = nz;
+}
+
 function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: UnitRecord, dt: number): void {
+  // Air units fly straight to their slot: no pathfinding, no water checks,
+  // no terrain following. They still separate (from other air units) and
+  // arrive exactly like ground units.
+  if (unit.domain === 'air') {
+    moveAirUnitTick(world, hash, unit, dt);
+    return;
+  }
   // 1. Arrival backstop: close enough to the unit's own slot.
   const dxFinal = unit.arriveX - unit.x;
   const dzFinal = unit.arriveZ - unit.z;
@@ -246,11 +323,23 @@ function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: Uni
     for (const nid of neighbors) {
       if (nid === unit.id) continue;
       const other = findUnit(world, nid);
-      if (!other) continue;
+      // Ground units only push against ground units — aircraft fly above
+      // them (the air branch filters the other way).
+      if (!other || other.domain !== unit.domain) continue;
       const ox = unit.x - other.x;
       const oz = unit.z - other.z;
       const d = Math.hypot(ox, oz);
-      if (d < 1e-9 || d >= SEPARATION_RADIUS) continue;
+      if (d >= SEPARATION_RADIUS) continue;
+      if (d < 1e-9) {
+        // Exact overlap: no direction exists to normalize. Push apart
+        // along the x axis — the lower id goes -x, the higher +x — so the
+        // pair separates deterministically instead of stacking forever.
+        // (Combat funnels many units onto one target point; without this
+        // they merge into a single visual/physical pile.)
+        const dir = unit.id < other.id ? -1 : 1;
+        sx += dir * SEPARATION_FORCE;
+        continue;
+      }
       const push = (1 - d / SEPARATION_RADIUS) * SEPARATION_FORCE;
       sx += (ox / d) * push;
       sz += (oz / d) * push;
@@ -316,14 +405,15 @@ function payloadUnitIds(payload: Record<string, unknown>): number[] | null {
   return out;
 }
 
-function validateDestination(t: TerrainData, x: unknown, z: unknown): string | null {
+function validateDestination(t: TerrainData, x: unknown, z: unknown, allowWater = false): string | null {
   if (typeof x !== 'number' || !Number.isFinite(x)) return 'payload.x must be a finite number';
   if (typeof z !== 'number' || !Number.isFinite(z)) return 'payload.z must be a finite number';
   if (Math.abs(x) > MAP_HALF_SIZE || Math.abs(z) > MAP_HALF_SIZE) {
     return `destination (${x}, ${z}) is outside the map`;
   }
   // Terrain is static: a validate-time water check cannot go stale.
-  if (isWater(t, x, z)) return `destination (${x}, ${z}) is water`;
+  // Air units fly over water, so they skip this check.
+  if (!allowWater && isWater(t, x, z)) return `destination (${x}, ${z}) is water`;
   return null;
 }
 
@@ -342,13 +432,30 @@ function validateOwnedUnit(world: World, unitId: unknown, owner: unknown, kind: 
 
 /** Shared apply logic: retask one unit to (x, z) via A*. */
 function retaskSingle(world: World, unit: UnitRecord, x: number, z: number): void {
+  orderMoveTo(world, unit, x, z);
+}
+
+/**
+ * Order a unit to (x, z) — the low-level move used by the move commands
+ * and by the combat system for attack-order chasing (see `combat.ts`).
+ * Ground units go through A*; air units fly straight. Clears any combat
+ * targeting (a move order supersedes an attack).
+ */
+export function orderMoveTo(world: World, unit: UnitRecord, x: number, z: number): void {
   dropUnitRequests(world, unit.id);
   clearUnitOrder(unit);
+  unit.targetId = 0;
+  unit.chasing = false;
   unit.destX = x;
   unit.destZ = z;
   unit.arriveX = x;
   unit.arriveZ = z;
   unit.failReason = null;
+  if (unit.domain === 'air') {
+    const d = Math.hypot(x - unit.x, z - unit.z);
+    unit.state = d < ARRIVAL_RADIUS ? 'idle' : 'moving';
+    return;
+  }
   if (worldToCell(x, z) === worldToCell(unit.x, unit.z)) {
     unit.state = 'idle'; // already in the destination cell
     return;
@@ -398,16 +505,33 @@ function assignGroupSlots(world: World, t: TerrainData, waiting: UnitRecord[], a
   }
 }
 
+/**
+ * Formation slots for air units: plain slotOffset rings, clamped to the
+ * map. No terrain checks — aircraft fly over water and any terrain.
+ */
+function assignAirSlots(waiting: UnitRecord[], atDestCount: number, x: number, z: number): void {
+  const ordered = [...waiting].sort((a, b) => a.id - b.id);
+  const m = MAP_HALF_SIZE - 0.01;
+  let rank = atDestCount;
+  for (const unit of ordered) {
+    const [ox, oz] = slotOffset(rank);
+    unit.arriveX = Math.min(Math.max(x + ox, -m), m);
+    unit.arriveZ = Math.min(Math.max(z + oz, -m), m);
+    rank += 1;
+  }
+}
+
 export function registerMovementCommands(queue: CommandQueue, t: TerrainData): void {
   queue.register('moveUnit', {
     validate(cmd, world): string | null {
       const unit = validateOwnedUnit(world, cmd.payload['unitId'], cmd.payload['owner'], 'moveUnit');
       if (typeof unit === 'string') return unit;
-      return validateDestination(t, cmd.payload['x'], cmd.payload['z']);
+      // Air units fly over water; ground units can't be ordered into it.
+      return validateDestination(t, cmd.payload['x'], cmd.payload['z'], unit.domain === 'air');
     },
     apply(cmd, world): unknown {
       const unit = findUnit(world, cmd.payload['unitId'] as number) as UnitRecord;
-      retaskSingle(world, unit, cmd.payload['x'] as number, cmd.payload['z'] as number);
+      orderMoveTo(world, unit, cmd.payload['x'] as number, cmd.payload['z'] as number);
       return unit.id;
     },
   });
@@ -432,34 +556,50 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
       const x = cmd.payload['x'] as number;
       const z = cmd.payload['z'] as number;
       const destCell = worldToCell(x, z);
-      const waiting: number[] = [];
-      const waitingUnits: UnitRecord[] = [];
+      // Ground units share one flow field; air units fly straight in
+      // formation (no pathfinding, no water checks).
+      const groundWaiting: number[] = [];
+      const groundWaitingUnits: UnitRecord[] = [];
+      const airWaiting: UnitRecord[] = [];
       let atDestCount = 0;
+      let airAtDestCount = 0;
       for (const id of ids) {
         const unit = findUnit(world, id) as UnitRecord;
         dropUnitRequests(world, id);
         clearUnitOrder(unit);
+        unit.targetId = 0;
+        unit.chasing = false;
         unit.destX = x;
         unit.destZ = z;
         unit.arriveX = x; // refined to a formation slot below
         unit.arriveZ = z;
         unit.failReason = null;
-        if (worldToCell(unit.x, unit.z) === destCell) {
+        if (unit.domain === 'air') {
+          const d = Math.hypot(x - unit.x, z - unit.z);
+          if (d < ARRIVAL_RADIUS) {
+            unit.state = 'idle'; // already there
+            airAtDestCount += 1;
+          } else {
+            unit.state = 'moving';
+            airWaiting.push(unit);
+          }
+        } else if (worldToCell(unit.x, unit.z) === destCell) {
           unit.state = 'idle'; // already there
           atDestCount += 1;
         } else {
           unit.state = 'awaitingPath';
-          waiting.push(id);
-          waitingUnits.push(unit);
+          groundWaiting.push(id);
+          groundWaitingUnits.push(unit);
         }
       }
       // Formation slots: deterministic ranks; units already at the
       // destination occupy the first ranks so nobody stacks onto them.
       // Id order keeps the assignment deterministic.
-      assignGroupSlots(world, t, waitingUnits, atDestCount, x, z);
-      if (waiting.length === 0) return [];
-      const fieldId = requestField(world, waiting, destCell);
-      for (const id of waiting) {
+      assignGroupSlots(world, t, groundWaitingUnits, atDestCount, x, z);
+      assignAirSlots(airWaiting, airAtDestCount, x, z);
+      if (groundWaiting.length === 0) return [];
+      const fieldId = requestField(world, groundWaiting, destCell);
+      for (const id of groundWaiting) {
         (findUnit(world, id) as UnitRecord).fieldId = fieldId;
       }
       return fieldId;
@@ -476,6 +616,8 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
       const unit = findUnit(world, cmd.payload['unitId'] as number) as UnitRecord;
       dropUnitRequests(world, unit.id);
       clearUnitOrder(unit);
+      unit.targetId = 0;
+      unit.chasing = false;
       unit.state = 'idle';
       unit.failReason = null;
       return unit.id;

@@ -19,15 +19,16 @@
  *
  * Responsibilities:
  *  - Plain-data records for mobile entities (units): id, owner, kind,
- *    position, speed, and order state. The full unit roster (8 land + 3 air)
- *    arrives in Phase 1 step 7; this step keeps two placeholder kinds so
- *    the movement substrate has something to move.
+ *    position, speed, order state, and combat state (hp, cooldown,
+ *    target). The Phase-1 MVP roster is 8 land + 3 air (see C12 in
+ *    docs/research/game-design.md).
  *  - Unit ids come from `world.nextId` (the same counter as entities), so
  *    they are stable, never reused, and never collide with entity ids.
  *  - Movement state lives here too (`path`, `fieldId`, `destX/Z`); the
  *    pathfinding coordinator (`pathfinding.ts`) and the movement system
  *    (`movement.ts`) mutate it. `spawnUnit` is registered here; the move
- *    orders live in `movement.ts` next to the systems that serve them.
+ *    orders live in `movement.ts` next to the systems that serve them;
+ *    combat lives in `combat.ts`.
  *
  * y-position: units store x/z only; height comes from `heightAt` at
  * movement/render time, so it is never part of snapshots or digests.
@@ -41,32 +42,169 @@ import { isWater } from './terrain';
 import { getPlayer, MAP_HALF_SIZE } from './city';
 import type { CommandQueue } from './commands';
 
-/** Placeholder kinds for Phase 1 step 6. The real roster lands in step 7. */
-export const UNIT_KINDS = ['civilian', 'soldier'] as const;
+/**
+ * The Phase-1 MVP roster (C12): 8 land + 3 air. Land: engineer (utility),
+ * rifles (infantry), tank (MBT), artillery (long-range fire support), aa
+ * (mobile air defense), hauler (logistics), spectre (special ops sabotage),
+ * hq (mobile command). Air: fighter (multirole), transport (airlift),
+ * drone (cheap expendable swarm).
+ */
+export const UNIT_KINDS = [
+  'engineer',
+  'rifles',
+  'tank',
+  'artillery',
+  'aa',
+  'hauler',
+  'spectre',
+  'hq',
+  'fighter',
+  'transport',
+  'drone',
+] as const;
 export type UnitKind = (typeof UNIT_KINDS)[number];
+
+/** Which map layer a unit lives on. Air units fly over terrain and water. */
+export type UnitDomain = 'land' | 'air';
+
+/** How tough a unit is against incoming fire (see `vsLight/vsMedium/vsHeavy`). */
+export type ArmorClass = 'light' | 'medium' | 'heavy';
+
+/** What a weapon can be aimed at. `none` = unarmed (hauler, transport). */
+export type TargetClass = 'ground' | 'air' | 'both' | 'none';
 
 /** Order lifecycle. `failed` always carries a `failReason` — never silent. */
 export type UnitState = 'idle' | 'awaitingPath' | 'moving' | 'failed';
 
-/** Base speed in world units per second, per kind (Phase 1 engineering choice). */
-export const UNIT_BASE_SPEED: Record<UnitKind, number> = {
-  civilian: 6,
-  soldier: 8,
+/**
+ * Static per-kind definition. Balance numbers are Phase 1 engineering
+ * choices tuned for readable counters:
+ *  - tank beats rifles (armor shrugs off light weapons; tank gun
+ *    one-twos infantry),
+ *  - artillery beats tank at range (outranges it, bonus vs heavy) but is
+ *    helpless up close (minRange: rifles walk inside and it cannot fire),
+ *  - aa beats anything that flies (large vsAir bonus),
+ *  - fighter beats drone/transport (air superiority),
+ *  - spectre beats soft high-value targets (bonus vs medium: artillery, aa).
+ */
+export interface UnitDef {
+  kind: UnitKind;
+  /** Display name for UI/docs. */
+  name: string;
+  domain: UnitDomain;
+  /** Max (and spawn) hit points. */
+  hp: number;
+  /** Speed in world units per second. */
+  speed: number;
+  armor: ArmorClass;
+  /** Damage per shot. 0 = unarmed. */
+  damage: number;
+  /** Weapon range in world units. */
+  range: number;
+  /** Cannot fire closer than this (artillery dead zone). */
+  minRange: number;
+  /** Ticks between shots (30 ticks = 1 sim-second). */
+  cooldownTicks: number;
+  targets: TargetClass;
+  /** Damage multiplier vs each armor class (ground targets). */
+  vsLight: number;
+  vsMedium: number;
+  vsHeavy: number;
+  /** Extra multiplier when the target flies (aa, fighter). */
+  vsAir: number;
+  /** How far the unit notices enemies (for AI; combat fires at `range`). */
+  sight: number;
+}
+
+export const UNIT_DEFS: Record<UnitKind, UnitDef> = {
+  engineer: {
+    kind: 'engineer', name: 'Engineer', domain: 'land', hp: 80, speed: 6, armor: 'light',
+    damage: 5, range: 10, minRange: 0, cooldownTicks: 30, targets: 'ground',
+    vsLight: 1.0, vsMedium: 0.6, vsHeavy: 0.4, vsAir: 1.0, sight: 18,
+  },
+  rifles: {
+    kind: 'rifles', name: 'Rifles', domain: 'land', hp: 110, speed: 9, armor: 'light',
+    damage: 9, range: 15, minRange: 0, cooldownTicks: 20, targets: 'ground',
+    vsLight: 1.0, vsMedium: 0.55, vsHeavy: 0.3, vsAir: 1.0, sight: 22,
+  },
+  tank: {
+    kind: 'tank', name: 'Main Battle Tank', domain: 'land', hp: 500, speed: 10, armor: 'heavy',
+    damage: 50, range: 19, minRange: 0, cooldownTicks: 50, targets: 'ground',
+    vsLight: 1.3, vsMedium: 1.0, vsHeavy: 0.9, vsAir: 1.0, sight: 26,
+  },
+  artillery: {
+    kind: 'artillery', name: 'Artillery', domain: 'land', hp: 160, speed: 6, armor: 'medium',
+    damage: 95, range: 48, minRange: 12, cooldownTicks: 100, targets: 'ground',
+    vsLight: 1.0, vsMedium: 1.4, vsHeavy: 1.6, vsAir: 1.0, sight: 30,
+  },
+  aa: {
+    kind: 'aa', name: 'Mobile AA', domain: 'land', hp: 200, speed: 10, armor: 'medium',
+    damage: 40, range: 28, minRange: 0, cooldownTicks: 25, targets: 'air',
+    vsLight: 0.3, vsMedium: 0.3, vsHeavy: 0.3, vsAir: 2.2, sight: 34,
+  },
+  hauler: {
+    kind: 'hauler', name: 'Hauler', domain: 'land', hp: 160, speed: 9, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 16,
+  },
+  spectre: {
+    kind: 'spectre', name: 'Spectre', domain: 'land', hp: 130, speed: 12, armor: 'light',
+    damage: 75, range: 10, minRange: 0, cooldownTicks: 45, targets: 'ground',
+    vsLight: 1.0, vsMedium: 1.6, vsHeavy: 1.3, vsAir: 1.0, sight: 24,
+  },
+  hq: {
+    kind: 'hq', name: 'Mobile HQ', domain: 'land', hp: 400, speed: 7, armor: 'heavy',
+    damage: 12, range: 13, minRange: 0, cooldownTicks: 30, targets: 'ground',
+    vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 1.0, sight: 28,
+  },
+  fighter: {
+    kind: 'fighter', name: 'Fighter', domain: 'air', hp: 170, speed: 26, armor: 'light',
+    damage: 32, range: 24, minRange: 0, cooldownTicks: 28, targets: 'both',
+    vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 1.6, sight: 40,
+  },
+  transport: {
+    kind: 'transport', name: 'Transport', domain: 'air', hp: 240, speed: 22, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20,
+  },
+  drone: {
+    kind: 'drone', name: 'Drone', domain: 'air', hp: 55, speed: 20, armor: 'light',
+    damage: 9, range: 13, minRange: 0, cooldownTicks: 22, targets: 'both',
+    vsLight: 0.9, vsMedium: 0.5, vsHeavy: 0.3, vsAir: 1.0, sight: 26,
+  },
 };
+
+/** Mobile HQ command aura: radius and friendly damage bonus. */
+export const HQ_AURA_RADIUS = 20;
+export const HQ_AURA_DAMAGE_BONUS = 0.25;
 
 /** A mobile unit. Plain data — snapshot()/digest() cover it verbatim. */
 export interface UnitRecord {
   /** Stable id from `world.nextId`. Never reused. */
   id: number;
-  /** Kind tag, one of UNIT_KINDS for now. */
+  /** Kind tag, one of UNIT_KINDS. */
   kind: string;
   /** Owning player id (indexes `world.city.players`). */
   owner: number;
   /** Position on the ground plane. */
   x: number;
   z: number;
+  /** Map layer: 'land' or 'air'. From the unit def, cached for hot loops. */
+  domain: UnitDomain;
   /** Speed in world units/second. */
   speed: number;
+  /** Current hit points. 0 or less = dead (removed by the combat system). */
+  hp: number;
+  /** Ticks until the weapon can fire again (0 = ready). */
+  cooldownLeft: number;
+  /** Id of the unit this one is ordered to attack (0 = none). */
+  targetId: number;
+  /**
+   * True while pursuing an explicit `attackUnit` order: the unit chases
+   * its target if it moves out of range. Auto-acquired targets (opportunistic
+   * fire) never chase — the unit holds position and fires when in range.
+   */
+  chasing: boolean;
   /** Order lifecycle state. */
   state: UnitState;
   /** Why the last order failed; null unless state === 'failed'. */
@@ -79,7 +217,7 @@ export interface UnitRecord {
    * the destination; for group (flow-field) orders it's a deterministic
    * formation slot near the destination (see `slotOffset` in
    * `movement.ts`) so group members don't stack on one point. Always on
-   * land, in the destination's land component.
+   * land, in the destination's land component (for land units).
    */
   arriveX: number;
   arriveZ: number;
@@ -96,14 +234,19 @@ export interface UnitRecord {
 
 /** Spawn a unit into the world. Returns the new record. Caller validates. */
 export function spawnUnit(world: World, kind: string, owner: number, x: number, z: number): UnitRecord {
-  const speed = (UNIT_BASE_SPEED[kind as UnitKind] ?? UNIT_BASE_SPEED.civilian) as number;
+  const def = UNIT_DEFS[kind as UnitKind] ?? UNIT_DEFS.engineer;
   const record: UnitRecord = {
     id: world.nextId,
     kind,
     owner,
     x,
     z,
-    speed,
+    domain: def.domain,
+    speed: def.speed,
+    hp: def.hp,
+    cooldownLeft: 0,
+    targetId: 0,
+    chasing: false,
     state: 'idle',
     failReason: null,
     destX: x,
@@ -143,9 +286,9 @@ export function failUnitOrder(unit: UnitRecord, reason: string): void {
 
 /**
  * Register the `spawnUnit` command. Takes the terrain because spawn
- * validates against water (terrain is injected, not stored in the world —
- * the same pattern as `registerCityCommands`). Move orders are registered
- * by `movement.ts`.
+ * validates against water for land units (air units may spawn over water).
+ * Terrain is injected, not stored in the world — the same pattern as
+ * `registerCityCommands`.
  */
 export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void {
   queue.register('spawnUnit', {
@@ -166,8 +309,12 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
         return `spawnUnit: position (${x}, ${z}) is outside the map`;
       }
       // Terrain is static, so a validate-time water check is stable: it
-      // cannot go stale between enqueue and apply.
-      if (isWater(t, x, z)) return `spawnUnit: cannot spawn a land unit in water at (${x}, ${z})`;
+      // cannot go stale between enqueue and apply. Air units fly, so only
+      // land units are blocked by water.
+      const def = UNIT_DEFS[kind as UnitKind];
+      if (def.domain === 'land' && isWater(t, x, z)) {
+        return `spawnUnit: cannot spawn a land unit in water at (${x}, ${z})`;
+      }
       return null;
     },
     apply(cmd, world): unknown {

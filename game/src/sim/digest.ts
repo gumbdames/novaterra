@@ -92,6 +92,7 @@ export function canonicalizeWorld(world: World): string {
   out += `|units=${world.units.length}|`;
   for (const u of world.units) {
     out += `u${u.id},${u.kind},${u.owner},${canonicalNumber(u.x)},${canonicalNumber(u.z)},`;
+    out += `${u.domain},${canonicalNumber(u.hp)},${u.cooldownLeft},${u.targetId},${u.chasing ? 1 : 0},`;
     out += `${canonicalNumber(u.speed)},${u.state},${u.failReason ?? ''},`;
     out += `${canonicalNumber(u.destX)},${canonicalNumber(u.destZ)},`;
     out += `${canonicalNumber(u.arriveX)},${canonicalNumber(u.arriveZ)},`;
@@ -113,6 +114,16 @@ export function canonicalizeWorld(world: World): string {
   }
   for (const f of pf.fields) {
     out += `f${f.id},${f.destCell},${f.dirs.join('')};`;
+  }
+  // AI: players in registration order; builtCounts keys sorted.
+  out += `|ai=${world.ai.players.length}|`;
+  for (const p of world.ai.players) {
+    out += `a${p.owner},${p.difficulty},${canonicalNumber(p.baseX)},${canonicalNumber(p.baseZ)},`;
+    out += `${p.nextThinkTick},`;
+    out += p.forwardBase ? `${canonicalNumber(p.forwardBase.x)},${canonicalNumber(p.forwardBase.z)},` : '-,';
+    out += `${p.scoutIndex},`;
+    const keys = Object.keys(p.builtCounts).sort();
+    out += keys.map((k) => `${k}:${p.builtCounts[k]}`).join(',') + ';';
   }
   return out;
 }

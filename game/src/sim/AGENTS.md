@@ -23,12 +23,27 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   fixed-rate market (`marketTrade`), tax collection. Pure w.r.t.
   rendering.
 - `digest.ts` — FNV-1a canonical encoding, including full city state.
-- `snapshot.ts` — versioned snapshots (v3 adds units + pathfinding state).
+- `snapshot.ts` — versioned snapshots (v4: units + pathfinding + Classic AI state).
 - `terrain.ts` — seeded mapgen (not snapshotted); `spatial.ts` — hash grid.
 - `units.ts` — `UnitRecord` store (stable ids, owner/kind/speed/state),
-  `spawnUnit` command. Placeholder kinds `civilian` (6 u/s) / `soldier`
-  (8 u/s); the real roster lands in step 7. Movement state (`path`,
-  `fieldId`, `destX/Z`, `arriveX/Z`) lives here too.
+  `spawnUnit` command. The 11-unit MVP roster (8 land: engineer, rifles,
+  tank, artillery, aa, hauler, spectre, hq; 3 air: fighter, transport,
+  drone) with combat stats (`UnitDef`: hp, speed, armor, damage, range,
+  minRange, targets, vsArmor/vsAir multipliers, sight). Movement state
+  (`path`, `fieldId`, `destX/Z`, `arriveX/Z`) and combat state (`domain`,
+  `hp`, `cooldownLeft`, `targetId`, `chasing`) live here too.
+- `combat.ts` — deterministic combat resolution: `canTarget` (domain
+  checks), `damageMultiplier` (armor counters, vsAir, HQ aura),
+  nearest-target acquisition with stable-id tiebreaks, weapon firing with
+  cooldowns, opportunistic fire, explicit `attackUnit` chase orders, death
+  cleanup. No RNG — fully deterministic.
+- `ai.ts` — Classic AI levels 1–3 (cadet/citizen/commander). Deterministic,
+  fair (only sees enemies via `getVisibleEnemies()`, never reads enemy
+  positions directly). Issues standard commands (`spawnUnit`, `moveUnit`,
+  `moveGroup`, `attackUnit`) through the queue. Think cadence: 240/120/60
+  ticks. State (`AIPlayerState`: owner, difficulty, base, nextThinkTick,
+  forwardBase, scoutIndex, builtCounts) is plain data — snapshotted (v4)
+  and digested.
 - `pathfinding.ts` — deterministic 8-direction A* (octile heuristic,
   corner-cut prevention, water blocking, roads ×0.5) + chunked Dijkstra
   flow fields with early exit + the time-sliced coordinator
@@ -49,7 +64,6 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   invariants (net-positive materials/food, tax differential) green.
 
 ## Movement/pathfinding conventions
-
 - **System order: pathfinding BEFORE movement** every tick. Movement
   consumes freshly completed paths/fields the same tick they land.
 - **A* is for single units; flow fields for groups.** A* caps at
@@ -70,6 +84,29 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 - **Loud failures:** unreachable destinations fail at the coordinator
   (`no path`, `unreachable by flow field`) with the unit unmoved — never
   silent, never partial.
+
+## Combat/AI conventions
+
+- **Combat is deterministic and RNG-free.** Target acquisition is nearest
+  in range with stable-id tiebreaks. Damage uses armor/domain multipliers
+  and the HQ aura (+25% damage within 20 units) — no dice rolls.
+- **Explicit vs opportunistic targeting:** `attackUnit` sets `targetId` +
+  `chasing = true` (the unit pursues out-of-range targets). The combat
+  system may set `targetId` opportunistically for in-range fire without
+  setting `chasing`. Tests distinguishing "AI ordered an attack" must
+  check `chasing`, not just `targetId`.
+- **AI fairness is structural.** The AI never reads enemy positions
+  directly — all perception flows through `getVisibleEnemies()`, which
+  filters by sight range from the AI's own units. The AI issues the same
+  commands a human would; it never mutates world state directly (except
+  its own `world.ai` record).
+- **AI respects command validation.** Before issuing `attackUnit`, the AI
+  checks `canTarget()` — a rejected command throws `CommandRejectedError`,
+  which would break determinism if unhandled. The AI only orders units
+  whose weapons can engage the target's domain.
+- **AI state is sim state.** `world.ai` is plain JSON-safe data, covered
+  by snapshots (v4) and the canonical digest. Deterministic replay and
+  save/resume tests must include AI players.
 
 ## Determinism contract (non-negotiable)
 
