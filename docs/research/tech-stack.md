@@ -232,6 +232,73 @@ judgment).
 - Defer: OffscreenCanvas full renderer — three.js `WebGPURenderer` had a
   worker-breaking regression in r179; not a tested path.
 
+### In-project render micro-benchmark (Phase 1, step 2 — COMPLETE 2026-09-28)
+
+This section answers the §3 call-to-action ("no public three.js draw-call
+benchmark on Iris Xe/M1/GTX 1650 exists → run an in-project micro-benchmark
+early and record numbers here").
+
+**Harness** (`game/src/bench/`, entry via `?bench=1` — dynamically imported,
+so the normal game bundle never loads it):
+- **Scene:** 600×600 ground plane + grid, gradient sky, fog,
+  hemisphere + one directional light (2048² shadow map, the locked default
+  tier; `?shadows=0` disables it), and two `InstancedMesh`es — boxes as
+  building stand-ins (jittered grid, heights 3–24) and smaller warm boxes as
+  unit stand-ins — one draw call per type. Deterministic layout (fixed
+  seeds) so runs are comparable.
+- **Backends:** `?backend=webgpu` (default) uses `WebGPURenderer` with its
+  automatic WebGL2 fallback; `?backend=webgl2` passes `forceWebGL: true`
+  (verified in three 0.186.1 source). The harness reports which backend
+  **actually** initialized (`renderer.backend.isWebGLBackend`, the same flag
+  three.js checks internally) — e.g. `webgl2 (auto-fallback)`.
+- **Protocol:** 120-frame warm-up (shader compile/cache) + 300 measured
+  frames per sweep point, camera on a slow orbit (never a static frame).
+  Frame time = rAF-to-rAF delta; draw calls/triangles from
+  `renderer.info.render` per frame (avg + max).
+- **Sweep:** 100 / 500 / 1k / 2k / 5k / 10k buildings, each with half as
+  many units (fixed 2:1 ratio). `?bench=1&auto=1` runs the full sweep
+  unattended; without `auto` it measures one point (`&count=N` overrides).
+  Garbage params (unknown backend, bad dpr/count) refuse to run rather than
+  silently mis-measure.
+- **Output:** console table + text table + budget verdict, and the raw
+  report JSON on `window.__novaterra_bench` for automated extraction.
+  The verdict flags each point against the ARCHITECTURE.md §6 desktop
+  budgets (p95 ≤ 16.7ms, ≤200 draws, ≤750k tris).
+
+**How to run** (dev server or the deployed Pages build):
+```
+cd game && npm run dev
+# full sweep, WebGPU path:
+http://localhost:5173/novaterra/?bench=1&auto=1&backend=webgpu
+# full sweep, forced WebGL2:
+http://localhost:5173/novaterra/?bench=1&auto=1&backend=webgl2
+# quick single point: .../novaterra/?bench=1&count=2000&backend=webgl2
+# then read window.__novaterra_bench in devtools.
+```
+
+**Results — ⏳ PLACEHOLDER, to be filled after running on real hardware.**
+The harness author has no browser access; the parent (or a browser task)
+runs the URLs above on a mid-range laptop and records the numbers here.
+Fill one row per sweep point per backend, plus the machine/GPU/browser.
+
+| Backend | Buildings | Units | avg ms | p95 ms | fps | draws | tris | within budget |
+|---|---|---|---|---|---|---|---|---|
+| webgpu | 100 | 50 | — | — | — | — | — | — |
+| webgpu | 500 | 250 | — | — | — | — | — | — |
+| webgpu | 1,000 | 500 | — | — | — | — | — | — |
+| webgpu | 2,000 | 1,000 | — | — | — | — | — | — |
+| webgpu | 5,000 | 2,500 | — | — | — | — | — | — |
+| webgpu | 10,000 | 5,000 | — | — | — | — | — | — |
+| webgl2 | 100 | 50 | — | — | — | — | — | — |
+| webgl2 | 500 | 250 | — | — | — | — | — | — |
+| webgl2 | 1,000 | 500 | — | — | — | — | — | — |
+| webgl2 | 2,000 | 1,000 | — | — | — | — | — | — |
+| webgl2 | 5,000 | 2,500 | — | — | — | — | — | — |
+| webgl2 | 10,000 | 5,000 | — | — | — | — | — | — |
+
+Machine: — · GPU: — · Browser: — · dpr: — · Date: —
+Verdict: — (which backend wins on our scenes; where the 60fps budget breaks)
+
 ---
 
 ## 4. Stylized "AAA look" in the browser

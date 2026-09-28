@@ -36,7 +36,7 @@ save/load/pause, cheat `prosperity now`** — the complete core loop, genuinely
 fun in 30–60 minute sessions. Build order:
 
 1. Scaffold: Vite + TS strict + pinned three.js, Pages deploy (`/novaterra/` base — repo rename user-confirmed 2026-09-28) via `gh-pages` branch pushes (no Actions workflow — token lacks `workflow` scope; deploys are explicit, verified steps), dev loop — **COMPLETE 2026-09-28** (three 0.186.1, TS 7.0.2, Vite 8.3.1, Vitest 3.2.7; typecheck/test/build green; preview verified serving `/novaterra/`)
-2. Render micro-benchmarks on both backends (gating before content scale-up)
+2. Render micro-benchmarks on both backends (gating before content scale-up) — **COMPLETE 2026-09-28** (three 0.186.1, TS 7.0.2, Vite 8.3.1, Vitest 3.2.7; harness in `game/src/bench/`: `?bench=1&auto=1&backend=webgpu|webgl2`, 120-frame warm-up + 300-frame measurement per sweep point [100→10000 buildings, 2:1 units], orbiting camera, results as console table + `window.__novaterra_bench` JSON; budget verdict vs ARCHITECTURE.md §6; 27 new unit tests, smoke/typecheck/build green; measured numbers still to be recorded in `docs/research/tech-stack.md` §3 on real hardware)
 3. Sim core: tick driver, RNG, world store, commands, digest, snapshot/serialize
 4. Terrain + Meridian Plains map; spatial hash grid
 5. City building (roads, 3 zones, power/water, 6–8 buildings) + economy tick (Funds, Materials, Fuel, Food, Research) + market/taxes
@@ -83,6 +83,5 @@ Storm Engine), touch/mobile **only if playtests show it's fun**, accessibility.
    silent fallback to persona when offline). Offline-first is unconditional.
 2. Game name: **NOVATERRA**. Backstory draft adopted.
 3. Build order: vertical slice as above — approved.
-4. Repo visibility: stays **private** for now; user will flip to public if
-   needed. At Pages deploy time, verify private-repo Pages works for the org;
-   if not, tell the user — it's their call.
+4. Repo visibility: **public** since 2026-09-28 (user flipped it; was
+   private before). GitHub Pages deploys from the `gh-pages` branch.

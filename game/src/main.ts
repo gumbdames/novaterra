@@ -29,6 +29,10 @@
  * therefore imported *dynamically inside boot()*, and boot() itself only
  * runs when a real `document` exists. Static imports at the top are limited
  * to side-effect-free modules.
+ *
+ * The `?bench=1` URL branch (Phase 1, step 2 render benchmark) dynamically
+ * imports `./bench/runner` instead of boot() — the normal boot path behaves
+ * exactly as before and never loads the bench chunk.
  */
 
 import * as THREE from 'three';
@@ -249,5 +253,17 @@ function showFatal(error: unknown): void {
 // Auto-boot only in a real browser. Under vitest (Node, no document) the
 // module simply exports boot() for the smoke tests — see tests/smoke.test.ts.
 if (typeof document !== 'undefined') {
-  boot().catch(showFatal);
+  const benchRequested =
+    new URLSearchParams(window.location.search).get('bench') === '1';
+  if (benchRequested) {
+    // Render benchmark harness (Phase 1, step 2). Dynamically imported so the
+    // normal game bundle never pays for it: Vite code-splits src/bench into
+    // a separate chunk that is only fetched with ?bench=1. See
+    // game/src/bench/AGENTS.md for the URL params.
+    import('./bench/runner')
+      .then((mod) => mod.runBench(window.location.search))
+      .catch(showFatal);
+  } else {
+    boot().catch(showFatal);
+  }
 }
