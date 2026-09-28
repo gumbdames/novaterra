@@ -151,6 +151,7 @@ save with no visible hitch; load ≤ 3 s.
 | D6 | 2026-09-28 | Hand-rolled SoA hot store + OOP strategic layer (prototype vs apecs before committing) | Must own system iteration order for the determinism contract | — |
 | D7 | 2026-09-28 | Mode 2 = "Muse persona" adaptive AI director (offline default) | Persona is a pure function of sim state (serializable brain); a model in the tick would break determinism/offline/budget | — |
 | D8 | 2026-09-28 | Optional "Live Muse link": user's own API key, digest↔directive protocol, strategic-commander only, silent fallback to persona | User request 2026-09-28; keeps offline-first intact; model never touches the tick, so determinism and offline play are preserved | — |
+| D9 | 2026-09-28 | Tick accumulator epsilon (1e-9 ms); named RNG streams | Float subtraction of TICK_MS accumulates ~1e-13 dust per tick — without the epsilon an accumulator holding exactly N ticks' worth of time compares just below TICK_MS and loses a tick (100 ms fed only 2 ticks instead of 3). Named streams (seed = FNV-1a(master, name)) keep subsystems from shifting each other's draws; all stream states live in `world.rng`, so saves capture them | — |
 
 ## 8. Open questions (carried into Phase 1)
 
