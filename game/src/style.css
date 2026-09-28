@@ -504,6 +504,22 @@ body {
   margin-bottom: 4px;
 }
 
+/* ---- map selection (skirmish setup) ---- */
+
+.map-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  max-width: 560px;
+  margin-bottom: 10px;
+}
+
+.map-btn.selected {
+  outline: 2px solid var(--accent, #7fd4ff);
+  outline-offset: 1px;
+}
+
 /* ---- pause overlay ---- */
 
 .pause-overlay,

@@ -34,6 +34,7 @@
 
 import { GAME_TAGLINE, GAME_TITLE } from '../config';
 import type { AIDifficulty } from '../sim/ai';
+import { MAP_PRESETS } from '../sim/terrain';
 import { STRINGS } from './strings';
 import {
   loadAudioSettings,
@@ -76,8 +77,8 @@ export function saveSettings(s: Settings): void {
 
 /** Callbacks the menus delegate to the application. */
 export interface MenuActions {
-  /** Start a skirmish against the chosen AI difficulty. */
-  onStartSkirmish(difficulty: AIDifficulty): void;
+  /** Start a skirmish against the chosen AI difficulty on the chosen map. */
+  onStartSkirmish(difficulty: AIDifficulty, mapPreset: string): void;
   /** Resume the paused game. */
   onResume(): void;
   /** Leave the game and return to the main menu. */
@@ -136,7 +137,7 @@ export class MainMenu {
     menu.append(el('p', 'tagline', GAME_TAGLINE));
 
     const buttons = el('div', 'buttons');
-    const skirmish = menuButton(s.skirmish, () => this.showDifficulty(buttons));
+    const skirmish = menuButton(s.skirmish, () => this.showSkirmishSetup(buttons));
     const loadGame = menuButton(s.loadGame, () => this.actions.onShowLoadGame?.());
     const missions = menuButton(s.missions, () => undefined, true);
     missions.title = s.missionsLocked;
@@ -152,17 +153,50 @@ export class MainMenu {
     this.menuEl = menu;
   }
 
-  private showDifficulty(buttons: HTMLElement): void {
+  /**
+   * Skirmish setup: pick a map, then a rival difficulty. The selected map
+   * is highlighted; clicking a difficulty starts the game immediately
+   * with the selected map.
+   */
+  private showSkirmishSetup(buttons: HTMLElement): void {
     const s = STRINGS.menu;
     buttons.textContent = '';
+    let selectedMap = MAP_PRESETS[0]!.name;
+
+    buttons.append(el('div', 'difficulty-title', s.chooseMap));
+    const mapRow = el('div', 'map-row');
+    const mapButtons: HTMLButtonElement[] = [];
+    for (const preset of MAP_PRESETS) {
+      const b = menuButton(
+        `${preset.name} — ${Math.round(preset.waterTargetFraction * 100)}% water`,
+        () => {
+          selectedMap = preset.name;
+          for (const mb of mapButtons) {
+            mb.classList.toggle('selected', mb.dataset['map'] === selectedMap);
+          }
+        },
+      );
+      b.dataset['map'] = preset.name;
+      b.title = preset.blurb;
+      b.classList.add('map-btn');
+      if (preset.name === selectedMap) b.classList.add('selected');
+      mapButtons.push(b);
+      mapRow.append(b);
+    }
+    buttons.append(mapRow);
+
     buttons.append(el('div', 'difficulty-title', s.chooseDifficulty));
     const options: Array<[AIDifficulty, string]> = [
       ['cadet', s.difficultyCadet],
       ['citizen', s.difficultyCitizen],
       ['commander', s.difficultyCommander],
+      ['general', s.difficultyGeneral],
+      ['marshal', s.difficultyMarshal],
     ];
     for (const [difficulty, label] of options) {
-      buttons.append(menuButton(label, () => this.actions.onStartSkirmish(difficulty)));
+      buttons.append(
+        menuButton(label, () => this.actions.onStartSkirmish(difficulty, selectedMap)),
+      );
     }
     buttons.append(menuButton(s.back, () => this.show()));
   }

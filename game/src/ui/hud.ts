@@ -41,7 +41,7 @@ import type { World } from '../sim/world';
 import { getPlayer } from '../sim/city';
 import { UNIT_DEFS, type UnitKind } from '../sim/units';
 import { BUILDING_DEFS, BuildingKind } from '../sim/city';
-import { AGE_PROGRESSION } from '../sim/ages';
+import { AGE_PROGRESSION, isUnitAvailableForAge } from '../sim/ages';
 import type { Selection } from './selection';
 import type { AdvisorItem } from './advisor';
 import { STRINGS } from './strings';
@@ -84,6 +84,9 @@ const TRAIN_ORDER: UnitKind[] = [
   'drone',
   'transport',
   'fighter',
+  'patrolBoat',
+  'destroyer',
+  'transportShip',
 ];
 
 /** Build-palette entries in display order. */
@@ -97,6 +100,8 @@ const BUILD_TOOLS: Array<{ tool: BuildTool; label: string }> = [
   { tool: 'building:house', label: 'House' },
   { tool: 'building:factory', label: 'Factory' },
   { tool: 'building:farm', label: 'Farm' },
+  { tool: 'building:mediaCenter', label: 'Media' },
+  { tool: 'building:shipyard', label: 'Shipyard' },
   { tool: 'demolish', label: 'Demolish' },
 ];
 
@@ -377,14 +382,20 @@ export class HUD {
   private appendTrainPanel(panel: HTMLElement, world: World): void {
     const wrap = el('div', 'train-panel');
     wrap.append(el('div', 'hud-panel-title', STRINGS.selection.train));
-    const inConnectivity = world.ages.age === 'connectivity';
     for (const kind of TRAIN_ORDER) {
       const def = UNIT_DEFS[kind];
-      if (def.minAge === 'connectivity' && !inConnectivity) continue;
+      // Age gating uses the same rule as spawn validation: a unit appears
+      // in the panel exactly when it can be trained (e.g. fighter needs
+      // Connectivity, ships need Industry).
+      if (!isUnitAvailableForAge(world, def.minAge)) continue;
       const b = document.createElement('button');
       b.className = 'train-btn';
       b.textContent = def.name;
-      b.title = `Click, then click the map to place. ${def.hp} HP.`;
+      const placeHint =
+        def.domain === 'sea'
+          ? 'Click, then click WATER on the map to place.'
+          : 'Click, then click the map to place.';
+      b.title = `${placeHint} ${def.hp} HP.`;
       b.addEventListener('click', () => this.actions.onTrainUnit(kind));
       wrap.append(b);
     }

@@ -51,7 +51,7 @@ import {
 import type { TickDriver } from '../sim/tick';
 import { createTickDriver, TICK_MS } from '../sim/tick';
 import type { TerrainData } from '../sim/terrain';
-import { generateTerrain, isWater, MERIDIAN_PLAINS } from '../sim/terrain';
+import { generateTerrain, getMapPreset, isWater } from '../sim/terrain';
 import { digestWorld } from '../sim/digest';
 import { registerCityCommands } from '../sim/city';
 import { createEconomySystem, registerEconomyCommands } from '../sim/economy';
@@ -78,6 +78,12 @@ export interface SessionOptions {
   seed: number;
   /** Classic AI difficulty for the rival (default 'citizen'). */
   aiDifficulty?: AIDifficulty;
+  /**
+   * Map preset name (see MAP_PRESETS in sim/terrain.ts). Defaults to
+   * 'Meridian Plains'. Each preset has a canonical seed, so picking a
+   * map always yields the same terrain.
+   */
+  mapPreset?: string;
   /**
    * Restore from a saved snapshot instead of a fresh world. When set,
    * starting forces are NOT re-seeded (the snapshot already has them)
@@ -137,6 +143,7 @@ function findLandNear(t: TerrainData, x: number, z: number): { x: number; z: num
 function startingForces(
   queue: CommandQueue,
   world: World,
+  terrain: TerrainData,
   owner: number,
   issuer: string,
   at: { x: number; z: number },
@@ -154,10 +161,14 @@ function startingForces(
   // already exceed it, or the AI would never build (cadet cap is 4).
   const list = maxUnits !== undefined ? specs.slice(0, maxUnits) : specs;
   for (const s of list) {
+    // Each unit finds its own nearest land: on high-water maps the base
+    // center may be land while an offset (±10) sits in water, and a
+    // water spawn is a loud rejection, not a silent skip.
+    const pos = findLandNear(terrain, at.x + s.dx, at.z + s.dz);
     const cmd: NewCommand = {
       kind: 'spawnUnit',
       issuer,
-      payload: { kind: s.kind, owner, x: at.x + s.dx, z: at.z + s.dz },
+      payload: { kind: s.kind, owner, x: pos.x, z: pos.z },
     };
     queue.enqueue(world, cmd);
   }
@@ -170,8 +181,9 @@ function startingForces(
 export function createSession(options: SessionOptions): GameSession {
   const { seed } = options;
   const aiDifficulty: AIDifficulty = options.aiDifficulty ?? 'citizen';
+  const preset = getMapPreset(options.mapPreset ?? 'Meridian Plains');
 
-  const terrain = generateTerrain(MERIDIAN_PLAINS.seed);
+  const terrain = generateTerrain(preset.seed, preset);
   // Restored games resume the exact saved world; fresh games start empty.
   const world = options.snapshot ? restoreSnapshot(options.snapshot) : createWorld(seed);
   const queue = createCommandQueue();
@@ -203,8 +215,8 @@ export function createSession(options: SessionOptions): GameSession {
     // leave headroom under the cap, or the AI would never build.
     // Cadet (cap 4) gets 2 starters; citizen/commander get the full 6.
     const aiStarters = aiDifficulty === 'cadet' ? 2 : AI_MAX_UNITS[aiDifficulty];
-    startingForces(queue, world, AI_PLAYER_ID, 'ai-setup', aiBase, aiStarters);
-    startingForces(queue, world, HUMAN_PLAYER_ID, 'player', humanBase);
+    startingForces(queue, world, terrain, AI_PLAYER_ID, 'ai-setup', aiBase, aiStarters);
+    startingForces(queue, world, terrain, HUMAN_PLAYER_ID, 'player', humanBase);
     addAIPlayer(world, AI_PLAYER_ID, aiDifficulty, aiBase.x, aiBase.z);
 
     // Apply the starting forces now (one fixed tick) so a fresh session

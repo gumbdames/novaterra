@@ -372,7 +372,7 @@ export function generateTerrain(seed: number, preset?: MapPreset): TerrainData {
   }
 
   return {
-    name: P.name,
+    name: preset?.name ?? P.name,
     seed: seed >>> 0,
     size: P.size,
     vertsPerSide: V,

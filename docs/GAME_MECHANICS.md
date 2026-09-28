@@ -2,7 +2,7 @@
 
 > Player-facing mechanics reference. Written alongside implementation in
 > Phase 1 — kept **clear, short and simple** per the design brief.
-> Last updated: 2026-09-29 (step 12: perf + playtest, Phase 1 complete).
+> Last updated: 2026-09-29 (Phase 1.5: navy, maps, AI 4–5, new resources).
 
 ## Building your city
 
@@ -14,13 +14,19 @@
 - **Buildings** take time to construct and cost upkeep every second.
   Demolishing is free but you get nothing back — plan before you place.
 
-## The five resources
+## The eight resources
 
 - **Funds** — spent on everything; earned from shops and taxes.
 - **Materials** — building material; produced by factories.
 - **Fuel** — burned by factories and power plants; buy it or run short.
 - **Food** — grown by farms; your people eat it every second.
 - **Research** — produced by labs; unlocks progress later.
+- **Goods** — made by factories, bought by shops and turned into
+  funds. No goods, no shop income.
+- **Influence** — produced by Media Centers. Spent to advance ages;
+  more influence means faster progress.
+- **Manpower** — grows with your population. Training soldiers and
+  ships spends it — a big army needs a big city behind it.
 
 ## Power and water
 
@@ -47,20 +53,33 @@ A healthy city grows on its own: new buildings appear in zoned areas
 every few seconds, as long as people are fed and you can afford them.
 If food runs out, growth stops until farms catch up.
 
-## Ages: Foundation → Connectivity
+## Ages: Foundation → Connectivity → Industry → Information → Ascendance
 
-Your nation develops through ages. You start in the **Foundation** age.
-When you're ready (and can afford it), advance to **Connectivity** by
-picking one **National Program** — a permanent choice:
+Your nation develops through five ages. You start in the **Foundation**
+age. Each age advance costs resources and asks you to pick one
+**National Program** — a permanent choice:
 
-- **Fiber Grid** (economy): +25% income from taxes. Pick this to get rich.
-- **Signals Grid** (intel): your units see 8 units farther. Pick this to
-  out-scout and out-maneuver the enemy.
+- **Connectivity** (3,000 Funds + 1,200 Materials):
+  - **Fiber Grid** (economy): +25% income from taxes.
+  - **Signals Grid** (intel): your units see 8 units farther.
+  - Unlocks **fighters** (fast air units).
+- **Industry** (6,000 Funds + 2,500 Materials + 100 Influence):
+  - **Heavy Industry**: factories make +50% materials and goods, but
+    all upkeep costs +25%.
+  - **Green Tech**: buildings use 30% less power and water, and Media
+    Centers make +50% influence.
+  - Unlocks **ships** (see Navy below).
+- **Information** (12,000 Funds + 5,000 Materials + 250 Influence):
+  - **Cyber Command**: spectres deal +50% damage, military units see
+    +4 farther.
+  - **Global Media**: Media Centers make +100% influence.
+- **Ascendance** (25,000 Funds + 10,000 Materials + 500 Influence):
+  - **Arsenal Program**: military units cost 30% less manpower and
+    deal +25% damage.
+  - **Prosperity Program**: +50% tax income and +50% goods output.
 
-Advancing costs 3,000 Funds + 1,200 Materials — spend it wisely, because
-that army you're not building leaves you exposed. Connectivity also
-unlocks **fighters** (fast air units). Choose carefully: you can't switch
-programs later.
+Choose carefully: you can't switch programs later. Each age builds on
+the last — a rich, well-powered city advances fastest.
 
 ## Your army
 
@@ -82,13 +101,42 @@ against something else:
 The rule of thumb: **tanks beat infantry, artillery beats tanks, AA
 beats anything that flies**. Scout first, then build the counter.
 
+## Navy
+
+Water is not just scenery. Build a **Shipyard**, reach the Industry age,
+and rule the seas:
+
+- **Patrol Boat** — fast scout, good against light ships.
+- **Destroyer** — heavy warship; shreds ships and aircraft alike.
+- **Transport Ship** — unarmed, carries your plans across the water.
+
+Ships can only be placed on water and can only fight on water — they
+can't attack land targets, and tanks can't shoot back at them. On
+water-heavy maps, the navy decides the game.
+
+## Maps
+
+Eight battlefields, from nearly all land to mostly ocean:
+
+- **Meridian Plains** (5% water) — classic land war.
+- **Riverlands** (12%), **Lake Country** (20%), **Coastline** (30%).
+- **Archipelago** (40%), **Shattered Isles** (50%).
+- **Inland Sea** (55%), **Ocean World** (60% water) — bring a navy.
+
+Pick your map on the skirmish setup screen. More water means more naval
+play and trickier land routes.
+
 ## The enemy
 
-In skirmish you face the **Classic AI** at one of three levels:
+In skirmish you face the **Classic AI** at one of five levels:
 
 - **Cadet** — learns the ropes with you. Small armies, simple attacks.
 - **Citizen** — a fair fight. Builds counters and presses advantages.
 - **Commander** — ruthless. Big armies, smart targeting, no mercy.
+- **General** — combined arms. Uses land, air, and sea together.
+- **Marshal** — total war. The smartest, toughest fair fight.
 
-(In 0.1 Alpha there is no victory screen yet — the fight is the game.
-Wiping out the enemy base is its own reward.)
+The AI never cheats: it sees only what its own units see, and gives
+the same orders a human player would. (In 0.1 Alpha there is no victory
+screen yet — the fight is the game. Wiping out the enemy base is its
+own reward.)

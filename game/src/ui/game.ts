@@ -100,6 +100,8 @@ import { createSaveStore, type SaveStore } from '../net_save/store';
 export interface GameOptions {
   seed: number;
   aiDifficulty: AIDifficulty;
+  /** Map preset name (see MAP_PRESETS); defaults to 'Meridian Plains'. */
+  mapPreset?: string;
   quality: QualityLevel;
   onExitToMenu: () => void;
   /** Resume from a saved game instead of starting fresh. */
@@ -131,6 +133,7 @@ export async function startGame(
   const session = createSession({
     seed: opts.seed,
     aiDifficulty: opts.aiDifficulty,
+    mapPreset: opts.mapPreset,
     snapshot: opts.saveData?.snapshot,
   });
   // A loaded game resumes exactly where it was saved — including its

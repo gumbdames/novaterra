@@ -9,8 +9,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   driver, 5 systems in fixed order, starting forces, AI rival). The one
   place the full game is wired; headless-safe (no DOM/three.js).
   `createSession({ snapshot })` restores a saved game: no re-seeded
-  starting forces, no duplicate AI player. `session.cheated` is UI-owned
-  metadata (never sim state), stamped into save files.
+  starting forces, no duplicate AI player. `createSession({ mapPreset })`
+  selects a MAP_PRESETS entry by name (default 'Meridian Plains'; unknown
+  names fall back). Starting forces find land per-unit (not just at the
+  base center) so high-water maps never reject spawns. `session.cheated`
+  is UI-owned metadata (never sim state), stamped into save files.
 - `game.ts` — the game controller: renderer, daylight scene, camera
   input, selection, placement modes, fixed-timestep loop, pause menu.
   DOM + three.js; never imported by headless tests.
@@ -27,8 +30,15 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `formatSaveSummary`.
 - `hud.ts` — top bar, advisor panel, selection panel, train/build
   palettes, toasts. Calls back into the controller; never touches sim.
-- `menus.ts` — main menu (difficulty select), pause overlay, settings
-  (quality, key list). Quality persists in localStorage.
+  Train panel lists all TRAIN_ORDER units, age-gated by
+  `isUnitAvailableForAge` (the same rule as spawn validation); sea units
+  get a "click WATER" placement hint. Build palette includes Shipyard
+  and Media Center (the latter is the only influence source — required
+  for age advancement).
+- `menus.ts` — main menu (skirmish setup: map picker + difficulty picker),
+  pause overlay, settings (quality, key list). Quality persists in
+  localStorage. Skirmish setup shows all 8 MAP_PRESETS (name + water %)
+  and all 5 AI difficulties; `onStartSkirmish(difficulty, mapPreset)`.
 - `camera.ts` / `selection.ts` — pure state + transitions, fully tested.
 - `orders.ts` — gesture → `OrderIntent` (`NewCommand` minus issuer);
   the controller stamps `issuer: 'player'` at enqueue.
