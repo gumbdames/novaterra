@@ -51,6 +51,10 @@ fun in 30–60 minute sessions. Build order:
 Exit criteria: fun, bug-free skirmish loop; 60fps mid-range laptop with
 thousands of entities; save/resume/pause verified; docs current.
 
+**Step gate:** each numbered step above is complete only after its own tests
+pass, the build is green, and all previous steps' smoke tests still pass
+(see `AGENTS.md` §2 — no step starts until the previous one is verified).
+
 ### Phase 1.5 — Skirmish complete
 
 Navy + sea gameplay, remaining 7 maps (5%→60% water variance), Classic AI

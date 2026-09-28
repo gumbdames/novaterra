@@ -29,6 +29,22 @@ about *how we work here*. Game design lives in `docs/`, player docs in
   entities; sim tick decoupled from render; profile before optimizing, and
   record the numbers in the relevant research note.
 
+### Step gate (every phase step, no exceptions — user directive 2026-09-28)
+
+Each numbered step in `docs/PLAN.md` counts as done only when ALL of these hold:
+
+1. Its own tests are green (unit + headless sim suites as applicable).
+2. The full build is green and the game still boots to a working state.
+3. **Regression:** every previous step's key flows still work — re-run their
+   smoke tests, don't assume. "It worked before my change" is proven by
+   re-running, never by memory.
+4. Docs touched by the step are updated (plan status, architecture if it
+   changed, player docs if mechanics changed).
+5. The step is committed with a clear message; `main` stays deployable.
+
+If any check fails, the step is not done — fix it before starting the next
+one. Testing after each step is how `main` stays shippable.
+
 ## 3. Architecture rules
 
 - The **simulation is deterministic and decoupled from rendering** (fixed
