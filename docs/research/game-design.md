@@ -265,6 +265,7 @@ for our game; every mechanic in Part C must serve at least one of them.
 9. **Long-form, respectful of time.** Save/exit/resume and pause from the first
    playable build; sessions are meant to last hours across days; nothing
    requires reflexes that a pause can't replace. (brief + AGENTS.md §3)
+10. **Desktop-first, AAA visuals — never blocky.** The computer is the main interface; phone is secondary. The art direction is realistic and detailed (AAA-feeling), explicitly NOT voxel/Minecraft/blocky. Low-poly flat-shaded placeholders are scaffolding only; every visual we ship must move toward rich, believable scenery. (user, 2026-09-28)
 
 ## PART C — PROPOSAL
 
