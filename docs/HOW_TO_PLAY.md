@@ -51,18 +51,29 @@ more water means more naval fighting) → pick your **rival**:
 
 (Change game speed with the 1× / 2× / 4× buttons at the top of the screen.)
 
-## Building
+## Training and building
 
-Pick **Road**, a **Zone**, or a **Building** from the panel at the
-bottom-left, then click (or drag) on the map to place it.
+The bottom-left panel has two tabs: **Train** (units) and **Build**
+(buildings and zones). Train is split into **Infantry, Armor, Air,
+Navy**; Build into **Housing, Commerce, Industry, Utilities, Naval &
+Air, Special**.
 
-Buildings need roads and the right zone. You can also train new units
-from the same panel: pick a unit type, then click open ground. **Ships**
-must be placed on water — and you'll need the Industry age first.
+Every unit button shows its cost in **funds + materials + manpower**;
+every building shows **funds + materials**. Items you can't use yet
+stay visible but greyed out — hover one to see why: a later age, a
+missing production building, not enough resources, or not enough
+manpower.
 
-Key buildings: **Farms** (food), **Power Plants** (power),
-**Factories** (materials + goods), **Media Centers** (influence, needed
-to advance ages), **Shipyards** (ships).
+Units need a production building: **Barracks** (infantry), **War
+Factory** (vehicles), **Airfield** (aircraft), **Shipyard** (ships),
+**Naval Yard** (warships — coastal construction: at least one footprint
+cell must touch water). Pick a unit, then click open ground (or water
+for ships) to train it.
+
+**Research:** build a **Research Lab** (Commerce tab), then select it
+to open the research panel — 12 upgrades in **Military** and
+**Economy** groups, each with its cost and effect shown. Research one
+at a time; researched upgrades are marked ✓.
 
 ## Money and ages
 

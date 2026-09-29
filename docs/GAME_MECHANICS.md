@@ -13,6 +13,20 @@
   them. Power plants and water pumps fit anywhere.
 - **Buildings** take time to construct and cost upkeep every second.
   Demolishing is free but you get nothing back — plan before you place.
+- **Production buildings** unlock your military: the **Barracks**
+  trains advanced infantry, the **War Factory** builds armor, the
+  **Airfield** builds aircraft, and the **Naval Yard** (must touch the
+  coastline) builds warships.
+- **Power**: Power Plant (burns fuel), **Solar Farm** (free sun, less
+  dense), **Nuclear Plant** (huge output, late game). **Water**:
+  Water Pump, **Desalination Plant** (coastal, huge output).
+- **Industry chain**: **Quarry** digs raw materials → Factory refines
+  them → **Oil Refinery** makes fuel → **Recycling Center** turns
+  goods back into materials.
+- **Services**: **School** and **University** produce research,
+  **Hospital** supports manpower, **Market** turns surplus food and
+  goods into funds, **Radar Station** feeds your intel upgrades, and
+  the **Monument** is pure prestige for the late game.
 
 ## The eight resources
 
@@ -84,36 +98,101 @@ the last — a rich, well-powered city advances fastest.
 
 ## Your army
 
-Pick a unit from the panel at the bottom-left, then click open ground
-to train it there. Every unit is strongest against something and weak
-against something else:
+Training is organized in four tabs. Every unit is strongest against
+something and weak against something else — scout first, then build
+the counter. Advanced units need a production building (barracks, war
+factory, airfield, naval yard) before they can be trained.
 
+**Infantry** (חי"ר)
 - **Engineer** — builds everything. Protect yours.
 - **Rifles** — cheap infantry, good against other infantry.
-- **Tank** — tough all-rounder, eats infantry for breakfast.
-- **Artillery** — very long range, shreds tanks; fragile up close.
-- **AA** — the only ground unit that can hit aircraft.
+- **Sniper Team** — long-range precision; deletes infantry and
+  raiders, dies to anything that touches it (needs a barracks).
 - **Spectre** — fast stealthy raider, hunts tanks and artillery.
+- **Combat Medic** — unarmed; heals nearby friendly troops over time.
+  Keep it behind the line (needs a barracks).
+- **Hauler** — supply truck; keeps your war machine moving.
+
+**Armor** (שריון)
+- **Tank** — tough all-rounder, eats infantry for breakfast (needs a
+  war factory).
+- **APC** — fast armored carrier; shreds infantry, outruns everything
+  on wheels (needs a war factory).
+- **Tank Destroyer** — glass cannon: outranges and murders tanks, but
+  infantry walk all over it (needs a war factory).
+- **Artillery** — very long range, shreds tanks; helpless up close
+  (needs a war factory).
+- **MLRS** — rocket artillery: devastating salvos against clumps of
+  enemies, long reload (needs a war factory).
+- **AA** — the only ground unit that can hit aircraft (needs a war
+  factory).
+- **Mobile HQ** — moving command post that makes nearby units fight
+  better.
+
+The rule of thumb: **tanks beat infantry, artillery beats tanks, tank
+destroyers beat tanks at range, AA beats anything that flies**.
+
+**Air force** (חיל אוויר)
 - **Drone** — cheap flying scout, sees far.
 - **Fighter** — fast air superiority (needs the Connectivity age).
-- **Transport / Hauler / Mobile HQ** — support: carry, supply, and a
-  moving command post that makes nearby units fight better.
-
-The rule of thumb: **tanks beat infantry, artillery beats tanks, AA
-beats anything that flies**. Scout first, then build the counter.
+- **Fighter-Bomber** — heavy strike aircraft; cripples armor in one
+  pass, then must rearm (needs an airfield).
+- **Attack Helicopter** — flying tank-hunter; evaporates under AA
+  fire, so clear the skies first (needs an airfield).
+- **AWACS** — unarmed radar plane with enormous sight range. Losing
+  it blinds you (needs an airfield).
+- **Transport** — airlifts units across the map.
 
 ## Navy
 
-Water is not just scenery. Build a **Shipyard**, reach the Industry age,
-and rule the seas:
+Water is not just scenery. Build a **Shipyard** (small boats) or a
+**Naval Yard** (warships — must touch the coastline), reach the
+Industry age, and rule the seas:
 
 - **Patrol Boat** — fast scout, good against light ships.
+- **Missile Boat** — packs a punch far above its weight; swarms kill
+  destroyers (needs a naval yard).
+- **Frigate** — the submarine hunter; also screens against aircraft
+  (needs a naval yard).
+- **Submarine** — long-range torpedoes murder capital ships; only
+  frigates reliably answer it (needs a naval yard).
 - **Destroyer** — heavy warship; shreds ships and aircraft alike.
+- **Carrier** — the ultimate capital ship and fleet anchor (needs a
+  naval yard).
+- **Command Ship** — makes every nearby warship fight better (needs a
+  naval yard).
 - **Transport Ship** — unarmed, carries your plans across the water.
+- **Fishing Boat** — harvests food from the sea; a water economy.
 
 Ships can only be placed on water and can only fight on water — they
 can't attack land targets, and tanks can't shoot back at them. On
 water-heavy maps, the navy decides the game.
+
+## Upgrades
+
+Build a **Research Lab** (the **University** supercharges your
+research income) and spend research points on upgrades — military
+might or economic boom, your choice:
+
+- **AP Rounds** — vehicles hit heavy armor 40% harder.
+- **Composite Armor** — +30% health for tanks, tank destroyers, APCs,
+  artillery and MLRS.
+- **Engine Tuning** — +25% speed for all ground vehicles.
+- **Advanced Avionics** — +25% sight and +20% anti-air for aircraft;
+  AWACS sees even further.
+- **Sonar Suite** — frigates and destroyers hunt submarines better;
+  all ships see further.
+- **Cruise Missiles** — +range for MLRS and artillery.
+- **Drone Optics** — drones and spectres see much further.
+- **Field Medicine** — medics heal twice as fast; infantry tougher.
+- **Precision Manufacturing** — factories produce +25%.
+- **Smart Grid** — power plants, solar farms and nuclear plants
+  supply more power.
+- **Vertical Farming** — farms grow +50% more food on less water.
+- **Free Trade Policy** — markets, shops and trade routes earn more.
+
+Each upgrade has prerequisites — buildings, ages, sometimes another
+upgrade — shown in the research panel with the reason when locked.
 
 ## Maps
 
@@ -131,18 +210,27 @@ play and trickier land routes.
 
 In skirmish you face the **Classic AI** at one of five levels:
 
-- **Cadet** — learns the ropes with you. Small armies, simple attacks.
-- **Citizen** — a fair fight. Builds counters and presses advantages.
-- **Commander** — ruthless. Big armies, smart targeting, no mercy.
-- **General** — combined arms. Uses land, air, and sea together.
-- **Marshal** — total war. The smartest, toughest fair fight.
+- **Cadet** — learns the ropes with you. A handful of riflemen, no
+  buildings, no research, no attacks.
+- **Citizen** — a fair fight. Raises a barracks and war factory, fields
+  rifles, tanks, artillery and AA, and builds AA when you bring air power.
+- **Commander** — ruthless. A research lab, upgrade research, drone
+  scouts, full counter-play (tank destroyers vs your armor, spectres vs
+  your artillery, frigates vs your submarines), and a forward base.
+- **General** — combined arms. Everything the Commander does, faster and
+  bigger, plus a working navy (fishing boats, patrol boats) on maps with
+  usable water.
+- **Marshal** — total war. The largest armies, age advancement, the full
+  navy, and fair superweapon use.
 
-The AI never cheats: it sees only what its own units see, and gives
-the same orders a human player would. Destroy every enemy unit and
-building to win the **conquest victory** screen — but if you lose all
-of your own units and buildings first, the **defeat** screen ends your
-run. (If both sides fall on the same tick, defeat takes precedence:
-you must survive your victory to claim it.)
+The AI never cheats: it sees only what its own units see, finds water by
+scouting (never maphack), pays full price for everything it builds —
+including its production buildings — and gives the same orders a human
+player would. Destroy every enemy unit and building to win the
+**conquest victory** screen — but if you lose all of your own units and
+buildings first, the **defeat** screen ends your run. (If both sides fall
+on the same tick, defeat takes precedence: you must survive your victory
+to claim it.)
 
 ## The campaign: "The First Term"
 
