@@ -36,7 +36,9 @@ import {
   getGeneral,
   GENERAL_THINK_TICKS,
   MAYOR_POLICY_RATES,
+  MAYOR_BUILD_TICKS,
 } from '../src/sim/delegation';
+import { cellIndex, registerCityCommands } from '../src/sim/city';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
 import { digestWorld } from '../src/sim/digest';
 
@@ -57,13 +59,14 @@ function setup(seed = 303001): Ctx {
   const terrain = getTerrain();
   const world = createWorld(seed);
   const queue = createCommandQueue();
+  registerCityCommands(queue, terrain);
   registerUnitCommands(queue, terrain);
   registerMovementCommands(queue, terrain);
   registerCombatCommands(queue);
   registerDelegationCommands(queue);
   const driver = createTickDriver({
     queue,
-    systems: [createMayorSystem(), createGeneralSystem(queue)],
+    systems: [createMayorSystem(queue, terrain), createGeneralSystem(queue)],
   });
   return { terrain, world, queue, driver };
 }
@@ -304,5 +307,111 @@ describe('sim/delegation — determinism', () => {
     expect(digestWorld(restored)).toBe(before);
     expect(getMayor(restored, 0)?.policy).toBe('growth');
     expect(getGeneral(restored, 0)?.stance).toBe('defensive');
+  });
+});
+
+describe('sim/delegation — mayor building automation', () => {
+  /** Pave a road + residential zone near (30,30) so the mayor can build. */
+  function prepBuildable(ctx: Ctx): void {
+    for (let i = 24; i <= 40; i++) {
+      const c = cellIndex(i, 28);
+      if (!ctx.world.city.roads.includes(c)) ctx.world.city.roads.push(c);
+    }
+    ctx.world.city.roads.sort((a, b) => a - b);
+    // Zone starts at z=29 so buildings sit zoned AND road-adjacent.
+    enqueue(ctx, [{
+      kind: 'paintZone',
+      payload: { owner: 0, zone: 0, x0: 24, z0: 29, x1: 40, z1: 38 },
+    }]);
+    runTicks(ctx, 2);
+    const p = getPlayer(ctx.world.city, 0) as { funds: number; materials: number };
+    p.funds = 50000;
+    p.materials = 50000;
+  }
+
+  it('assignMayor accepts a buildPolicy; setMayorBuildPolicy updates it', () => {
+    const ctx = setup();
+    enqueue(ctx, [{ kind: 'assignMayor', payload: { owner: 0, policy: 'balanced', buildPolicy: 'housing' } }]);
+    runTicks(ctx, 1);
+    expect(getMayor(ctx.world, 0)?.buildPolicy).toBe('housing');
+    enqueue(ctx, [{ kind: 'setMayorBuildPolicy', payload: { owner: 0, buildPolicy: 'industry' } }]);
+    runTicks(ctx, 1);
+    expect(getMayor(ctx.world, 0)?.buildPolicy).toBe('industry');
+  });
+
+  it('assignMayor defaults buildPolicy to balanced; bad values are rejected', () => {
+    const ctx = setup();
+    enqueue(ctx, [{ kind: 'assignMayor', payload: { owner: 0, policy: 'balanced' } }]);
+    runTicks(ctx, 1);
+    expect(getMayor(ctx.world, 0)?.buildPolicy).toBe('balanced');
+    expect(() =>
+      ctx.queue.enqueue(ctx.world, {
+        issuer: 'player',
+        kind: 'setMayorBuildPolicy',
+        payload: { owner: 0, buildPolicy: 'moonbase' },
+      }),
+    ).toThrow(CommandRejectedError);
+    expect(() =>
+      ctx.queue.enqueue(ctx.world, {
+        issuer: 'player',
+        kind: 'setMayorBuildPolicy',
+        payload: { owner: 1, buildPolicy: 'housing' },
+      }),
+    ).toThrow(CommandRejectedError); // player 1 has no mayor
+  });
+
+  it('a housing mayor places houses on zoned land', () => {
+    const ctx = setup();
+    prepBuildable(ctx);
+    const before = ctx.world.city.buildings.length;
+    enqueue(ctx, [{ kind: 'assignMayor', payload: { owner: 0, policy: 'balanced', buildPolicy: 'housing' } }]);
+    runTicks(ctx, MAYOR_BUILD_TICKS + 5);
+    const built = ctx.world.city.buildings.slice(before);
+    expect(built.length).toBeGreaterThan(0);
+    expect(built[0]?.kind).toBe('house');
+    expect(built[0]?.owner).toBe(0);
+  });
+
+  it('no mayor means no automatic buildings', () => {
+    const ctx = setup();
+    prepBuildable(ctx);
+    const before = ctx.world.city.buildings.length;
+    runTicks(ctx, MAYOR_BUILD_TICKS * 2 + 5);
+    expect(ctx.world.city.buildings.length).toBe(before);
+  });
+
+  it('mayor placements are deterministic (same seed, same buildings)', () => {
+    const run = (): string => {
+      const ctx = setup(424242);
+      prepBuildable(ctx);
+      enqueue(ctx, [{ kind: 'assignMayor', payload: { owner: 0, policy: 'balanced', buildPolicy: 'housing' } }]);
+      runTicks(ctx, MAYOR_BUILD_TICKS * 3 + 5);
+      return ctx.world.city.buildings
+        .map((b) => `${b.kind}@${b.cx},${b.cz}`)
+        .sort()
+        .join('|');
+    };
+    expect(run()).toBe(run());
+  });
+
+  it('dismissMayor stops the building automation', () => {
+    const ctx = setup();
+    prepBuildable(ctx);
+    enqueue(ctx, [{ kind: 'assignMayor', payload: { owner: 0, policy: 'balanced', buildPolicy: 'housing' } }]);
+    runTicks(ctx, MAYOR_BUILD_TICKS + 5);
+    const countAfterMayor = ctx.world.city.buildings.length;
+    expect(countAfterMayor).toBeGreaterThan(0);
+    enqueue(ctx, [{ kind: 'dismissMayor', payload: { owner: 0 } }]);
+    runTicks(ctx, 2);
+    runTicks(ctx, MAYOR_BUILD_TICKS * 2 + 5);
+    expect(ctx.world.city.buildings.length).toBe(countAfterMayor);
+  });
+
+  it('snapshot round-trip preserves the mayor buildPolicy', () => {
+    const ctx = setup();
+    enqueue(ctx, [{ kind: 'assignMayor', payload: { owner: 0, policy: 'growth', buildPolicy: 'industry' } }]);
+    runTicks(ctx, 5);
+    const restored = restoreSnapshot(takeSnapshot(ctx.world));
+    expect(getMayor(restored, 0)?.buildPolicy).toBe('industry');
   });
 });

@@ -32,3 +32,9 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 - Roads rebuild when the road digest changes (not just the count).
 - Team colors: human = blue accent, AI = red accent (see `TEAM_COLORS`).
 - `dispose()` releases every geometry/material it created.
+- Superweapon FX (`syncSuperweaponFx`): reads the sim's deterministic
+  `world.superweapons.fx` records each frame. The Aegis dome is a
+  translucent hemisphere + wireframe shimmer (pulse phase from
+  `world.tick`); each storm strike gets a gathering cloud, a lightning
+  bolt, and an impact flash (phase from the fx expiry tick). Views are
+  keyed by fx identity and disposed when the sim record expires.

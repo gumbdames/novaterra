@@ -295,6 +295,21 @@ describe('sim/superweapons — Storm Engine', () => {
     expect(ctx.world.superweapons.fx).toHaveLength(0);
   });
 
+  it('aegis fx entry appears on firing, anchored at the base, and expires with the shield', () => {
+    const ctx = setup();
+    godAscendance(ctx, 'aegisControl');
+    enqueue(ctx, [{ kind: 'fireAegis', payload: { owner: 0 } }]);
+    runTicks(ctx, 2);
+    expect(isAegisActive(ctx.world, 0)).toBe(true);
+    const fx = ctx.world.superweapons.fx.filter((f) => f.kind === 'aegis');
+    expect(fx).toHaveLength(1);
+    expect(fx[0]?.untilTick).toBeGreaterThan(ctx.world.tick);
+    // The dome outlives the test's short run: it expires with the shield.
+    runTicks(ctx, AEGIS_DURATION_TICKS + 10);
+    expect(isAegisActive(ctx.world, 0)).toBe(false);
+    expect(ctx.world.superweapons.fx.some((f) => f.kind === 'aegis')).toBe(false);
+  });
+
   it('fireStorm validates age, facility, coordinates, and cooldown', () => {
     const ctx = setup();
     expect(() =>

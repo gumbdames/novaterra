@@ -95,6 +95,8 @@ MacLeod (incompetech.com), CC BY 4.0.
 - The game **autosaves every 5 minutes** of game time.
 - **Pause menu → Save game** — save to Slot 1, 2, or 3.
 - **Main menu → Load game** — resume any save.
+- Saves from an older version of the game can't be loaded — the game
+  will tell you plainly instead of failing silently.
 - Leaving via **Exit to menu** asks first: save and exit, or exit
   without saving.
 - If your browser blocks storage (private mode), saves won't survive
@@ -116,7 +118,8 @@ Using any cheat marks the save as **cheated** (shown in the load list).
 
 **Command panel** (bottom of HUD): fire **Aegis**, enter **Storm
 targeting** (then click the map), set city **Focus** (specialization),
-appoint/dismiss **Mayor** (pick a tax policy), appoint/dismiss
+appoint/dismiss **Mayor** (pick a tax policy), set **Mayor builds**
+(housing/industry/balanced auto-construction), appoint/dismiss
 **General** (select units first, pick a stance).
 
 Trade routes: established from the command panel — pick a partner

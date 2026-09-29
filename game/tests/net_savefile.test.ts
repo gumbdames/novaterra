@@ -28,6 +28,7 @@ import {
   createSaveFile,
   SAVEFILE_VERSION,
   summarizeSave,
+  validateSaveVersion,
   type SaveFile,
 } from '../src/net_save/savefile';
 
@@ -84,5 +85,24 @@ describe('savefile', () => {
   it('summarizeSave returns just the metadata', () => {
     const file = makeFile();
     expect(summarizeSave(file)).toBe(file.metadata);
+  });
+
+  it('validateSaveVersion accepts a current save', () => {
+    const file = makeFile();
+    expect(validateSaveVersion(file)).toBeNull();
+  });
+
+  it('validateSaveVersion explains an old save in plain language', () => {
+    const file = makeFile();
+    // Simulate a v4 save from before the Phase 3 snapshot bump.
+    (file.snapshot as { version: number }).version = 4;
+    const msg = validateSaveVersion(file);
+    expect(msg).not.toBeNull();
+    expect(typeof msg).toBe('string');
+    // Plain language: no "v4", no "snapshot", no "mismatch".
+    expect(msg as string).toMatch(/older version/i);
+    expect(msg as string).not.toMatch(/v4/);
+    expect(msg as string).not.toMatch(/snapshot/i);
+    expect(msg as string).not.toMatch(/mismatch/i);
   });
 });

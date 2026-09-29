@@ -28,6 +28,9 @@
  *    a single instanced mesh. The art pass replaces geometries, not this
  *    module's structure.
  *  - Selection rings for the player's current selection.
+ *  - Superweapon FX: the Aegis energy dome and Storm Engine strikes,
+ *    driven by the sim's deterministic `world.superweapons.fx` records
+ *    (animation phase derives from `world.tick`, never wall clock).
  *
  * Budgets: one Group per unit (hull + health bar sprites); buildings one
  * mesh each; roads one InstancedMesh rebuilt only when the road count
@@ -49,6 +52,18 @@ import {
   type ZoneType,
   UTILITY_ZONE,
 } from '../sim/city';
+import { STORM_FX_TICKS, type WeaponFx } from '../sim/superweapons';
+
+/** Radius of the Aegis energy dome (world units). */
+export const AEGIS_DOME_RADIUS = 55;
+
+/** A live superweapon effect view. Keyed by fx identity. */
+interface SuperweaponFxView {
+  group: THREE.Group;
+  /** For storm strikes: the tick the fx record expires (drives phase). */
+  untilTick: number;
+  kind: 'storm' | 'aegis';
+}
 
 /**
  * Team colors: human blue, rival red (default) or orange (colorblind).
@@ -258,6 +273,49 @@ export class EntityRenderer {
     depthWrite: false,
   });
   private readonly barTexture: THREE.CanvasTexture;
+  /** Live superweapon FX views, keyed by fx identity. */
+  private readonly superweaponFx = new Map<string, SuperweaponFxView>();
+  // Shared superweapon FX assets (created once, reused per view).
+  private readonly aegisDomeGeo = new THREE.SphereGeometry(
+    AEGIS_DOME_RADIUS, 40, 20, 0, Math.PI * 2, 0, Math.PI / 2,
+  );
+  private readonly aegisDomeMat = new THREE.MeshBasicMaterial({
+    color: 0x40c8ff,
+    transparent: true,
+    opacity: 0.18,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  private readonly aegisWireMat = new THREE.MeshBasicMaterial({
+    color: 0x80e0ff,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.12,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+  });
+  private readonly stormCloudGeo = new THREE.SphereGeometry(14, 18, 14);
+  private readonly stormCloudMat = new THREE.MeshBasicMaterial({
+    color: 0x23232e,
+    transparent: true,
+    opacity: 0.88,
+    depthWrite: false,
+  });
+  private readonly boltGeo = new THREE.CylinderGeometry(0.7, 1.6, 44, 6);
+  private readonly boltMat = new THREE.MeshBasicMaterial({
+    color: 0xfff6c0,
+    transparent: true,
+    opacity: 0.95,
+    depthWrite: false,
+  });
+  private readonly flashGeo = new THREE.SphereGeometry(9, 16, 12);
+  private readonly flashMat = new THREE.MeshBasicMaterial({
+    color: 0xffd76a,
+    transparent: true,
+    opacity: 0.7,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
@@ -281,6 +339,7 @@ export class EntityRenderer {
     this.syncUnits(world);
     this.syncBuildings(world);
     this.syncRoads(world);
+    this.syncSuperweaponFx(world);
   }
 
   /** Update which units show selection rings. */
@@ -314,6 +373,111 @@ export class EntityRenderer {
     }
   }
 
+  /**
+   * Superweapon FX, driven by the sim's deterministic `world.superweapons.fx`
+   * records. Animation phase derives from `world.tick` (never wall clock),
+   * so the visuals track the sim's timing exactly.
+   */
+  private syncSuperweaponFx(world: World): void {
+    const seen = new Set<string>();
+    for (const fx of world.superweapons.fx) {
+      const key = `${fx.kind}:${fx.x.toFixed(1)}:${fx.z.toFixed(1)}:${fx.untilTick}`;
+      seen.add(key);
+      let view = this.superweaponFx.get(key);
+      if (!view) {
+        view = fx.kind === 'aegis' ? this.createAegisView(fx) : this.createStormView(fx);
+        this.fxGroup.add(view.group);
+        this.superweaponFx.set(key, view);
+      }
+      this.animateSuperweaponFx(view, world.tick);
+    }
+    for (const [key, view] of this.superweaponFx) {
+      if (!seen.has(key)) {
+        this.fxGroup.remove(view.group);
+        if (view.kind === 'storm') {
+          // Storm views own cloned materials; release them.
+          view.group.traverse((o) => {
+            const mesh = o as THREE.Mesh;
+            if (mesh.isMesh) (mesh.material as THREE.Material).dispose();
+          });
+        }
+        this.superweaponFx.delete(key);
+      }
+    }
+  }
+
+  /** Translucent energy dome + wireframe shimmer over the shielded city. */
+  private createAegisView(fx: WeaponFx): SuperweaponFxView {
+    const group = new THREE.Group();
+    const dome = new THREE.Mesh(this.aegisDomeGeo, this.aegisDomeMat);
+    const wire = new THREE.Mesh(this.aegisDomeGeo, this.aegisWireMat);
+    wire.scale.setScalar(1.01);
+    group.add(dome, wire);
+    group.position.set(fx.x, 0, fx.z);
+    return { group, untilTick: fx.untilTick, kind: 'aegis' };
+  }
+
+  /** Storm cloud + lightning bolt + impact flash for one strike. */
+  private createStormView(fx: WeaponFx): SuperweaponFxView {
+    const group = new THREE.Group();
+    const cloud = new THREE.Mesh(this.stormCloudGeo, this.stormCloudMat.clone());
+    cloud.scale.set(1.4, 0.45, 1.4);
+    cloud.position.y = 38;
+    const bolt = new THREE.Mesh(this.boltGeo, this.boltMat.clone());
+    bolt.position.y = 20;
+    const flash = new THREE.Mesh(this.flashGeo, this.flashMat.clone());
+    flash.position.y = 2;
+    group.add(cloud, bolt, flash);
+    group.position.set(fx.x, 0, fx.z);
+    group.userData['cloud'] = cloud;
+    group.userData['bolt'] = bolt;
+    group.userData['flash'] = flash;
+    return { group, untilTick: fx.untilTick, kind: 'storm' };
+  }
+
+  /** Advance one FX view's deterministic animation from the sim tick. */
+  private animateSuperweaponFx(view: SuperweaponFxView, tick: number): void {
+    if (view.kind === 'aegis') {
+      // Gentle energy shimmer; pulse period ~2 sim-seconds.
+      const pulse = 0.5 + 0.5 * Math.sin(tick * 0.105);
+      this.aegisDomeMat.opacity = 0.14 + 0.08 * pulse;
+      this.aegisWireMat.opacity = 0.08 + 0.08 * pulse;
+      return;
+    }
+    // Storm strike: 0 = just spawned, 1 = expiring.
+    const phase = 1 - Math.max(0, view.untilTick - tick) / STORM_FX_TICKS;
+    const cloud = view.group.userData['cloud'] as THREE.Mesh;
+    const bolt = view.group.userData['bolt'] as THREE.Mesh;
+    const flash = view.group.userData['flash'] as THREE.Mesh;
+    const cloudMat = cloud.material as THREE.MeshBasicMaterial;
+    const boltMat = bolt.material as THREE.MeshBasicMaterial;
+    const flashMat = flash.material as THREE.MeshBasicMaterial;
+    if (phase < 0.25) {
+      // Cloud gathers.
+      const s = phase / 0.25;
+      cloud.scale.set(1.4 * s, 0.45 * s, 1.4 * s);
+      cloudMat.opacity = 0.88 * s;
+      boltMat.opacity = 0;
+      flashMat.opacity = 0;
+    } else if (phase < 0.45) {
+      // Lightning strike + impact flash.
+      const s = (phase - 0.25) / 0.2;
+      cloud.scale.set(1.4, 0.45, 1.4);
+      cloudMat.opacity = 0.88;
+      boltMat.opacity = 0.95;
+      bolt.scale.set(1, s, 1);
+      flashMat.opacity = 0.7 * s;
+      flash.scale.setScalar(0.5 + s);
+    } else {
+      // Dissipate.
+      const s = (phase - 0.45) / 0.55;
+      cloudMat.opacity = 0.88 * (1 - s);
+      boltMat.opacity = 0.95 * (1 - s * 2 > 0 ? 1 - s * 2 : 0);
+      flashMat.opacity = 0.7 * (1 - s);
+      flash.scale.setScalar(1.5 + s * 2);
+    }
+  }
+
   dispose(): void {
     this.scene.remove(this.unitGroup, this.buildingGroup, this.fxGroup);
     for (const v of this.units.values()) this.disposeUnitView(v);
@@ -321,9 +485,19 @@ export class EntityRenderer {
     for (const v of this.buildings.values()) disposeGroup(v.mesh);
     this.buildings.clear();
     this.selectionRings.clear();
+    this.superweaponFx.clear();
     this.ringGeo.dispose();
     this.ringMat.dispose();
     this.barTexture.dispose();
+    this.aegisDomeGeo.dispose();
+    this.aegisDomeMat.dispose();
+    this.aegisWireMat.dispose();
+    this.stormCloudGeo.dispose();
+    this.stormCloudMat.dispose();
+    this.boltGeo.dispose();
+    this.boltMat.dispose();
+    this.flashGeo.dispose();
+    this.flashMat.dispose();
     this.disposeRoadMesh();
   }
 

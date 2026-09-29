@@ -249,7 +249,7 @@ export function createSession(options: SessionOptions): GameSession {
       createCombatSystem(),
       createSuperweaponSystem(),
       createEconomySystem(terrain),
-      createMayorSystem(),
+      createMayorSystem(queue, terrain),
       // AI needs the queue to issue its orders through.
       createAISystem(queue),
       // Generals issue orders like the AI does, after it.

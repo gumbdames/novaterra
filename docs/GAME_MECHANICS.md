@@ -181,7 +181,11 @@ is advisory — it can never take over your game. Not wired yet in
 
 **Mayors** (opt-in): appoint a mayor to automate your tax policy. Three
 policies: **Balanced** (15% all zones), **Growth** (low taxes to attract
-people), **Revenue** (high taxes for maximum income). Dismiss anytime
+people), **Revenue** (high taxes for maximum income). Your mayor also
+builds for you: pick a build focus — **Housing** (homes and apartments),
+**Industry** (factories and farms), or **Balanced** (whatever the city
+needs most) — and the mayor places one building every 10 seconds,
+zoning new blocks when the city runs out of room. Dismiss anytime
 to take back manual control. No mayor = no automation (the default).
 
 **Generals** (opt-in): select units, then appoint a general to command
@@ -194,11 +198,13 @@ your units can see — no fog cheating. Dismiss to resume direct control.
 
 **Aegis Control** (5,000 funds + 2,000 materials, 120s build): fire the
 **Aegis** shield — blocks ALL damage to your units for 60 seconds.
-10-minute cooldown. The Marshal AI builds and uses it fairly.
+10-minute cooldown. A glowing energy dome covers your city while the
+shield holds. The Marshal AI builds and uses it fairly.
 
 **Storm Array** (6,000 funds + 2,500 materials, 150s build): fire the
 **Storm Engine** — 8 lightning strikes over 12 seconds at your target
-point (±3 scatter, 120 damage, radius 10). 10-minute cooldown. Aegis
+point (±3 scatter, 120 damage, radius 10). Storm clouds gather, lightning
+flashes, and each strike kicks up a fireball. 10-minute cooldown. Aegis
 shields block storm damage too.
 
 ## Phase 3: Advanced economy

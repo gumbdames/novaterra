@@ -44,6 +44,7 @@ import { MainMenu, loadSettings, type QualityLevel } from './ui/menus';
 import { startGame } from './ui/game';
 import type { AIDifficulty } from './sim/ai';
 import { createSaveStore } from './net_save/store';
+import { validateSaveVersion } from './net_save/savefile';
 import { SaveSlotsDialog } from './ui/saveslots';
 import { STRINGS } from './ui/strings';
 import type { MissionDef } from './campaign/missions';
@@ -261,6 +262,13 @@ async function showLoadGame(
         const file = await store.read(slotId);
         if (file === null) {
           menuToast(app, STRINGS.save.loadFailed);
+          return;
+        }
+        // Friendly version check: older saves can't be loaded, but that's
+        // not a crash — explain it in plain language and stay in the menu.
+        const versionProblem = validateSaveVersion(file);
+        if (versionProblem !== null) {
+          menuToast(app, versionProblem);
           return;
         }
         menu.hide();

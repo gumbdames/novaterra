@@ -88,6 +88,7 @@ import {
   buildMoveOrder,
   buildPlaceBuildingOrder,
   buildRoadOrder,
+  buildSetMayorBuildPolicyOrder,
   buildSetGeneralStanceOrder,
   buildSetSpecializationOrder,
   buildStopOrders,
@@ -371,6 +372,8 @@ class GameController {
       onAssignMayor: (policy) =>
         this.issueOrder(buildAssignMayorOrder(HUMAN_PLAYER_ID, policy)),
       onDismissMayor: () => this.issueOrder(buildDismissMayorOrder(HUMAN_PLAYER_ID)),
+      onSetMayorBuildPolicy: (buildPolicy) =>
+        this.issueOrder(buildSetMayorBuildPolicyOrder(HUMAN_PLAYER_ID, buildPolicy)),
       onAssignGeneral: (stance) => this.issueAssignGeneral(stance),
       onDismissGeneral: () => this.issueOrder(buildDismissGeneralOrder(HUMAN_PLAYER_ID)),
       onSetGeneralStance: (stance) =>

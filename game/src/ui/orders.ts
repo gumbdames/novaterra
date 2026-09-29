@@ -236,6 +236,17 @@ export function buildDismissMayorOrder(owner: number): OrderIntent {
   };
 }
 
+/** Polish: set the mayor's build policy (housing/industry/balanced). */
+export function buildSetMayorBuildPolicyOrder(
+  owner: number,
+  buildPolicy: string,
+): OrderIntent {
+  return {
+    kind: 'setMayorBuildPolicy',
+    payload: { owner, buildPolicy },
+  };
+}
+
 /** Phase 3: appoint a general over selected units. */
 export function buildAssignGeneralOrder(
   owner: number,

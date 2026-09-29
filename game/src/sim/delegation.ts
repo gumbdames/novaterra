@@ -22,6 +22,10 @@
  *    mayor or a general; dismissal returns full manual control.
  *  - Mayors auto-manage tax rates within a player-chosen policy
  *    (balanced / growth / revenue). Applied once per economy tick.
+ *  - Mayors also place buildings per a player-chosen build policy
+ *    (housing / industry / balanced), one building every 10 sim-seconds,
+ *    using the same placement validation as the player. When no zoned
+ *    spot is free they paint a matching zone block first.
  *  - Generals command an army group (an explicit unit list) under a
  *    player-chosen stance:
  *      aggressive — chase the nearest visible enemy each unit can hit;
@@ -47,7 +51,16 @@ import type { World } from './world';
 import type { CommandQueue, CommandSpec } from './commands';
 import { CommandRejectedError } from './commands';
 import type { SimSystem } from './tick';
-import { getPlayer } from './city';
+import {
+  getPlayer,
+  validatePlacement,
+  BUILDING_DEFS,
+  ZoneType,
+  UTILITY_ZONE,
+  type BuildingKind,
+} from './city';
+import type { TerrainData } from './terrain';
+import { rngBank } from './world';
 import { UNIT_DEFS, findUnit, type UnitKind, type UnitRecord } from './units';
 import { canTarget } from './combat';
 import { getVisibleEnemies } from './ai';
@@ -67,6 +80,14 @@ export const MAYOR_POLICY_RATES: Record<MayorPolicy, [number, number, number]> =
   revenue: [0.25, 0.22, 0.25],
 };
 
+/**
+ * Mayor build policy: the player picks the priority, the mayor places
+ * the buildings. Housing → homes/apartments; industry → factories/farms;
+ * balanced → whatever the city lacks most (shops included).
+ */
+export type MayorBuildPolicy = 'housing' | 'industry' | 'balanced';
+export const MAYOR_BUILD_POLICIES: MayorBuildPolicy[] = ['housing', 'industry', 'balanced'];
+
 /** General's standing orders for the assigned army group. */
 export type GeneralStance = 'aggressive' | 'defensive' | 'hold';
 export const GENERAL_STANCES: GeneralStance[] = ['aggressive', 'defensive', 'hold'];
@@ -75,6 +96,8 @@ export const GENERAL_STANCES: GeneralStance[] = ['aggressive', 'defensive', 'hol
 export interface MayorAssignment {
   owner: number;
   policy: MayorPolicy;
+  /** What the mayor builds: housing, industry, or balanced. */
+  buildPolicy: MayorBuildPolicy;
 }
 
 /** One general assignment: at most one per owner. */
@@ -109,7 +132,7 @@ export function getGeneral(world: World, owner: number): GeneralAssignment | und
 /** Canonical JSON-safe encoding for snapshots and digests. */
 export function encodeDelegationState(d: DelegationState): unknown {
   return {
-    mayors: d.mayors.map((m) => ({ owner: m.owner, policy: m.policy })),
+    mayors: d.mayors.map((m) => ({ owner: m.owner, policy: m.policy, buildPolicy: m.buildPolicy })),
     generals: d.generals.map((g) => ({
       owner: g.owner,
       unitIds: [...g.unitIds],
@@ -122,6 +145,10 @@ function isMayorPolicy(p: unknown): p is MayorPolicy {
   return p === 'balanced' || p === 'growth' || p === 'revenue';
 }
 
+function isMayorBuildPolicy(p: unknown): p is MayorBuildPolicy {
+  return p === 'housing' || p === 'industry' || p === 'balanced';
+}
+
 function isGeneralStance(s: unknown): s is GeneralStance {
   return s === 'aggressive' || s === 'defensive' || s === 'hold';
 }
@@ -131,9 +158,14 @@ export function decodeDelegationState(data: unknown): DelegationState {
   const d = data as { mayors?: unknown[]; generals?: unknown[] };
   const mayors: MayorAssignment[] = [];
   for (const m of d?.mayors ?? []) {
-    const r = m as { owner: unknown; policy: unknown };
+    const r = m as { owner: unknown; policy: unknown; buildPolicy: unknown };
     if (typeof r.owner === 'number' && Number.isInteger(r.owner) && isMayorPolicy(r.policy)) {
-      mayors.push({ owner: r.owner, policy: r.policy });
+      // buildPolicy is new in the polish pass; older snapshots default it.
+      mayors.push({
+        owner: r.owner,
+        policy: r.policy,
+        buildPolicy: isMayorBuildPolicy(r.buildPolicy) ? r.buildPolicy : 'balanced',
+      });
     }
   }
   const generals: GeneralAssignment[] = [];
@@ -180,18 +212,45 @@ const assignMayorSpec: CommandSpec = {
     if (!isMayorPolicy(policy)) {
       return `assignMayor: policy must be one of ${MAYOR_POLICIES.join(', ')}`;
     }
+    const buildPolicy = cmd.payload['buildPolicy'];
+    if (buildPolicy !== undefined && !isMayorBuildPolicy(buildPolicy)) {
+      return `assignMayor: buildPolicy must be one of ${MAYOR_BUILD_POLICIES.join(', ')}`;
+    }
     return null;
   },
   apply(cmd, world): unknown {
     const owner = payloadInt(cmd.payload, 'owner') as number;
     const policy = payloadStr(cmd.payload, 'policy') as MayorPolicy;
+    const buildPolicy = isMayorBuildPolicy(cmd.payload['buildPolicy'])
+      ? (cmd.payload['buildPolicy'] as MayorBuildPolicy)
+      : 'balanced';
     const existing = getMayor(world, owner);
     if (existing) {
       existing.policy = policy;
-      return { owner, policy, updated: true };
+      existing.buildPolicy = buildPolicy;
+      return { owner, policy, buildPolicy, updated: true };
     }
-    world.delegation.mayors.push({ owner, policy });
-    return { owner, policy, updated: false };
+    world.delegation.mayors.push({ owner, policy, buildPolicy });
+    return { owner, policy, buildPolicy, updated: false };
+  },
+};
+
+const setMayorBuildPolicySpec: CommandSpec = {
+  validate(cmd, world): string | null {
+    const owner = validateOwner(world, cmd.payload);
+    if (typeof owner === 'string') return `setMayorBuildPolicy: ${owner}`;
+    if (!getMayor(world, owner)) return `setMayorBuildPolicy: player ${owner} has no mayor`;
+    const buildPolicy = payloadStr(cmd.payload, 'buildPolicy');
+    if (!isMayorBuildPolicy(buildPolicy)) {
+      return `setMayorBuildPolicy: buildPolicy must be one of ${MAYOR_BUILD_POLICIES.join(', ')}`;
+    }
+    return null;
+  },
+  apply(cmd, world): unknown {
+    const owner = payloadInt(cmd.payload, 'owner') as number;
+    const buildPolicy = payloadStr(cmd.payload, 'buildPolicy') as MayorBuildPolicy;
+    (getMayor(world, owner) as MayorAssignment).buildPolicy = buildPolicy;
+    return { owner, buildPolicy };
   },
 };
 
@@ -286,6 +345,7 @@ const setGeneralStanceSpec: CommandSpec = {
 export function registerDelegationCommands(queue: CommandQueue): void {
   queue.register('assignMayor', assignMayorSpec);
   queue.register('dismissMayor', dismissMayorSpec);
+  queue.register('setMayorBuildPolicy', setMayorBuildPolicySpec);
   queue.register('assignGeneral', assignGeneralSpec);
   queue.register('dismissGeneral', dismissGeneralSpec);
   queue.register('setGeneralStance', setGeneralStanceSpec);
@@ -299,19 +359,147 @@ export function registerDelegationCommands(queue: CommandQueue): void {
  * Mayor system: once per economy tick (30 ticks), each assigned mayor
  * sets its player's tax rates to the policy's rates. No mayor, no change —
  * manual rates are untouched.
+ *
+ * Building automation: every MAYOR_BUILD_TICKS, each mayor places one
+ * building per its build policy (opt-in: only when a mayor is assigned).
+ * The mayor picks the kind from the policy, finds a valid spot via the
+ * same validatePlacement the player uses, and issues a normal
+ * placeBuilding command. If no zoned spot exists, it paints a zone block
+ * first and builds there next cycle. Deterministic: candidate order
+ * derives from the 'city' RNG stream.
  */
-export function createMayorSystem(): SimSystem {
+export function createMayorSystem(queue: CommandQueue, terrain: TerrainData): SimSystem {
   return (world: World, _dt: number): void => {
-    if (world.tick % 30 !== 0) return;
+    if (world.tick % 30 === 0) {
+      for (const mayor of world.delegation.mayors) {
+        const player = getPlayer(world.city, mayor.owner);
+        if (!player) continue;
+        const rates = MAYOR_POLICY_RATES[mayor.policy];
+        player.taxRates[0] = rates[0];
+        player.taxRates[1] = rates[1];
+        player.taxRates[2] = rates[2];
+      }
+    }
+    if (world.tick % MAYOR_BUILD_TICKS !== 0) return;
     for (const mayor of world.delegation.mayors) {
-      const player = getPlayer(world.city, mayor.owner);
-      if (!player) continue;
-      const rates = MAYOR_POLICY_RATES[mayor.policy];
-      player.taxRates[0] = rates[0];
-      player.taxRates[1] = rates[1];
-      player.taxRates[2] = rates[2];
+      mayorBuildStep(queue, terrain, world, mayor);
     }
   };
+}
+
+/** A mayor places one building every 10 sim-seconds. */
+export const MAYOR_BUILD_TICKS = 300;
+/** How many candidate spots the mayor tries before giving up for the cycle. */
+const MAYOR_PLACEMENT_TRIES = 40;
+
+/** Building kinds a mayor considers, per build policy (in preference order). */
+const MAYOR_BUILD_CHOICES: Record<MayorBuildPolicy, BuildingKind[]> = {
+  housing: ['house', 'apartment', 'house'],
+  industry: ['factory', 'farm', 'factory'],
+  balanced: ['house', 'shop', 'factory'],
+};
+
+/**
+ * Pick what to build: the policy's preference list, but for 'balanced'
+ * prefer the kind the city has fewest of (so the city rounds out).
+ */
+function pickMayorBuilding(world: World, mayor: MayorAssignment): BuildingKind {
+  const choices = MAYOR_BUILD_CHOICES[mayor.buildPolicy];
+  if (mayor.buildPolicy !== 'balanced') {
+    // Housing/industry: build the first kind the player can afford.
+    const player = getPlayer(world.city, mayor.owner);
+    for (const kind of choices) {
+      const def = BUILDING_DEFS[kind];
+      if (player && player.funds >= def.costFunds && player.materials >= def.costMaterials) {
+        return kind;
+      }
+    }
+    return choices[0] as BuildingKind;
+  }
+  // Balanced: count existing buildings per kind, build the scarcest.
+  const counts = new Map<BuildingKind, number>();
+  for (const b of world.city.buildings) {
+    if (b.owner !== mayor.owner) continue;
+    counts.set(b.kind, (counts.get(b.kind) ?? 0) + 1);
+  }
+  let best = choices[0] as BuildingKind;
+  let bestCount = Infinity;
+  for (const kind of choices) {
+    const c = counts.get(kind) ?? 0;
+    if (c < bestCount) {
+      best = kind;
+      bestCount = c;
+    }
+  }
+  return best;
+}
+
+/** Centroid of an owner's buildings (the mayor builds outward from here). */
+function mayorBaseCentroid(world: World, owner: number): { x: number; z: number } {
+  let x = 0;
+  let z = 0;
+  let n = 0;
+  for (const b of world.city.buildings) {
+    if (b.owner === owner) {
+      x += b.cx;
+      z += b.cz;
+      n += 1;
+    }
+  }
+  return n === 0 ? { x: 32, z: 32 } : { x: x / n, z: z / n };
+}
+
+/**
+ * One mayor build step: try to place the policy's building near the base.
+ * Falls back to painting a matching zone block when nothing valid exists.
+ */
+function mayorBuildStep(
+  queue: CommandQueue,
+  terrain: TerrainData,
+  world: World,
+  mayor: MayorAssignment,
+): void {
+  const issuer = `mayor:${mayor.owner}`;
+  const kind = pickMayorBuilding(world, mayor);
+  const def = BUILDING_DEFS[kind];
+  const base = mayorBaseCentroid(world, mayor.owner);
+  const bank = rngBank(world);
+  // Deterministic candidate scan: a square spiral around the base, starting
+  // at a stream-derived offset so successive cycles don't retry identically.
+  // Same seed + same state => same placements.
+  const startDx = Math.floor(bank.next('city') * 5) - 2;
+  const startDz = Math.floor(bank.next('city') * 5) - 2;
+  let tried = 0;
+  for (let ring = 0; ring < 12 && tried < MAYOR_PLACEMENT_TRIES; ring += 1) {
+    for (let dx = -ring; dx <= ring && tried < MAYOR_PLACEMENT_TRIES; dx += 1) {
+      for (let dz = -ring; dz <= ring && tried < MAYOR_PLACEMENT_TRIES; dz += 1) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== ring) continue;
+        tried += 1;
+        const cx = Math.round(base.x + startDx + dx);
+        const cz = Math.round(base.z + startDz + dz);
+        const err = validatePlacement(terrain, world.city, {
+          kind, owner: mayor.owner, cx, cz, facing: 0,
+        });
+        if (err === null) {
+          tryOrder(queue, world, issuer, {
+            kind: 'placeBuilding',
+            payload: { kind, owner: mayor.owner, cx, cz, facing: 0 },
+          });
+          return;
+        }
+      }
+    }
+  }
+  // No valid spot: zone a fresh block for this building's zone type so the
+  // next cycle has somewhere to build. Center it on a deterministic offset.
+  if (def.zone === UTILITY_ZONE) return;
+  const zone = def.zone as number;
+  const zx = Math.round(base.x + (bank.next('city') * 2 - 1) * 20);
+  const zz = Math.round(base.z + (bank.next('city') * 2 - 1) * 20);
+  tryOrder(queue, world, issuer, {
+    kind: 'paintZone',
+    payload: { owner: mayor.owner, zone, x0: zx - 4, z0: zz - 4, x1: zx + 4, z1: zz + 4 },
+  });
 }
 
 /** How often a general reassesses the battlefield (2 sim-seconds). */

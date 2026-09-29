@@ -83,6 +83,8 @@ export interface HUDActions {
   onAssignMayor(policy: string): void;
   /** Phase 3: dismiss the mayor. */
   onDismissMayor(): void;
+  /** Polish: set the mayor's build policy. */
+  onSetMayorBuildPolicy(buildPolicy: string): void;
   /** Phase 3: appoint a general over selected units. */
   onAssignGeneral(stance: string): void;
   /** Phase 3: dismiss the general. */
@@ -298,6 +300,18 @@ export class HUD {
     disMayor.addEventListener('click', () => this.actions.onDismissMayor());
     mayorRow.append(disMayor);
     panel.append(mayorRow);
+
+    // Delegation: mayor build policy (what the mayor auto-builds).
+    const buildRow = el('div', 'hud-phase3-row');
+    buildRow.append(el('span', 'hud-label', 'Mayor builds:'));
+    for (const bp of ['housing', 'industry', 'balanced']) {
+      const b = document.createElement('button');
+      b.className = 'hud-btn small';
+      b.textContent = bp;
+      b.addEventListener('click', () => this.actions.onSetMayorBuildPolicy(bp));
+      buildRow.append(b);
+    }
+    panel.append(buildRow);
 
     // Delegation: general.
     const genRow = el('div', 'hud-phase3-row');

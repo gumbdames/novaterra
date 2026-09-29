@@ -35,7 +35,7 @@
  */
 
 import type { GameSession } from '../ui/session';
-import { takeSnapshot, type Snapshot } from '../sim/snapshot';
+import { takeSnapshot, SNAPSHOT_VERSION, type Snapshot } from '../sim/snapshot';
 import type { AIDifficulty } from '../sim/ai';
 
 /** SaveFile envelope version. Bump if SaveMetadata changes shape. */
@@ -106,4 +106,19 @@ export function createSaveFile(
 /** Lightweight summary for the load-game list (no snapshot payload). */
 export function summarizeSave(file: SaveFile): SaveMetadata {
   return file.metadata;
+}
+
+/**
+ * Check whether a save file can be loaded by this version of the game.
+ * Returns null when the save is compatible, or a plain-language message
+ * explaining why it can't be loaded (no jargon, no version numbers).
+ * Pure and testable.
+ */
+export function validateSaveVersion(file: SaveFile): string | null {
+  const found = (file.snapshot as { version?: unknown } | null)?.version;
+  if (found === SNAPSHOT_VERSION) return null;
+  return (
+    'This save is from an older version of NOVATERRA and can\u2019t be loaded. ' +
+    'Starting a new game is recommended \u2014 your other saves are unaffected.'
+  );
 }
