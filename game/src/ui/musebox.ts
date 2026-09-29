@@ -26,7 +26,7 @@
  *  - `MuseSettingsPanel`: frequency selector (off/quiet/normal/chatty)
  *    and the Live Muse section — API key field (stored in localStorage
  *    only, never committed, never logged), enable checkbox, and the
- *    honest "coming soon" note for 0.1 Alpha.
+ *    honest "hopefully coming" note for 0.1 Alpha.
  *
  * Pure DOM. The `MuseController` (muse/controller.ts) decides what to
  * say; this only renders.
@@ -185,8 +185,8 @@ export class MuseSettingsPanel {
     freqRow.append(select);
     overlay.append(freqRow);
 
-    // Live Muse (0.1 Alpha: scaffolding — coming soon).
-    overlay.append(el('h2', '', 'Live Muse (coming soon)'));
+    // Live Muse (0.1 Alpha: scaffolding — hopefully coming).
+    overlay.append(el('h2', '', 'Live Muse (hopefully coming)'));
     overlay.append(el('p', 'setting-note',
       'Point Muse at a live language model for strategic advice. ' +
       'The live model is advisory only — it can never drive the game. ' +
@@ -207,8 +207,8 @@ export class MuseSettingsPanel {
     enableBox.type = 'checkbox';
     enableBox.checked = isLiveEnabled();
     enableBox.disabled = true; // not wired yet in 0.1 Alpha
-    enableBox.title = 'Live Muse is coming soon';
-    enableLabel.append(enableBox, document.createTextNode(' Enable Live Muse (coming soon)'));
+    enableBox.title = 'Live Muse is hopefully coming';
+    enableLabel.append(enableBox, document.createTextNode(' Enable Live Muse (hopefully coming)'));
     enableRow.append(enableLabel);
     overlay.append(enableRow);
 

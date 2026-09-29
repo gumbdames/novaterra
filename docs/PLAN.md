@@ -132,7 +132,7 @@ peaceful path in every mission, two endings) + offline deterministic Muse
 persona director (commentary, taunts, visible threat meter, fair dirty
 tricks, configurable chattiness) + optional **Live Muse link** scaffolding
 (user API key in localStorage only; digest → `MUSE: advise:` protocol;
-offline fallback; marked coming soon in 0.1 Alpha).
+offline fallback; marked hopefully coming in 0.1 Alpha).
 
 Done so far:
 - `src/campaign/`: `missions.ts` (8 missions as data), `objectives.ts`

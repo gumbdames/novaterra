@@ -2,7 +2,7 @@
 
 The Muse persona AI: the player's chief-of-staff companion (Phase 2).
 Offline deterministic persona is the real deal; live LLM link is
-advisory-only scaffolding marked coming soon in 0.1 Alpha.
+advisory-only scaffolding marked hopefully coming in 0.1 Alpha.
 
 ## Modules
 
@@ -29,7 +29,7 @@ advisory-only scaffolding marked coming soon in 0.1 Alpha.
   state), localStorage-only API key (never committed, never logged),
   `LiveMuseError` for offline fallback. In 0.1 Alpha no endpoint is
   wired: `createLiveMuseClient` always falls back; the settings panel
-  marks Live Muse "coming soon".
+  marks Live Muse "hopefully coming".
 
 ## Rules
 

@@ -34,7 +34,7 @@
  *    a `LiveMuseError` so the caller falls back to the offline persona.
  *
  * Status (0.1 Alpha): the protocol and UI scaffolding are implemented;
- * the settings panel marks Live Muse as coming soon until an endpoint
+ * the settings panel marks Live Muse as hopefully coming until an endpoint
  * is wired. Offline Muse is always the fallback.
  */
 
@@ -166,15 +166,15 @@ export interface LiveMuseClient {
 
 /**
  * Create the live client. Endpoint is intentionally unset in 0.1 Alpha
- * (coming soon) — constructing the client does not network.
+ * (hopefully coming) — constructing the client does not network.
  */
 export function createLiveMuseClient(): LiveMuseClient {
   return {
     async advise(digest: MuseDigest): Promise<string[]> {
       void digest;
       // 0.1 Alpha: no endpoint wired. The settings panel marks this
-      // coming soon; offline Muse covers the game meanwhile.
-      throw new LiveMuseError('Live Muse is coming soon — offline Muse is advising instead.');
+      // hopefully coming; offline Muse covers the game meanwhile.
+      throw new LiveMuseError('Live Muse is hopefully coming — offline Muse is advising instead.');
     },
   };
 }

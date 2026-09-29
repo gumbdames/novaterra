@@ -174,7 +174,7 @@ Muse is charming, never annoying: how often they speak is your call —
 only. In campaign missions Muse also delivers the story's scripted
 messages.
 
-**Live Muse (coming soon):** connect your own language-model API key
+**Live Muse (hopefully coming):** connect your own language-model API key
 in Settings and Muse will offer strategic advice from a live summary
 of your game. The key stays in your browser only, and the live model
 is advisory — it can never take over your game. Not wired yet in
