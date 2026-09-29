@@ -22,12 +22,27 @@
  *    corner, with the threat meter (0..100, AI's share of military
  *    value). `say(text)` shows a line; messages fade after a few
  *    seconds. `setThreat(n)` updates the meter. Hidden entirely when
- *    the frequency is `off`. (Frequency + Live Muse settings live in the
- *    main Settings panel — `ui/menus.ts`.)
+ *    the frequency is `off`.
+ *  - `MuseSettingsPanel`: frequency selector (off/quiet/normal/chatty)
+ *    and the Live Muse section — API key field (stored in localStorage
+ *    only, never committed, never logged), enable checkbox, and the
+ *    honest "coming soon" note for 0.1 Alpha.
  *
  * Pure DOM. The `MuseController` (muse/controller.ts) decides what to
  * say; this only renders.
  */
+
+import {
+  loadMuseFrequency,
+  saveMuseFrequency,
+  type MuseFrequency,
+} from '../muse/controller';
+import {
+  getLiveKey,
+  setLiveKey,
+  isLiveEnabled,
+  setLiveEnabled,
+} from '../muse/live';
 
 function el(tag: string, className: string, text?: string): HTMLElement {
   const e = document.createElement(tag);
@@ -122,3 +137,94 @@ export class MuseBox {
   }
 }
 
+export interface MuseSettingsActions {
+  /** Frequency changed (live-apply to the running controller). */
+  onFrequencyChange(f: MuseFrequency): void;
+  onClose(): void;
+}
+
+const FREQUENCY_LABELS: Array<{ value: MuseFrequency; label: string }> = [
+  { value: 'off', label: 'Off — Muse stays silent' },
+  { value: 'quiet', label: 'Quiet — milestones only' },
+  { value: 'normal', label: 'Normal — events and updates' },
+  { value: 'chatty', label: 'Chatty — taunts and commentary' },
+];
+
+export class MuseSettingsPanel {
+  private readonly root: HTMLElement;
+  private readonly actions: MuseSettingsActions;
+  private el: HTMLElement | null = null;
+
+  constructor(root: HTMLElement, actions: MuseSettingsActions) {
+    this.root = root;
+    this.actions = actions;
+  }
+
+  show(): void {
+    this.hide();
+    const overlay = el('div', 'menu-overlay muse-settings');
+    overlay.append(el('h1', '', 'Muse'));
+    overlay.append(el('p', 'tagline', 'Your chief of staff. Charming, never annoying — tune how often they speak.'));
+
+    const current = loadMuseFrequency();
+    const freqRow = el('div', 'setting-row');
+    freqRow.append(el('span', 'setting-label', 'Chattiness'));
+    const select = document.createElement('select');
+    for (const { value, label } of FREQUENCY_LABELS) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      opt.selected = value === current;
+      select.append(opt);
+    }
+    select.addEventListener('change', () => {
+      const f = select.value as MuseFrequency;
+      saveMuseFrequency(f);
+      this.actions.onFrequencyChange(f);
+    });
+    freqRow.append(select);
+    overlay.append(freqRow);
+
+    // Live Muse (0.1 Alpha: scaffolding — coming soon).
+    overlay.append(el('h2', '', 'Live Muse (coming soon)'));
+    overlay.append(el('p', 'setting-note',
+      'Point Muse at a live language model for strategic advice. ' +
+      'The live model is advisory only — it can never drive the game. ' +
+      'Live integration is not wired yet in 0.1 Alpha; the offline Muse covers you meanwhile.'));
+    const keyRow = el('div', 'setting-row');
+    keyRow.append(el('span', 'setting-label', 'API key'));
+    const keyInput = document.createElement('input');
+    keyInput.type = 'password';
+    keyInput.placeholder = 'Stored only in this browser';
+    keyInput.value = getLiveKey();
+    keyInput.autocomplete = 'off';
+    keyInput.addEventListener('change', () => setLiveKey(keyInput.value.trim()));
+    keyRow.append(keyInput);
+    overlay.append(keyRow);
+    const enableRow = el('div', 'setting-row');
+    const enableLabel = document.createElement('label');
+    const enableBox = document.createElement('input');
+    enableBox.type = 'checkbox';
+    enableBox.checked = isLiveEnabled();
+    enableBox.disabled = true; // not wired yet in 0.1 Alpha
+    enableBox.title = 'Live Muse is coming soon';
+    enableLabel.append(enableBox, document.createTextNode(' Enable Live Muse (coming soon)'));
+    enableRow.append(enableLabel);
+    overlay.append(enableRow);
+
+    const row = el('div', 'buttons');
+    const back = document.createElement('button');
+    back.textContent = 'Back';
+    back.addEventListener('click', () => this.actions.onClose());
+    row.append(back);
+    overlay.append(row);
+
+    this.root.append(overlay);
+    this.el = overlay;
+  }
+
+  hide(): void {
+    this.el?.remove();
+    this.el = null;
+  }
+}

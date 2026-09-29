@@ -174,34 +174,11 @@ Muse is charming, never annoying: how often they speak is your call —
 only. In campaign missions Muse also delivers the story's scripted
 messages.
 
-## Muse Commander — the rival driven by your Meta Muse API key
-
-Pick **Muse — your Meta Muse drives the rival** as the skirmish
-difficulty and the enemy commander is powered by your own Meta Muse API
-key. Once per minute (30 s / 60 s / 2 min in Settings) the game sends a
-compact, fog-filtered battle summary to Meta's Model API; Muse answers
-with orders like `build: tank`, `attack: 120, 80`, or `defend`, which
-the game executes as ordinary commands — the same ones you and the
-Classic AI use.
-
-Fairness is structural, not promised:
-
-- **Muse never touches the game directly.** Every decision becomes a
-  normal validated command; illegal or unaffordable orders are rejected
-  exactly as yours would be.
-- **No fog cheating.** The summary contains the rival's full state but
-  only the enemy units and buildings its own units can actually see —
-  the same sight rule the Classic AI plays by.
-- **The network never blocks the game.** Calls happen off the sim tick;
-  while Muse "thinks" (badge, top-right) the game runs on normally.
-- **Offline fallback is seamless.** No key, timeout, rate limit, or API
-  error simply means "no orders this round" — a Classic
-  Commander-level brain plays the rival at full strength the whole
-  time, so the game is never broken.
-
-Your key lives only in your browser (`localStorage`) and is sent only
-to `api.meta.ai`; API usage is billed to your Meta account.
-Test the connection from Settings before you play.
+**Live Muse (coming soon):** connect your own language-model API key
+in Settings and Muse will offer strategic advice from a live summary
+of your game. The key stays in your browser only, and the live model
+is advisory — it can never take over your game. Not wired yet in
+0.1 Alpha; the offline Muse covers you meanwhile.
 
 ## Phase 3: Chain of command
 

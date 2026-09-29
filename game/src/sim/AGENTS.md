@@ -37,22 +37,18 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   nearest-target acquisition with stable-id tiebreaks, weapon firing with
   cooldowns, opportunistic fire, explicit `attackUnit` chase orders, death
   cleanup. No RNG — fully deterministic.
-- `ai.ts` — Classic AI (cadet/citizen/commander/general/marshal) plus the
-  `muse` difficulty: the player-facing Muse Commander label, whose
-  sim-side brain IS `thinkCommander` (the UI layer enriches its orders
-  with API directives through the same queue — see src/muse/). Deterministic,
-  fair (only sees enemies via `getVisibleEnemies()` / `isVisibleTo()`,
-  never reads enemy positions directly). Issues standard commands (`spawnUnit`, `moveUnit`,
-  `moveGroup`, `attackUnit`) through the queue. Think cadence: 240/120/60/45/30/60
-  ticks. Army caps: 4/10/18/26/36/18 (`AI_MAX_UNITS`, exported). State (`AIPlayerState`: owner, difficulty, base, nextThinkTick,
+- `ai.ts` — Classic AI levels 1–3 (cadet/citizen/commander). Deterministic,
+  fair (only sees enemies via `getVisibleEnemies()`, never reads enemy
+  positions directly). Issues standard commands (`spawnUnit`, `moveUnit`,
+  `moveGroup`, `attackUnit`) through the queue. Think cadence: 240/120/60
+  ticks. Army caps: 4/10/18 (`AI_MAX_UNITS`, exported). State (`AIPlayerState`: owner, difficulty, base, nextThinkTick,
   forwardBase, scoutIndex, builtCounts) is plain data — snapshotted (v4)
-  and digested. `getVisibleEnemies`/`isVisibleTo` add the Signals Grid sight bonus —
-  the same fog rule the Muse Commander digest uses, so fairness is structural.
+  and digested. `getVisibleEnemies` adds the Signals Grid sight bonus.
   The AI stays in Foundation: its spawn choices are filtered by
   `isUnitAvailableForAge` (commander falls back from fighter to AA).
   **Cap invariant:** the cap counts ALL of the AI's units, so starting
   forces must leave headroom — `ui/session.ts` gives cadet 2 starters
-  (cap 4), citizen/commander/muse 6 (caps 10/18/18). Fixed in step 12: cadet was
+  (cap 4), citizen/commander 6 (caps 10/18). Fixed in step 12: cadet was
   getting 6 starters and could never build.
 - `ages.ts` — Ages (Foundation → Connectivity) + National Program choice
   (Step 8). `AgeState` (`age`, `program`) lives on `World.ages`, plain

@@ -41,8 +41,6 @@ export const STRINGS = {
     difficultyCommander: 'Commander — no mercy',
     difficultyGeneral: 'General — combined arms',
     difficultyMarshal: 'Marshal — total war',
-    difficultyMuse: 'Muse — your Meta Muse drives the rival',
-    difficultyMuseHint: 'Requires a Meta Model API key — set one in Settings → Live Muse first.',
     chooseMap: 'Choose your map',
     start: 'Start game',
     back: 'Back',
@@ -135,30 +133,12 @@ export const STRINGS = {
     museQuiet: 'Quiet — milestones only',
     museNormal: 'Normal — events and updates',
     museChatty: 'Chatty — taunts and commentary',
-    liveMuseTitle: 'Meta Muse',
+    liveMuseTitle: 'Live Muse (coming soon)',
     liveMuseNote:
-      'Drive the rival commander with your own Meta Muse API key — pick the "Muse" difficulty when starting a skirmish. ' +
-      'Get a key at dev.meta.ai → Model API dashboard → API keys. ' +
-      'Your key stays in this browser and is only ever sent to api.meta.ai. API usage is billed to your Meta account. ' +
-      'If the key is missing or a request fails, the rival plays on as a Classic Commander — the game never waits on the network.',
+      'Point Muse at a live language model for strategic advice. The live model is advisory only — it can never drive the game. Not wired yet in 0.1 Alpha; the offline Muse covers you meanwhile.',
     liveKeyLabel: 'API key',
     liveKeyPlaceholder: 'Stored only in this browser',
-    liveModelLabel: 'Model',
-    liveCadenceLabel: 'Muse thinks every',
-    liveCadence30: '30 seconds',
-    liveCadence60: '60 seconds',
-    liveCadence120: '2 minutes',
-    liveTestButton: 'Test connection',
-    liveTestWaiting: 'Testing…',
-    museNoKeyTitle: 'No API key yet',
-    museNoKeyBody:
-      'The Muse rival is driven by your own Meta Model API key — without one ' +
-      'there is no live rival to play against. Add your key in Settings → ' +
-      'Live Muse, then pick this difficulty again.',
-    museNoKeySettings: 'Open Settings',
-    museNoKeyCancel: 'Back',
-    museThinking: 'Muse is thinking…',
-    museRivalActive: 'Muse rival active',
+    liveEnableLabel: 'Enable Live Muse (coming soon)',
   },
   help: {
     keys: [

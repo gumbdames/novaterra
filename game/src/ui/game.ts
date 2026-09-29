@@ -119,8 +119,6 @@ import {
 import { scoreMission, type CampaignProgress } from '../campaign/progress';
 import { MuseController, loadMuseFrequency } from '../muse/controller';
 import { MuseBox } from './musebox';
-import { MuseCommander } from '../muse/commander';
-import { computeWaterPct } from '../muse/digest';
 import { MissionPanel, MissionDebrief } from './campaignui';
 
 /** Result of a finished campaign mission, handed to the app for scoring. */
@@ -308,10 +306,6 @@ class GameController {
   private readonly missionRun: MissionRunState | null;
   private readonly muse: MuseController | null;
   private readonly museBox: MuseBox | null;
-  /** Live LLM rival (Muse Commander). Null unless the "Muse" difficulty was picked. */
-  private readonly museCommander: MuseCommander | null;
-  /** "Muse is thinking…" badge element (null unless the commander is active). */
-  private museThinkingBadge: HTMLElement | null = null;
   private readonly missionPanel: MissionPanel | null;
   private readonly missionDebrief: MissionDebrief | null;
   private lastMissionPoll = 0;
@@ -444,40 +438,6 @@ class GameController {
       this.missionDebrief = null;
     }
 
-    // Muse Commander rival: when the player picked the "Muse" difficulty,
-    // a live LLM drives the rival through the command queue on top of the
-    // Classic Commander brain inside the sim (which keeps playing no
-    // matter what the API does). The base anchor comes from the fresh
-    // session, or from the AI player's snapshotted base after a load.
-    let museCommander: MuseCommander | null = null;
-    if (session.aiDifficulty === 'muse') {
-      const aiBase = session.aiBase ?? (() => {
-        const p = session.world.ai.players.find((pl) => pl.owner === 1);
-        return p ? { x: p.baseX, z: p.baseZ } : null;
-      })();
-      if (aiBase !== null) {
-        const badge = document.createElement('div');
-        badge.className = 'muse-commander-badge';
-        badge.style.display = 'none';
-        badge.textContent = STRINGS.settings.museThinking;
-        container.append(badge);
-        this.museThinkingBadge = badge;
-        museCommander = new MuseCommander({
-          queue: session.queue,
-          owner: 1,
-          baseX: aiBase.x,
-          baseZ: aiBase.z,
-          mapSize: session.terrain.size,
-          waterPct: computeWaterPct(session.terrain),
-          onThinkingChange: (thinking) => {
-            badge.style.display = thinking ? '' : 'none';
-          },
-          say: (text) => this.museBox?.say(text),
-        });
-      }
-    }
-    this.museCommander = museCommander;
-
     // Audio: created here, unlocked on the first user gesture (autoplay
     // policy). UI clicks anywhere in the game container play the click cue.
     this.audio = new AudioEngine();
@@ -527,8 +487,6 @@ class GameController {
       this.hud.update(world, this.selection, this.advisorItems, this.paused, this.speed);
       this.pollAudioEvents(world, now);
       this.pollCampaign(world, now);
-      // Muse Commander: off-tick API cadence; never blocks the sim.
-      this.museCommander?.update(world);
       this.renderer.render(this.scene, this.camera);
     });
   }
@@ -704,9 +662,6 @@ class GameController {
     this.cheatConsole.hide();
     this.endScreen.hide();
     this.museBox?.hide();
-    this.museCommander?.dispose();
-    this.museThinkingBadge?.remove();
-    this.museThinkingBadge = null;
     this.missionPanel?.hide();
     this.missionDebrief?.hide();
     this.slotsDialog?.hide();

@@ -14,16 +14,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   names fall back). Starting forces find land per-unit (not just at the
   base center) so high-water maps never reject spawns. `session.cheated`
   is UI-owned metadata (never sim state), stamped into save files.
-  `session.aiBase` exposes the fresh rival base position (null on
-  restore — callers fall back to the AI player's snapshotted base).
 - `game.ts` — the game controller: renderer, daylight scene, camera
   input, selection, placement modes, fixed-timestep loop, pause menu.
   DOM + three.js; never imported by headless tests.
   Step 11: owns the save store, the cheat console (backtick), the end
-  screen, and autosave (every 5 game-minutes, tick-based). Also owns the
-  `MuseCommander` rival when the "Muse" difficulty is picked (off-tick
-  API cadence, "Muse is thinking…" badge, silent Classic fallback) —
-  network state stays in the controller, never in `World`.
+  screen, and autosave (every 5 game-minutes, tick-based).
 - `cheatconsole.ts` — the cheat console overlay. `parseCheatCommand` is
   pure and tested (case/whitespace-tolerant); the `CheatConsole` class is
   DOM-only and emits parsed actions to the controller. Sim-affecting
@@ -49,11 +44,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `menus.ts` — main menu (skirmish setup: map picker + difficulty picker),
   pause overlay, settings (quality, key list). Quality persists in
   localStorage. Skirmish setup shows all 8 MAP_PRESETS (name + water %)
-  and all 6 AI difficulties (incl. Muse — no-key confirm dialog routes
-  to Classic fallback instead of a broken game);
-  `onStartSkirmish(difficulty, mapPreset)`. Settings → Live Muse: API
-  key, model selector, cadence selector (30/60/120 s), Test connection
-  button.
+  and all 5 AI difficulties; `onStartSkirmish(difficulty, mapPreset)`.
 - `camera.ts` / `selection.ts` — pure state + transitions, fully tested.
 - `orders.ts` — gesture → `OrderIntent` (`NewCommand` minus issuer);
   the controller stamps `issuer: 'player'` at enqueue.
