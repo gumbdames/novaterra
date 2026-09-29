@@ -63,7 +63,9 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 - `pathfinding.ts` — deterministic 8-direction A* (octile heuristic,
   corner-cut prevention, water blocking, roads ×0.5) + chunked Dijkstra
   flow fields with early exit + the time-sliced coordinator
-  (`PATHS_PER_TICK=3` A*, `FIELD_POPS_PER_TICK=600`).
+  (`PATHS_PER_TICK=3` A*, `FIELD_POPS_PER_TICK=600`). Sea units use a
+  separate water-only A* (`findSeaPath`) over sea components — no land
+  fallback, cross-component water fails fast with 'no path'.
 - `movement.ts` — the pathfinding + movement systems (registered in that
   order), `moveUnit` / `moveGroup` / `stopUnit` commands, waypoint and
   field following, arrival slowdown, formation slots, spatial-hash

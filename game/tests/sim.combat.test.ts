@@ -307,6 +307,29 @@ describe('combat resolution', () => {
     expect(UNIT_DEFS.artillery.minRange).toBeGreaterThan(0);
   });
 
+  it('artillery backs off to minimum range when ordered onto a close target', () => {
+    const ctx = setup();
+    const a = findLandNear(ctx.terrain, 0, 0);
+    const artId = spawnAt(ctx, a.x, a.z, 'artillery', 0);
+    // Enemy 5 away: inside artillery minRange (12).
+    const enemyId = spawnAt(ctx, a.x + 5, a.z, 'rifles', 1);
+    const art = findUnit(ctx.world, artId)!;
+    const enemy = findUnit(ctx.world, enemyId)!;
+    const distBefore = Math.hypot(enemy.x - art.x, enemy.z - art.z);
+    expect(distBefore).toBeLessThan(UNIT_DEFS.artillery.minRange);
+    // Explicit attack order on the close target.
+    enqueue(ctx, [{ kind: 'attackUnit', payload: { unitId: artId, owner: 0, targetId: enemyId } }]);
+    runTicks(ctx, 1);
+    // Artillery should be repositioning (backing off), not sitting idle.
+    // 'awaitingPath' is valid: pathfinding completes on the next tick.
+    const artAfter = findUnit(ctx.world, artId)!;
+    expect(['moving', 'awaitingPath']).toContain(artAfter.state);
+    // Its destination should be farther from the enemy than its current pos.
+    const destDist = Math.hypot(enemy.x - artAfter.destX, enemy.z - artAfter.destZ);
+    const currDist = Math.hypot(enemy.x - artAfter.x, enemy.z - artAfter.z);
+    expect(destDist).toBeGreaterThan(currDist);
+  });
+
   it('mobile AA only damages air (canTarget), fighter hits both', () => {
     const ctx = setup();
     // Fighter requires Connectivity (age is per-world).
@@ -446,5 +469,29 @@ describe('air movement', () => {
     // destination is on another landmass — both are valid processing).
     const tankState = findUnit(ctx.world, tank)!.state;
     expect(['moving', 'failed']).toContain(tankState);
+  });
+
+  it('a unit killed early in the tick does not fire later in the same tick', () => {
+    const ctx = setup();
+    const a = findLandNear(ctx.terrain, 0, 0);
+    // u1 (low id, acts first) has a target at 1 HP; u2 (high id) would
+    // fire back if it got a turn after being killed.
+    const t1 = spawnAt(ctx, a.x, a.z, 'tank', 0);
+    const t2 = spawnAt(ctx, a.x + 10, a.z, 'tank', 1);
+    const u1 = findUnit(ctx.world, t1)!;
+    const u2 = findUnit(ctx.world, t2)!;
+    // u2 dies to one tank shot. Reset cooldowns so the test doesn't depend
+    // on spawn-tick opportunistic fire; record u1's HP (it may have taken
+    // a hit during t2's spawn tick).
+    u2.hp = 1;
+    u1.cooldownLeft = 0;
+    u2.cooldownLeft = 0;
+    const hpBefore = u1.hp;
+    runTicks(ctx, 1);
+    // u2 is dead.
+    expect(findUnit(ctx.world, t2)).toBeUndefined();
+    // u1's HP is unchanged: u2 never got a post-death shot. The combat
+    // loop's `if (u.hp <= 0) continue` skips killed units before they act.
+    expect(findUnit(ctx.world, t1)!.hp).toBe(hpBefore);
   });
 });

@@ -11,6 +11,10 @@ path (🕊).
 
 **Skirmish**: build a city, grow an economy, raise an army, and destroy
 the enemy base across the map. You start with 2 engineers and 4 soldiers.
+Destroy every enemy unit and building to win.
+
+**Sandbox**: start a skirmish with no AI rival to build freely with no
+victory condition — just you, your cities, and the map.
 
 ## Starting a game
 
@@ -36,16 +40,16 @@ more water means more naval fighting) → pick your **rival**:
 - **Right-click ground** — move your selected units there.
 - **Right-click enemy** — attack it (only if your units can hit it).
 - **Mouse wheel** — zoom in/out.
-- **Middle-drag** — move the camera.
-- **Right-drag** (or Q/E) — turn the camera.
+- **Q / E** — turn the camera.
 
 ## Keyboard
 
 - **WASD / arrows** — move the camera.
 - **S** — stop your selected units.
 - **Space** — pause / unpause.
-- **1 / 2 / 3** — game speed (normal / fast / fastest).
 - **Esc** — cancel what you're doing, or close a menu.
+
+(Change game speed with the 1× / 2× / 4× buttons at the top of the screen.)
 
 ## Building
 
@@ -62,9 +66,9 @@ to advance ages), **Shipyards** (ships).
 
 ## Money and ages
 
-Watch the top bar: Funds, Materials, Goods, Influence, Manpower, and
-your age. Your advisor (left side) warns you before things go wrong —
-listen to it.
+Watch the top bar: Funds, Materials, Food, Fuel, Goods, Influence,
+Manpower, Population, and your age. Your advisor (left side) warns you
+before things go wrong — listen to it.
 
 Advance through five ages — **Foundation → Connectivity → Industry →
 Information → Ascendance** — each with a permanent National Program
@@ -75,7 +79,7 @@ unlock at Industry; the strongest programs are in Ascendance.
 
 - Your first buildings should be farms (food) and a power plant.
 - Scouts (drones) are cheap — send one across the map early.
-- Only AA guns (and fighters, and destroyers) can hit air units.
+- Only AA guns, fighters, drones, and destroyers can hit air units.
 - Tanks beat infantry; artillery beats tanks; spectres are fast
   tank-hunters. Build counters, not just more of the same.
 - On water maps, control the sea first — ships can't be touched by
@@ -89,6 +93,13 @@ Music changes when your units enter combat. Open **Settings** (pause
 menu) to adjust master, music, and sound-effect volumes, or mute all.
 Music: "Meditation Impromptu 01" and "Volatile Reaction" by Kevin
 MacLeod (incompetech.com), CC BY 4.0.
+
+## Muse
+
+Muse is your AI advisor — it comments on events, warns about threats,
+and (if you're into that) taunts you lightly. Set its **Chattiness** in
+Settings: **Off** (silent), **Quiet** (milestones only), **Normal**
+(events and updates), or **Chatty** (taunts and commentary).
 
 ## Saving and loading
 
@@ -106,7 +117,7 @@ MacLeod (incompetech.com), CC BY 4.0.
 
 Press **\`** (backtick) to open the cheat console. Commands:
 
-- `prosperity now` — grants funds, materials, food and fuel.
+- `prosperity now` — grants funds, materials, food, fuel, and goods.
 - `fast build` — finishes all your buildings under construction.
 - `reveal` — no fog of war in 0.1 Alpha; nothing to reveal.
 - `win` / `lose` — show the victory / defeat screen (for testing).

@@ -119,6 +119,12 @@ export interface GameSession {
   sessionId: string;
   seed: number;
   aiDifficulty: AIDifficulty;
+  /**
+   * True when a Classic AI rival (owner 1) is playing. False for sandbox
+   * skirmishes and campaign missions with no rival ('none') — those have
+   * no victory condition (documented as sandbox mode).
+   */
+  hasRival: boolean;
   terrain: TerrainData;
   world: World;
   queue: CommandQueue;
@@ -201,6 +207,22 @@ function startingForces(
     };
     queue.enqueue(world, cmd);
   }
+}
+
+/**
+ * Conquest victory check (deterministic): true when the rival (owner 1)
+ * has no units and no buildings left. Pure function of world state —
+ * no wall clock, no RNG. Callers should only check when `hasRival` is
+ * true; sandbox games (no rival) have no victory condition by design.
+ */
+export function checkSkirmishVictory(world: World): boolean {
+  for (const unit of world.units) {
+    if (unit.owner === AI_PLAYER_ID) return false;
+  }
+  for (const building of world.city.buildings) {
+    if (building.owner === AI_PLAYER_ID) return false;
+  }
+  return true;
 }
 
 /**
@@ -292,6 +314,11 @@ export function createSession(options: SessionOptions): GameSession {
   // Restored sessions skip all of the above: units, buildings, AI state,
   // and RNG streams come back exactly as saved.
 
+  // A rival exists when the Classic AI is registered for owner 1.
+  // (Fresh sandbox/mission-'none' sessions never add one; restored
+  // sessions carry whatever was saved.)
+  const hasRival = world.ai.players.some((p) => p.owner === AI_PLAYER_ID);
+
   return {
     sessionId:
       mission !== undefined
@@ -299,6 +326,7 @@ export function createSession(options: SessionOptions): GameSession {
         : `novaterra-${seed >>> 0}-${aiDifficulty}`,
     seed,
     aiDifficulty,
+    hasRival,
     terrain,
     world,
     queue,

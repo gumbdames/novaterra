@@ -24,8 +24,10 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   DOM-only and emits parsed actions to the controller. Sim-affecting
   cheats go through the command queue with `issuer: 'cheat'`; `reveal`,
   `win`, `lose`, `help` are UI-only.
-- `endscreen.ts` — victory/defeat overlay (the hook a future conquest
-  system will call; in 0.1 Alpha only the `win`/`lose` cheats show it).
+- `endscreen.ts` — victory/defeat overlay. Skirmish conquest victory
+  (rival has no units/buildings) calls `showVictory()` via
+  `checkSkirmishVictory()` in `session.ts`; the `win`/`lose` cheats also
+  use it. No-rival skirmishes are sandbox (no victory condition).
 - `saveslots.ts` — save/load slot picker dialog + pure
   `formatSaveSummary`.
 - `hud.ts` — top bar, advisor panel, selection panel, train/build

@@ -71,6 +71,7 @@ import {
   requestField,
   requestPath,
   runPathfinding,
+  seaComponents,
   worldToCell,
 } from './pathfinding';
 import type { FlowField } from './pathfinding';
@@ -255,11 +256,11 @@ function moveAirUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: 
 }
 
 function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: UnitRecord, dt: number): void {
-  // Air and sea units move straight to their slot: no pathfinding.
-  // Air flies over everything; sea is constrained to water by the integration
-  // guard below. They still separate (from same-domain units) and arrive
-  // exactly like ground units.
-  if (unit.domain === 'air' || unit.domain === 'sea') {
+  // Air units fly straight to their slot: no pathfinding. They fly over
+  // everything and still separate (from air units) and arrive exactly
+  // like ground units. Sea units use the water pathfinding flow below
+  // (findSeaPath) — they must navigate around islands, not fly over them.
+  if (unit.domain === 'air') {
     moveAirUnitTick(world, t, hash, unit, dt);
     return;
   }
@@ -362,13 +363,22 @@ function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: Uni
   const [nx, nz] = clampToMap(unit.x + vx * dt, unit.z + vz * dt);
   const destIsWater = isWater(t, nx, nz);
   // Domain movement rules: land stays on land, sea stays on water.
-  // (Air and sea units return early via moveAirUnitTick and never reach here.)
-  // Land units cannot enter water.
-  if (!destIsWater) {
-    unit.x = nx;
-    unit.z = nz;
+  // (Air units return early via moveAirUnitTick and never reach here.)
+  if (unit.domain === 'sea') {
+    // Sea units cannot run aground.
+    if (destIsWater) {
+      unit.x = nx;
+      unit.z = nz;
+    }
+    // else: the step is cancelled; the unit holds position this tick.
+  } else {
+    // Land units cannot enter water.
+    if (!destIsWater) {
+      unit.x = nx;
+      unit.z = nz;
+    }
+    // else: the step is cancelled; the unit holds position this tick.
   }
-  // else: the step is cancelled; the unit holds position this tick.
 }
 
 /** Movement system: rebuild the hash, then integrate every moving unit. */
@@ -517,6 +527,44 @@ function assignGroupSlots(world: World, t: TerrainData, waiting: UnitRecord[], a
 }
 
 /**
+ * Formation slots for sea units: scans slotOffset rings for water cells
+ * in the same sea component as the destination. Ships need water slots —
+ * unlike aircraft, they cannot stack on land.
+ */
+function assignSeaSlots(world: World, t: TerrainData, waiting: UnitRecord[], atDestCount: number, x: number, z: number): void {
+  const destCell = worldToCell(x, z);
+  const comps = seaComponents(t);
+  const destComp = comps[destCell] as number;
+  // Id order (spawn order) — canonical and deterministic.
+  const ordered = [...waiting].sort((a, b) => a.id - b.id);
+  let rank = atDestCount;
+  for (const unit of ordered) {
+    let r = rank;
+    let sx = x;
+    let sz = z;
+    for (let scan = 0; scan < SLOT_SCAN_MAX; scan++) {
+      const [ox, oz] = slotOffset(r);
+      const cx = x + ox;
+      const cz = z + oz;
+      const ok =
+        Math.abs(cx) <= MAP_HALF_SIZE &&
+        Math.abs(cz) <= MAP_HALF_SIZE &&
+        isWater(t, cx, cz) &&
+        (comps[worldToCell(cx, cz)] as number) === destComp;
+      if (ok) {
+        sx = cx;
+        sz = cz;
+        break;
+      }
+      r += 1;
+    }
+    unit.arriveX = sx;
+    unit.arriveZ = sz;
+    rank = r + 1;
+  }
+}
+
+/**
  * Formation slots for air units: plain slotOffset rings, clamped to the
  * map. No terrain checks — aircraft fly over water and any terrain.
  */
@@ -560,7 +608,15 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
         if (!unit) return `moveGroup: no unit with id ${id}`;
         if (unit.owner !== owner) return `moveGroup: unit ${id} is not owned by player ${owner}`;
       }
-      return validateDestination(t, cmd.payload['x'], cmd.payload['z']);
+      // Per-unit domain validation (like moveUnit): air flies anywhere,
+      // land needs land, sea needs water. A mixed group fails if ANY
+      // member cannot reach the destination.
+      for (const id of ids) {
+        const unit = findUnit(world, id) as UnitRecord;
+        const err = validateDestination(t, cmd.payload['x'], cmd.payload['z'], unit.domain);
+        if (err) return `moveGroup: unit ${id} (${err})`;
+      }
+      return null;
     },
     apply(cmd, world): unknown {
       const ids = cmd.payload['unitIds'] as number[];
@@ -568,12 +624,15 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
       const z = cmd.payload['z'] as number;
       const destCell = worldToCell(x, z);
       // Ground units share one flow field; air units fly straight in
-      // formation (no pathfinding, no water checks).
+      // formation (no pathfinding, no water checks); sea units get
+      // individual sea paths to water formation slots.
       const groundWaiting: number[] = [];
       const groundWaitingUnits: UnitRecord[] = [];
       const airWaiting: UnitRecord[] = [];
+      const seaWaitingUnits: UnitRecord[] = [];
       let atDestCount = 0;
       let airAtDestCount = 0;
+      let seaAtDestCount = 0;
       for (const id of ids) {
         const unit = findUnit(world, id) as UnitRecord;
         dropUnitRequests(world, id);
@@ -585,7 +644,7 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
         unit.arriveX = x; // refined to a formation slot below
         unit.arriveZ = z;
         unit.failReason = null;
-        if (unit.domain === 'air' || unit.domain === 'sea') {
+        if (unit.domain === 'air') {
           const d = Math.hypot(x - unit.x, z - unit.z);
           if (d < ARRIVAL_RADIUS) {
             unit.state = 'idle'; // already there
@@ -593,6 +652,14 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
           } else {
             unit.state = 'moving';
             airWaiting.push(unit);
+          }
+        } else if (unit.domain === 'sea') {
+          const d = Math.hypot(x - unit.x, z - unit.z);
+          if (d < ARRIVAL_RADIUS) {
+            unit.state = 'idle'; // already there
+            seaAtDestCount += 1;
+          } else {
+            seaWaitingUnits.push(unit);
           }
         } else if (worldToCell(unit.x, unit.z) === destCell) {
           unit.state = 'idle'; // already there
@@ -608,6 +675,12 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
       // Id order keeps the assignment deterministic.
       assignGroupSlots(world, t, groundWaitingUnits, atDestCount, x, z);
       assignAirSlots(airWaiting, airAtDestCount, x, z);
+      // Sea units: water formation slots, then individual sea paths.
+      // (No flow fields for sea — the field system is land-only.)
+      assignSeaSlots(world, t, seaWaitingUnits, seaAtDestCount, x, z);
+      for (const unit of seaWaitingUnits) {
+        orderMoveTo(world, unit, unit.arriveX, unit.arriveZ);
+      }
       if (groundWaiting.length === 0) return [];
       const fieldId = requestField(world, groundWaiting, destCell);
       for (const id of groundWaiting) {

@@ -44,8 +44,9 @@ slower growth — low taxes grow your city faster.
 
 ## The market
 
-Trade any resource for funds at fixed prices. Buying costs 20% extra,
-selling pays 20% less — so only trade when you need to, not for profit.
+Trade materials, fuel, food, or research for funds at fixed prices.
+Buying costs 20% extra, selling pays 20% less — so only trade when you
+need to, not for profit. (Goods, influence, and manpower can't be traded.)
 
 ## Growth
 
@@ -202,7 +203,7 @@ your units can see — no fog cheating. Dismiss to resume direct control.
 shield holds. The Marshal AI builds and uses it fairly.
 
 **Storm Array** (6,000 funds + 2,500 materials, 150s build): fire the
-**Storm Engine** — 8 lightning strikes over 12 seconds at your target
+**Storm Engine** — 8 lightning strikes over ~8 seconds at your target
 point (±3 scatter, 120 damage, radius 10). Storm clouds gather, lightning
 flashes, and each strike kicks up a fireball. 10-minute cooldown. Aegis
 shields block storm damage too.

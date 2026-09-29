@@ -55,6 +55,7 @@ import {
   type UnitDef,
 } from './units';
 import { orderMoveTo } from './movement';
+import { MAP_HALF_SIZE } from './city';
 
 /** Can this weapon be aimed at that target's domain? */
 export function canTarget(def: UnitDef, target: UnitRecord): boolean {
@@ -219,12 +220,33 @@ export function createCombatSystem(): SimSystem {
           dead.push(target);
         }
       } else if (u.chasing) {
-        // Explicit attack order, target out of reach: chase it. Re-issue
-        // only when idle (arrived at a stale position) or the target has
-        // moved well away from where we're headed — not every tick.
-        const destDist = Math.hypot(target.x - u.destX, target.z - u.destZ);
-        if (u.state === 'idle' || destDist > 10) {
-          orderMoveTo(world, u, target.x, target.z);
+        // Explicit attack order, target out of reach: reposition.
+        if (d < def.minRange) {
+          // Too close for this weapon (e.g. artillery minimum range):
+          // back off directly away from the target to reach minRange.
+          // Deterministic: pure function of unit/target positions.
+          const dx = u.x - target.x;
+          const dz = u.z - target.z;
+          const dist = Math.hypot(dx, dz);
+          if (dist > 1e-9) {
+            const backOff = def.minRange - d + 2; // +2 buffer to clear minRange
+            const m = MAP_HALF_SIZE - 0.01;
+            const bx = Math.min(Math.max(u.x + (dx / dist) * backOff, -m), m);
+            const bz = Math.min(Math.max(u.z + (dz / dist) * backOff, -m), m);
+            const destDist = Math.hypot(bx - u.destX, bz - u.destZ);
+            if (u.state === 'idle' || destDist > 10) {
+              orderMoveTo(world, u, bx, bz);
+            }
+          }
+          // dist ~0: stacked on the target, no direction to back off; hold.
+        } else {
+          // Too far: chase toward the target. Re-issue only when idle
+          // (arrived at a stale position) or the target has moved well
+          // away from where we're headed — not every tick.
+          const destDist = Math.hypot(target.x - u.destX, target.z - u.destZ);
+          if (u.state === 'idle' || destDist > 10) {
+            orderMoveTo(world, u, target.x, target.z);
+          }
         }
       }
     }

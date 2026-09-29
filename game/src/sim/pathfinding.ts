@@ -258,6 +258,151 @@ export function landComponents(t: TerrainData): Int32Array {
 }
 
 // ---------------------------------------------------------------------------
+// Sea pathfinding: ships navigate water with A* on the sea mask.
+// ---------------------------------------------------------------------------
+
+/**
+ * Connected water components of the terrain: 8-connectivity with the same
+ * corner-cut rule movement uses. Static per terrain, memoized in a WeakMap.
+ * 1 = water cell in a component, -1 = land (impassable for ships).
+ *
+ * Used to short-circuit impossible queries: A* across components returns
+ * null without exploring (a ship in one bay cannot reach another bay
+ * separated by land).
+ */
+const seaComponentCache = new WeakMap<TerrainData, Int32Array>();
+export function seaComponents(t: TerrainData): Int32Array {
+  let comp = seaComponentCache.get(t);
+  if (!comp) {
+    const mask = seaPassabilityMask(t);
+    comp = new Int32Array(GRID_CELLS).fill(-1);
+    const stack: number[] = [];
+    let nextId = 0;
+    for (let cell = 0; cell < GRID_CELLS; cell++) {
+      if ((mask[cell] as number) === 0 || (comp[cell] as number) !== -1) continue;
+      comp[cell] = nextId;
+      stack.push(cell);
+      while (stack.length > 0) {
+        const cur = stack.pop() as number;
+        const cc = cellCoords(cur);
+        for (let d = 0; d < 8; d++) {
+          const [dx, dz] = DIRS[d] as readonly [number, number];
+          const nx = cc.cx + dx;
+          const nz = cc.cz + dz;
+          if (!inBounds(nx, nz)) continue;
+          const ncell = cellIndex(nx, nz);
+          if ((mask[ncell] as number) === 0 || (comp[ncell] as number) !== -1) continue;
+          if (dx !== 0 && dz !== 0) {
+            if (
+              (mask[cellIndex(cc.cx + dx, cc.cz)] as number) === 0 ||
+              (mask[cellIndex(cc.cx, cc.cz + dz)] as number) === 0
+            ) {
+              continue;
+            }
+          }
+          comp[ncell] = nextId;
+          stack.push(ncell);
+        }
+      }
+      nextId++;
+    }
+    seaComponentCache.set(t, comp);
+  }
+  return comp;
+}
+
+/**
+ * Cost of ENTERING a water cell: Infinity for land/out-of-bounds, 1.0
+ * otherwise. Ships don't use roads.
+ */
+function seaMoveCost(mask: Uint8Array, cx: number, cz: number): number {
+  if (!inBounds(cx, cz)) return Infinity;
+  return (mask[cellIndex(cx, cz)] as number) === 0 ? Infinity : 1;
+}
+
+/**
+ * A* for sea units on the water mask. Mirrors `findPath` but ships sail
+ * on water (no roads, no land). Returns null path when the destination
+ * is unreachable by water — callers must fail loudly, never hold forever.
+ */
+export function findSeaPath(
+  t: TerrainData,
+  start: number,
+  goal: number,
+  maxExpanded: number = Infinity,
+): { path: number[] | null; expanded: number; capped: boolean } {
+  if (start === goal) return { path: [start], expanded: 0, capped: false };
+  const mask = seaPassabilityMask(t);
+  // Cross-component queries are impossible — answer without exploring.
+  if (seaComponents(t)[start] !== seaComponents(t)[goal]) {
+    return { path: null, expanded: 0, capped: false };
+  }
+  const goalCoords = cellCoords(goal);
+  if (seaMoveCost(mask, goalCoords.cx, goalCoords.cz) === Infinity) {
+    return { path: null, expanded: 0, capped: false };
+  }
+  const startCoords = cellCoords(start);
+  if (seaMoveCost(mask, startCoords.cx, startCoords.cz) === Infinity) {
+    return { path: null, expanded: 0, capped: false };
+  }
+
+  const gScore = new Float64Array(GRID_CELLS).fill(Infinity);
+  const cameFrom = new Int32Array(GRID_CELLS).fill(-1);
+  const closed = new Uint8Array(GRID_CELLS);
+  const open = new BinaryHeap();
+  gScore[start] = 0;
+  open.push(start, heuristic(start, goal));
+
+  let expanded = 0;
+  while (open.size > 0) {
+    const current = open.pop();
+    if (closed[current] === 1) continue;
+    closed[current] = 1;
+    expanded++;
+    if (expanded > maxExpanded) {
+      return { path: null, expanded, capped: true };
+    }
+    if (current === goal) {
+      const path: number[] = [];
+      let c: number = goal;
+      while (c !== -1) {
+        path.push(c);
+        c = cameFrom[c] as number;
+      }
+      path.reverse();
+      return { path, expanded, capped: false };
+    }
+    const { cx, cz } = cellCoords(current);
+    const gCurrent = gScore[current] as number;
+    for (let d = 0; d < 8; d++) {
+      const [dx, dz] = DIRS[d] as readonly [number, number];
+      const nx = cx + dx;
+      const nz = cz + dz;
+      const stepBase = seaMoveCost(mask, nx, nz);
+      if (stepBase === Infinity) continue;
+      // No corner cutting: both orthogonal neighbors must be water.
+      if (dx !== 0 && dz !== 0) {
+        if (
+          seaMoveCost(mask, cx + dx, cz) === Infinity ||
+          seaMoveCost(mask, cx, cz + dz) === Infinity
+        ) {
+          continue;
+        }
+      }
+      const stepCost = dx !== 0 && dz !== 0 ? stepBase * SQRT2 : stepBase;
+      const neighbor = cellIndex(nx, nz);
+      const tentative = gCurrent + stepCost;
+      if (tentative < (gScore[neighbor] as number)) {
+        gScore[neighbor] = tentative;
+        cameFrom[neighbor] = current;
+        open.push(neighbor, tentative + heuristic(neighbor, goal));
+      }
+    }
+  }
+  return { path: null, expanded, capped: false };
+}
+
+// ---------------------------------------------------------------------------
 // Binary heap with a total deterministic order (priority, then cell index).
 // ---------------------------------------------------------------------------
 
@@ -814,8 +959,17 @@ function completePathRequest(world: World, t: TerrainData, req: PathRequest): vo
     unit.failReason = null;
     return;
   }
-  const { path, capped } = findPath(t, world.city, startCell, req.destCell, ASTAR_MAX_EXPANDED);
+  const { path, capped } =
+    unit.domain === 'sea'
+      ? findSeaPath(t, startCell, req.destCell, ASTAR_MAX_EXPANDED)
+      : findPath(t, world.city, startCell, req.destCell, ASTAR_MAX_EXPANDED);
   if (capped) {
+    if (unit.domain === 'sea') {
+      // Sea units don't use flow fields (land-only system): a capped sea
+      // search fails loudly rather than falling back to a wrong-domain field.
+      failUnitOrder(unit, 'no path: destination unreachable by water');
+      return;
+    }
     // Long-range request: a synchronous search would blow the tick budget.
     // Fall back to a chunked flow field; the unit keeps waiting.
     const fieldId = requestField(world, [unit.id], req.destCell);
@@ -823,7 +977,12 @@ function completePathRequest(world: World, t: TerrainData, req: PathRequest): vo
     return;
   }
   if (path === null) {
-    failUnitOrder(unit, 'no path: destination unreachable');
+    failUnitOrder(
+      unit,
+      unit.domain === 'sea'
+        ? 'no path: destination unreachable by water'
+        : 'no path: destination unreachable',
+    );
     return;
   }
   unit.path = path;

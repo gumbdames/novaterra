@@ -101,4 +101,29 @@ describe('sim/snapshot', () => {
   it('snapshot carries the current version stamp', () => {
     expect(takeSnapshot(livedWorld()).version).toBe(SNAPSHOT_VERSION);
   });
+
+  it('restore then new commands matches a fresh run with the same history', () => {
+    // Run A: tick 10, snapshot, restore, issue NEW command, tick 10 more.
+    const worldA = createWorld(777);
+    const driverA = createTickDriver();
+    for (let i = 0; i < 10; i++) driverA.step(worldA, 100);
+    const snap = takeSnapshot(worldA);
+    const restoredA = restoreSnapshot(snap);
+    // New command after restore: spawn an entity (simulates a player order).
+    spawnEntity(restoredA, 'tank', 50, 50);
+    const driverA2 = createTickDriver();
+    for (let i = 0; i < 10; i++) driverA2.step(restoredA, 100);
+    const digestA = digestWorld(restoredA);
+
+    // Run B: fresh world, same seed, same tick count, same "command" at the
+    // same tick (tick 10). Must produce the identical digest.
+    const worldB = createWorld(777);
+    const driverB = createTickDriver();
+    for (let i = 0; i < 10; i++) driverB.step(worldB, 100);
+    spawnEntity(worldB, 'tank', 50, 50);
+    for (let i = 0; i < 10; i++) driverB.step(worldB, 100);
+    const digestB = digestWorld(worldB);
+
+    expect(digestA).toBe(digestB);
+  });
 });
