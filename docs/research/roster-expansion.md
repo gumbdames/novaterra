@@ -618,6 +618,16 @@ construction. Until unlocked, those kinds are skipped in composition
 
 Base mix (no intel): 30% rifles, 20% tank, 10% artillery, 10% aa,
 10% apc, 10% flex (sniperTeam/spectre), 10% air/sea per map.
+
+Per-match personality (seeded, `ai.ts`): each AI draws playstyle
+parameters from its own `ai-<owner>` RNG stream at setup — same seed
+plays identically, different seeds play differently at the same
+difficulty. The counter table above is NOT jittered (difficulty keeps
+its meaning); what varies is the base-mix (±30% per-kind share jitter),
+attack-order cadence (every think vs every other think by aggression),
+forward-base timing/direction, scout waypoint rotation, and the
+economy-upgrade order (§7.4). Cadet's personality is inert.
+
 Commander/general/marshal adjust with counters:
 
 | Sees (visible enemies) | Builds (priority) |
@@ -653,7 +663,10 @@ Commander/general/marshal adjust with counters:
 Research priority when research stockpile allows: apRounds →
 compositeArmor → engineTuning (if fielding ≥4 vehicles) → sonarSuite
 (if enemy subs ever seen) → advancedAvionics (if fielding ≥3
-aircraft). Citizen and below research only engineTuning/droneOptics
+aircraft) → the economy line (precisionManufacturing, smartGrid,
+verticalFarming, cruiseMissiles, freeTrade) in per-match personality
+order — the combat/support head above keeps this priority in every
+match; only the economy tail is shuffled per seed. Citizen and below research only engineTuning/droneOptics
 (cheap). Cadet researches nothing (never counters, never techs —
 consistent with its current "no decisions" profile).
 

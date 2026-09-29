@@ -133,6 +133,19 @@ export function canonicalizeWorld(world: World): string {
       ? `${canonicalNumber(p.navalWater.x)},${canonicalNumber(p.navalWater.z)},`
       : '-,';
     out += `${p.seenSubmarine ? 1 : 0},`;
+    // Personality (per-match seeded playstyle): covered so same-seed
+    // replays digest identically and different seeds digest differently.
+    const pers = p.personality;
+    if (pers) {
+      out += `pers=${canonicalNumber(pers.aggression)},${canonicalNumber(pers.expansionEagerness)},`;
+      out += `${pers.attackEveryNthThink},${pers.expansionUnitThreshold},${pers.scoutStartIndex},`;
+      out += `${canonicalNumber(pers.expansionAngle)},`;
+      const mwKeys = Object.keys(pers.mixWeights).sort();
+      out += `mw=${mwKeys.map((k) => `${k}:${canonicalNumber(pers.mixWeights[k] as number)}`).join('.')},`;
+      out += `ro=${pers.researchOrder.join('.')},`;
+    } else {
+      out += 'pers=-,';
+    }
     const keys = Object.keys(p.builtCounts).sort();
     out += keys.map((k) => `${k}:${p.builtCounts[k]}`).join(',') + ';';
   }

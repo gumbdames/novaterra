@@ -58,11 +58,36 @@
  *    cost nothing (rejected at enqueue); a successful probe IS the first
  *    fishing boat.
  *
+ * Per-match personality (seeded, deterministic — not "entirely deterministic"
+ * across matches):
+ *  - At `addAIPlayer` time each AI draws a small personality record from
+ *    its own named RNG stream (`ai-<owner>`, derived from the world seed
+ *    via rng.ts). Per-owner streams mean AI players never shift each
+ *    other's draws: adding a second AI doesn't change the first's
+ *    personality.
+ *  - The personality holds raw traits (aggression, expansionEagerness,
+ *    both 0..1) plus derived knobs: per-kind composition weight jitter
+ *    (±30% on the base-mix shares — the counter table itself is
+ *    untouched), a per-match order for the economy-line upgrades (the
+ *    combat/support research head keeps the spec §7.4 priority),
+ *    attack-timing jitter (low-aggression personalities issue attack
+ *    orders every other think instead of every think), a forward-base
+ *    unit threshold (6..10) plus a fallback expansion direction, and a
+ *    scout waypoint rotation start. Cadet's personality is inert: cadet
+ *    still trains only rifles and never builds, researches, counters,
+ *    or attacks.
+ *  - All draws happen once at registration; think functions only read
+ *    the stored personality and draw nothing, so per-think RNG
+ *    consumption is trivially deterministic (zero). Same seed + same
+ *    commands ⇒ identical play; different seeds ⇒ different playstyles
+ *    at the same difficulty tier. The personality is plain JSON-safe
+ *    data, snapshotted and digested like the rest of the AI state.
+ *
  * Determinism:
  *  - Decisions run on a fixed tick cadence per difficulty. All randomness
- *    flows through the named 'ai' RNG stream. Iteration order is by
- *    stable unit id (or fixed tables). AI state is plain JSON-safe data,
- *    snapshotted and digested like everything else.
+ *    flows through the named `ai-<owner>` RNG streams (see above).
+ *    Iteration order is by stable unit id (or fixed tables). AI state is
+ *    plain JSON-safe data, snapshotted and digested like everything else.
  *
  * Pure module: no DOM, no three.js, no wall clock, no Math.random.
  * Safe under Node/vitest.
@@ -73,6 +98,7 @@ import type { CommandQueue } from './commands';
 import type { SimSystem } from './tick';
 import { findUnit, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
 import { rngBank } from './world';
+import type { RngBank } from './rng';
 import { canTarget } from './combat';
 import { isUnitAvailableForAge, getSightBonus, AGE_PROGRESSION } from './ages';
 import { effectiveSight, hasUpgrade, registerUpgradeCommands, UPGRADE_DEFS, type UpgradeId } from './upgrades';
@@ -117,6 +143,140 @@ export const AI_MAX_UNITS: Record<AIDifficulty, number> = {
 /** What the AI knows about nearby water (found by probing, never maphack). */
 export type AINavalStatus = 'unknown' | 'landlocked' | 'coastal';
 
+// ---------------------------------------------------------------------------
+// Per-match personality (seeded playstyle variation)
+// ---------------------------------------------------------------------------
+
+/**
+ * Per-match AI personality: a small set of playstyle parameters drawn
+ * once from the sim RNG when the AI player is registered. Two matches
+ * with the same seed produce the same personality (deterministic
+ * replay); different seeds play differently at the same difficulty.
+ *
+ * Difficulty keeps its meaning: personality varies HOW the AI plays, not
+ * its skill tier. Think cadence, army caps, the counter table, upgrade
+ * prereqs, and cadet's "rifles only, never attack" profile are all
+ * untouched — personality only jitters timing, composition weights,
+ * expansion eagerness, and the order of flavor-tier upgrades.
+ *
+ * Plain data — snapshotted + digested. Old snapshots (no personality)
+ * decode to NEUTRAL_PERSONALITY, which reproduces pre-personality
+ * behavior exactly.
+ */
+export interface AIPersonality {
+  /** Raw trait 0..1: higher attacks every think, lower every other think. */
+  aggression: number;
+  /** Raw trait 0..1: higher establishes the forward base with fewer units. */
+  expansionEagerness: number;
+  /**
+   * Per-kind multipliers (0.7..1.3) applied to the base-mix shares in
+   * chooseUnitKind. Missing kinds count as 1. The counter table is NOT
+   * jittered — counters stay exactly as designed.
+   */
+  mixWeights: Record<string, number>;
+  /**
+   * This match's order for the economy-line upgrades (the tail of
+   * RESEARCH_PRIORITY). The combat/support head keeps the spec §7.4
+   * priority. Empty (legacy snapshots) falls back to the default order.
+   */
+  researchOrder: UpgradeId[];
+  /** Fallback expansion direction (radians) when no enemy is visible. */
+  expansionAngle: number;
+  /** Derived from aggression: attack orders every think (1) or every other think (2). */
+  attackEveryNthThink: 1 | 2;
+  /** Derived from expansionEagerness: units needed before the forward base (6..10). */
+  expansionUnitThreshold: number;
+  /** Initial scout waypoint rotation (0..3). */
+  scoutStartIndex: number;
+}
+
+/** Neutral personality: reproduces pre-personality AI behavior exactly. */
+export const NEUTRAL_PERSONALITY: AIPersonality = {
+  aggression: 0.5,
+  expansionEagerness: 0.5,
+  mixWeights: {},
+  researchOrder: [],
+  expansionAngle: 0,
+  attackEveryNthThink: 1,
+  expansionUnitThreshold: 8,
+  scoutStartIndex: 0,
+};
+
+/**
+ * Named RNG stream for one AI player's personality draws. Per-owner (not
+ * one shared stream) so AI players never shift each other's draws:
+ * adding a second AI player doesn't change the first's personality.
+ */
+function personalityStream(owner: number): string {
+  return `ai-${owner}`;
+}
+
+/** Kinds jittered by personality: the union of both base mixes. */
+const MIX_JITTER_KINDS: UnitKind[] = [
+  'rifles', 'tank', 'artillery', 'aa', 'spectre',
+  'apc', 'sniperTeam', 'fighter', 'attackHeli',
+];
+
+/**
+ * First N entries of RESEARCH_PRIORITY are the spec §7.4 combat/support
+ * order (pinned by regression tests: apRounds first, …); the rest is the
+ * economy line, which the personality reorders per match.
+ */
+const RESEARCH_HEAD_COUNT = 7;
+
+/** Fisher-Yates shuffle of a copy, drawing from the named stream. */
+function shuffled<T>(rng: RngBank, stream: string, items: T[]): T[] {
+  const arr = [...items];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = rng.intBelow(stream, i + 1);
+    const tmp = arr[i]!;
+    arr[i] = arr[j]!;
+    arr[j] = tmp;
+  }
+  return arr;
+}
+
+/**
+ * Derive one AI player's personality from the sim RNG. Called once at
+ * registration (never during ticks): draw counts are a deterministic
+ * function of (owner, difficulty), and think functions draw nothing.
+ */
+function derivePersonality(world: World, owner: number, difficulty: AIDifficulty): AIPersonality {
+  const stream = personalityStream(owner);
+  const rng = rngBank(world);
+  const aggression = rng.next(stream);
+  const expansionEagerness = rng.next(stream);
+  const p: AIPersonality = {
+    aggression,
+    expansionEagerness,
+    mixWeights: {},
+    researchOrder: [],
+    expansionAngle: 0,
+    attackEveryNthThink: aggression >= 0.5 ? 1 : 2,
+    expansionUnitThreshold: 8,
+    scoutStartIndex: 0,
+  };
+  // Cadet's personality is inert (it never builds/researches/counters/
+  // attacks/expands): the two raw traits are still drawn so the stream
+  // shape is uniform, but nothing reads them.
+  if (difficulty === 'cadet') return p;
+  for (const kind of MIX_JITTER_KINDS) {
+    p.mixWeights[kind] = rng.range(stream, 0.7, 1.3);
+  }
+  if (difficulty === 'citizen') return p;
+  // commander+: shuffle the economy-line research tail.
+  p.researchOrder = shuffled(
+    rng,
+    stream,
+    RESEARCH_PRIORITY.slice(RESEARCH_HEAD_COUNT).map((c) => c.id),
+  );
+  p.expansionAngle = rng.range(stream, 0, Math.PI * 2);
+  // Inverse mapping: higher eagerness ⇒ expands with fewer units.
+  p.expansionUnitThreshold = 10 - Math.floor(p.expansionEagerness * 5);
+  p.scoutStartIndex = rng.intBelow(stream, 4);
+  return p;
+}
+
 /** Per-player AI state. Plain data — snapshotted + digested. */
 export interface AIPlayerState {
   /** Owner id this AI controls. */
@@ -159,6 +319,12 @@ export interface AIPlayerState {
   navalWater: { x: number; z: number } | null;
   /** Set once a submarine is ever seen — gates the Sonar Suite priority. */
   seenSubmarine: boolean;
+  /**
+   * Per-match personality (seeded playstyle variation). Drawn once from
+   * the `ai-<owner>` RNG stream at registration; think functions read it
+   * but never draw from it. Plain data — snapshotted + digested.
+   */
+  personality: AIPersonality;
 }
 
 /** AI state for the world. Plain data — snapshotted + digested. */
@@ -182,6 +348,10 @@ export function addAIPlayer(
   baseX: number,
   baseZ: number,
 ): void {
+  // The personality is drawn from the sim RNG here at registration
+  // (setup time, never mid-tick): same seed ⇒ same personality, and the
+  // draws land in world.rng so they are part of snapshots and digests.
+  const personality = derivePersonality(world, owner, difficulty);
   world.ai.players.push({
     owner,
     difficulty,
@@ -189,7 +359,7 @@ export function addAIPlayer(
     baseZ,
     nextThinkTick: world.tick + AI_THINK_TICKS[difficulty],
     forwardBase: null,
-    scoutIndex: 0,
+    scoutIndex: personality.scoutStartIndex,
     builtCounts: {},
     superweapons: { aegisReadyTick: 0, stormReadyTick: 0 },
     virtualBuildings: { completed: [], constructing: null },
@@ -197,6 +367,7 @@ export function addAIPlayer(
     navalProbeIndex: 0,
     navalWater: null,
     seenSubmarine: false,
+    personality,
   });
 }
 
@@ -590,7 +761,11 @@ function chooseUnitKind(
   let bestScore = -Infinity;
   for (const { kind, share } of mix) {
     if (!canTrain(world, owner, kind)) continue;
-    const score = share * cap - get(kind);
+    // Personality jitters each kind's share ±30% (missing kinds count as
+    // 1): matches feel different, while the counter framework above — the
+    // part that defines the difficulty's skill — is untouched.
+    const weight = ai.personality.mixWeights[kind] ?? 1;
+    const score = share * cap * weight - get(kind);
     if (score > bestScore) {
       bestScore = score;
       best = kind;
@@ -681,13 +856,37 @@ const RESEARCH_PRIORITY: ResearchCandidate[] = [
   { id: 'freeTrade', when: always },
 ];
 
+/** ResearchCandidate lookup by id (for personality-ordered iteration). */
+const RESEARCH_BY_ID = new Map<UpgradeId, ResearchCandidate>(
+  RESEARCH_PRIORITY.map((c) => [c.id, c]),
+);
+
+/**
+ * This match's research order: the spec'd combat/support head (pinned),
+ * then the economy line in the AI's personality order. A legacy/empty
+ * personality falls back to the default RESEARCH_PRIORITY order.
+ */
+function researchOrderFor(ai: AIPlayerState): ResearchCandidate[] {
+  const head = RESEARCH_PRIORITY.slice(0, RESEARCH_HEAD_COUNT);
+  const tailIds =
+    ai.personality.researchOrder.length > 0
+      ? ai.personality.researchOrder
+      : RESEARCH_PRIORITY.slice(RESEARCH_HEAD_COUNT).map((c) => c.id);
+  const tail: ResearchCandidate[] = [];
+  for (const id of tailIds) {
+    const cand = RESEARCH_BY_ID.get(id);
+    if (cand) tail.push(cand);
+  }
+  return [...head, ...tail];
+}
+
 /** Research one upgrade per think tick, by priority, when prereqs allow. */
 function thinkResearch(world: World, queue: CommandQueue, ai: AIPlayerState, counts: Map<UnitKind, number>): void {
   // Research happens at the lab (real or virtually constructed).
   if (!hasProductionBuilding(world, ai.owner, 'lab')) return;
   const player = getPlayer(world.city, ai.owner);
   if (!player) return;
-  for (const { id, when } of RESEARCH_PRIORITY) {
+  for (const { id, when } of researchOrderFor(ai)) {
     if (hasUpgrade(world, ai.owner, id)) continue;
     if (!when(world, ai, counts)) continue;
     // Mirror researchUpgrade's own validation (age, building prereqs,
@@ -760,6 +959,19 @@ function thinkNavalProbe(world: World, queue: CommandQueue, ai: AIPlayerState): 
 // Per-level think functions
 // ---------------------------------------------------------------------------
 
+/**
+ * Attack-timing jitter around the think cadence: low-aggression
+ * personalities issue attack orders every other think instead of every
+ * think. Units already chasing keep chasing via the combat system, so
+ * this only staggers NEW orders — it never cancels an ongoing attack.
+ * The think index is floor(tick / cadence): deterministic, no RNG draws.
+ */
+function attacksThisThink(world: World, ai: AIPlayerState): boolean {
+  const every = ai.personality.attackEveryNthThink;
+  if (every <= 1) return true;
+  return Math.floor(world.tick / AI_THINK_TICKS[ai.difficulty]) % every === 0;
+}
+
 /** Cadet think: trickle rifles, never attack, never expand, never build. */
 function thinkCadet(
   world: World,
@@ -798,7 +1010,8 @@ function thinkCitizen(
   thinkProduction(world, queue, ai, counts, n, visible);
 
   // Attack: order all combat units to attack the nearest visible enemy.
-  if (visible.length > 0) {
+  // (Personality may stagger new attack orders to every other think.)
+  if (visible.length > 0 && attacksThisThink(world, ai)) {
     // Nearest to base (deterministic). The length check above guarantees [0] exists.
     let nearest: UnitRecord = visible[0]!;
     let best = Infinity;
@@ -918,11 +1131,13 @@ function thinkCommander(
     }
   }
 
-  // --- Expansion: once we have 8+ units, establish a forward base
-  //     toward the nearest visible enemy (or a default direction).
-  if (!ai.forwardBase && n >= 8) {
-    let fx = ai.baseX + 80;
-    let fz = ai.baseZ;
+  // --- Expansion: once we have enough units (personality threshold
+  //     6..10, was a flat 8), establish a forward base toward the
+  //     nearest visible enemy — or in this match's personality direction
+  //     when no enemy is visible.
+  if (!ai.forwardBase && n >= ai.personality.expansionUnitThreshold) {
+    let fx: number;
+    let fz: number;
     if (visible.length > 0) {
       let nearest: UnitRecord = visible[0]!;
       let best = Infinity;
@@ -938,6 +1153,10 @@ function thinkCommander(
       // Forward base halfway toward the enemy.
       fx = (ai.baseX + nearest.x) / 2;
       fz = (ai.baseZ + nearest.z) / 2;
+    } else {
+      const a = ai.personality.expansionAngle;
+      fx = ai.baseX + Math.round(Math.cos(a) * 80);
+      fz = ai.baseZ + Math.round(Math.sin(a) * 80);
     }
     ai.forwardBase = { x: fx, z: fz };
     // Send a small detachment to the forward base.
@@ -956,7 +1175,8 @@ function thinkCommander(
 
   // --- Attack: like citizen, but fighters prefer air targets and
   //     missile boats stay in their pack (group order already issued).
-  if (visible.length > 0) {
+  //     (Personality may stagger new attack orders to every other think.)
+  if (visible.length > 0 && attacksThisThink(world, ai)) {
     let nearest: UnitRecord = visible[0]!;
     let best = Infinity;
     for (const e of visible) {
@@ -1143,8 +1363,11 @@ export function createAISystem(queue: CommandQueue): SimSystem {
   }
   return (world: World) => {
     creditVirtualEconomy(world);
-    // Deterministic iteration: AI players in registration order.
-    for (const ai of world.ai.players) {
+    // Deterministic iteration: AI players in fixed owner order. A sorted
+    // COPY — the stored registration order is never mutated; the player
+    // objects (and their nextThinkTick updates) are shared references.
+    const players = [...world.ai.players].sort((a, b) => a.owner - b.owner);
+    for (const ai of players) {
       if (world.tick < ai.nextThinkTick) continue;
       ai.nextThinkTick = world.tick + AI_THINK_TICKS[ai.difficulty];
       switch (ai.difficulty) {
@@ -1168,9 +1391,85 @@ export function createAISystem(queue: CommandQueue): SimSystem {
   };
 }
 
+/** Canonical JSON-safe encoding of one AI personality (key order fixed). */
+function encodePersonality(p: AIPersonality): unknown {
+  const weights = Object.keys(p.mixWeights)
+    .sort()
+    .reduce<Record<string, number>>((acc, k) => {
+      const v = p.mixWeights[k];
+      if (v !== undefined) acc[k] = v;
+      return acc;
+    }, {});
+  return {
+    aggression: p.aggression,
+    expansionEagerness: p.expansionEagerness,
+    mixWeights: weights,
+    researchOrder: [...p.researchOrder],
+    expansionAngle: p.expansionAngle,
+    attackEveryNthThink: p.attackEveryNthThink,
+    expansionUnitThreshold: p.expansionUnitThreshold,
+    scoutStartIndex: p.scoutStartIndex,
+  };
+}
+
+/**
+ * Restore a personality from a snapshot payload. Missing fields (legacy
+ * snapshots pre-personality) or malformed values fall back to
+ * NEUTRAL_PERSONALITY, which reproduces pre-personality behavior
+ * exactly — so old saves load without a snapshot version bump (the
+ * step-7 precedent for AI-state additions).
+ */
+function decodePersonality(data: unknown): AIPersonality {
+  const d = (data ?? {}) as Partial<Record<keyof AIPersonality, unknown>>;
+  const num = (v: unknown, fallback: number): number =>
+    typeof v === 'number' && Number.isFinite(v) ? v : fallback;
+  const clamp01 = (v: unknown, fallback: number): number =>
+    Math.min(1, Math.max(0, num(v, fallback)));
+  const mixWeights: Record<string, number> = {};
+  const mw = d.mixWeights;
+  if (mw !== null && typeof mw === 'object') {
+    for (const [k, v] of Object.entries(mw as Record<string, unknown>)) {
+      if (typeof v === 'number' && Number.isFinite(v)) mixWeights[k] = v;
+    }
+  }
+  const validResearch = new Set<UpgradeId>(
+    RESEARCH_PRIORITY.slice(RESEARCH_HEAD_COUNT).map((c) => c.id),
+  );
+  const researchOrder: UpgradeId[] = [];
+  if (Array.isArray(d.researchOrder)) {
+    for (const id of d.researchOrder) {
+      if (
+        typeof id === 'string' &&
+        validResearch.has(id as UpgradeId) &&
+        !researchOrder.includes(id as UpgradeId)
+      ) {
+        researchOrder.push(id as UpgradeId);
+      }
+    }
+  }
+  const eut = d.expansionUnitThreshold;
+  const ssi = d.scoutStartIndex;
+  return {
+    aggression: clamp01(d.aggression, NEUTRAL_PERSONALITY.aggression),
+    expansionEagerness: clamp01(d.expansionEagerness, NEUTRAL_PERSONALITY.expansionEagerness),
+    mixWeights,
+    researchOrder,
+    expansionAngle: num(d.expansionAngle, NEUTRAL_PERSONALITY.expansionAngle),
+    attackEveryNthThink: d.attackEveryNthThink === 2 ? 2 : 1,
+    expansionUnitThreshold:
+      typeof eut === 'number' && Number.isInteger(eut) && eut >= 1
+        ? eut
+        : NEUTRAL_PERSONALITY.expansionUnitThreshold,
+    scoutStartIndex:
+      typeof ssi === 'number' && Number.isInteger(ssi) && ssi >= 0
+        ? ssi
+        : NEUTRAL_PERSONALITY.scoutStartIndex,
+  };
+}
+
 /**
  * Canonical JSON-safe encoding of AI state for snapshots and digests.
- * Players in registration order; builtCounts keys sorted.
+ * Players in registration order; builtCounts and mixWeights keys sorted.
  */
 export function encodeAIState(ai: AIState): unknown {
   return {
@@ -1196,6 +1495,7 @@ export function encodeAIState(ai: AIState): unknown {
       navalProbeIndex: p.navalProbeIndex ?? 0,
       navalWater: p.navalWater ? { x: p.navalWater.x, z: p.navalWater.z } : null,
       seenSubmarine: p.seenSubmarine ?? false,
+      personality: encodePersonality(p.personality ?? NEUTRAL_PERSONALITY),
       builtCounts: Object.keys(p.builtCounts).sort().reduce<Record<string, number>>(
         (acc, k) => {
           const v = p.builtCounts[k];
@@ -1229,6 +1529,7 @@ export function decodeAIState(data: unknown): AIState {
       navalProbeIndex?: number;
       navalWater?: { x: number; z: number } | null;
       seenSubmarine?: boolean;
+      personality?: unknown;
     }[];
   };
   return {
@@ -1255,6 +1556,7 @@ export function decodeAIState(data: unknown): AIState {
       navalProbeIndex: p.navalProbeIndex ?? 0,
       navalWater: p.navalWater ? { x: p.navalWater.x, z: p.navalWater.z } : null,
       seenSubmarine: p.seenSubmarine ?? false,
+      personality: decodePersonality(p.personality),
     })),
   };
 }

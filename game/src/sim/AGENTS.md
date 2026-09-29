@@ -50,12 +50,25 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   never stacking. Combat Medics heal friendly living land units in
   radius 12 at 2 HP/s (4 HP/s with Field Medicine). No RNG — fully deterministic.
 - `ai.ts` — Classic AI, five difficulties (cadet/citizen/commander/general/
-  marshal). Deterministic, fair (only sees enemies via `getVisibleEnemies()`,
+  marshal). Seeded per-match personalities (same seed ⇒ identical play;
+  different seeds ⇒ different playstyles at the same tier), fair (only
+  sees enemies via `getVisibleEnemies()`,
   never reads enemy positions directly; water is found by probe spawns, never
   maphack). Issues standard commands (`spawnUnit`, `moveUnit`, `moveGroup`,
   `attackUnit`, `researchUpgrade`) through the queue — rejections are
   swallowed, never crash the tick. Think cadence: 240/120/60/45/30 ticks.
-  Army caps: 6/14/26/34/48 (`AI_MAX_UNITS`, exported). Composition: counters
+  Army caps: 6/14/26/34/48 (`AI_MAX_UNITS`, exported). Personality
+  (`AIPersonality`, plain data): drawn once at `addAIPlayer` from the
+  named `ai-<owner>` RNG stream (per-owner streams never shift each other;
+  zero draws during thinks) — aggression 0..1 (attack orders every think
+  vs every other think), expansionEagerness 0..1 (forward-base threshold
+  6..10 + fallback expansion direction), ±30% jitter on base-mix shares
+  (the counter table is NOT jittered), a per-match order for the
+  economy-line upgrades (the combat/support research head keeps the spec
+  §7.4 priority), and a scout waypoint rotation start. Cadet's personality
+  is inert (still rifles-only, never attacks). Difficulty meaning is
+  untouched: cadence, caps, counters, prereqs, and cadet's passivity are
+  exactly as designed — personality varies HOW, not how well. Composition: counters
   first (spec §7.2 — AA up to air+1 then fighters vs air; ×2 frigates per
   sub; submarines/missile-boat packs vs capitals; tank destroyers then
   artillery vs heavy masses; APC/MLRS/artillery vs light masses; spectres/
@@ -73,7 +86,8 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   economy has no tax loop to pay it from. Upgrade research (commander+,
   spec §7.4): AP Rounds → Composite Armor → Engine Tuning (4+ vehicles) →
   Sonar Suite (subs seen) → Advanced Avionics (3+ aircraft) → the economy
-  line, one per think, age/building/affordability pre-validated. Naval:
+  line in per-match personality order, one per think, age/building/
+  affordability pre-validated. Naval:
   commander+ probes for water by trial (32-point ring, 2/think); general+
   works a coastal find (fishing fleet, patrol-boat screen, missile-boat
   packs); landlocked maps conclude after the ring is exhausted. Cadet
@@ -82,8 +96,10 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   superweapons at visible clusters / raises the Aegis when hurting. State
   (`AIPlayerState`: owner, difficulty, base, nextThinkTick, forwardBase,
   scoutIndex, builtCounts, superweapons, virtualBuildings, navalStatus,
-  navalProbeIndex, navalWater, seenSubmarine) is plain data — snapshotted
-  (v6) and digested. `getVisibleEnemies` adds the Signals Grid sight bonus.
+  navalProbeIndex, navalWater, seenSubmarine, personality) is plain data —
+  snapshotted (v6, no bump: missing personalities decode to the neutral
+  personality, the step-7 precedent) and digested (personality included).
+  `getVisibleEnemies` adds the Signals Grid sight bonus.
   **Cap invariant:** the cap counts ALL of the AI's units, so starting
   forces must leave headroom — `ui/session.ts` gives cadet 2 starters
   (cap 6), everyone else 6 (caps 14/26/34/48).

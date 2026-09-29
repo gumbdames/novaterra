@@ -65,6 +65,10 @@ import { encodeUpgrades, decodeUpgrades } from './upgrades';
  *     trade routes added (Phase 3).
  * v6: Per-player researched upgrades added (roster expansion, Phase 4).
  *     v5 snapshots still load: upgrades default to {} per the spec.
+ *     (AI personality joined the AI state without a bump: decodeAIState
+ *     defaults a missing personality to the neutral personality, which
+ *     reproduces pre-personality behavior exactly — the step-7 precedent
+ *     for AI-state additions.)
  */
 export const SNAPSHOT_VERSION = 6;
 
