@@ -220,7 +220,7 @@ In skirmish you face the **Classic AI** at one of five levels:
 - **General** — combined arms. Everything the Commander does, faster and
   bigger, plus a working navy (fishing boats, patrol boats) on maps with
   usable water.
-- **Marshal** — total war. The largest armies, age advancement, the full
+- **Marshal** — all-out war. The largest armies, age advancement, the full
   navy, and fair superweapon use.
 
 The AI never cheats: it sees only what its own units see, finds water by

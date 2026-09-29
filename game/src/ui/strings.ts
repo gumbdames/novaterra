@@ -96,7 +96,7 @@ export const STRINGS = {
     difficultyCitizen: 'Citizen — a fair fight',
     difficultyCommander: 'Commander — no mercy',
     difficultyGeneral: 'General — combined arms',
-    difficultyMarshal: 'Marshal — total war',
+    difficultyMarshal: 'Marshal — all-out war',
     chooseMap: 'Choose your map',
     start: 'Start game',
     back: 'Back',

@@ -4,8 +4,9 @@ Living plan. Updated whenever reality changes. Last updated: 2026-09-29.
 
 ## Vision
 
-A 3D browser game mixing SimCity (city building, economy, civil life), Red Alert
-(warfare, skirmish, special ops) and Age of Empires (ages, tech progression).
+A 3D browser game: build cities, run the economy and civil life, wage war
+(or play skirmishes and special ops), and advance your nation through ages
+of technology.
 Modern 2026 setting. You are the President: build cities, run the economy,
 advance through ages, wage war — or disable war entirely and play pure builder.
 Save/exit/resume, pause, 5 difficulties × 2 AI modes (classic AI vs the

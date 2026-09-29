@@ -2,7 +2,7 @@
   "dependencies": {
     "three": "0.186.1"
   },
-  "description": "NOVATERRA \u2014 3D city-builder \u00d7 RTS hybrid (SimCity meets Red Alert meets Age of Empires), Phase 1 scaffold.",
+  "description": "NOVATERRA \u2014 3D city-builder \u00d7 RTS hybrid (build cities, wage war, advance through ages), Phase 1 scaffold.",
   "devDependencies": {
     "@types/three": "0.186.0",
     "typescript": "7.0.2",

@@ -20,9 +20,8 @@
  * Design (docs/research/game-design.md §C5):
  *  - Ages are development stages of the player's nation within the fixed
  *    2026 setting, not calendar years.
- *  - Age-ups are commitment choices with real costs (Age of Empires
- *    lineage): advancing costs resources and leaves you vulnerable if
- *    timed poorly.
+ *  - Age-ups are commitment choices with real costs: advancing costs
+ *    resources and leaves you vulnerable if timed poorly.
  *  - **Foundation** (Age 1): the starting age. Unlocks roads, zoning,
  *    power/water, infantry, patrol boats.
  *  - **Connectivity** (Age 2): advance by picking 1 National Program —

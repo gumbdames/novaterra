@@ -1,8 +1,8 @@
 # novaterra
 
-**A 3D city-builder × RTS hybrid for the browser** — SimCity-style city building and
-economy, Red Alert-style warfare and skirmish, Age of Empires-style ages and
-technology progression. Set in the modern world of 2026. You are the President:
+**A 3D city-builder × RTS hybrid for the browser** — build cities and run the
+economy, wage war or play skirmishes, and advance your nation through ages of
+new technology. Set in the modern world of 2026. You are the President:
 found cities, grow the economy, research through the ages, command armies on land,
 sea and air — or play a fully peaceful game with war disabled.
 
