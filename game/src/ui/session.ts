@@ -125,6 +125,12 @@ export interface GameSession {
    * no victory condition (documented as sandbox mode).
    */
   hasRival: boolean;
+  /**
+   * Rival base position for fresh sessions (used by the Muse Commander
+   * for spawn/defend anchors). Null for restored sessions — the caller
+   * can fall back to the AI player's snapshotted baseX/baseZ.
+   */
+  aiBase: { x: number; z: number } | null;
   terrain: TerrainData;
   world: World;
   queue: CommandQueue;
@@ -369,6 +375,7 @@ export function createSession(options: SessionOptions): GameSession {
     seed,
     aiDifficulty,
     hasRival,
+    aiBase: hasRival ? { x: aiBase.x, z: aiBase.z } : null,
     terrain,
     world,
     queue,

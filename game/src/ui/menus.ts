@@ -46,7 +46,17 @@ import {
   saveMuseFrequency,
   type MuseFrequency,
 } from '../muse/controller';
-import { getLiveKey, setLiveKey } from '../muse/live';
+import {
+  getLiveKey,
+  setLiveKey,
+  getLiveModel,
+  setLiveModel,
+  getLiveCadenceSec,
+  setLiveCadenceSec,
+  testLiveConnection,
+  LIVE_MODEL_OPTIONS,
+  LIVE_CADENCE_OPTIONS,
+} from '../muse/live';
 
 /** Graphics quality levels. */
 export type QualityLevel = 'low' | 'medium' | 'high';
@@ -168,19 +178,24 @@ export class MainMenu {
     const skirmish = menuButton(s.skirmish, () => this.showSkirmishSetup(buttons));
     const loadGame = menuButton(s.loadGame, () => this.actions.onShowLoadGame?.());
     const missions = menuButton(s.missions, () => this.actions.onShowMissions?.());
-    const settings = menuButton(s.settings, () => new SettingsPanel(this.root, {
-      onQualityChange: (q) => this.actions.onQualityChange(q),
-      onAudioChange: this.actions.onAudioChange,
-      onMuseFrequencyChange: this.actions.onMuseFrequencyChange,
-      onColorblindChange: this.actions.onColorblindChange,
-      onUiScaleChange: this.actions.onUiScaleChange,
-      onClose: () => this.show(),
-    }).show());
+    const settings = menuButton(s.settings, () => this.openSettings());
     buttons.append(skirmish, loadGame, missions, settings);
     menu.append(buttons);
     menu.append(el('div', 'version', s.version));
     this.root.append(menu);
     this.menuEl = menu;
+  }
+
+  /** Open the Settings panel (Live Muse key/model/cadence live here). */
+  private openSettings(onClose?: () => void): void {
+    new SettingsPanel(this.root, {
+      onQualityChange: (q) => this.actions.onQualityChange(q),
+      onAudioChange: this.actions.onAudioChange,
+      onMuseFrequencyChange: this.actions.onMuseFrequencyChange,
+      onColorblindChange: this.actions.onColorblindChange,
+      onUiScaleChange: this.actions.onUiScaleChange,
+      onClose: onClose ?? (() => this.show()),
+    }).show();
   }
 
   /**
@@ -222,13 +237,44 @@ export class MainMenu {
       ['commander', s.difficultyCommander],
       ['general', s.difficultyGeneral],
       ['marshal', s.difficultyMarshal],
+      ['muse', s.difficultyMuse],
     ];
     for (const [difficulty, label] of options) {
-      buttons.append(
-        menuButton(label, () => this.actions.onStartSkirmish(difficulty, selectedMap)),
-      );
+      const b = menuButton(label, () => {
+        // Muse difficulty is driven by the player's own API key: with no
+        // key there is nothing to drive it, so route to Settings instead
+        // of starting a game that silently isn't what was picked.
+        if (difficulty === 'muse' && getLiveKey().length === 0) {
+          this.confirmMuseNoKey();
+        } else {
+          this.actions.onStartSkirmish(difficulty, selectedMap);
+        }
+      });
+      if (difficulty === 'muse') b.title = s.difficultyMuseHint;
+      buttons.append(b);
     }
     buttons.append(menuButton(s.back, () => this.show()));
+  }
+
+  /**
+   * No-key gate for the Muse difficulty: never start a broken Muse game.
+   * The dialog routes the player to Settings (where the key lives)
+   * instead of offering a silent fallback — the fallback stays an
+   * in-game safety net, not a menu choice.
+   */
+  private confirmMuseNoKey(): void {
+    const s = STRINGS.settings;
+    const overlay = el('div', 'confirm-overlay');
+    const panel = el('div', 'confirm-panel');
+    panel.append(el('h2', '', s.museNoKeyTitle));
+    panel.append(el('p', '', s.museNoKeyBody));
+    panel.append(menuButton(s.museNoKeySettings, () => {
+      overlay.remove();
+      this.openSettings();
+    }));
+    panel.append(menuButton(s.museNoKeyCancel, () => overlay.remove()));
+    overlay.append(panel);
+    this.root.append(overlay);
   }
 
   hide(): void {
@@ -472,13 +518,56 @@ export class SettingsPanel {
     liveKey.addEventListener('change', () => setLiveKey(liveKey.value.trim()));
     liveKeyLabel.append(liveKey);
     panel.append(liveKeyLabel);
-    const liveEnableLabel = el('label', 'settings-row', '');
-    const liveEnable = document.createElement('input');
-    liveEnable.type = 'checkbox';
-    liveEnable.disabled = true; // not wired yet in 0.1 Alpha
-    liveEnable.title = s.liveMuseTitle;
-    liveEnableLabel.append(liveEnable, document.createTextNode(` ${s.liveEnableLabel}`));
-    panel.append(liveEnableLabel);
+
+    // Model selector.
+    const liveModelLabel = el('label', 'settings-row', `${s.liveModelLabel}: `);
+    const liveModel = document.createElement('select');
+    for (const model of LIVE_MODEL_OPTIONS) {
+      const opt = document.createElement('option');
+      opt.value = model;
+      opt.textContent = model;
+      opt.selected = model === getLiveModel();
+      liveModel.append(opt);
+    }
+    liveModel.addEventListener('change', () => setLiveModel(liveModel.value));
+    liveModelLabel.append(liveModel);
+    panel.append(liveModelLabel);
+
+    // Cadence selector: how often the rival phones home.
+    const liveCadenceLabel = el('label', 'settings-row', `${s.liveCadenceLabel}: `);
+    const liveCadence = document.createElement('select');
+    const cadenceLabels: Record<number, string> = {
+      30: s.liveCadence30,
+      60: s.liveCadence60,
+      120: s.liveCadence120,
+    };
+    for (const sec of LIVE_CADENCE_OPTIONS) {
+      const opt = document.createElement('option');
+      opt.value = String(sec);
+      opt.textContent = cadenceLabels[sec] ?? `${sec}s`;
+      opt.selected = sec === getLiveCadenceSec();
+      liveCadence.append(opt);
+    }
+    liveCadence.addEventListener('change', () => setLiveCadenceSec(parseInt(liveCadence.value, 10)));
+    liveCadenceLabel.append(liveCadence);
+    panel.append(liveCadenceLabel);
+
+    // Test connection button + result line.
+    const testRow = el('div', 'settings-row');
+    const testResult = el('span', 'settings-note', '');
+    const testBtn = document.createElement('button');
+    testBtn.type = 'button';
+    testBtn.textContent = s.liveTestButton;
+    testBtn.addEventListener('click', () => {
+      testBtn.disabled = true;
+      testResult.textContent = s.liveTestWaiting;
+      void testLiveConnection().then((r) => {
+        testResult.textContent = r.message;
+        testBtn.disabled = false;
+      });
+    });
+    testRow.append(testBtn, testResult);
+    panel.append(testRow);
 
     panel.append(el('h3', '', s.keysTitle));
     const keys = el('div', 'settings-keys');

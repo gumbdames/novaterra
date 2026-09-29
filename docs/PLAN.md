@@ -130,9 +130,10 @@ pass, the build is green, and all previous steps' smoke tests still pass
 8-mission campaign "The First Term" (briefings, objectives, scripted events,
 peaceful path in every mission, two endings) + offline deterministic Muse
 persona director (commentary, taunts, visible threat meter, fair dirty
-tricks, configurable chattiness) + optional **Live Muse link** scaffolding
-(user API key in localStorage only; digest → `MUSE: advise:` protocol;
-offline fallback; marked coming soon in 0.1 Alpha).
+tricks, configurable chattiness) + optional **Live Muse link** (user API
+key in localStorage only; digest → `MUSE:` directive protocol driving
+the rival commander through the queue; silent Classic fallback; the
+sixth skirmish difficulty "Muse — your API key drives the rival").
 
 Done so far:
 - `src/campaign/`: `missions.ts` (8 missions as data), `objectives.ts`
@@ -158,6 +159,29 @@ advisor), superweapons (Aegis / Storm Engine), advanced economy
 scale). Entrepreneurs: deferred (documented in GAME_MECHANICS.md).
 Touch/mobile: skipped — no playtest evidence (documented in
 HOW_TO_PLAY.md).
+
+### Muse Commander ✅ COMPLETE (2026-09-29)
+
+The "Live Muse link" from Decision 1 is now real: a sixth skirmish
+difficulty, **Muse — your API key drives the rival**. The player's own
+Anthropic API key (Settings: key + model + 30/60/120 s cadence + Test
+connection; key in `localStorage` only, never logged) powers the enemy
+commander. Design holds the Decision-1 guarantees: a compact fog-filtered
+digest (< 2 KB, owner's full state + only visible enemies — the same
+sight rule as Classic AI), a strict `MUSE:` directive protocol parsed
+into ordinary validated queue commands (Muse never touches the sim;
+canonical case-insensitive kind resolution so `patrolBoat`/`signalsGrid`
+survive model casing), one off-tick API call per cadence with a "Muse is
+thinking…" badge, directives buffered and applied at the next UI update
+(the controlled application point), and silent fallback to a Classic
+Commander brain on any failure (no key, timeout, 401/429/5xx, network,
+malformed output — a 401 latches the key: no retries until it changes).
+No key ⇒ the difficulty picker routes to Settings instead of starting a
+game that isn't what was picked. 36 new tests
+(digest fog/compactness, parser incl. casing, command mapping,
+mocked-fetch API client incl. headers + error codes, commander
+cadence/buffering/401-latch/fallback).
+529/529 green, tsc clean, build green.
 
 ## Decisions (resolved with user 2026-09-28)
 

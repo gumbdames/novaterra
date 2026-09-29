@@ -70,9 +70,12 @@ game/src/
                   # (progress.ts). Reads sim state, never mutates it directly.
   muse/           # Phase 2: deterministic persona lines (persona.ts), threat
                   # meter + trick narration from visible state only (director.ts),
-                  # event detection + chattiness throttle (controller.ts), live
-                  # Muse advisory protocol scaffold (live.ts). Advisory only:
-                  # never drives ticks or mutates sim state.
+                  # event detection + chattiness throttle (controller.ts),
+                  # live Muse link (live.ts: Anthropic API client + MUSE:
+                  # directive protocol → ordinary queue commands),
+                  # commander digest (digest.ts: compact fog-filtered battle
+                  # summary), rival controller (commander.ts: off-tick API
+                  # cadence, UI-owned, never mutates sim state directly).
   net_save/       # IndexedDB driver, export/import, save slots UI data
   main.ts         # boot, menu backdrop + menus, wiring (game loop lives in ui/game.ts)
 game/tests/

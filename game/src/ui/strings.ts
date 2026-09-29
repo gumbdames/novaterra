@@ -41,6 +41,8 @@ export const STRINGS = {
     difficultyCommander: 'Commander — no mercy',
     difficultyGeneral: 'General — combined arms',
     difficultyMarshal: 'Marshal — total war',
+    difficultyMuse: 'Muse — your API key drives the rival',
+    difficultyMuseHint: 'Requires an Anthropic API key — set one in Settings → Live Muse first.',
     chooseMap: 'Choose your map',
     start: 'Start game',
     back: 'Back',
@@ -133,12 +135,29 @@ export const STRINGS = {
     museQuiet: 'Quiet — milestones only',
     museNormal: 'Normal — events and updates',
     museChatty: 'Chatty — taunts and commentary',
-    liveMuseTitle: 'Live Muse (coming soon)',
+    liveMuseTitle: 'Live Muse',
     liveMuseNote:
-      'Point Muse at a live language model for strategic advice. The live model is advisory only — it can never drive the game. Not wired yet in 0.1 Alpha; the offline Muse covers you meanwhile.',
+      'Drive the rival commander with your own Muse API key — pick the "Muse" difficulty when starting a skirmish. ' +
+      'Your key stays in this browser and is only ever sent to api.anthropic.com. API usage is billed to your Anthropic account. ' +
+      'If the key is missing or a request fails, the rival plays on as a Classic Commander — the game never waits on the network.',
     liveKeyLabel: 'API key',
     liveKeyPlaceholder: 'Stored only in this browser',
-    liveEnableLabel: 'Enable Live Muse (coming soon)',
+    liveModelLabel: 'Model',
+    liveCadenceLabel: 'Muse thinks every',
+    liveCadence30: '30 seconds',
+    liveCadence60: '60 seconds',
+    liveCadence120: '2 minutes',
+    liveTestButton: 'Test connection',
+    liveTestWaiting: 'Testing…',
+    museNoKeyTitle: 'No API key yet',
+    museNoKeyBody:
+      'The Muse rival is driven by your own Anthropic API key — without one ' +
+      'there is no live rival to play against. Add your key in Settings → ' +
+      'Live Muse, then pick this difficulty again.',
+    museNoKeySettings: 'Open Settings',
+    museNoKeyCancel: 'Back',
+    museThinking: 'Muse is thinking…',
+    museRivalActive: 'Muse rival active',
   },
   help: {
     keys: [

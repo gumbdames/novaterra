@@ -101,6 +101,21 @@ and (if you're into that) taunts you lightly. Set its **Chattiness** in
 Settings: **Off** (silent), **Quiet** (milestones only), **Normal**
 (events and updates), or **Chatty** (taunts and commentary).
 
+### Playing against Muse (your API key drives the rival)
+
+1. Get an API key from [Anthropic](https://console.anthropic.com/)
+   (usage is billed to your Anthropic account).
+2. **Pause menu → Settings → Live Muse**: paste the key (it stays in
+   your browser only), pick a model and how often Muse thinks
+   (30 s / 60 s / 2 min), then **Test connection**.
+3. Start a skirmish and choose **Muse — your API key drives the rival**
+   as the difficulty.
+
+While Muse thinks you'll see a small badge (top-right); the game never
+waits on it. If anything goes wrong — no key, no network, rate limit —
+the rival simply plays on as a Classic Commander, so you'll never get
+a broken game.
+
 ## Saving and loading
 
 - The game **autosaves every 5 minutes** of game time.

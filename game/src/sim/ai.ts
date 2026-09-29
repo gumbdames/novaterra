@@ -17,7 +17,11 @@
 /**
  * NOVATERRA — sim/ai.ts — Classic AI (deterministic, fair).
  *
- * Three difficulty levels for the single-player skirmish opponent:
+ * Six difficulty levels for the single-player skirmish opponent:
+ * `muse` is the player-facing label for the Muse Commander rival; inside
+ * the sim it behaves exactly like `commander` (Classic AI drives the
+ * routine ticks) while the UI layer optionally enriches its orders with
+ * directives fetched from the player's own Anthropic API key.
  *  - cadet:     reacts every ~8s (240 ticks), trickles a few basic units,
  *               never expands, never builds counters, never attacks.
  *  - citizen:   reacts every ~4s (120 ticks), builds a basic army, attacks
@@ -55,8 +59,8 @@ import { getPlayer } from './city';
 import { isAegisReady, isStormReady } from './superweapons';
 import { CommandRejectedError } from './commands';
 
-/** Classic AI difficulty levels. */
-export type AIDifficulty = 'cadet' | 'citizen' | 'commander' | 'general' | 'marshal';
+/** Classic AI difficulty levels. `muse` is the player-facing Muse Commander label (sim behavior = commander). */
+export type AIDifficulty = 'cadet' | 'citizen' | 'commander' | 'general' | 'marshal' | 'muse';
 
 /** Think cadence in ticks per difficulty (30 Hz: 240 = 8s, 120 = 4s, 60 = 2s). */
 export const AI_THINK_TICKS: Record<AIDifficulty, number> = {
@@ -65,6 +69,7 @@ export const AI_THINK_TICKS: Record<AIDifficulty, number> = {
   commander: 60,
   general: 45,
   marshal: 30,
+  muse: 60,
 };
 
 /** Max army sizes per difficulty (soft caps for production). */
@@ -74,6 +79,7 @@ export const AI_MAX_UNITS: Record<AIDifficulty, number> = {
   commander: 18,
   general: 26,
   marshal: 36,
+  muse: 18,
 };
 
 /** Per-player AI state. Plain data — snapshotted + digested. */
@@ -137,31 +143,46 @@ export function addAIPlayer(
 }
 
 /**
- * Enemies visible to `owner`: any enemy unit within sight range of any
- * of the owner's units. This is the ONLY way the AI perceives enemies —
- * no omniscience.
+ * Is the world position (x, z) visible to `owner`? A position is visible
+ * when it lies within the sight range of any of the owner's living units
+ * (including the Signals Grid sight bonus). This is the ONLY way the AI
+ * perceives enemies — no omniscience — and the single fog-of-war rule
+ * shared by the Classic AI and the Muse Commander digest builder: neither
+ * may see anything the other could not.
+ *
+ * Pure: no DOM, no wall clock, no randomness.
  */
-export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
-  const own = world.units.filter((u) => u.owner === owner && u.hp > 0);
-  if (own.length === 0) return [];
-  const out: UnitRecord[] = [];
-  const seen = new Set<number>();
+export function isVisibleTo(world: World, owner: number, x: number, z: number): boolean {
   // Signals Grid (Connectivity age) grants +sight to all units.
   const sightBonus = getSightBonus(world);
+  for (const o of world.units) {
+    if (o.owner !== owner || o.hp <= 0) continue;
+    const def = UNIT_DEFS[o.kind as UnitKind];
+    const sight = def.sight + sightBonus;
+    const dx = x - o.x;
+    const dz = z - o.z;
+    // Compare squared distances; sight is in world units.
+    if (dx * dx + dz * dz <= sight * sight) return true;
+  }
+  return false;
+}
+
+/**
+ * Visible enemy units for `owner` (fog-of-war filtered): enemies within
+ * sight range of one of the owner's units.
+ *
+ * Deterministic order: by stable unit id. AI state is plain JSON-safe data,
+ * snapshotted and digested like everything else.
+ */
+export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
+  const out: UnitRecord[] = [];
+  const seen = new Set<number>();
   for (const e of world.units) {
     if (e.owner === owner || e.hp <= 0) continue;
-    for (const o of own) {
-      const def = UNIT_DEFS[o.kind as UnitKind];
-      const sight = def.sight + sightBonus;
-      const dx = e.x - o.x;
-      const dz = e.z - o.z;
-      // Compare squared distances; sight is in world units.
-      if (dx * dx + dz * dz <= sight * sight) {
-        if (!seen.has(e.id)) {
-          seen.add(e.id);
-          out.push(e);
-        }
-        break;
+    if (isVisibleTo(world, owner, e.x, e.z)) {
+      if (!seen.has(e.id)) {
+        seen.add(e.id);
+        out.push(e);
       }
     }
   }
@@ -634,6 +655,12 @@ export function createAISystem(queue: CommandQueue): SimSystem {
           thinkCitizen(world, queue, ai);
           break;
         case 'commander':
+          thinkCommander(world, queue, ai);
+          break;
+        case 'muse':
+          // Muse Commander rival: the sim-side brain is Commander-level.
+          // The UI layer enriches its orders with API directives through
+          // the same queue; Muse can never touch the sim directly.
           thinkCommander(world, queue, ai);
           break;
         case 'general':

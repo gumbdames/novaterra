@@ -252,10 +252,12 @@ describe('muse/live protocol', () => {
     const directives = parseDirectives(text);
     expect(directives).toHaveLength(2);
     expect(directives[0]).toEqual({ kind: 'advise', text: 'Build more farms before winter.' });
-    expect(directives[1]!.text).toContain('northern border');
+    const second = directives[1]!;
+    expect(second.kind).toBe('advise');
+    if (second.kind === 'advise') expect(second.text).toContain('northern border');
   });
 
-  it('the 0.1 Alpha client falls back with a LiveMuseError (offline persona covers)', async () => {
+  it('the live client falls back with a LiveMuseError when no key is set (offline persona covers)', async () => {
     const client = createLiveMuseClient();
     const world = createWorld(5);
     const digest = buildDigest(world, HUMAN, AI, null, []);
