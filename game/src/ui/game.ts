@@ -43,17 +43,27 @@ import type { UnitKind, UnitRecord } from '../sim/units';
 import { UNIT_DEFS } from '../sim/units';
 import { canTarget } from '../sim/combat';
 import {
+  BUILDING_DEFS,
   cellCenterWorld,
+  cellCoords,
   CELL_WORLD_SIZE,
   CITY_GRID_CELLS,
   inBounds,
   MAP_HALF_SIZE,
+  type BuildingKind,
 } from '../sim/city';
 import type { AIDifficulty } from '../sim/ai';
 import { CommandRejectedError } from '../sim/commands';
 import { buildTerrainView } from '../render/terrain';
 import { EntityRenderer } from '../render/entities';
 import { createRenderer } from '../render/renderer';
+import { buildNatureView, type NatureView } from '../render/nature';
+import {
+  disposeModels,
+  loadModels,
+  MODEL_PATHS,
+  type LoadedModel,
+} from '../render/models';
 import { createSession, getSkirmishOutcome, HUMAN_PLAYER_ID, type GameSession } from './session';
 import {
   applyCameraState,
@@ -205,7 +215,7 @@ export async function startGame(
     0.5,
     4000,
   );
-  const entities = new EntityRenderer(scene);
+  const entities = await loadEntityModels(session, scene);
 
   const controller = new GameController(
     container,
@@ -213,10 +223,11 @@ export async function startGame(
     renderer,
     scene,
     camera,
-    entities,
+    entities.renderer,
     session,
     opts,
     saveStore,
+    { modelMap: entities.modelMap, nature: entities.nature },
   );
   controller.start();
   return controller;
@@ -245,6 +256,82 @@ function buildGameScene(session: GameSession): THREE.Scene {
   const view = buildTerrainView(session.terrain);
   scene.add(view.group);
   return scene;
+}
+
+/** Overall startup budget for ALL model loads (~20s): boot must never hang. */
+const MODEL_LOAD_ALL_TIMEOUT_MS = 20000;
+
+/**
+ * Load the CC0 entity models (bounded by MODEL_LOAD_ALL_TIMEOUT_MS —
+ * whatever finished in time is used; the rest fall back), construct
+ * the EntityRenderer with the resulting map, and build the
+ * deterministic render-only nature scatter for the session terrain.
+ * An empty model map is fully supported: entities resolve GLB →
+ * procedural → placeholder and the game stays playable.
+ */
+async function loadEntityModels(
+  session: GameSession,
+  scene: THREE.Scene,
+): Promise<{ renderer: EntityRenderer; modelMap: Map<string, LoadedModel>; nature: NatureView | null }> {
+  const timeout = new Promise<null>((resolve) => {
+    setTimeout(() => resolve(null), MODEL_LOAD_ALL_TIMEOUT_MS);
+  });
+  const loaded = await Promise.race([loadModels(MODEL_PATHS), timeout]);
+  const modelMap = loaded?.models ?? new Map<string, LoadedModel>();
+  if (loaded === null) {
+    console.warn('[game] model loading exceeded the startup budget; using fallbacks');
+  } else if (loaded.failed.length > 0) {
+    console.warn('[game] models failed to load (fallbacks in use):', loaded.failed.join(', '));
+  }
+  const renderer = new EntityRenderer(scene, modelMap, { waterLevel: session.terrain.waterLevel });
+  // Deterministic render-only nature scatter (built once from initial
+  // state; decorative only, never affects the sim).
+  const nature = buildNatureView({
+    terrain: session.terrain,
+    models: modelMap,
+    isOccupied: buildNatureOccupancy(session.world),
+    seed: session.seed,
+  });
+  if (nature !== null) scene.add(nature.group);
+  return { renderer, modelMap, nature };
+}
+
+/**
+ * Occupancy callback for nature scatter: building footprints, road
+ * cells, and starting unit positions reject decorative props. Built
+ * once at startup from initial state (render-only decoration).
+ */
+function buildNatureOccupancy(world: World): (x: number, z: number) => boolean {
+  const cells = new Set<string>();
+  for (const b of world.city.buildings) {
+    const def = BUILDING_DEFS[b.kind as BuildingKind];
+    for (let dx = 0; dx < def.footprintW; dx++) {
+      for (let dz = 0; dz < def.footprintH; dz++) {
+        cells.add(`${b.cx + dx},${b.cz + dz}`);
+      }
+    }
+  }
+  for (const c of world.city.roads) {
+    const { cx, cz } = cellCoords(c as number);
+    cells.add(`${cx},${cz}`);
+  }
+  for (const u of world.units) {
+    cells.add(
+      `${Math.round(u.x / CELL_WORLD_SIZE)},${Math.round(u.z / CELL_WORLD_SIZE)}`,
+    );
+  }
+  return (x, z) =>
+    cells.has(`${Math.round(x / CELL_WORLD_SIZE)},${Math.round(z / CELL_WORLD_SIZE)}`);
+}
+
+/** Ownership extras for the game controller: caller-owned assets the
+ * renderer borrows (model map) and scene decorations (nature) that
+ * must be torn down in dispose(). */
+export interface GameControllerExtras {
+  /** Loaded CC0 models (borrowed by the EntityRenderer, not disposed). */
+  modelMap?: Map<string, LoadedModel>;
+  /** Nature scatter view (removed + released in dispose()). */
+  nature?: NatureView | null;
 }
 
 class GameController {
@@ -314,6 +401,15 @@ class GameController {
   private lastObjectivePanelRefresh = 0;
   /** Set once the mission's victory/defeat has been reported. */
   private missionEnded = false;
+  /**
+   * Loaded CC0 entity models for this session. Caller-owned: the
+   * renderer borrows the map's shared geometry/materials and never
+   * disposes it — this controller releases it in dispose(). Empty
+   * (all loads failed) is fully supported.
+   */
+  private readonly modelMap: Map<string, LoadedModel>;
+  /** Nature scatter view (released in dispose()). */
+  private readonly natureView: NatureView | null;
 
   constructor(
     container: HTMLElement,
@@ -325,6 +421,7 @@ class GameController {
     session: GameSession,
     opts: GameOptions,
     saveStore: SaveStore,
+    extras: GameControllerExtras = {},
   ) {
     this.container = container;
     this.canvas = canvas;
@@ -335,6 +432,8 @@ class GameController {
     this.session = session;
     this.opts = opts;
     this.saveStore = saveStore;
+    this.modelMap = extras.modelMap ?? new Map();
+    this.natureView = extras.nature ?? null;
     this.lastAutosaveTick = session.world.tick;
 
     // Phase 3: apply persisted accessibility settings.
@@ -671,6 +770,15 @@ class GameController {
     this.unbindUiClicks = null;
     this.audio.dispose();
     this.entities.dispose();
+    // Shared model assets (caller-owned): released once here, never
+    // per view. The renderer only borrowed them.
+    disposeModels(this.modelMap);
+    if (this.natureView !== null) {
+      this.scene.remove(this.natureView.group);
+      // Releases ONLY instance attributes; shared prop geo/mat stay
+      // with the models map (disposed above).
+      this.natureView.dispose();
+    }
     this.dragRect?.remove();
     this.renderer.dispose();
     this.canvas.remove();

@@ -23,15 +23,31 @@
  * per-material geometry + cloned materials that callers can tint safely.
  *
  * Responsibilities:
- *  - `MODEL_PATHS`: the stub key -> file mapping. Keys will be UnitKind |
- *    BuildingKind | prop names once the model-research step fills them in.
+ *  - `MODEL_PATHS`: the key -> file mapping. Keys are UnitKind |
+ *    BuildingKind for 1:1 entity models, `<kind><Piece>` for composite
+ *    building pieces (farm barn/silo, power-plant building/chimney,
+ *    shipyard crane/machine, aegis main block), and `prop*` for the
+ *    render-only nature scatter. See `docs/research/real-models.md` for
+ *    the sourcing rationale; every entry is CC0 (Kenney / Quaternius).
  *  - `loadModels`: fetch + process each GLB, bounded by a per-model
  *    timeout. Any failure (404, timeout, parse error) records the key in
  *    `failed` and CONTINUES — a missing model must never throw and must
- *    never hang boot. Callers fall back to the procedural placeholders in
- *    `render/entities.ts` for failed/missing keys.
+ *    never hang boot. Callers fall back to the procedural builders in
+ *    `render/proceduralModels.ts` (then the placeholders in
+ *    `render/entities.ts`) for failed/missing keys.
  *  - Pure, testable helpers: `modelBaseUrl`, `normalizeModel`,
  *    `extractModelGeometry`, `disposeModels`.
+ *
+ * Scale provenance: every `scale` below was computed by loading the GLB
+ * with this module's own `normalizeModel` and fitting it inside the
+ * game's footprint convention (`hullSizeFor` for units, footprint tiles ×
+ * `CELL_WORLD_SIZE` for buildings, target heights for nature props).
+ * `rotY` bakes the authored-facing → game-forward (+z) yaw correction
+ * (facing measured from the geometry: tank barrel, jet nose, ship
+ * superstructure, human head/pose asymmetry); `yOffset` sinks boat hulls
+ * (negative) so the waterline sits partway up the hull side instead of at
+ * the keel — normalizeModel rests the keel at y=0, which would leave the
+ * boat sitting on top of the water like a toy.
  *
  * Invariants:
  *  - The module stays import-safe under Node/vitest: `three` core is a
@@ -52,26 +68,96 @@ import { withTimeout } from './renderer';
 /** Which GLB file to load for a model key, and how to fit it. */
 export interface ModelSpec {
   /**
-   * Path of the GLB relative to `game/public/models/`, e.g. `'tank.glb'`.
-   * A redundant leading `models/` segment or leading `/` is stripped.
+   * Path of the GLB relative to `game/public/models/`, e.g.
+   * `'kenney-car/truck.glb'`. A redundant leading `models/` segment or
+   * leading `/` is stripped.
    */
   path: string;
   /** Uniform scale applied after normalization (must be finite and > 0). */
   scale: number;
+  /**
+   * Optional yaw (radians) applied to the scene BEFORE normalization, so
+   * the model's authored forward ends up facing the game's forward axis
+   * (+z — see `render/entities.ts` movement orientation). Baked into the
+   * extracted geometry; views never rotate for facing correction.
+   */
+  rotY?: number;
+  /**
+   * Optional world-units lift applied AFTER normalization (whose base
+   * sits at y=0). Used for boats/ships so the waterline sits partway up
+   * the hull instead of at the keel.
+   */
+  yOffset?: number;
 }
 
 /**
- * Stub key -> file mapping (0.1 Alpha).
+ * Key -> file mapping (0.1 Alpha). All files are CC0 (see
+ * THIRD_PARTY_NOTICES.md and docs/research/real-models.md).
  *
- * RESEARCH PENDING — filled by the model-integration step (sibling agent's
- * CC0 pack research). Keys will be UnitKind | BuildingKind | prop names;
+ * Keys: UnitKind / BuildingKind for 1:1 models; `<kind><Piece>` for
+ * composite-building pieces assembled in `render/entities.ts`
+ * (`MODEL_SOURCES` there documents the per-piece offsets); `prop*` for
+ * the render-only nature scatter (`render/nature.ts`).
+ *
  * `path` is relative to `game/public/models/` (served at
  * `<import.meta.env.BASE_URL>models/<file>`).
  */
 export const MODEL_PATHS: Record<string, ModelSpec> = {
-  tank: { path: 'tank.glb', scale: 1 },
-  house: { path: 'house.glb', scale: 1 },
-  tree: { path: 'tree.glb', scale: 1 },
+  // ---- units (1:1) ----
+  engineer: { path: 'quaternius/engineer.glb', scale: 0.372 },
+  rifles: { path: 'quaternius/rifleman.glb', scale: 0.372 },
+  // tank-2: lowest-profile of the four Quaternius variants (most MBT-like),
+  // authored along x with the barrel at -x → rotY π/2 faces it to +z.
+  tank: { path: 'quaternius/tank-2.glb', scale: 0.26, rotY: Math.PI / 2 },
+  // Kenney trucks author the cab at -z (cargo mass toward +z) → rotY π.
+  hauler: { path: 'kenney-car/truck.glb', scale: 1.538, rotY: Math.PI },
+  // craft_racer nose at -z → rotY π.
+  spectre: { path: 'kenney-space/craft_racer.glb', scale: 1.6, rotY: Math.PI },
+  hq: { path: 'kenney-car/truck-flat.glb', scale: 1.846, rotY: Math.PI },
+  // boat-speed-a bow already at +z; negative yOffset sinks the keel so
+  // the waterline sits ~1/4 up the hull side (deck at ~0.6 authored).
+  patrolBoat: { path: 'kenney-watercraft/boat-speed-a.glb', scale: 1.333, yOffset: -0.3 },
+  // ship-cargo-a superstructure toward +z ⇒ bow at -z → rotY π; yOffset
+  // sinks the keel so the waterline sits ~55% up the hull (deck ~1.4).
+  transportShip: {
+    path: 'kenney-watercraft/ship-cargo-a.glb',
+    scale: 1.183,
+    rotY: Math.PI,
+    yOffset: -0.9,
+  },
+
+  // ---- buildings (1:1) ----
+  house: { path: 'kenney-suburban/building-type-f.glb', scale: 2.637 },
+  // Commercial variants picked per kind so every building reads distinct:
+  // apartment = tall slab (g), shop = low block (a), lab = mid block (i).
+  apartment: { path: 'kenney-commercial/building-g.glb', scale: 5.33 },
+  shop: { path: 'kenney-commercial/building-a.glb', scale: 3.1 },
+  lab: { path: 'kenney-commercial/building-i.glb', scale: 3.08 },
+  factory: { path: 'kenney-industrial/building-e.glb', scale: 2.74 },
+  waterPump: { path: 'kenney-industrial/water-tower.glb', scale: 1.87 },
+  // aegisControl = wide slab (k) + procedural radar dish (entities.ts).
+  aegisMain: { path: 'kenney-commercial/building-k.glb', scale: 2.88 },
+
+  // ---- building composite pieces (assembled in render/entities.ts) ----
+  farmBarn: { path: 'quaternius/farm-barn.glb', scale: 0.51 },
+  farmSilo: { path: 'quaternius/farm-silo.glb', scale: 0.46 },
+  powerPlantMain: { path: 'kenney-industrial/building-e.glb', scale: 2.5 },
+  powerPlantChimney: { path: 'kenney-industrial/chimney-large.glb', scale: 2.6 },
+  shipyardCrane: { path: 'kenney-factory/crane.glb', scale: 1.22 },
+  shipyardMachine: { path: 'kenney-factory/machine.glb', scale: 2.0 },
+
+  // ---- nature props (render-only scatter, render/nature.ts) ----
+  propTreeOak: { path: 'kenney-nature/tree_oak.glb', scale: 4.89 },
+  propTreeCone: { path: 'kenney-nature/tree_cone.glb', scale: 4.2 },
+  propTreePineTall: { path: 'kenney-nature/tree_pineTallA.glb', scale: 4.58 },
+  propTreeBlocks: { path: 'kenney-nature/tree_blocks.glb', scale: 4.22 },
+  propTreeDetailed: { path: 'kenney-nature/tree_detailed.glb', scale: 4.5 },
+  propTreePlateau: { path: 'kenney-nature/tree_plateau.glb', scale: 4.0 },
+  propRockLarge: { path: 'kenney-nature/rock_largeA.glb', scale: 1.76 },
+  propRockTall: { path: 'kenney-nature/rock_tallA.glb', scale: 1.84 },
+  propRockSmall: { path: 'kenney-nature/rock_smallH.glb', scale: 2.93 },
+  propBushDetailed: { path: 'kenney-nature/plant_bushDetailed.glb', scale: 2.33 },
+  propBushLarge: { path: 'kenney-nature/plant_bushLarge.glb', scale: 3.78 },
 };
 
 /** One successfully loaded + normalized model. */
@@ -329,31 +415,70 @@ export async function loadModels(
   }
   const loader = new GLTFLoaderCtor();
 
-  for (const [key, spec] of Object.entries(paths)) {
-    try {
-      const url = modelUrl(spec);
-      const gltf = await withTimeout(
-        loader.loadAsync(url),
-        timeoutMs,
-        `loadModels(${key})`,
-      );
-      normalizeModel(gltf.scene, spec.scale);
-      const { geometries, materials } = await extractModelGeometry(gltf.scene);
-      disposeSourceScene(gltf.scene);
-      models.set(key, { geometries, materials });
-    } catch (error) {
-      // 404 / timeout / parse error / bad scale: record and continue.
-      failed.push(key);
-      console.warn(`[models] failed to load "${key}":`, error);
-    }
+  // All entries load concurrently: with 32 models, sequential loads
+  // would multiply the per-model timeouts (32 × 15s worst case) far
+  // past any sane startup budget. Concurrent fetch+parse against the
+  // same origin multiplexes fine; result semantics are unchanged.
+  const results = await Promise.all(
+    Object.entries(paths).map(async ([key, spec]) => {
+      try {
+        const url = modelUrl(spec);
+        const gltf = await withTimeout(
+          loader.loadAsync(url),
+          timeoutMs,
+          `loadModels(${key})`,
+        );
+        // rotY first so normalization centers the yaw-corrected model and
+        // the baked geometry faces the game's forward axis (+z).
+        if (spec.rotY !== undefined && spec.rotY !== 0) {
+          gltf.scene.rotateY(spec.rotY);
+        }
+        normalizeModel(gltf.scene, spec.scale);
+        // yOffset after normalization: base rests at yOffset, not y=0
+        // (boats/ships float with the waterline up the hull).
+        if (spec.yOffset !== undefined && spec.yOffset !== 0) {
+          gltf.scene.position.y += spec.yOffset;
+          gltf.scene.updateMatrixWorld(true);
+        }
+        const { geometries, materials } = await extractModelGeometry(gltf.scene);
+        disposeSourceScene(gltf.scene);
+        return { key, model: { geometries, materials } as LoadedModel };
+      } catch (error) {
+        // 404 / timeout / parse error / bad scale: record and continue.
+        failed.push(key);
+        console.warn(`[models] failed to load "${key}":`, error);
+        return null;
+      }
+    }),
+  );
+  for (const r of results) {
+    if (r !== null) models.set(r.key, r.model);
   }
   return { models, failed };
 }
 
-/** Dispose every geometry and material in a loaded-model map. */
+/**
+ * Dispose every geometry, material, and texture in a loaded-model map.
+ * Textures are per-load (GLTFLoader mints one Texture per file even when
+ * two GLBs share a PNG), so releasing them here is safe; the Set guards
+ * against double-disposing a texture shared by several cloned materials
+ * of one model.
+ */
 export function disposeModels(models: Map<string, LoadedModel>): void {
+  const textures = new Set<THREE.Texture>();
   for (const model of models.values()) {
     for (const geometry of model.geometries) geometry.dispose();
-    for (const material of model.materials) material.dispose();
+    for (const material of model.materials) {
+      collectMaterialTextures(material, textures);
+      material.dispose();
+    }
+  }
+  for (const texture of textures) texture.dispose();
+}
+
+/** Gather every Texture a material references (map, normalMap, …). */
+function collectMaterialTextures(material: THREE.Material, out: Set<THREE.Texture>): void {
+  for (const value of Object.values(material)) {
+    if (value instanceof THREE.Texture) out.add(value);
   }
 }

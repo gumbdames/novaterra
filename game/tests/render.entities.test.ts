@@ -1,0 +1,401 @@
+/*!
+ * NOVATERRA — Copyright (C) 2026 Gumb Dames
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, version 3 of the License.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
+ * Tests for render/entities.ts — the entity view layer.
+ *
+ * - `modelSourceFor` resolves EVERY UnitKind and BuildingKind to a real
+ *   source (`glb` or `procedural`): the game never renders a blank
+ *   entity, and unknown kinds degrade to the placeholder.
+ * - The 8 procedural gap models are non-empty with sane, finite,
+ *   non-degenerate bounds (sea-going destroyer keeps its below-water
+ *   keel; everything else stays above y=0).
+ * - Empty-model fallback: with NO GLB loaded, syncing every unit kind
+ *   and every building kind builds views without throwing (GLB →
+ *   procedural → placeholder resolution).
+ * - Shared-asset discipline: two views of one kind share geometry and
+ *   materials; construction clones materials per view (no cross-talk)
+ *   and restores the shared instances on completion.
+ * - Roads: syncing road cells adds ribbon + dash meshes; clearing them
+ *   removes the meshes.
+ *
+ * Headless (node env): `document` is stubbed for the health-bar canvas
+ * texture; everything else is pure three.js scene graph work.
+ */
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import * as THREE from 'three';
+
+import { EntityRenderer, modelSourceFor } from '../src/render/entities';
+import { buildProceduralModel } from '../src/render/proceduralModels';
+import type { LoadedModel } from '../src/render/models';
+import { UNIT_DEFS, type UnitKind, type UnitRecord } from '../src/sim/units';
+import {
+  BUILDING_DEFS,
+  cellIndex,
+  type BuildingKind,
+  type BuildingRecord,
+} from '../src/sim/city';
+import type { World } from '../src/sim/world';
+
+// ---------------------------------------------------------------------------
+// Minimal DOM stub (health-bar CanvasTexture only).
+// ---------------------------------------------------------------------------
+
+beforeEach(() => {
+  vi.stubGlobal('document', {
+    createElement: (_tag: string) => ({
+      width: 1,
+      height: 1,
+      getContext: () => ({ fillStyle: '', fillRect: () => {} }),
+    }),
+    documentElement: { classList: { contains: () => false } },
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Fake world.
+// ---------------------------------------------------------------------------
+
+let nextId = 1;
+
+function fakeUnit(kind: UnitKind, domain: 'land' | 'air' | 'sea', owner = 0): UnitRecord {
+  return {
+    id: nextId++,
+    kind,
+    domain,
+    owner,
+    x: 10,
+    z: 20,
+    destX: 10,
+    destZ: 20,
+    hp: 100,
+  } as unknown as UnitRecord;
+}
+
+function fakeBuilding(kind: BuildingKind, progress: number, owner = 0): BuildingRecord {
+  return {
+    id: nextId++,
+    kind,
+    owner,
+    cx: 0,
+    cz: 0,
+    progress,
+  } as unknown as BuildingRecord;
+}
+
+function fakeWorld(parts: {
+  units?: UnitRecord[];
+  buildings?: BuildingRecord[];
+  roads?: number[];
+}): World {
+  return {
+    tick: 0,
+    units: parts.units ?? [],
+    city: { buildings: parts.buildings ?? [], roads: parts.roads ?? [] },
+    superweapons: { fx: [] },
+  } as unknown as World;
+}
+
+/** Find a named child group of the scene (units / buildings / fx). */
+function namedGroup(scene: THREE.Scene, name: string): THREE.Group {
+  const g = scene.getObjectByName(name);
+  expect(g).toBeDefined();
+  return g as THREE.Group;
+}
+
+/** All Mesh materials under a group (for construction-fade assertions). */
+function meshMaterials(root: THREE.Object3D): THREE.Material[] {
+  const out: THREE.Material[] = [];
+  root.traverse((o) => {
+    const mesh = o as THREE.Mesh;
+    if (mesh.isMesh && !Array.isArray(mesh.material)) {
+      out.push(mesh.material as THREE.Material);
+    }
+  });
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// modelSourceFor: mapping completeness.
+// ---------------------------------------------------------------------------
+
+describe('modelSourceFor', () => {
+  it('resolves every UnitKind to glb or procedural (never placeholder)', () => {
+    for (const kind of Object.keys(UNIT_DEFS)) {
+      const src = modelSourceFor(kind);
+      expect(['glb', 'procedural']).toContain(src.type);
+    }
+  });
+
+  it('resolves every BuildingKind to glb or procedural (never placeholder)', () => {
+    for (const kind of Object.keys(BUILDING_DEFS)) {
+      const src = modelSourceFor(kind);
+      expect(['glb', 'procedural']).toContain(src.type);
+    }
+  });
+
+  it('returns placeholder for unknown kinds (never blank, never throws)', () => {
+    expect(modelSourceFor('definitely-not-a-kind').type).toBe('placeholder');
+  });
+
+  it('composes farm / powerPlant / shipyard / aegisControl from GLB pieces', () => {
+    const piecesOf = (kind: string): string[] => {
+      const src = modelSourceFor(kind);
+      expect(src.type).toBe('glb');
+      return src.type === 'glb' ? src.pieces.map((p) => p.key) : [];
+    };
+    expect(piecesOf('farm')).toEqual(['farmBarn', 'farmSilo']);
+    expect(piecesOf('powerPlant')).toEqual(['powerPlantMain', 'powerPlantChimney']);
+    expect(piecesOf('shipyard')).toEqual(['shipyardCrane', 'shipyardMachine']);
+    expect(piecesOf('aegisControl')).toEqual(['aegisMain']);
+  });
+
+  it('marks the 8 gap kinds procedural', () => {
+    for (const kind of [
+      'artillery', 'aa', 'fighter', 'transport',
+      'drone', 'destroyer', 'mediaCenter', 'stormArray',
+    ]) {
+      expect(modelSourceFor(kind).type).toBe('procedural');
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Procedural gap models: non-empty, sane bounds.
+// ---------------------------------------------------------------------------
+
+describe('procedural gap models', () => {
+  const gaps = [
+    'artillery', 'aa', 'fighter', 'transport',
+    'drone', 'destroyer', 'mediaCenter', 'stormArray',
+  ];
+  for (const kind of gaps) {
+    it(`${kind}: non-empty with finite, non-degenerate bounds`, () => {
+      const model = buildProceduralModel(kind);
+      expect(model).toBeDefined();
+      expect(model?.geometries.length).toBeGreaterThan(0);
+      expect(model?.materials.length).toBeGreaterThan(0);
+      const box = new THREE.Box3();
+      for (const g of model?.geometries ?? []) {
+        g.computeBoundingBox();
+        expect(g.boundingBox).not.toBeNull();
+        box.union(g.boundingBox as THREE.Box3);
+      }
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      for (const v of [box.min.x, box.min.y, box.min.z, size.x, size.y, size.z]) {
+        expect(Number.isFinite(v)).toBe(true);
+      }
+      expect(size.x).toBeGreaterThan(0.01);
+      expect(size.y).toBeGreaterThan(0.01);
+      expect(size.z).toBeGreaterThan(0.01);
+      if (kind === 'destroyer') {
+        // Warship: keel below the waterline is intentional.
+        expect(box.min.y).toBeLessThan(0);
+        expect(box.min.y).toBeGreaterThan(-3);
+      } else {
+        // Everything else rests on/above the ground.
+        expect(box.min.y).toBeGreaterThanOrEqual(-0.01);
+      }
+    });
+  }
+
+  it('returns undefined for non-gap kinds', () => {
+    expect(buildProceduralModel('tank')).toBeUndefined();
+    expect(buildProceduralModel('house')).toBeUndefined();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Empty-model fallback: playable with zero GLBs loaded.
+// ---------------------------------------------------------------------------
+
+describe('empty-model fallback', () => {
+  it('builds a view for every unit kind without throwing', () => {
+    const scene = new THREE.Scene();
+    const renderer = new EntityRenderer(scene); // empty model map
+    const domains: Record<string, 'land' | 'air' | 'sea'> = {
+      fighter: 'air',
+      transport: 'air',
+      drone: 'air',
+      patrolBoat: 'sea',
+      destroyer: 'sea',
+      transportShip: 'sea',
+    };
+    const units = (Object.keys(UNIT_DEFS) as UnitKind[]).map((kind) =>
+      fakeUnit(kind, domains[kind] ?? 'land'),
+    );
+    expect(() => renderer.sync(fakeWorld({ units }))).not.toThrow();
+    // One view group per unit (plus stripe/pennant/bars inside each).
+    expect(namedGroup(scene, 'units').children).toHaveLength(units.length);
+    // Movement orientation + health bars survive the fallback path.
+    const moving = fakeUnit('tank', 'land');
+    moving.destX = 100;
+    moving.destZ = 100;
+    moving.hp = 10;
+    expect(() => renderer.sync(fakeWorld({ units: [moving] }))).not.toThrow();
+    renderer.dispose();
+  });
+
+  it('builds a view for every building kind without throwing', () => {
+    const scene = new THREE.Scene();
+    const renderer = new EntityRenderer(scene);
+    const buildings = (Object.keys(BUILDING_DEFS) as BuildingKind[]).map((kind) =>
+      fakeBuilding(kind, 1),
+    );
+    expect(() => renderer.sync(fakeWorld({ buildings }))).not.toThrow();
+    expect(namedGroup(scene, 'buildings').children).toHaveLength(buildings.length);
+    renderer.dispose();
+  });
+
+  it('mid-construction buildings render faded without throwing', () => {
+    const scene = new THREE.Scene();
+    const renderer = new EntityRenderer(scene);
+    const buildings = (Object.keys(BUILDING_DEFS) as BuildingKind[]).map((kind) =>
+      fakeBuilding(kind, 0.5),
+    );
+    expect(() => renderer.sync(fakeWorld({ buildings }))).not.toThrow();
+    renderer.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Shared-asset discipline.
+// ---------------------------------------------------------------------------
+
+function fakeLoadedModel(): LoadedModel {
+  return {
+    geometries: [new THREE.BoxGeometry(1, 2, 3)],
+    materials: [new THREE.MeshStandardMaterial({ color: 0x112233 })],
+  };
+}
+
+describe('shared assets', () => {
+  it('two views of one GLB kind share the loaded geometry and material', () => {
+    const scene = new THREE.Scene();
+    const model = fakeLoadedModel();
+    const renderer = new EntityRenderer(scene, new Map([['tank', model]]));
+    renderer.sync(fakeWorld({ units: [fakeUnit('tank', 'land'), fakeUnit('tank', 'land', 1)] }));
+    const units = namedGroup(scene, 'units').children;
+    expect(units).toHaveLength(2);
+    const modelMesh = (unitGroup: THREE.Object3D): THREE.Mesh => {
+      // unit group → hull group → model group → piece group → mesh.
+      // Traverse: the first Mesh under the hull is the model mesh
+      // (stripe/pennant/bars are siblings of the hull, not inside it).
+      const hull = unitGroup.children[0] as THREE.Group;
+      let found: THREE.Mesh | null = null;
+      hull.traverse((o) => {
+        if (found === null && (o as THREE.Mesh).isMesh) {
+          found = o as THREE.Mesh;
+        }
+      });
+      expect(found).not.toBeNull();
+      return found as unknown as THREE.Mesh;
+    };
+    const a = modelMesh(units[0] as THREE.Group);
+    const b = modelMesh(units[1] as THREE.Group);
+    expect(a.geometry).toBe(model.geometries[0]);
+    expect(b.geometry).toBe(model.geometries[0]);
+    expect(a.material).toBe(b.material);
+    renderer.dispose();
+  });
+
+  it('two views of one procedural kind share geometry and material', () => {
+    const scene = new THREE.Scene();
+    const renderer = new EntityRenderer(scene); // no GLBs: procedural path
+    renderer.sync(
+      fakeWorld({ units: [fakeUnit('artillery', 'land'), fakeUnit('artillery', 'land', 1)] }),
+    );
+    const units = namedGroup(scene, 'units').children;
+    expect(units).toHaveLength(2);
+    const modelGeos = (unitGroup: THREE.Object3D): THREE.BufferGeometry[] => {
+      const out: THREE.BufferGeometry[] = [];
+      (unitGroup.children[0] as THREE.Group).traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh) out.push(mesh.geometry);
+      });
+      return out;
+    };
+    const a = modelGeos(units[0] as THREE.Group);
+    const b = modelGeos(units[1] as THREE.Group);
+    expect(a.length).toBeGreaterThan(0);
+    expect(a.length).toBe(b.length);
+    for (let i = 0; i < a.length; i++) {
+      expect(a[i]).toBe(b[i]);
+    }
+    renderer.dispose();
+  });
+
+  it('construction clones materials per view and restores shared on completion', () => {
+    const scene = new THREE.Scene();
+    const renderer = new EntityRenderer(scene);
+    const a = fakeBuilding('house', 0.5);
+    const b = fakeBuilding('house', 1);
+    renderer.sync(fakeWorld({ buildings: [a, b] }));
+    const groups = namedGroup(scene, 'buildings').children as THREE.Group[];
+    expect(groups).toHaveLength(2);
+    // Model meshes = all meshes except the trailing team pennant.
+    const modelMats = (g: THREE.Group): THREE.Material[] => meshMaterials(g).slice(0, -1);
+    const matsA = modelMats(groups[0] as THREE.Group);
+    const matsB = modelMats(groups[1] as THREE.Group);
+    expect(matsA.length).toBeGreaterThan(0);
+    expect(matsA.length).toBe(matsB.length);
+    // Under construction: per-view transparent clones, no cross-talk.
+    for (let i = 0; i < matsA.length; i++) {
+      expect(matsA[i]).not.toBe(matsB[i]);
+      expect(matsA[i]?.transparent).toBe(true);
+      expect(matsB[i]?.transparent).not.toBe(true);
+    }
+    // Complete construction: both views share the SAME material instances.
+    a.progress = 1;
+    renderer.sync(fakeWorld({ buildings: [a, b] }));
+    const matsA2 = modelMats(groups[0] as THREE.Group);
+    const matsB2 = modelMats(groups[1] as THREE.Group);
+    expect(matsA2.length).toBe(matsB2.length);
+    for (let i = 0; i < matsA2.length; i++) {
+      expect(matsA2[i]).toBe(matsB2[i]);
+      expect(matsA2[i]?.transparent).not.toBe(true);
+    }
+    renderer.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Roads through the renderer.
+// ---------------------------------------------------------------------------
+
+describe('roads', () => {
+  it('syncing road cells adds ribbon + dash meshes; clearing removes them', () => {
+    const scene = new THREE.Scene();
+    const renderer = new EntityRenderer(scene);
+    const roads = [cellIndex(0, 0), cellIndex(1, 0), cellIndex(2, 0)];
+    renderer.sync(fakeWorld({ roads }));
+    const buildings = namedGroup(scene, 'buildings');
+    // Ribbon + one dash mesh (middle cell is straight-through).
+    expect(buildings.children).toHaveLength(2);
+    renderer.sync(fakeWorld({ roads: [] }));
+    expect(buildings.children).toHaveLength(0);
+    renderer.dispose();
+  });
+
+  it('an isolated road cell adds a ribbon but no dash mesh', () => {
+    const scene = new THREE.Scene();
+    const renderer = new EntityRenderer(scene);
+    renderer.sync(fakeWorld({ roads: [cellIndex(5, 5)] }));
+    expect(namedGroup(scene, 'buildings').children).toHaveLength(1);
+    renderer.dispose();
+  });
+});

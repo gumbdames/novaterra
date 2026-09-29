@@ -47,3 +47,70 @@ Sound section of docs/HOW_TO_PLAY.md).
 
 All sound effects are synthesized procedurally at runtime with the Web Audio
 API (game/src/audio/sfx.ts) — no third-party samples.
+
+## 3D model assets (shipped in game/public/models/ — 36 files, ~4.0 MiB)
+
+Entity and nature-prop art. All files below are **CC0 1.0 Universal**
+(public domain — no attribution legally required; credited here anyway).
+The runtime mapping (which GLB backs which entity, scale/yaw/waterline
+corrections) lives in `game/src/render/models.ts` (`MODEL_PATHS`); a few
+shipped files are spares not currently referenced by the mapping.
+
+### Kenney assets — CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)
+- Author: Kenney (https://kenney.nl), https://kenney.nl/assets
+- 28 files, unmodified apart from format-consistent naming, grouped by
+  source directory (the directory name reflects the Kenney pack family
+  each model came from):
+
+| File | Source group |
+|---|---|
+| `kenney-car/truck.glb` | kenney-car |
+| `kenney-car/truck-flat.glb` | kenney-car |
+| `kenney-commercial/building-a.glb` | kenney-commercial |
+| `kenney-commercial/building-c.glb` | kenney-commercial (spare) |
+| `kenney-commercial/building-e.glb` | kenney-commercial (spare) |
+| `kenney-commercial/building-g.glb` | kenney-commercial |
+| `kenney-commercial/building-i.glb` | kenney-commercial |
+| `kenney-commercial/building-k.glb` | kenney-commercial |
+| `kenney-factory/crane.glb` | kenney-factory |
+| `kenney-factory/machine.glb` | kenney-factory |
+| `kenney-industrial/building-e.glb` | kenney-industrial |
+| `kenney-industrial/chimney-large.glb` | kenney-industrial |
+| `kenney-industrial/water-tower.glb` | kenney-industrial |
+| `kenney-nature/plant_bushDetailed.glb` | kenney-nature |
+| `kenney-nature/plant_bushLarge.glb` | kenney-nature |
+| `kenney-nature/rock_largeA.glb` | kenney-nature |
+| `kenney-nature/rock_smallH.glb` | kenney-nature |
+| `kenney-nature/rock_tallA.glb` | kenney-nature |
+| `kenney-nature/tree_blocks.glb` | kenney-nature |
+| `kenney-nature/tree_cone.glb` | kenney-nature |
+| `kenney-nature/tree_detailed.glb` | kenney-nature |
+| `kenney-nature/tree_oak.glb` | kenney-nature |
+| `kenney-nature/tree_pineTallA.glb` | kenney-nature |
+| `kenney-nature/tree_plateau.glb` | kenney-nature |
+| `kenney-space/craft_racer.glb` | kenney-space |
+| `kenney-suburban/building-type-f.glb` | kenney-suburban |
+| `kenney-watercraft/boat-speed-a.glb` | kenney-watercraft |
+| `kenney-watercraft/ship-cargo-a.glb` | kenney-watercraft |
+
+### Quaternius assets — CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)
+- Author: Quaternius (https://quaternius.com)
+- 8 files. Quaternius ships OBJ; these were converted OBJ → GLB with
+  `obj2gltf` 3.2.0 (Cesium GS, Apache-2.0) with default options — geometry
+  and materials are unchanged, only the container format differs:
+  - `quaternius/engineer.glb`
+  - `quaternius/farm-barn.glb`
+  - `quaternius/farm-silo.glb`
+  - `quaternius/rifleman.glb`
+  - `quaternius/tank-1.glb` (spare — `tank-2.glb` is the in-game MBT)
+  - `quaternius/tank-2.glb`
+  - `quaternius/tank-3.glb` (spare)
+  - `quaternius/tank-4.glb` (spare)
+
+No model includes rigging, animation, or scripting. Textures: the Kenney
+(non-nature) GLBs reference their pack's shared color atlas via a relative
+URI (`Textures/colormap.png`, resolved against each GLB's URL — the PNGs
+shipped alongside the GLBs in each `kenney-*/Textures/` directory are
+required at runtime); the Kenney nature props and all Quaternius models
+are vertex-colored / flat PBR materials with no textures. Each Kenney
+pack directory also ships its upstream `License.txt` (CC0).

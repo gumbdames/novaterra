@@ -40,44 +40,108 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 
 ## Model loading (`render/models.ts`, 0.1 Alpha)
 
-- `MODEL_PATHS` is the key -> GLB mapping (keys will be UnitKind |
-  BuildingKind | prop names). It is a STUB until the CC0 model research
-  lands — placeholder entries only, clearly marked RESEARCH PENDING.
-  `path` is relative to `game/public/models/` (served at
+- `MODEL_PATHS` is the key -> GLB mapping: **32 real CC0 entries**
+  (Kenney + Quaternius; see THIRD_PARTY_NOTICES.md for the per-file
+  listing). `path` is relative to `game/public/models/` (served at
   `<import.meta.env.BASE_URL>models/<file>`); `scale` is the uniform
-  fit-to-footprint scale.
-- `loadModels(paths, { timeoutMs })` fetches each GLB via a dynamically
-  imported `GLTFLoader`, raced against `withTimeout` (default 15s, same
+  fit-to-footprint scale measured with the module's own `normalizeModel`
+  against the `hullSizeFor` footprint convention (see `entities.ts`).
+  Optional `rotY` bakes the authored-facing → game-forward (+z) yaw
+  correction (tank barrel, truck cab, ship superstructure, jet nose);
+  optional `yOffset` sinks boat hulls (negative) so the waterline sits
+  partway up the hull instead of at the keel.
+- `loadModels(paths, { timeoutMs })` fetches the GLBs CONCURRENTLY via a
+  dynamically imported `GLTFLoader` (separate chunk — only downloaded when
+  models load), each raced against `withTimeout` (default 15s, same
   never-pend-forever philosophy as `renderer.ts`). ANY failure — 404,
   timeout, parse error, bad scale — records the key in the returned
-  `failed` list and the loop CONTINUES. The result carries only successes;
-  callers fall back to the procedural placeholders in `entities.ts` for
-  failed/missing keys. `loadModels` never throws and never pends forever.
-- Each loaded scene is normalized (`normalizeModel`: centered horizontally
-  on the origin, base at y=0, `spec.scale` applied — parent-independent via
-  a premultiplied world-matrix transform), then `extractModelGeometry`
-  bakes `matrixWorld` into the geometries, groups pieces by material
-  (multi-material meshes are split along their geometry groups), and merges
-  each group with `BufferGeometryUtils.mergeGeometries`. Returned materials
-  are CLONES so callers can tint safely; the source scene is disposed after
-  extraction.
+  `failed` list and the load CONTINUES. The result carries only successes;
+  callers fall back per `modelSourceFor` for failed/missing keys.
+  `loadModels` never throws and never pends forever. Game start wraps it
+  in an additional ~20 s overall budget (`ui/game.ts` `loadEntityModels`).
+- Each loaded scene is normalized (`normalizeModel`: rotY first, then
+  centered horizontally on the origin, base at y=0, `spec.scale` applied —
+  parent-independent via a premultiplied world-matrix transform; yOffset
+  applied after), then `extractModelGeometry` bakes `matrixWorld` into the
+  geometries, groups pieces by material (multi-material meshes are split
+  along their geometry groups), and merges each group with
+  `BufferGeometryUtils.mergeGeometries`. Returned materials are CLONES so
+  callers can tint safely; the source scene is disposed after extraction.
 - `disposeModels` releases every geometry/material in a loaded map. The
-  module stays import-safe under Node: `three` core is static (no DOM at
-  import), `GLTFLoader`/`BufferGeometryUtils` are dynamic imports. Tested
-  in `tests/render.models.test.ts` with a mocked loader.
+  map is caller-owned: the `EntityRenderer` borrows it and never disposes
+  it; `ui/game.ts` disposes it once in the controller's `dispose()`.
+- The module stays import-safe under Node: `three` core is static (no DOM
+  at import), `GLTFLoader`/`BufferGeometryUtils` are dynamic imports.
+  Tested in `tests/render.models.test.ts` with a mocked loader.
+
+## Procedural gap models (`render/proceduralModels.ts`, 0.1 Alpha)
+
+- 8 entity kinds have no CC0 source: artillery (wheeled howitzer),
+  aa (missile truck), fighter (jet), transport (helicopter), drone
+  (quadcopter), destroyer (warship, keel below the waterline),
+  mediaCenter (lattice broadcast tower), stormArray (dish). Each builder
+  is a detailed smooth (never blocky) composite; `PROCEDURAL_KINDS` /
+  `buildProceduralModel(kind)` is the registry. Builders rest at y=0
+  (destroyer excepted — waterline at y=0 by design).
+- Attach props: `buildInfantryGear` (rifle / hard-hat + tool pack),
+  `buildHqAntenna`, `buildRadarDishProp` (aegisControl's yard dish).
+
+## Roads (`render/roads.ts`, 0.1 Alpha)
+
+- Pure deterministic builders: `buildRoadGeometry` (one asphalt quad per
+  road cell, deduped, sorted emission — connected ribbons read as
+  continuous) and `buildRoadMarkings` (pale center dash only for cells
+  with exactly two OPPOSITE neighbors; ends/corners/junctions get none).
+  Tested in `tests/render.roads.test.ts`.
+
+## Nature scatter (`render/nature.ts`, 0.1 Alpha)
+
+- Deterministic render-only decoration: `buildNatureView({ terrain,
+  models, isOccupied, seed })` scatters Kenney nature props (trees,
+  rocks, bushes) as one `InstancedMesh` per prop geometry/material over
+  scatter cells, rejecting water, shoreline, and occupied cells
+  (buildings/roads/starting units at build time). Missing prop models
+  degrade to no decoration. Returns null when nothing qualifies.
+  `NatureView.dispose()` releases ONLY instance attributes — shared
+  prop geometry/materials stay with the models map. Built once at game
+  start in `ui/game.ts`; never affects the sim.
 
 ## Entity rendering conventions (`render/entities.ts`, 0.1 Alpha)
 
-- `EntityRenderer` is a read-only view: `sync(world)` rebuilds instance
-  data from plain sim records every frame; `setSelected`/`updateSelectionRings`
-  drive highlight state. It never writes to the world.
-- One `InstancedMesh` per unit kind + one for buildings + one for roads;
-  health bars and selection rings are instanced quads. Unit meshes are
-  smooth placeholder silhouettes (capsule/cylinder/cone composites) —
-  explicitly temporary 0.1 Alpha art, not final, and never blocky.
-- Roads rebuild when the road digest changes (not just the count).
-- Team colors: human = blue accent, AI = red accent (see `TEAM_COLORS`).
-- `dispose()` releases every geometry/material it created.
+- `EntityRenderer` is a read-only view: `sync(world)` diffs the world
+  against live three.js objects (create/move/dispose) every frame;
+  `setSelected`/`updateSelectionRings` drive highlight state. It never
+  writes to the world. Constructor: `new EntityRenderer(scene,
+  models = new Map(), { waterLevel = 0 })` — an empty map is fully
+  supported (every entity falls back; the game stays playable).
+- Model resolution per entity kind (`modelSourceFor`, tested for
+  completeness over every UnitKind/BuildingKind): **GLB → procedural →
+  placeholder**. One `THREE.Group` per unit/building view; geometry AND
+  materials are SHARED across all views of a kind (GLB assets arrive
+  merged per material; procedural models are cached per kind;
+  placeholder templates are cloned per view — `clone()` shares
+  geo/mat). Per-view objects own ONLY health-bar sprites, the team
+  pennant material, and (while constructing) cloned fade materials.
+- Team identity: models keep their authored colors; each view adds a
+  thin emissive team stripe above the model and a tiny glowing team
+  pennant. Team colors: blue vs red, blue vs orange in colorblind mode
+  (`teamColors()` reads the HTML class at view creation).
+- Movement yaw: hulls face +z at rotation 0 (yaw baked at load);
+  `updateUnitView` yaws toward the order destination. Health bars float
+  above the model top; selection rings size from `hullSizeFor`.
+- Construction: while `progress < 1`, a view's meshes use per-view
+  transparent material CLONES; on completion the view swaps back to the
+  shared materials and releases the clones — no cross-talk between two
+  views of the same kind (pinned by test).
+- Sea units float at `waterLevel` (boats/ships carry their waterline via
+  baked `yOffset`); air units hover at y=14; the spectre gunship hovers
+  at 1.6 (`HOVER_Y`).
+- Roads: ribbon + dash meshes rebuilt when the road digest changes (FNV
+  over cell indices, not just the count).
+- `dispose()` releases per-view objects and every SHARED asset the
+  renderer owns (procedural cache, prop cache, placeholder templates,
+  stripe/pennant/road/FX assets) exactly once — but never the
+  caller-owned models map.
 - Superweapon FX (`syncSuperweaponFx`): reads the sim's deterministic
   `world.superweapons.fx` records each frame. The Aegis dome is a
   translucent hemisphere + wireframe shimmer (pulse phase from

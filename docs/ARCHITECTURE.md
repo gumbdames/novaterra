@@ -226,6 +226,44 @@ draw calls ≤100–200 desktop / ≤60 mobile; tris ≤300k–750k / ≤400k; V
 ≤256 MB / ≤96 MB; sim tick p95 ≤ 8 ms @30 Hz; pathfinding ≤ 2 ms/tick;
 save with no visible hitch; load ≤ 3 s.
 
+### 6a. Entity art pipeline (0.1 Alpha)
+
+Units and buildings render from real CC0 models, with two deterministic
+fallbacks so the game is never blank:
+
+- **GLB loading** (`game/src/render/models.ts`): 32 CC0 GLBs
+  (Kenney + Quaternius, see THIRD_PARTY_NOTICES.md) load concurrently at
+  game start with a ~20 s overall budget; per-model failures (404,
+  timeout, parse error) are recorded and skipped, never thrown. Each
+  model is normalized once at load (yaw baked to game-forward +z,
+  horizontal centering, base at y=0, footprint fit) and its geometry is
+  merged per material with world transforms baked in.
+- **Procedural gap models** (`game/src/render/proceduralModels.ts`): 8
+  entity kinds with no CC0 source (artillery, aa, fighter, transport,
+  drone, destroyer, mediaCenter, stormArray) get detailed hand-built
+  procedural models, cached once per kind. Composite buildings (farm,
+  powerPlant, shipyard, aegisControl) assemble several GLB pieces;
+  infantry get gear props (rifle / hard-hat), HQ a command antenna.
+- **Resolution order** per entity (`game/src/render/entities.ts`):
+  GLB → procedural → the old smooth placeholder silhouettes. An empty
+  model map (every GLB failed) is fully playable.
+- **Sharing & disposal**: geometry AND materials are shared across all
+  views of a kind; per-view objects own only health-bar sprites, the
+  team pennant tint, and (while constructing) cloned fade materials.
+  Construction swaps per-view transparent clones back to the shared
+  materials on completion — no cross-talk. Shared assets are disposed
+  once (`disposeModels` / renderer `dispose`), never per view.
+- **Identity overlays**: team stripe + glowing team pennant per entity
+  (models keep their authored colors); movement yaw, health bars,
+  selection rings, and superweapon FX are unchanged.
+- **Roads** (`game/src/render/roads.ts`): connected asphalt ribbon
+  (one quad per road cell, two draw calls total with center dashes);
+  dashes only on straight-through cells.
+- **Nature scatter** (`game/src/render/nature.ts`): deterministic
+  render-only decoration (trees/rocks/bushes as InstancedMesh) from the
+  map seed; rejects water, shoreline, buildings, roads, and starting
+  units. Pure decoration — never affects the sim.
+
 ## 7. Decision log
 
 | ID | Date | Decision | Rationale | Supersedes |

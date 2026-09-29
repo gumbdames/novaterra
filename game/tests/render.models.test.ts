@@ -94,13 +94,49 @@ function worldBox(root: THREE.Object3D): THREE.Box3 {
   return new THREE.Box3().setFromObject(root);
 }
 
-describe('MODEL_PATHS stub mapping', () => {
-  it('has placeholder entries with a .glb path and a positive scale', () => {
-    expect(Object.keys(MODEL_PATHS).length).toBeGreaterThan(0);
+describe('MODEL_PATHS real mapping', () => {
+  it('maps 32 CC0 keys to .glb paths with positive finite scales', () => {
+    const keys = Object.keys(MODEL_PATHS);
+    expect(keys).toHaveLength(32);
     for (const [key, spec] of Object.entries(MODEL_PATHS)) {
       expect(typeof key).toBe('string');
       expect(spec.path).toMatch(/\.glb$/);
       expect(spec.scale).toBeGreaterThan(0);
+      expect(Number.isFinite(spec.scale)).toBe(true);
+      if (spec.rotY !== undefined) expect(Number.isFinite(spec.rotY)).toBe(true);
+      if (spec.yOffset !== undefined) expect(Number.isFinite(spec.yOffset)).toBe(true);
+    }
+  });
+
+  it('covers the documented key set (units, building pieces, nature props)', () => {
+    const expected = [
+      // units (1:1)
+      'engineer', 'rifles', 'tank', 'hauler', 'spectre', 'hq',
+      'patrolBoat', 'transportShip',
+      // building pieces (composites assemble several)
+      'house', 'apartment', 'shop', 'lab', 'factory', 'waterPump',
+      'aegisMain', 'farmBarn', 'farmSilo', 'powerPlantMain',
+      'powerPlantChimney', 'shipyardCrane', 'shipyardMachine',
+      // nature props
+      'propTreeOak', 'propTreeCone', 'propTreePineTall', 'propTreeBlocks',
+      'propTreeDetailed', 'propTreePlateau', 'propRockLarge', 'propRockTall',
+      'propRockSmall', 'propBushDetailed', 'propBushLarge',
+    ];
+    expect(Object.keys(MODEL_PATHS).sort()).toEqual([...expected].sort());
+  });
+
+  it('bakes the documented yaw corrections and boat waterline offsets', () => {
+    expect(MODEL_PATHS['tank']?.rotY).toBeCloseTo(Math.PI / 2, 10);
+    expect(MODEL_PATHS['hauler']?.rotY).toBeCloseTo(Math.PI, 10);
+    expect(MODEL_PATHS['spectre']?.rotY).toBeCloseTo(Math.PI, 10);
+    expect(MODEL_PATHS['hq']?.rotY).toBeCloseTo(Math.PI, 10);
+    expect(MODEL_PATHS['transportShip']?.rotY).toBeCloseTo(Math.PI, 10);
+    // Boats sink (negative yOffset) so the waterline sits partway up the
+    // hull instead of at the keel — never a positive (hovering) offset.
+    for (const key of ['patrolBoat', 'transportShip']) {
+      const yOffset = MODEL_PATHS[key]?.yOffset;
+      expect(yOffset).toBeDefined();
+      expect(yOffset as number).toBeLessThan(0);
     }
   });
 });
@@ -217,6 +253,68 @@ describe('loadModels', () => {
     expect(tank?.materials).toHaveLength(1);
   });
 
+  it('bakes rotY into the geometry: yaw-corrected before normalization', async () => {
+    // Two boxes, different materials (stay separate after merge) and
+    // different heights (distinguishable): the tall one is authored at -x.
+    const scene = new THREE.Group();
+    const tall = new THREE.Mesh(
+      new THREE.BoxGeometry(2, 4, 2),
+      new THREE.MeshStandardMaterial({ color: 0xff0000 }),
+    );
+    tall.position.set(-3, 2, 0);
+    const short = new THREE.Mesh(
+      new THREE.BoxGeometry(2, 2, 2),
+      new THREE.MeshStandardMaterial({ color: 0x0000ff }),
+    );
+    short.position.set(5, 1, 0);
+    scene.add(tall, short);
+    mockState.scene = scene;
+    const tallCenterX = async (rotY?: number): Promise<number> => {
+      const { models } = await loadModels(
+        { k: { path: 'k.glb', scale: 1, rotY } },
+        { timeoutMs: 1000 },
+      );
+      const geos = models.get('k')?.geometries ?? [];
+      let best = 0;
+      let bestSpan = -1;
+      geos.forEach((g, i) => {
+        g.computeBoundingBox();
+        const bb = g.boundingBox;
+        if (bb === null) return;
+        const span = bb.max.y - bb.min.y;
+        if (span > bestSpan) {
+          bestSpan = span;
+          best = i;
+        }
+      });
+      const g = geos[best];
+      if (g === undefined) throw new Error('no geometries');
+      g.computeBoundingBox();
+      const bb = g.boundingBox;
+      if (bb === null) throw new Error('no bounding box');
+      return (bb.min.x + bb.max.x) / 2;
+    };
+    // Tall box authored at -x stays at -x without rotY...
+    expect(await tallCenterX(undefined)).toBeLessThan(0);
+    // ...and mirrors to +x with rotY π (yaw baked before centering).
+    expect(await tallCenterX(Math.PI)).toBeGreaterThan(0);
+  });
+
+  it('applies yOffset after normalization: base rests at yOffset', async () => {
+    mockState.scene = makeTwoBoxScene();
+    const { models } = await loadModels(
+      { boat: { path: 'boat.glb', scale: 1, yOffset: -0.3 } },
+      { timeoutMs: 1000 },
+    );
+    const boat = models.get('boat');
+    expect(boat).toBeDefined();
+    const geo = boat?.geometries[0];
+    expect(geo).toBeDefined();
+    geo?.computeBoundingBox();
+    // Base at -0.3 (sunk), not 0: the waterline sits up the hull.
+    expect(geo?.boundingBox?.min.y).toBeCloseTo(-0.3, 6);
+  });
+
   it('records a 404 as failed and resolves with an empty map (never throws)', async () => {
     mockState.behavior = 'reject';
     const { models, failed } = await loadModels(
@@ -276,6 +374,15 @@ describe('disposeModels', () => {
     );
     expect(geoSpy).toHaveBeenCalledTimes(1);
     expect(matSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('also disposes textures referenced by the materials (once each)', () => {
+    const texture = new THREE.Texture();
+    const texSpy = vi.spyOn(texture, 'dispose');
+    const a = new THREE.MeshStandardMaterial({ map: texture });
+    const b = new THREE.MeshStandardMaterial({ map: texture });
+    disposeModels(new Map([['tank', { geometries: [], materials: [a, b] }]]));
+    expect(texSpy).toHaveBeenCalledTimes(1);
   });
 
   it('is a no-op on an empty map', () => {
