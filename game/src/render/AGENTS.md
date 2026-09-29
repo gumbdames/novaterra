@@ -38,6 +38,34 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 - The water plane is render-side decoration (animated wave bob); the water
   *level* itself is sim data (`TerrainData.waterLevel`).
 
+## Model loading (`render/models.ts`, 0.1 Alpha)
+
+- `MODEL_PATHS` is the key -> GLB mapping (keys will be UnitKind |
+  BuildingKind | prop names). It is a STUB until the CC0 model research
+  lands — placeholder entries only, clearly marked RESEARCH PENDING.
+  `path` is relative to `game/public/models/` (served at
+  `<import.meta.env.BASE_URL>models/<file>`); `scale` is the uniform
+  fit-to-footprint scale.
+- `loadModels(paths, { timeoutMs })` fetches each GLB via a dynamically
+  imported `GLTFLoader`, raced against `withTimeout` (default 15s, same
+  never-pend-forever philosophy as `renderer.ts`). ANY failure — 404,
+  timeout, parse error, bad scale — records the key in the returned
+  `failed` list and the loop CONTINUES. The result carries only successes;
+  callers fall back to the procedural placeholders in `entities.ts` for
+  failed/missing keys. `loadModels` never throws and never pends forever.
+- Each loaded scene is normalized (`normalizeModel`: centered horizontally
+  on the origin, base at y=0, `spec.scale` applied — parent-independent via
+  a premultiplied world-matrix transform), then `extractModelGeometry`
+  bakes `matrixWorld` into the geometries, groups pieces by material
+  (multi-material meshes are split along their geometry groups), and merges
+  each group with `BufferGeometryUtils.mergeGeometries`. Returned materials
+  are CLONES so callers can tint safely; the source scene is disposed after
+  extraction.
+- `disposeModels` releases every geometry/material in a loaded map. The
+  module stays import-safe under Node: `three` core is static (no DOM at
+  import), `GLTFLoader`/`BufferGeometryUtils` are dynamic imports. Tested
+  in `tests/render.models.test.ts` with a mocked loader.
+
 ## Entity rendering conventions (`render/entities.ts`, 0.1 Alpha)
 
 - `EntityRenderer` is a read-only view: `sync(world)` rebuilds instance
