@@ -146,7 +146,7 @@ describe('sim/superweapons — buildings', () => {
         issuer: 'player', kind: 'placeBuilding',
         payload: { kind: 'aegisControl', owner: 0, cx: 10, cz: 10, facing: 0 },
       }),
-    ).toThrow(/Ascendance/);
+    ).toThrow(/ascendance/i);
     ctx.world.ages.age = 'ascendance';
     // Still needs a road etc. — the age gate specifically is what we test;
     // with no road it fails on road adjacency, not age.
@@ -156,7 +156,7 @@ describe('sim/superweapons — buildings', () => {
         payload: { kind: 'aegisControl', owner: 0, cx: 10, cz: 10, facing: 0 },
       });
     } catch (e) {
-      expect((e as Error).message).not.toMatch(/Ascendance/);
+      expect((e as Error).message).not.toMatch(/ascendance/i);
     }
   });
 });

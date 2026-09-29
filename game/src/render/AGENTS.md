@@ -40,7 +40,7 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 
 ## Model loading (`render/models.ts`, 0.1 Alpha)
 
-- `MODEL_PATHS` is the key -> GLB mapping: **32 real CC0 entries**
+- `MODEL_PATHS` is the key -> GLB mapping: **58 real CC0 entries**
   (Kenney + Quaternius; see THIRD_PARTY_NOTICES.md for the per-file
   listing). `path` is relative to `game/public/models/` (served at
   `<import.meta.env.BASE_URL>models/<file>`); `scale` is the uniform
@@ -49,7 +49,13 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   Optional `rotY` bakes the authored-facing → game-forward (+z) yaw
   correction (tank barrel, truck cab, ship superstructure, jet nose);
   optional `yOffset` sinks boat hulls (negative) so the waterline sits
-  partway up the hull instead of at the keel.
+  partway up the hull instead of at the keel. Composite buildings
+  assemble several keys at per-piece offsets (`warFactory`,
+  `airfield`, `navalYard`, `oilRefinery`, `solarFarm`, `desalination`
+  share the `industrialStack` / `industrialTank` pieces across kinds —
+  one key each, loaded once). ~4.6 MiB of GLB downloads at startup
+  (58 keys, 55 unique files; rifleman.glb is keyed 3×, building-e.glb
+  2× — per-key normalization, same as the pre-expansion mapping).
 - `loadModels(paths, { timeoutMs })` fetches the GLBs CONCURRENTLY via a
   dynamically imported `GLTFLoader` (separate chunk — only downloaded when
   models load), each raced against `withTimeout` (default 15s, same
@@ -76,15 +82,24 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 
 ## Procedural gap models (`render/proceduralModels.ts`, 0.1 Alpha)
 
-- 8 entity kinds have no CC0 source: artillery (wheeled howitzer),
+- 17 entity kinds have no CC0 source: artillery (wheeled howitzer),
   aa (missile truck), fighter (jet), transport (helicopter), drone
   (quadcopter), destroyer (warship, keel below the waterline),
-  mediaCenter (lattice broadcast tower), stormArray (dish). Each builder
-  is a detailed smooth (never blocky) composite; `PROCEDURAL_KINDS` /
-  `buildProceduralModel(kind)` is the registry. Builders rest at y=0
-  (destroyer excepted — waterline at y=0 by design).
-- Attach props: `buildInfantryGear` (rifle / hard-hat + tool pack),
-  `buildHqAntenna`, `buildRadarDishProp` (aegisControl's yard dish).
+  mediaCenter (lattice broadcast tower), stormArray (dish), apc (6×6
+  armored carrier), mlrs (elevating 12-tube rocket pod), fighterBomber
+  (strike jet), attackHeli (tandem gunship), submarine (teardrop hull,
+  keel below the waterline), frigate (compact warship), carrier
+  (flat-top), quarry (terraced rock face), monument (obelisk). Each
+  builder is a detailed smooth (never blocky) composite;
+  `PROCEDURAL_KINDS` / `buildProceduralModel(kind)` is the registry.
+  Builders rest at y=0 (destroyer / submarine / frigate / carrier
+  excepted — waterline at y=0 by design, keels below).
+- Attach props: `buildInfantryGear` (rifle / hard-hat + tool pack /
+  sniper scoped rifle + bipod / medic helmet + red-cross pack),
+  `buildHqAntenna`, `buildRadarDishProp` (aegisControl's yard dish),
+  `buildAwacsDome` (rotodome), `buildShipMast` (command-ship comms
+  mast), `buildRunwayStrip` (airfield), `buildCoolingTower`
+  (nuclearPlant), `buildHospitalCross` (hospital roof sign).
 
 ## Roads (`render/roads.ts`, 0.1 Alpha)
 
@@ -116,7 +131,11 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   supported (every entity falls back; the game stays playable).
 - Model resolution per entity kind (`modelSourceFor`, tested for
   completeness over every UnitKind/BuildingKind): **GLB → procedural →
-  placeholder**. One `THREE.Group` per unit/building view; geometry AND
+  placeholder**. When a GLB kind's pieces ALL fail to load, the renderer
+  tries the procedural gap model for that kind before degrading to the
+  placeholder (currently only kinds that are both GLB-mapped AND
+  procedural-backed would use it — the mapping keeps them disjoint, so
+  this is a safety net, not a live path). One `THREE.Group` per unit/building view; geometry AND
   materials are SHARED across all views of a kind (GLB assets arrive
   merged per material; procedural models are cached per kind;
   placeholder templates are cloned per view — `clone()` shares

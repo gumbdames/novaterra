@@ -18,18 +18,23 @@
  * NOVATERRA — render/proceduralModels.ts — procedural 3D models for the
  * entities no CC0 GLB covers (0.1 Alpha).
  *
- * Purpose: detailed, NON-cube procedural builders for the 8 gap kinds in
+ * Purpose: detailed, NON-cube procedural builders for the 17 gap kinds in
  * the entity→model mapping (see docs/research/real-models.md §2): the
  * military units artillery / aa / fighter / transport / drone /
- * destroyer, and the buildings mediaCenter / stormArray. Each builder
- * returns a `LoadedModel`-compatible `{ geometries, materials }` with
- * merged per-material geometry, base at y=0, forward = +z — the same
- * contract as `models.ts`, so `render/entities.ts` can treat GLB and
- * procedural models identically.
+ * destroyer / apc / mlrs / fighterBomber / attackHeli / submarine /
+ * frigate / carrier, and the buildings mediaCenter / stormArray /
+ * quarry / monument. Each builder returns a `LoadedModel`-compatible
+ * `{ geometries, materials }` with merged per-material geometry, base at
+ * y=0, forward = +z — the same contract as `models.ts`, so
+ * `render/entities.ts` can treat GLB and procedural models identically.
+ * (destroyer / submarine / frigate / carrier instead rest at the
+ * waterline y=0 with the keel below, like real hulls.)
  *
  * Also home to small procedural *props* attached to GLB models:
- * infantry gear (rifleman's rifle, engineer's hard-hat), the HQ command
- * antenna, and the aegisControl radar dish.
+ * infantry gear (rifleman's rifle, engineer's hard-hat, sniper's scoped
+ * rifle, medic's helmet), the HQ command antenna, the aegisControl
+ * radar dish, the AWACS rotodome, the command-ship mast, the airfield
+ * runway strip, the nuclear cooling tower, and the hospital cross.
  *
  * Style: flat-shaded low-poly (flatShading: true) to sit with the
  * Kenney/Quaternius GLBs; every model must read clearly at RTS camera
@@ -516,7 +521,15 @@ export function buildRadarDishProp(): LoadedModel {
  * authored forward), engineer gets a yellow hard-hat + tool backpack.
  * Built at world scale for the normalized infantry height (~1.8).
  */
-export function buildInfantryGear(kind: 'engineer' | 'rifles'): LoadedModel {
+/**
+ * Infantry gear so the four Quaternius men read differently:
+ * rifleman gets a rifle (held at chest height, pointing +z — the models'
+ * authored forward), engineer gets a yellow hard-hat + tool backpack,
+ * sniper gets a long scoped rifle with a bipod, medic gets a white
+ * helmet + medical backpack with a red cross.
+ * Built at world scale for the normalized infantry height (~1.8).
+ */
+export function buildInfantryGear(kind: 'engineer' | 'rifles' | 'sniper' | 'medic'): LoadedModel {
   const b = new ModelBuilder();
   if (kind === 'rifles') {
     const gunmetal = pmat(0x23262b, { roughness: 0.4, metalness: 0.7 });
@@ -526,6 +539,27 @@ export function buildInfantryGear(kind: 'engineer' | 'rifles'): LoadedModel {
     b.add(new THREE.BoxGeometry(0.07, 0.1, 0.3), gunmetal, tr(0.3, 1.06, 0.1));
     b.add(new THREE.BoxGeometry(0.075, 0.13, 0.32), wood, tr(0.3, 1.04, -0.28));
     b.add(new THREE.BoxGeometry(0.05, 0.14, 0.08), gunmetal, tr(0.3, 0.97, 0.12));
+  } else if (kind === 'sniper') {
+    const gunmetal = pmat(0x23262b, { roughness: 0.4, metalness: 0.7 });
+    const wood = pmat(0x6b4a2e, { roughness: 0.85, metalness: 0 });
+    // Long precision barrel + receiver + stock + scope, held across chest.
+    b.beam(0.3, 1.08, -0.55, 0.3, 1.14, 1.25, 0.028, gunmetal, 8);
+    b.add(new THREE.BoxGeometry(0.07, 0.1, 0.3), gunmetal, tr(0.3, 1.06, 0.1));
+    b.add(new THREE.BoxGeometry(0.075, 0.13, 0.35), wood, tr(0.3, 1.04, -0.32));
+    b.add(new THREE.CylinderGeometry(0.05, 0.05, 0.3, 8), gunmetal, tr(0.3, 1.2, 0.05, Math.PI / 2, 0, 0));
+    // Bipod legs angling down-forward from the barrel.
+    b.beam(0.3, 1.02, 0.95, 0.14, 0.5, 1.15, 0.02, gunmetal, 6);
+    b.beam(0.3, 1.02, 0.95, 0.46, 0.5, 1.15, 0.02, gunmetal, 6);
+  } else if (kind === 'medic') {
+    const white = pmat(0xf0f0f0, { roughness: 0.6, metalness: 0 });
+    const red = pmat(0xd8332a, { roughness: 0.6, metalness: 0 });
+    // White helmet: squashed sphere + brim, worn on the head (~1.6).
+    b.add(new THREE.SphereGeometry(0.19, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), white, tr(0, 1.62, 0.02, 0, 0, 0, 1, 0.75, 1));
+    b.add(new THREE.CylinderGeometry(0.22, 0.22, 0.035, 12), white, tr(0, 1.62, 0.02));
+    // Medical backpack with a red cross on its back face.
+    b.add(new THREE.BoxGeometry(0.34, 0.44, 0.2), white, tr(0, 1.05, -0.32));
+    b.add(new THREE.BoxGeometry(0.22, 0.08, 0.02), red, tr(0, 1.08, -0.43));
+    b.add(new THREE.BoxGeometry(0.08, 0.22, 0.02), red, tr(0, 1.08, -0.43));
   } else {
     const yellow = pmat(0xe8b820, { roughness: 0.5, metalness: 0.15 });
     const olive = pmat(0x5c6247, { roughness: 0.85, metalness: 0 });
@@ -563,10 +597,444 @@ export function buildHqAntenna(): LoadedModel {
 }
 
 // ---------------------------------------------------------------------------
+// NOVATERRA roster expansion — ground units
+// ---------------------------------------------------------------------------
+
+/**
+ * apc — 6×6 wheeled armored personnel carrier (target hull {3.0, 2.2, 4.6}):
+ * sloped-nose hull, six road wheels, roof troop hatch, small autocannon
+ * turret. Reads instantly vs the tracked tank/tankDestroyer.
+ */
+function buildAPC(): LoadedModel {
+  const b = new ModelBuilder();
+  const armor = pmat(0x5a6b4a);
+  const dark = pmat(0x2e3330);
+  const glass = pmat(0x1c2733);
+  // Sloped-nose hull: main box + angled nose plate + side skirts.
+  b.add(new THREE.BoxGeometry(2.4, 1.1, 3.4), armor, tr(0, 1.05, -0.3));
+  b.add(new THREE.BoxGeometry(2.4, 0.9, 1.1), armor, tr(0, 0.85, 1.85, -0.45, 0, 0));
+  b.add(new THREE.BoxGeometry(2.5, 0.4, 3.8), dark, tr(0, 0.45, -0.2));
+  // Six wheels.
+  for (const wz of [-1.5, -0.2, 1.1]) {
+    for (const sx of [-1, 1]) {
+      b.add(new THREE.CylinderGeometry(0.45, 0.45, 0.35, 14), dark, tr(sx * 1.15, 0.45, wz, 0, 0, Math.PI / 2));
+    }
+  }
+  // Roof troop compartment + hatch + windshield band.
+  b.add(new THREE.BoxGeometry(2.2, 0.5, 2.6), armor, tr(0, 1.85, -0.6));
+  b.add(new THREE.CylinderGeometry(0.4, 0.4, 0.12, 12), dark, tr(0, 2.15, -0.6));
+  b.add(new THREE.BoxGeometry(2.0, 0.35, 0.15), glass, tr(0, 1.5, 1.28));
+  // Small autocannon turret.
+  b.add(new THREE.CylinderGeometry(0.5, 0.6, 0.4, 12), armor, tr(0, 2.3, 0.5));
+  b.beam(0, 2.4, 0.9, 0, 2.45, 2.2, 0.08, dark, 8);
+  // Headlights.
+  const lamp = pmat(0xfff2c0, { emissive: 0x998844 });
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.25, 0.18, 0.1), lamp, tr(sx * 0.9, 1.0, 2.32));
+  }
+  return b.build();
+}
+
+/**
+ * mlrs — truck chassis with an elevating 12-tube rocket pod (4×3 grid on
+ * a turntable, tilted skyward). Distinct from the aa twin pods and the
+ * single-barrel artillery piece. Target hull: { 3.0, 2.4, 5.0 }.
+ */
+function buildMLRS(): LoadedModel {
+  const b = new ModelBuilder();
+  const olive = pmat(0x5c6247);
+  const dark = pmat(0x2e3330);
+  const glass = pmat(0x1c2733);
+  // Chassis + cab-over cab.
+  b.add(new THREE.BoxGeometry(2.4, 0.5, 4.6), dark, tr(0, 0.75, 0));
+  b.add(new THREE.BoxGeometry(2.3, 1.2, 1.3), olive, tr(0, 1.5, 1.65));
+  b.add(new THREE.BoxGeometry(2.0, 0.5, 0.15), glass, tr(0, 1.75, 2.32, -0.15, 0, 0));
+  // Eight wheels.
+  for (const wz of [-1.7, -0.6, 0.7, 1.7]) {
+    for (const sx of [-1, 1]) {
+      b.add(new THREE.CylinderGeometry(0.4, 0.4, 0.35, 14), dark, tr(sx * 1.15, 0.4, wz, 0, 0, Math.PI / 2));
+    }
+  }
+  // Turntable + pivot cheeks.
+  b.add(new THREE.CylinderGeometry(0.9, 1.0, 0.25, 14), dark, tr(0, 1.15, -0.7));
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.16, 0.7, 0.6), dark, tr(sx * 1.15, 1.55, -0.7));
+  }
+  // Launcher pod elevated ~22°, long axis along local +z.
+  const elev = 0.38;
+  const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(-(Math.PI / 2 - elev), 0, 0));
+  const center = new THREE.Vector3(0, 1.6, -0.7);
+  b.add(
+    new THREE.BoxGeometry(2.0, 0.9, 2.2),
+    olive,
+    new THREE.Matrix4().compose(center, q, new THREE.Vector3(1, 1, 1)),
+  );
+  // 12 tubes in a 4×3 grid, mouths protruding from the pod front.
+  const tubeGeo = new THREE.CylinderGeometry(0.15, 0.15, 2.4, 10);
+  const tubeMat = pmat(0x3a3f3a);
+  const tubeQ = q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0)));
+  for (let ix = 0; ix < 4; ix++) {
+    for (let iy = 0; iy < 3; iy++) {
+      const off = new THREE.Vector3(-0.66 + ix * 0.44, -0.24 + iy * 0.24, 0.4).applyQuaternion(q);
+      b.add(
+        tubeGeo.clone(),
+        tubeMat,
+        new THREE.Matrix4().compose(center.clone().add(off), tubeQ, new THREE.Vector3(1, 1, 1)),
+      );
+    }
+  }
+  return b.build();
+}
+
+// ---------------------------------------------------------------------------
+// NOVATERRA roster expansion — aircraft
+// ---------------------------------------------------------------------------
+
+/**
+ * fighterBomber — heavier strike jet: long fuselage, big swept wings,
+ * twin canted tails, four underwing bombs, afterburner nozzle glow.
+ * Target hull: { 7.0, 1.2, 5.0 }, centered at y≈0.6 like `fighter`.
+ */
+function buildFighterBomber(): LoadedModel {
+  const b = new ModelBuilder();
+  const gray = pmat(0x7a8a9a);
+  const dark = pmat(0x3a4048);
+  const glass = pmat(0x16202e);
+  // Fuselage + nose cone + canopy.
+  b.add(new THREE.CylinderGeometry(0.45, 0.5, 4.2, 14), gray, tr(0, 0.7, 0, Math.PI / 2, 0, 0));
+  b.add(new THREE.ConeGeometry(0.42, 1.2, 14), gray, tr(0, 0.7, 2.7, Math.PI / 2, 0, 0));
+  b.add(new THREE.SphereGeometry(0.35, 12, 10), glass, tr(0, 1.05, 0.9, 0, 0, 0, 0.8, 0.6, 1.6));
+  for (const sx of [-1, 1]) {
+    // Big swept wings.
+    b.add(new THREE.BoxGeometry(2.9, 0.12, 1.3), gray, tr(sx * 1.7, 0.6, -0.2, 0, -sx * 0.45, 0));
+    // Twin canted tail fins.
+    b.add(new THREE.BoxGeometry(0.12, 0.9, 0.9), gray, tr(sx * 0.5, 1.15, -1.8, 0, 0, sx * 0.25));
+    // Two bombs per wing.
+    for (const bx of [1.2, 2.2]) {
+      b.add(new THREE.CapsuleGeometry(0.12, 0.5, 4, 8), dark, tr(sx * bx, 0.38, -0.1, Math.PI / 2, 0, 0));
+    }
+  }
+  // Afterburner nozzle + glow.
+  b.add(new THREE.CylinderGeometry(0.35, 0.42, 0.5, 12), dark, tr(0, 0.7, -2.1, Math.PI / 2, 0, 0));
+  const glow = pmat(0xff7733, { emissive: 0xcc4400 });
+  b.add(new THREE.CircleGeometry(0.28, 12), glow, tr(0, 0.7, -2.36, 0, Math.PI, 0));
+  return b.build();
+}
+
+/**
+ * attackHeli — tandem-seat gunship: slim armored body, stub wings with
+ * rocket pods, chin gun turret, four-blade main rotor, tail rotor,
+ * skids. Target hull: { 6.5, 1.8, 5.5 }. Base at y=0 (skids).
+ */
+function buildAttackHeli(): LoadedModel {
+  const b = new ModelBuilder();
+  const olive = pmat(0x4a5a48);
+  const dark = pmat(0x2a2e28);
+  const glass = pmat(0x16202e);
+  // Slim tandem body + two canopy bubbles.
+  b.add(new THREE.CylinderGeometry(0.5, 0.42, 3.4, 12), olive, tr(0, 1.2, 0.3, Math.PI / 2, 0, 0));
+  b.add(new THREE.SphereGeometry(0.38, 12, 10), glass, tr(0, 1.5, 1.15, 0, 0, 0, 0.75, 0.6, 1.1));
+  b.add(new THREE.SphereGeometry(0.38, 12, 10), glass, tr(0, 1.5, 0.35, 0, 0, 0, 0.75, 0.6, 1.1));
+  // Chin gun turret + barrel.
+  b.add(new THREE.SphereGeometry(0.22, 10, 8), dark, tr(0, 0.85, 1.9));
+  b.beam(0, 0.85, 2.0, 0, 0.8, 2.9, 0.06, dark, 8);
+  // Stub wings + rocket pods.
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(1.5, 0.12, 0.55), olive, tr(sx * 1.05, 1.1, 0.3));
+    for (const px of [1.15, 1.75]) {
+      b.add(new THREE.CylinderGeometry(0.16, 0.16, 1.3, 10), dark, tr(sx * px, 1.05, 0.3, Math.PI / 2, 0, 0));
+    }
+  }
+  // Tail boom + fin + side tail rotor.
+  b.add(new THREE.CylinderGeometry(0.14, 0.3, 2.0, 10), olive, tr(0, 1.35, -2.2, Math.PI / 2, 0, 0));
+  b.add(new THREE.BoxGeometry(0.1, 0.9, 0.5), olive, tr(0, 1.8, -3.1));
+  b.add(new THREE.BoxGeometry(0.06, 0.7, 0.12), dark, tr(0.14, 1.9, -3.1, 0.6, 0, 0));
+  b.add(new THREE.BoxGeometry(0.06, 0.7, 0.12), dark, tr(0.14, 1.9, -3.1, -0.6, 0, 0));
+  // Main rotor mast + four blades.
+  b.add(new THREE.CylinderGeometry(0.12, 0.12, 0.35, 8), dark, tr(0, 1.8, 0.3));
+  for (let i = 0; i < 4; i++) {
+    const bladeGeo = new THREE.BoxGeometry(3.0, 0.05, 0.28);
+    bladeGeo.translate(1.5, 0, 0);
+    b.add(bladeGeo, dark, tr(0, 2.05, 0.3, 0, (i * Math.PI) / 2, 0));
+  }
+  // Skids + struts.
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.12, 0.1, 2.6), dark, tr(sx * 0.75, 0.1, 0.3));
+    b.beam(sx * 0.75, 0.15, 1.0, sx * 0.55, 0.8, 1.0, 0.05, dark, 6);
+    b.beam(sx * 0.75, 0.15, -0.5, sx * 0.55, 0.8, -0.5, 0.05, dark, 6);
+  }
+  return b.build();
+}
+
+// ---------------------------------------------------------------------------
+// NOVATERRA roster expansion — warships (waterline at y=0, keel below)
+// ---------------------------------------------------------------------------
+
+/**
+ * submarine — teardrop pressure hull with sail, periscope, bow planes,
+ * cruciform stern and a three-blade propeller. Waterline at y=0 (keel
+ * below, like `destroyer`). Target hull: { 4.0, 3.0, 13.0 }.
+ */
+function buildSubmarine(): LoadedModel {
+  const b = new ModelBuilder();
+  const steel = pmat(0x3a4048);
+  const dark = pmat(0x24282e);
+  // Pressure hull: cylinder + bow hemisphere + tapered stern.
+  b.add(new THREE.CylinderGeometry(1.3, 1.3, 9, 16), steel, tr(0, 0.2, 0, Math.PI / 2, 0, 0));
+  b.add(new THREE.SphereGeometry(1.3, 16, 12), steel, tr(0, 0.2, 4.5, 0, 0, 0, 1, 1, 0.8));
+  b.add(new THREE.CylinderGeometry(0.25, 1.3, 2.4, 16), steel, tr(0, 0.2, -5.6, -Math.PI / 2, 0, 0));
+  // Sail + periscope + sail planes.
+  b.add(new THREE.BoxGeometry(1.4, 1.5, 2.4), steel, tr(0, 2.1, 0.6));
+  b.beam(0, 2.8, 0.9, 0, 3.2, 0.9, 0.08, dark, 8);
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.9, 0.1, 0.7), steel, tr(sx * 1.0, 2.0, 0.6));
+  }
+  // Bow planes + stern cruciform.
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(1.1, 0.12, 0.8), steel, tr(sx * 1.5, 0.1, 3.4));
+    b.add(new THREE.BoxGeometry(1.2, 0.12, 0.8), steel, tr(sx * 0.9, 0.2, -6.2));
+  }
+  b.add(new THREE.BoxGeometry(0.14, 1.8, 0.9), steel, tr(0, 0.4, -6.2));
+  // Propeller: hub + three blades.
+  b.add(new THREE.CylinderGeometry(0.18, 0.18, 0.5, 10), dark, tr(0, 0.2, -7.0, Math.PI / 2, 0, 0));
+  for (let i = 0; i < 3; i++) {
+    const bladeGeo = new THREE.BoxGeometry(0.5, 1.1, 0.08);
+    bladeGeo.translate(0, 0.65, 0);
+    b.add(bladeGeo, dark, tr(0, 0.2, -7.2, 0, 0, (i * 2 * Math.PI) / 3));
+  }
+  return b.build();
+}
+
+/**
+ * frigate — compact gray warship: octagonal hull with raked bow,
+ * forward gun turret, superstructure with bridge windows, funnel, radar
+ * mast, aft helicopter deck. Waterline at y=0.
+ * Target hull: { 4.5, 3.5, 14.0 }.
+ */
+function buildFrigate(): LoadedModel {
+  const b = new ModelBuilder();
+  const gray = pmat(0x6e7885);
+  const dark = pmat(0x3a4048);
+  const glass = pmat(0x16202e);
+  // Hull: octagonal tube + raked bow (top radius → +z after rotX π/2).
+  b.add(new THREE.CylinderGeometry(1.5, 1.1, 10.5, 8), gray, tr(0, 0.2, -0.5, Math.PI / 2, 0, 0, 1.15, 1, 0.85));
+  b.add(new THREE.CylinderGeometry(0.15, 1.28, 2.2, 8), gray, tr(0, 0.2, 5.8, Math.PI / 2, 0, 0, 1.15, 1, 0.85));
+  // Deck.
+  b.add(new THREE.BoxGeometry(2.9, 0.2, 11.5), dark, tr(0, 1.25, -0.3));
+  // Forward gun turret + barrel.
+  b.add(new THREE.CylinderGeometry(0.7, 0.8, 0.55, 12), gray, tr(0, 1.6, 3.6));
+  b.beam(0, 1.7, 4.0, 0, 1.75, 5.8, 0.14, dark, 10);
+  // Superstructure + bridge windows.
+  b.add(new THREE.BoxGeometry(2.2, 1.4, 3.0), gray, tr(0, 2.15, -1.2));
+  b.add(new THREE.BoxGeometry(2.24, 0.4, 0.2), glass, tr(0, 2.5, 0.32));
+  // Funnel + radar mast + rotating bar.
+  b.add(new THREE.CylinderGeometry(0.5, 0.6, 1.2, 12), dark, tr(0, 3.4, -2.4));
+  b.beam(0, 2.8, -0.6, 0, 4.5, -0.6, 0.09, dark, 8);
+  b.add(new THREE.BoxGeometry(1.6, 0.1, 0.3), gray, tr(0, 4.55, -0.6));
+  // Aft helicopter deck marking.
+  b.add(new THREE.CylinderGeometry(1.1, 1.1, 0.06, 20), pmat(0x59616c), tr(0, 1.38, -4.2));
+  return b.build();
+}
+
+/**
+ * carrier — flat-top: wide hull, full-length flight deck with markings,
+ * starboard island with bridge windows, radar mast and whip antennas.
+ * Waterline at y=0. Target hull: { 9.0, 4.5, 22.0 }.
+ */
+function buildCarrier(): LoadedModel {
+  const b = new ModelBuilder();
+  const gray = pmat(0x6e7885);
+  const deckMat = pmat(0x4a5058);
+  const dark = pmat(0x3a4048);
+  const glass = pmat(0x16202e);
+  const lineMat = pmat(0xd8d8d0);
+  // Hull + tapered bow block.
+  b.add(new THREE.BoxGeometry(7.0, 2.6, 17.5), gray, tr(0, 0.1, -0.5));
+  b.add(new THREE.BoxGeometry(5.0, 2.6, 3.0), gray, tr(0, 0.1, 9.0, 0, 0, 0, 0.72, 1, 1));
+  // Flight deck overhanging the hull.
+  b.add(new THREE.BoxGeometry(8.6, 0.3, 21.0), deckMat, tr(0, 1.55, 0));
+  // Deck markings: center dashes + edge lines.
+  for (let i = 0; i < 6; i++) {
+    b.add(new THREE.BoxGeometry(0.25, 0.04, 1.2), lineMat, tr(0, 1.72, -7.5 + i * 2.6));
+  }
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.2, 0.04, 20.0), lineMat, tr(sx * 3.9, 1.72, 0));
+  }
+  // Starboard island + bridge windows.
+  b.add(new THREE.BoxGeometry(1.8, 2.6, 3.6), gray, tr(2.9, 3.0, -1.0));
+  b.add(new THREE.BoxGeometry(1.84, 0.5, 3.0), glass, tr(2.9, 3.9, -1.0));
+  // Radar mast + rotating bar + whip antennas.
+  b.beam(2.9, 4.3, -1.0, 2.9, 5.6, -1.0, 0.1, dark, 8);
+  b.add(new THREE.BoxGeometry(1.8, 0.12, 0.35), gray, tr(2.9, 5.65, -1.0));
+  b.beam(2.9, 4.3, -2.4, 2.9, 5.2, -2.4, 0.03, dark, 6);
+  b.beam(2.9, 4.3, 0.6, 2.9, 5.2, 0.6, 0.03, dark, 6);
+  return b.build();
+}
+
+// ---------------------------------------------------------------------------
+// NOVATERRA roster expansion — buildings
+// ---------------------------------------------------------------------------
+
+/**
+ * quarry — surface stone operation (kept above y=0 so it never clips
+ * the terrain): stepped rock face, stone rubble piles, crusher hut
+ * with a conveyor beam. Footprint 6×6.
+ */
+function buildQuarry(): LoadedModel {
+  const b = new ModelBuilder();
+  const rock = pmat(0x8a8078);
+  const rockDark = pmat(0x6e675e);
+  const hut = pmat(0x9a8a6a);
+  const belt = pmat(0x3a3d42);
+  // Stepped rock face receding upward.
+  b.add(new THREE.BoxGeometry(5.5, 1.0, 1.8), rock, tr(0, 0.5, -1.9));
+  b.add(new THREE.BoxGeometry(5.5, 2.0, 1.8), rockDark, tr(0, 1.0, -0.3));
+  b.add(new THREE.BoxGeometry(5.5, 3.0, 1.8), rock, tr(0, 1.5, 1.3));
+  // Stone rubble piles (icosahedrons, not cubes).
+  const pileSpots: Array<[number, number, number]> = [
+    [-1.9, 0.45, 1.8],
+    [-1.1, 0.45, 2.3],
+    [0.2, 0.45, 2.1],
+  ];
+  for (const [px, py, pz] of pileSpots) {
+    b.add(new THREE.IcosahedronGeometry(0.7, 0), rockDark, tr(px, py, pz, 0, px * 2.1, 0, 1, 0.6, 1));
+  }
+  // Crusher hut + conveyor beam to the face.
+  b.add(new THREE.BoxGeometry(1.6, 1.4, 1.6), hut, tr(1.9, 0.7, 2.2));
+  b.add(new THREE.BoxGeometry(1.7, 0.15, 1.7), rockDark, tr(1.9, 1.48, 2.2));
+  b.add(new THREE.BoxGeometry(0.5, 0.25, 3.4), belt, tr(1.2, 1.1, 0.2, 0.18, 0, 0));
+  return b.build();
+}
+
+/**
+ * monument — civic landmark: three-step plinth, tapered four-sided
+ * obelisk with a gold pyramidion, plaza ring, corner pillars with orbs.
+ * Footprint 6×6, ~9 tall.
+ */
+function buildMonument(): LoadedModel {
+  const b = new ModelBuilder();
+  const stone = pmat(0xd8d4c8);
+  const stoneDark = pmat(0xb0aca0);
+  const gold = pmat(0xd8a833, { emissive: 0x664411 });
+  // Stepped plinth.
+  b.add(new THREE.BoxGeometry(4.4, 0.5, 4.4), stoneDark, tr(0, 0.25, 0));
+  b.add(new THREE.BoxGeometry(3.6, 0.5, 3.6), stone, tr(0, 0.75, 0));
+  b.add(new THREE.BoxGeometry(2.8, 0.5, 2.8), stoneDark, tr(0, 1.25, 0));
+  // Tapered obelisk + gold cap.
+  b.add(new THREE.CylinderGeometry(0.45, 0.95, 6.5, 4), stone, tr(0, 4.75, 0));
+  b.add(new THREE.ConeGeometry(0.5, 0.9, 4), gold, tr(0, 8.45, 0, 0, Math.PI / 4, 0));
+  // Plaza ring + corner pillars.
+  b.add(new THREE.CylinderGeometry(2.9, 2.9, 0.1, 24), stoneDark, tr(0, 0.05, 0));
+  for (const px of [-2.4, 2.4]) {
+    for (const pz of [-2.4, 2.4]) {
+      b.add(new THREE.CylinderGeometry(0.16, 0.2, 0.9, 8), stone, tr(px, 0.45, pz));
+      b.add(new THREE.SphereGeometry(0.18, 10, 8), gold, tr(px, 1.0, pz));
+    }
+  }
+  return b.build();
+}
+
+// ---------------------------------------------------------------------------
+// NOVATERRA roster expansion — attach props (built once, shared per kind)
+// ---------------------------------------------------------------------------
+
+/**
+ * AWACS rotodome: strut + flattened radar disc + whip. Base y=0 at the
+ * attach point; entities.ts positions it on the fuselage crown.
+ */
+export function buildAwacsDome(): LoadedModel {
+  const b = new ModelBuilder();
+  const gray = pmat(0x9aa2ad);
+  const dark = pmat(0x3a4048);
+  b.add(new THREE.CylinderGeometry(0.12, 0.16, 0.7, 10), dark, tr(0, 0.35, 0));
+  b.add(new THREE.CylinderGeometry(0.99, 0.99, 0.06, 20), dark, tr(0, 0.72, 0));
+  b.add(new THREE.CylinderGeometry(0.95, 0.95, 0.16, 20), gray, tr(0, 0.78, 0));
+  b.beam(0, 0.86, 0, 0, 1.36, 0, 0.03, dark, 6);
+  return b.build();
+}
+
+/**
+ * Command-ship communications mast: pole, yardarms, radar bar, red
+ * beacon. Base y=0 at the attach point.
+ */
+export function buildShipMast(): LoadedModel {
+  const b = new ModelBuilder();
+  const gray = pmat(0x8a949e);
+  const dark = pmat(0x3a4048);
+  b.beam(0, 0, 0, 0, 3.0, 0, 0.09, gray, 8);
+  b.add(new THREE.BoxGeometry(1.4, 0.06, 0.06), gray, tr(0, 2.2, 0));
+  b.add(new THREE.BoxGeometry(1.0, 0.06, 0.06), gray, tr(0, 2.65, 0));
+  b.add(new THREE.BoxGeometry(1.2, 0.08, 0.25), dark, tr(0, 3.0, 0));
+  const beacon = pmat(0xff3333, { emissive: 0xaa1111 });
+  b.add(new THREE.SphereGeometry(0.1, 8, 6), beacon, tr(0, 3.2, 0));
+  return b.build();
+}
+
+/**
+ * Airfield runway strip with edge lines and threshold bars.
+ * Base y=0; entities.ts lays it beside the hangars.
+ */
+export function buildRunwayStrip(): LoadedModel {
+  const b = new ModelBuilder();
+  const asphalt = pmat(0x3a3d42);
+  const white = pmat(0xd8d8d0);
+  b.add(new THREE.BoxGeometry(9.0, 0.06, 1.6), asphalt, tr(0, 0.03, 0));
+  for (const sz of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(9.0, 0.02, 0.08), white, tr(0, 0.07, sz * 0.68));
+  }
+  for (const ex of [-1, 1]) {
+    for (let i = 0; i < 4; i++) {
+      b.add(new THREE.BoxGeometry(0.4, 0.02, 0.14), white, tr(ex * 4.0, 0.07, -0.45 + i * 0.3));
+    }
+  }
+  return b.build();
+}
+
+/**
+ * Nuclear-plant hyperboloid cooling tower: lathe shell + top rim, dark
+ * inner disc. Base y=0; entities.ts places it beside the reactor hall.
+ */
+export function buildCoolingTower(): LoadedModel {
+  const b = new ModelBuilder();
+  const concrete = pmat(0xb8b4a8);
+  const profile = [
+    new THREE.Vector2(1.7, 0),
+    new THREE.Vector2(1.5, 0.8),
+    new THREE.Vector2(1.25, 2.0),
+    new THREE.Vector2(1.12, 3.2),
+    new THREE.Vector2(1.2, 4.4),
+    new THREE.Vector2(1.38, 5.2),
+    new THREE.Vector2(1.45, 5.5),
+  ];
+  const shell = new THREE.Mesh(new THREE.LatheGeometry(profile, 20), concrete);
+  shell.castShadow = true;
+  // Route through a bucket directly (lathe has no tr helper need).
+  b.add(shell.geometry, concrete);
+  b.add(new THREE.TorusGeometry(1.42, 0.09, 8, 20), concrete, tr(0, 5.5, 0, Math.PI / 2, 0, 0));
+  b.add(new THREE.CircleGeometry(1.3, 20), pmat(0x4a4640), tr(0, 4.95, 0, -Math.PI / 2, 0, 0));
+  return b.build();
+}
+
+/**
+ * Hospital roof sign: white panel with a red cross. Base y=0 at the
+ * attach point (roof level, set by entities.ts).
+ */
+export function buildHospitalCross(): LoadedModel {
+  const b = new ModelBuilder();
+  const white = pmat(0xf0f0f0);
+  const red = pmat(0xd8332a, { emissive: 0x550000 });
+  b.add(new THREE.BoxGeometry(0.18, 0.5, 0.18), white, tr(0, 0.25, 0));
+  b.add(new THREE.BoxGeometry(1.2, 0.9, 0.12), white, tr(0, 0.95, 0));
+  b.add(new THREE.BoxGeometry(0.7, 0.22, 0.14), red, tr(0, 0.95, 0.01));
+  b.add(new THREE.BoxGeometry(0.22, 0.7, 0.14), red, tr(0, 0.95, 0.01));
+  return b.build();
+}
+
+// ---------------------------------------------------------------------------
 // Public dispatch
 // ---------------------------------------------------------------------------
 
-/** The 8 gap kinds with procedural builders (see module header). */
+/** The 17 gap kinds with procedural builders (see module header). */
 export const PROCEDURAL_KINDS = [
   'artillery',
   'aa',
@@ -576,6 +1044,16 @@ export const PROCEDURAL_KINDS = [
   'destroyer',
   'mediaCenter',
   'stormArray',
+  // NOVATERRA roster expansion
+  'apc',
+  'mlrs',
+  'fighterBomber',
+  'attackHeli',
+  'submarine',
+  'frigate',
+  'carrier',
+  'quarry',
+  'monument',
 ] as const;
 
 export type ProceduralKind = (typeof PROCEDURAL_KINDS)[number];
@@ -602,6 +1080,24 @@ export function buildProceduralModel(kind: string): LoadedModel | undefined {
       return buildMediaCenter();
     case 'stormArray':
       return buildStormArray();
+    case 'apc':
+      return buildAPC();
+    case 'mlrs':
+      return buildMLRS();
+    case 'fighterBomber':
+      return buildFighterBomber();
+    case 'attackHeli':
+      return buildAttackHeli();
+    case 'submarine':
+      return buildSubmarine();
+    case 'frigate':
+      return buildFrigate();
+    case 'carrier':
+      return buildCarrier();
+    case 'quarry':
+      return buildQuarry();
+    case 'monument':
+      return buildMonument();
     default:
       return undefined;
   }

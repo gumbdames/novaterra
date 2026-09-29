@@ -67,6 +67,11 @@ import {
   buildInfantryGear,
   buildProceduralModel,
   buildRadarDishProp,
+  buildAwacsDome,
+  buildShipMast,
+  buildRunwayStrip,
+  buildCoolingTower,
+  buildHospitalCross,
 } from './proceduralModels';
 import {
   buildRoadGeometry,
@@ -153,6 +158,60 @@ const MODEL_SOURCES: Record<string, ModelSource> = {
   // in attachModelExtras).
   aegisControl: { type: 'glb', pieces: [piece('aegisMain', 0, 0, -1.0)] },
   stormArray: { type: 'procedural' },
+  // ---- NOVATERRA roster-expansion units ----
+  sniperTeam: { type: 'glb', pieces: [piece('sniperTeam')] },
+  combatMedic: { type: 'glb', pieces: [piece('combatMedic')] },
+  apc: { type: 'procedural' },
+  tankDestroyer: { type: 'glb', pieces: [piece('tankDestroyer')] },
+  mlrs: { type: 'procedural' },
+  fighterBomber: { type: 'procedural' },
+  attackHeli: { type: 'procedural' },
+  awacs: { type: 'glb', pieces: [piece('awacs')] },
+  missileBoat: { type: 'glb', pieces: [piece('missileBoat')] },
+  frigate: { type: 'procedural' },
+  submarine: { type: 'procedural' },
+  carrier: { type: 'procedural' },
+  commandShip: { type: 'glb', pieces: [piece('commandShip')] },
+  fishingBoat: { type: 'glb', pieces: [piece('fishingBoat')] },
+  // ---- NOVATERRA roster-expansion buildings ----
+  barracks: { type: 'glb', pieces: [piece('barracks')] },
+  warFactory: {
+    type: 'glb',
+    pieces: [piece('warFactoryMain', -1, 0, 0.5), piece('industrialStack', 2.5, 0, -1)],
+  },
+  airfield: {
+    type: 'glb',
+    pieces: [piece('airfieldHangar', -2.2, 0, -1.5), piece('airfieldHangar2', 2.8, 0, -1.8)],
+  },
+  navalYard: {
+    type: 'glb',
+    pieces: [piece('navalYardCrane', -2.5, 0, -1), piece('navalYardHall', 2.5, 0, 1)],
+  },
+  radarStation: { type: 'glb', pieces: [piece('radarStation')] },
+  quarry: { type: 'procedural' },
+  oilRefinery: {
+    type: 'glb',
+    pieces: [
+      piece('oilRefineryTank', -1.8, 0, -1),
+      piece('industrialTank', 1.5, 0, 1.2),
+      piece('industrialStack', 2.8, 0, -1.5),
+    ],
+  },
+  recyclingCenter: { type: 'glb', pieces: [piece('recyclingCenter')] },
+  market: { type: 'glb', pieces: [piece('market')] },
+  solarFarm: {
+    type: 'glb',
+    pieces: [piece('solarFarmA', -1.8, 0, 0), piece('solarFarmB', 1.8, 0, 0)],
+  },
+  nuclearPlant: { type: 'glb', pieces: [piece('nuclearPlantMain', -1.5, 0, -1)] },
+  desalination: {
+    type: 'glb',
+    pieces: [piece('industrialTank', -1.2, 0, -1), piece('desalinationHall', 1.2, 0, 1)],
+  },
+  hospital: { type: 'glb', pieces: [piece('hospital')] },
+  university: { type: 'glb', pieces: [piece('university')] },
+  school: { type: 'glb', pieces: [piece('school')] },
+  monument: { type: 'procedural' },
 };
 
 /**
@@ -198,6 +257,33 @@ function hullColorFor(kind: string): number {
     case 'drone':
     case 'transport':
       return 0x8a94a6;
+    case 'sniperTeam':
+      return 0x5c6247;
+    case 'combatMedic':
+      return 0xd8d8d8;
+    case 'apc':
+      return 0x5a6b4a;
+    case 'tankDestroyer':
+      return 0x4a5a6b;
+    case 'mlrs':
+      return 0x6b5a4a;
+    case 'fighterBomber':
+      return 0x7a8a9a;
+    case 'attackHeli':
+      return 0x4a6b5a;
+    case 'awacs':
+      return 0x9aa2ad;
+    case 'missileBoat':
+      return 0x5a6b7d;
+    case 'frigate':
+    case 'carrier':
+      return 0x6e7885;
+    case 'submarine':
+      return 0x3a4048;
+    case 'commandShip':
+      return 0x7d8a9a;
+    case 'fishingBoat':
+      return 0x8a7d6b;
     default:
       return 0x6b7d8a;
   }
@@ -238,6 +324,34 @@ export function hullSizeFor(kind: string): { x: number; y: number; z: number } {
       return { x: 5.0, y: 3.5, z: 17.0 };
     case 'transportShip':
       return { x: 6.5, y: 4.0, z: 19.0 };
+    // NOVATERRA roster-expansion units
+    case 'sniperTeam':
+    case 'combatMedic':
+      return { x: 1.4, y: 1.8, z: 1.4 };
+    case 'apc':
+      return { x: 3.0, y: 2.2, z: 4.6 };
+    case 'tankDestroyer':
+      return { x: 3.2, y: 1.5, z: 4.8 };
+    case 'mlrs':
+      return { x: 3.0, y: 2.4, z: 5.0 };
+    case 'fighterBomber':
+      return { x: 7.0, y: 1.2, z: 5.0 };
+    case 'attackHeli':
+      return { x: 6.5, y: 1.8, z: 5.5 };
+    case 'awacs':
+      return { x: 8.0, y: 2.5, z: 7.0 };
+    case 'missileBoat':
+      return { x: 3.0, y: 1.8, z: 7.5 };
+    case 'frigate':
+      return { x: 4.5, y: 3.5, z: 14.0 };
+    case 'submarine':
+      return { x: 4.0, y: 3.0, z: 13.0 };
+    case 'carrier':
+      return { x: 9.0, y: 4.5, z: 22.0 };
+    case 'commandShip':
+      return { x: 6.0, y: 4.0, z: 16.0 };
+    case 'fishingBoat':
+      return { x: 2.4, y: 1.6, z: 5.0 };
     default:
       return { x: 1.6, y: 2.2, z: 1.6 }; // infantry-ish
   }
@@ -353,6 +467,39 @@ export function buildingHeightFor(kind: BuildingKind): number {
       return 8;
     case 'stormArray':
       return 8;
+    // NOVATERRA roster-expansion buildings
+    case 'barracks':
+      return 5;
+    case 'warFactory':
+      return 7;
+    case 'airfield':
+      return 6;
+    case 'navalYard':
+      return 7;
+    case 'radarStation':
+      return 6;
+    case 'quarry':
+      return 3;
+    case 'oilRefinery':
+      return 8;
+    case 'recyclingCenter':
+      return 5;
+    case 'market':
+      return 5;
+    case 'solarFarm':
+      return 3;
+    case 'nuclearPlant':
+      return 12;
+    case 'desalination':
+      return 5;
+    case 'hospital':
+      return 8;
+    case 'university':
+      return 9;
+    case 'school':
+      return 4;
+    case 'monument':
+      return 10;
     default:
       return 4;
   }
@@ -763,15 +910,27 @@ export class EntityRenderer {
 
   /**
    * Procedural attach prop, built once per key: 'gear:rifles',
-   * 'gear:engineer', 'hqAntenna', 'radarDish'.
+   * 'gear:engineer', 'gear:sniper', 'gear:medic', 'hqAntenna',
+   * 'radarDish', 'awacsDome', 'shipMast', 'runwayStrip',
+   * 'coolingTower', 'hospitalCross'.
    */
   private propFor(key: string): LoadedModel {
     let m = this.propCache.get(key);
     if (m === undefined) {
-      if (key === 'gear:rifles' || key === 'gear:engineer') {
-        m = buildInfantryGear(key === 'gear:rifles' ? 'rifles' : 'engineer');
+      if (key === 'gear:rifles' || key === 'gear:engineer' || key === 'gear:sniper' || key === 'gear:medic') {
+        m = buildInfantryGear(key.slice('gear:'.length) as 'rifles' | 'engineer' | 'sniper' | 'medic');
       } else if (key === 'hqAntenna') {
         m = buildHqAntenna();
+      } else if (key === 'awacsDome') {
+        m = buildAwacsDome();
+      } else if (key === 'shipMast') {
+        m = buildShipMast();
+      } else if (key === 'runwayStrip') {
+        m = buildRunwayStrip();
+      } else if (key === 'coolingTower') {
+        m = buildCoolingTower();
+      } else if (key === 'hospitalCross') {
+        m = buildHospitalCross();
       } else {
         m = buildRadarDishProp();
       }
@@ -792,13 +951,16 @@ export class EntityRenderer {
 
   /**
    * Per-kind extras that make GLB models read correctly in game:
-   * infantry gear (rifle / hard-hat), the HQ command antenna, and the
-   * aegisControl radar dish. Shared geometry/materials; one `Mesh` per
-   * view (a Mesh can only have one parent).
+   * infantry gear (rifle / hard-hat / sniper rifle / medic kit), the HQ
+   * command antenna, the aegisControl radar dish, the AWACS rotodome,
+   * the command-ship comms mast, the airfield runway strip, the nuclear
+   * cooling tower, and the hospital cross. Shared geometry/materials;
+   * one `Mesh` per view (a Mesh can only have one parent).
    */
   private attachModelExtras(group: THREE.Group, kind: string): void {
-    if (kind === 'rifles' || kind === 'engineer') {
-      EntityRenderer.addModelMeshes(group, this.propFor(`gear:${kind}`));
+    if (kind === 'rifles' || kind === 'engineer' || kind === 'sniperTeam' || kind === 'combatMedic') {
+      const gearKey = kind === 'sniperTeam' ? 'sniper' : kind === 'combatMedic' ? 'medic' : kind;
+      EntityRenderer.addModelMeshes(group, this.propFor(`gear:${gearKey}`));
     } else if (kind === 'hq') {
       const antenna = new THREE.Group();
       EntityRenderer.addModelMeshes(antenna, this.propFor('hqAntenna'));
@@ -811,6 +973,36 @@ export class EntityRenderer {
       // Beside the main block, clear of its footprint.
       dish.position.set(1.5, 0, 1.8);
       group.add(dish);
+    } else if (kind === 'awacs') {
+      const dome = new THREE.Group();
+      EntityRenderer.addModelMeshes(dome, this.propFor('awacsDome'));
+      // On the fuselage crown (fuselage top ≈2.3 at this scale).
+      dome.position.set(0, 1.9, -0.3);
+      group.add(dome);
+    } else if (kind === 'commandShip') {
+      const mast = new THREE.Group();
+      EntityRenderer.addModelMeshes(mast, this.propFor('shipMast'));
+      // On the deck aft of the superstructure.
+      mast.position.set(0, 2.2, 1.0);
+      group.add(mast);
+    } else if (kind === 'airfield') {
+      const strip = new THREE.Group();
+      EntityRenderer.addModelMeshes(strip, this.propFor('runwayStrip'));
+      // Runway along x beside the hangars.
+      strip.position.set(0, 0.02, 2.2);
+      group.add(strip);
+    } else if (kind === 'nuclearPlant') {
+      const tower = new THREE.Group();
+      EntityRenderer.addModelMeshes(tower, this.propFor('coolingTower'));
+      // Beside the reactor hall, clear of its footprint.
+      tower.position.set(2.2, 0, 1.8);
+      group.add(tower);
+    } else if (kind === 'hospital') {
+      const cross = new THREE.Group();
+      EntityRenderer.addModelMeshes(cross, this.propFor('hospitalCross'));
+      // Roof sign (roof ≈8.0 at this scale).
+      cross.position.set(0, 8.0, 0);
+      group.add(cross);
     }
   }
 
@@ -835,7 +1027,18 @@ export class EntityRenderer {
         group.add(pieceGroup);
         placed++;
       }
-      if (placed === 0) return null;
+      if (placed === 0) {
+        // No GLB pieces loaded (missing/failed): try the procedural gap
+        // model for this kind before giving up (GLB → procedural →
+        // placeholder), so e.g. a failed tank-1 download still renders
+        // a tankDestroyer rather than a capsule.
+        const fallback = this.proceduralFor(kind);
+        if (fallback !== undefined) {
+          EntityRenderer.addModelMeshes(group, fallback);
+        } else {
+          return null;
+        }
+      }
     } else if (source.type === 'procedural') {
       const model = this.proceduralFor(kind);
       if (model === undefined) return null;

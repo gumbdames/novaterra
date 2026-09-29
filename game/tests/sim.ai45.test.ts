@@ -38,12 +38,16 @@ import { generateTerrain } from '../src/sim/terrain';
 describe('AI levels 4-5', () => {
   it('General thinks every 45 ticks with 26 max units', () => {
     expect(AI_THINK_TICKS.general).toBe(45);
-    expect(AI_MAX_UNITS.general).toBe(26);
+    expect(AI_MAX_UNITS.general).toBe(34);
   });
 
-  it('Marshal thinks every 30 ticks with 36 max units', () => {
+  it('Marshal thinks every 30 ticks with 48 max units', () => {
     expect(AI_THINK_TICKS.marshal).toBe(30);
-    expect(AI_MAX_UNITS.marshal).toBe(36);
+    expect(AI_MAX_UNITS.marshal).toBe(48);
+  });
+
+  it('all five caps follow the spec values 6/14/26/34/48', () => {
+    expect(AI_MAX_UNITS).toEqual({ cadet: 6, citizen: 14, commander: 26, general: 34, marshal: 48 });
   });
 
   it('can register General and Marshal AI players', () => {

@@ -72,6 +72,10 @@ import {
 } from '../src/sim/movement';
 import { digestWorld } from '../src/sim/digest';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
+import {
+  grantAllTrainingResources,
+  completeBuildings,
+} from './sim.roster-fixtures';
 
 interface Ctx {
   terrain: TerrainData;
@@ -89,8 +93,12 @@ function getTerrain(): TerrainData {
 function setup(seed = 20260928): Ctx {
   const terrain = getTerrain();
   const world = createWorld(seed);
-  // Grant manpower for unit spawning (tests don't run the economy).
-  for (const p of world.city.players) p.manpower = 100000;
+  // Tests don't run the economy: grant training funds/materials/manpower
+  // and the production buildings the roster expansion requires.
+  grantAllTrainingResources(world);
+  for (const p of world.city.players) {
+    completeBuildings(world, p.id, ['barracks', 'warFactory', 'airfield']);
+  }
   const queue = createCommandQueue();
   registerCoreCommands(queue);
   registerUnitCommands(queue, terrain);

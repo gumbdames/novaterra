@@ -43,17 +43,29 @@
 
 import type { World } from './world';
 import type { SimSystem } from './tick';
+import { TICK_DT } from './tick';
 import type { CommandQueue } from './commands';
 import {
   findUnit,
   clearUnitOrder,
   UNIT_DEFS,
-  HQ_AURA_RADIUS,
   HQ_AURA_DAMAGE_BONUS,
   type UnitRecord,
   type UnitKind,
   type UnitDef,
 } from './units';
+import {
+  hasUpgrade,
+  effectiveRange,
+  effectiveMaxHp,
+  effectiveHealPerSec,
+  AP_ROUNDS_KINDS,
+  AP_ROUNDS_VS_HEAVY_MULT,
+  AVIONICS_KINDS,
+  AVIONICS_VS_AIR_MULT,
+  SONAR_KINDS,
+  SONAR_VS_MEDIUM_MULT,
+} from './upgrades';
 import { orderMoveTo } from './movement';
 import { MAP_HALF_SIZE } from './city';
 
@@ -71,9 +83,48 @@ export function canTarget(def: UnitDef, target: UnitRecord): boolean {
 }
 
 /**
+ * Aura sources, cached per (world, tick). Scanning world.units for aura
+ * emitters on every shot is O(units²) per combat tick — with a thousand
+ * units that blows the tick budget. The cache is derived from world state
+ * each tick, so it stays deterministic; direct damageMultiplier callers
+ * outside a tick simply miss the cache and recompute.
+ */
+interface AuraSource {
+  x: number;
+  z: number;
+  owner: number;
+  kind: string;
+  radius: number;
+  bonus: number;
+  domain: UnitDef['auraDomain'];
+}
+let auraCacheWorld: World | null = null;
+let auraCacheTick = -1;
+let auraCache: AuraSource[] = [];
+
+function auraSources(world: World): AuraSource[] {
+  if (auraCacheWorld === world && auraCacheTick === world.tick) return auraCache;
+  auraCacheWorld = world;
+  auraCacheTick = world.tick;
+  auraCache = [];
+  for (const u of world.units) {
+    if (u.hp <= 0) continue;
+    const def = UNIT_DEFS[u.kind as UnitKind];
+    if (def?.auraRadius === undefined) continue;
+    auraCache.push({
+      x: u.x, z: u.z, owner: u.owner, kind: u.kind,
+      radius: def.auraRadius,
+      bonus: def.auraBonus ?? HQ_AURA_DAMAGE_BONUS,
+      domain: def.auraDomain,
+    });
+  }
+  return auraCache;
+}
+
+/**
  * Damage multiplier for one shot: armor-class counter, the vsAir bonus
- * for flying targets, and the Mobile HQ command aura for the attacker.
- * All deterministic — no randomness.
+ * for flying targets, command auras, and upgrade effects (AP Rounds,
+ * Advanced Avionics, Sonar Suite). All deterministic — no randomness.
  */
 export function damageMultiplier(
   world: World,
@@ -86,16 +137,42 @@ export function damageMultiplier(
   let mult =
     armor === 'light' ? def.vsLight : armor === 'medium' ? def.vsMedium : def.vsHeavy;
   if (target.domain === 'air') mult *= def.vsAir;
-  // Mobile HQ aura: +damage for friendly non-HQ units in radius.
-  if (attacker.kind !== 'hq') {
-    for (const u of world.units) {
-      if (u.kind === 'hq' && u.owner === attacker.owner && u.hp > 0) {
-        const d = Math.hypot(u.x - attacker.x, u.z - attacker.z);
-        if (d <= HQ_AURA_RADIUS) {
-          mult *= 1 + HQ_AURA_DAMAGE_BONUS;
-          break;
-        }
-      }
+  // Upgrade hooks (spec §4): AP Rounds (+40% vsHeavy for tank/TD/apc),
+  // Advanced Avionics (+20% vsAir for fighters), Sonar Suite (+30%
+  // vsMedium ASW for frigate/destroyer).
+  if (
+    armor === 'heavy' &&
+    AP_ROUNDS_KINDS.includes(attacker.kind) &&
+    hasUpgrade(world, attacker.owner, 'apRounds')
+  ) {
+    mult *= AP_ROUNDS_VS_HEAVY_MULT;
+  }
+  if (
+    target.domain === 'air' &&
+    AVIONICS_KINDS.includes(attacker.kind) &&
+    hasUpgrade(world, attacker.owner, 'advancedAvionics')
+  ) {
+    mult *= AVIONICS_VS_AIR_MULT;
+  }
+  if (
+    armor === 'medium' &&
+    SONAR_KINDS.includes(attacker.kind) &&
+    hasUpgrade(world, attacker.owner, 'sonarSuite')
+  ) {
+    mult *= SONAR_VS_MEDIUM_MULT;
+  }
+  // Command auras (spec §5.5): any unit whose def carries auraRadius
+  // emits one — the Mobile HQ (radius 20, all domains) and the
+  // commandShip (radius 24, sea domain only). A unit never benefits from
+  // its own kind's aura; the first source in spawn order wins (no stacking).
+  // Sources are cached per tick (see auraSources) to keep combat O(n).
+  for (const src of auraSources(world)) {
+    if (src.owner !== attacker.owner || src.kind === attacker.kind) continue;
+    if (src.domain !== undefined && attacker.domain !== src.domain) continue;
+    const d = Math.hypot(src.x - attacker.x, src.z - attacker.z);
+    if (d <= src.radius) {
+      mult *= 1 + src.bonus;
+      break;
     }
   }
   return mult;
@@ -103,17 +180,19 @@ export function damageMultiplier(
 
 /**
  * Nearest enemy this unit could hit, inside weapon range and outside
- * min range. Ties break by lower id. Returns undefined when unarmed.
+ * min range. Range runs through the upgrade hook (Cruise Missiles).
+ * Ties break by lower id. Returns undefined when unarmed.
  */
 export function acquireTarget(world: World, unit: UnitRecord, def: UnitDef): UnitRecord | undefined {
   if (def.damage <= 0 || def.targets === 'none') return undefined;
+  const range = effectiveRange(world, unit.owner, def);
   let best: UnitRecord | undefined;
   let bestDist = Infinity;
   for (const other of world.units) {
     if (other.id === unit.id || other.owner === unit.owner || other.hp <= 0) continue;
     if (!canTarget(def, other)) continue;
     const d = Math.hypot(other.x - unit.x, other.z - unit.z);
-    if (d > def.range || d < def.minRange) continue;
+    if (d > range || d < def.minRange) continue;
     if (d < bestDist - 1e-9 || (Math.abs(d - bestDist) < 1e-9 && other.id < (best?.id ?? Infinity))) {
       best = other;
       bestDist = d;
@@ -166,18 +245,50 @@ export function killUnit(world: World, unit: UnitRecord): void {
 }
 
 /**
+ * Heal auras (spec §5.4): units with `healRadius`/`healPerSec` on their
+ * def (combatMedic: 12 / 2 hp/s, 4 with Field Medicine) restore friendly
+ * LAND units in radius. Same iteration pattern as the HQ damage aura —
+ * O(sources × units), bounded by design (medics are few). Healing caps at
+ * the unit's effective max hp (upgrade-aware); the dead stay dead.
+ */
+function applyHealAuras(world: World): void {
+  for (const medic of world.units) {
+    if (medic.hp <= 0) continue;
+    const mdef = UNIT_DEFS[medic.kind as UnitKind];
+    const radius = mdef?.healRadius;
+    if (radius === undefined || radius <= 0) continue;
+    const perSec = effectiveHealPerSec(world, medic.owner, mdef);
+    if (perSec <= 0) continue;
+    const amount = perSec * TICK_DT;
+    for (const u of world.units) {
+      if (u.hp <= 0 || u.owner !== medic.owner || u.domain !== 'land') continue;
+      const udef = UNIT_DEFS[u.kind as UnitKind];
+      if (!udef) continue;
+      const maxHp = effectiveMaxHp(world, u.owner, udef);
+      if (u.hp >= maxHp) continue;
+      const d = Math.hypot(u.x - medic.x, u.z - medic.z);
+      if (d <= radius) {
+        u.hp = Math.min(maxHp, u.hp + amount);
+      }
+    }
+  }
+}
+
+/**
  * The combat system. Runs after movement each tick:
  *  1. Cooldowns tick down.
- *  2. In id order, every armed unit with a ready weapon validates its
+ *  2. Heal auras apply (combatMedic).
+ *  3. In id order, every armed unit with a ready weapon validates its
  *     target (or auto-acquires), fires when in range, or chases an
  *     explicit attack order.
- *  3. The dead are removed.
+ *  4. The dead are removed.
  */
 export function createCombatSystem(): SimSystem {
   return (world: World) => {
     for (const u of world.units) {
       if (u.cooldownLeft > 0) u.cooldownLeft -= 1;
     }
+    applyHealAuras(world);
     // Snapshot the roster: killUnit mutates world.units mid-loop.
     const roster = [...world.units].sort((a, b) => a.id - b.id);
     const dead: UnitRecord[] = [];
@@ -215,7 +326,8 @@ export function createCombatSystem(): SimSystem {
       if (!target) continue;
 
       const d = Math.hypot(target.x - u.x, target.z - u.z);
-      if (d <= def.range && d >= def.minRange && canTarget(def, target)) {
+      const range = effectiveRange(world, u.owner, def);
+      if (d <= range && d >= def.minRange && canTarget(def, target)) {
         if (fireWeapon(world, u, def, target) && !dead.includes(target)) {
           dead.push(target);
         }

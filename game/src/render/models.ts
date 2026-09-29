@@ -158,6 +158,67 @@ export const MODEL_PATHS: Record<string, ModelSpec> = {
   propRockSmall: { path: 'kenney-nature/rock_smallH.glb', scale: 2.93 },
   propBushDetailed: { path: 'kenney-nature/plant_bushDetailed.glb', scale: 2.33 },
   propBushLarge: { path: 'kenney-nature/plant_bushLarge.glb', scale: 3.78 },
+  // ── NOVATERRA roster-expansion units ───────────────────────────────
+  // sniperTeam / combatMedic reuse the quaternius rifleman at the proven
+  // rifles scale (same authored geometry ⇒ same fit scale 0.372).
+  sniperTeam: { path: 'quaternius/rifleman.glb', scale: 0.372 },
+  combatMedic: { path: 'quaternius/rifleman.glb', scale: 0.372 },
+  // tank-1 (10.09×7.50×17.68 after rotY π/2, radio antenna to 7.50) fit
+  // inside hull { 3.2, 1.5, 4.8 } ⇒ height-constrained scale 0.2.
+  tankDestroyer: { path: 'quaternius/tank-1.glb', scale: 0.2, rotY: Math.PI / 2 },
+  // craft_cargoA (1.60×0.80×2.45 after rotY π, same space-kit convention as
+  // spectre) fit inside hull { 8.0, 2.5, 7.0 } ⇒ z-constrained scale 2.86.
+  awacs: { path: 'kenney-space/craft_cargoA.glb', scale: 2.86, rotY: Math.PI },
+  // boat-speed-d (2.00×1.20×3.87, bow +z) fit inside hull { 3.0, 1.8, 7.5 }
+  // ⇒ scale 1.5, waterline ~1/4 up the hull like patrolBoat.
+  missileBoat: { path: 'kenney-watercraft/boat-speed-d.glb', scale: 1.5, yOffset: -0.3 },
+  // ship-cargo-b (3.92×3.30×10.55 after rotY π, superstructure +z ⇒ bow -z)
+  // fit inside hull { 6.0, 4.0, 16.0 } ⇒ height-constrained scale 1.21,
+  // waterline sunk like transportShip.
+  commandShip: { path: 'kenney-watercraft/ship-cargo-b.glb', scale: 1.21, rotY: Math.PI, yOffset: -0.9 },
+  // boat-fishing-small (1.78×2.60×3.87 after rotY π, cabin/mast +z ⇒ bow
+  // -z) fit inside hull { 2.4, 1.6, 5.0 } ⇒ mast-constrained scale 0.615.
+  fishingBoat: { path: 'kenney-watercraft/boat-fishing-small.glb', scale: 0.615, rotY: Math.PI, yOffset: -0.25 },
+  // ── NOVATERRA roster-expansion building pieces ─────────────────────────
+  // barracks 6×6 footprint / 5 tall: building-d (0.88×1.41×1.42) ⇒ 3.55.
+  barracks: { path: 'kenney-industrial/building-d.glb', scale: 3.55 },
+  // warFactory 8×6 / 7 tall: building-a (2.08×1.47×1.24) ⇒ 3.85.
+  warFactoryMain: { path: 'kenney-industrial/building-a.glb', scale: 3.85 },
+  // Shared smokestack piece for warFactory and oilRefinery (4.2 tall).
+  industrialStack: { path: 'kenney-industrial/chimney-medium.glb', scale: 2.2 },
+  // airfield 10×8 / 6 tall: large hangar (2.00×1.00×3.00) ⇒ 2.67,
+  // small hangar (2.00×1.00×2.00) ⇒ 2.0.
+  airfieldHangar: { path: 'kenney-space/hangar_largeA.glb', scale: 2.67 },
+  airfieldHangar2: { path: 'kenney-space/hangar_smallA.glb', scale: 2.0 },
+  // navalYard 10×8 / 7 tall: crane-lift (0.72×2.50×0.72) ⇒ 2.0 (5.0 tall
+  // gantry), hall building-k (1.30×0.77×0.91) ⇒ 3.08.
+  navalYardCrane: { path: 'kenney-factory/crane-lift.glb', scale: 2.0 },
+  navalYardHall: { path: 'kenney-industrial/building-k.glb', scale: 3.08 },
+  // radarStation 4×4 / 6 tall: satelliteDish_large (0.85×0.81×0.74) ⇒ 4.7.
+  radarStation: { path: 'kenney-space/satelliteDish_large.glb', scale: 4.7 },
+  // oilRefinery 8×6 / 8 tall: large tank (1.51×0.96×1.65) ⇒ 1.6,
+  // shared small tank piece (detail-tank 0.85×0.42×0.52) ⇒ 2.4.
+  oilRefineryTank: { path: 'kenney-industrial/detail-tank-large.glb', scale: 1.6 },
+  industrialTank: { path: 'kenney-industrial/detail-tank.glb', scale: 2.4 },
+  // recyclingCenter 6×6 / 5 tall: building-i (1.03×0.73×1.30) ⇒ 4.6.
+  recyclingCenter: { path: 'kenney-industrial/building-i.glb', scale: 4.6 },
+  // market 6×6 / 5 tall: commercial building-b (0.97×1.29×0.94) ⇒ 3.88.
+  market: { path: 'kenney-commercial/building-b.glb', scale: 3.88 },
+  // solarFarm 8×6 / 3 tall: two panel groups (1.51×0.26×0.90 and
+  // 0.92×0.41×1.25) at scale 3.0 tile the footprint.
+  solarFarmA: { path: 'kenney-industrial/solar-panel-landscape-group.glb', scale: 3.0 },
+  solarFarmB: { path: 'kenney-industrial/solar-panel-portrait-group.glb', scale: 3.0 },
+  // nuclearPlant 8×8 / 12 tall: building-f (1.79×1.92×1.28) ⇒ 4.47.
+  nuclearPlantMain: { path: 'kenney-industrial/building-f.glb', scale: 4.47 },
+  // desalination 6×6 / 5 tall: shared small tank + hall
+  // building-s (2.12×0.84×0.92) ⇒ 1.89.
+  desalinationHall: { path: 'kenney-industrial/building-s.glb', scale: 1.89 },
+  // hospital 6×6 / 8 tall: commercial building-d (0.84×1.29×0.90) ⇒ 6.2.
+  hospital: { path: 'kenney-commercial/building-d.glb', scale: 6.2 },
+  // university 8×6 / 9 tall: commercial building-f (0.84×1.69×1.03) ⇒ 5.33.
+  university: { path: 'kenney-commercial/building-f.glb', scale: 5.33 },
+  // school 4×4 / 4 tall: suburban building-type-h (1.30×0.74×0.92) ⇒ 3.08.
+  school: { path: 'kenney-suburban/building-type-h.glb', scale: 3.08 },
 };
 
 /** One successfully loaded + normalized model. */

@@ -20,9 +20,10 @@
  * - `modelSourceFor` resolves EVERY UnitKind and BuildingKind to a real
  *   source (`glb` or `procedural`): the game never renders a blank
  *   entity, and unknown kinds degrade to the placeholder.
- * - The 8 procedural gap models are non-empty with sane, finite,
- *   non-degenerate bounds (sea-going destroyer keeps its below-water
- *   keel; everything else stays above y=0).
+ * - The 17 procedural gap models are non-empty with sane, finite,
+ *   non-degenerate bounds (the warships submarine / frigate / carrier
+ *   and the destroyer keep their below-water keels; everything else
+ *   stays above y=0).
  * - Empty-model fallback: with NO GLB loaded, syncing every unit kind
  *   and every building kind builds views without throwing (GLB →
  *   procedural → placeholder resolution).
@@ -163,10 +164,36 @@ describe('modelSourceFor', () => {
     expect(piecesOf('aegisControl')).toEqual(['aegisMain']);
   });
 
-  it('marks the 8 gap kinds procedural', () => {
+  it('composes the roster-expansion buildings from GLB pieces', () => {
+    const piecesOf = (kind: string): string[] => {
+      const src = modelSourceFor(kind);
+      expect(src.type).toBe('glb');
+      return src.type === 'glb' ? src.pieces.map((p) => p.key) : [];
+    };
+    expect(piecesOf('warFactory')).toEqual(['warFactoryMain', 'industrialStack']);
+    expect(piecesOf('airfield')).toEqual(['airfieldHangar', 'airfieldHangar2']);
+    expect(piecesOf('navalYard')).toEqual(['navalYardCrane', 'navalYardHall']);
+    expect(piecesOf('oilRefinery')).toEqual(['oilRefineryTank', 'industrialTank', 'industrialStack']);
+    expect(piecesOf('solarFarm')).toEqual(['solarFarmA', 'solarFarmB']);
+    expect(piecesOf('desalination')).toEqual(['industrialTank', 'desalinationHall']);
+    // 1:1 pieces (nuclearPlant's piece key is nuclearPlantMain).
+    expect(piecesOf('nuclearPlant')).toEqual(['nuclearPlantMain']);
+    for (const kind of ['barracks', 'radarStation', 'recyclingCenter', 'market', 'hospital', 'university', 'school']) {
+      expect(piecesOf(kind)).toEqual([kind]);
+    }
+    // 1:1 unit pieces.
+    for (const kind of ['sniperTeam', 'combatMedic', 'tankDestroyer', 'awacs', 'missileBoat', 'commandShip', 'fishingBoat']) {
+      expect(piecesOf(kind)).toEqual([kind]);
+    }
+  });
+
+  it('marks the 17 gap kinds procedural', () => {
     for (const kind of [
       'artillery', 'aa', 'fighter', 'transport',
       'drone', 'destroyer', 'mediaCenter', 'stormArray',
+      // NOVATERRA roster expansion
+      'apc', 'mlrs', 'fighterBomber', 'attackHeli',
+      'submarine', 'frigate', 'carrier', 'quarry', 'monument',
     ]) {
       expect(modelSourceFor(kind).type).toBe('procedural');
     }
@@ -181,7 +208,12 @@ describe('procedural gap models', () => {
   const gaps = [
     'artillery', 'aa', 'fighter', 'transport',
     'drone', 'destroyer', 'mediaCenter', 'stormArray',
+    // NOVATERRA roster expansion
+    'apc', 'mlrs', 'fighterBomber', 'attackHeli',
+    'submarine', 'frigate', 'carrier', 'quarry', 'monument',
   ];
+  // Warships rest at the waterline (keel below y=0) instead of on the ground.
+  const waterlineKinds = new Set(['destroyer', 'submarine', 'frigate', 'carrier']);
   for (const kind of gaps) {
     it(`${kind}: non-empty with finite, non-degenerate bounds`, () => {
       const model = buildProceduralModel(kind);
@@ -202,7 +234,7 @@ describe('procedural gap models', () => {
       expect(size.x).toBeGreaterThan(0.01);
       expect(size.y).toBeGreaterThan(0.01);
       expect(size.z).toBeGreaterThan(0.01);
-      if (kind === 'destroyer') {
+      if (waterlineKinds.has(kind)) {
         // Warship: keel below the waterline is intentional.
         expect(box.min.y).toBeLessThan(0);
         expect(box.min.y).toBeGreaterThan(-3);
@@ -231,9 +263,18 @@ describe('empty-model fallback', () => {
       fighter: 'air',
       transport: 'air',
       drone: 'air',
+      fighterBomber: 'air',
+      attackHeli: 'air',
+      awacs: 'air',
       patrolBoat: 'sea',
       destroyer: 'sea',
       transportShip: 'sea',
+      missileBoat: 'sea',
+      frigate: 'sea',
+      submarine: 'sea',
+      carrier: 'sea',
+      commandShip: 'sea',
+      fishingBoat: 'sea',
     };
     const units = (Object.keys(UNIT_DEFS) as UnitKind[]).map((kind) =>
       fakeUnit(kind, domains[kind] ?? 'land'),

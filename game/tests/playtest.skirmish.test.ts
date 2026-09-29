@@ -96,12 +96,12 @@ describe('automated skirmish playtest (vs cadet)', () => {
     const aiPlayer = session.world.ai.players.find((p) => p.owner === 1);
     expect(aiPlayer).toBeDefined();
     const built = Object.values(aiPlayer!.builtCounts).reduce((s, n) => s + n, 0);
-    // Cadet trickles units up to its cap (4) on a 240-tick cadence:
+    // Cadet trickles units up to its cap (6) on a 240-tick cadence:
     // 1800 ticks = ~7 think cycles, starting from 2 units.
     expect(built).toBeGreaterThan(0);
     const after = session.world.units.filter((u) => u.owner === 1).length;
     expect(after).toBeGreaterThan(before);
-    expect(after).toBeLessThanOrEqual(4);
+    expect(after).toBeLessThanOrEqual(6);
   });
 
   it('resources stay sane: no negative stockpiles, no runaway inflation', () => {
@@ -132,10 +132,10 @@ describe('automated skirmish playtest (vs cadet)', () => {
     expect(findNaNs(world)).toEqual([]);
     expect(world.units.length).toBeGreaterThan(0);
 
-    // The cadet AI should have built up to its cap (4) by now.
+    // The cadet AI should have built up to its cap (6) by now.
     const aiUnits = world.units.filter((u) => u.owner === 1);
     expect(aiUnits.length).toBeGreaterThan(2);
-    expect(aiUnits.length).toBeLessThanOrEqual(4);
+    expect(aiUnits.length).toBeLessThanOrEqual(6);
 
     for (const p of world.city.players) {
       expect(p.funds).toBeGreaterThanOrEqual(0);

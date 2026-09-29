@@ -40,6 +40,7 @@ import {
   registerMovementCommands,
 } from '../src/sim/movement';
 import { getPlayer } from '../src/sim/city';
+import { completeBuildings } from './sim.roster-fixtures';
 
 interface Ctx {
   world: ReturnType<typeof createWorld>;
@@ -122,6 +123,11 @@ describe('navy movement', () => {
     player.funds = 100000;
     player.materials = 100000;
     player.influence = 1000;
+    // Tests don't run the economy: manpower plus the production buildings
+    // the roster expansion requires (tank -> warFactory; basic naval units like
+    // patrolBoat are exempt per §5.2).
+    player.manpower = 100000;
+    completeBuildings(world, 0, ['shipyard', 'warFactory']);
     queue.enqueue(world, { issuer: 'player', kind: 'advanceAge', payload: { owner: 0, program: 'fiberGrid' } });
     for (let i = 0; i < 3; i++) driver.step(world, 100);
     queue.enqueue(world, { issuer: 'player', kind: 'advanceAge', payload: { owner: 0, program: 'heavyIndustry' } });
@@ -287,6 +293,11 @@ describe('moveGroup domain validation', () => {
     player.funds = 100000;
     player.materials = 100000;
     player.influence = 1000;
+    // Tests don't run the economy: manpower plus the production buildings
+    // the roster expansion requires (tank -> warFactory; basic naval units like
+    // patrolBoat are exempt per §5.2).
+    player.manpower = 100000;
+    completeBuildings(world, 0, ['shipyard', 'warFactory']);
     queue.enqueue(world, { issuer: 'player', kind: 'advanceAge', payload: { owner: 0, program: 'fiberGrid' } });
     for (let i = 0; i < 3; i++) driver.step(world, 100);
     queue.enqueue(world, { issuer: 'player', kind: 'advanceAge', payload: { owner: 0, program: 'heavyIndustry' } });

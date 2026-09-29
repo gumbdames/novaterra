@@ -44,7 +44,7 @@ import {
   type TerrainData,
 } from '../src/sim/terrain';
 import { MAP_HALF_SIZE, getPlayer } from '../src/sim/city';
-import { findUnit, registerUnitCommands, UNIT_DEFS } from '../src/sim/units';
+import { findUnit, registerUnitCommands, UNIT_DEFS, type UnitKind } from '../src/sim/units';
 import {
   createPathfindingSystem,
   createMovementSystem,
@@ -63,6 +63,10 @@ import {
 import { getVisibleEnemies } from '../src/sim/ai';
 import { digestWorld } from '../src/sim/digest';
 import { takeSnapshot, restoreSnapshot, SNAPSHOT_VERSION } from '../src/sim/snapshot';
+import {
+  grantAllTrainingResources,
+  completeBuildings,
+} from './sim.roster-fixtures';
 
 interface Ctx {
   terrain: TerrainData;
@@ -80,6 +84,12 @@ function getTerrain(): TerrainData {
 function setup(seed = 20260928): Ctx {
   const terrain = getTerrain();
   const world = createWorld(seed);
+  // Tests don't run the economy: grant training funds/materials/manpower
+  // and the production buildings the roster expansion requires.
+  grantAllTrainingResources(world);
+  for (const p of world.city.players) {
+    completeBuildings(world, p.id, ['barracks', 'warFactory', 'airfield']);
+  }
   const queue = createCommandQueue();
   registerCoreCommands(queue);
   registerUnitCommands(queue, terrain);
@@ -151,8 +161,8 @@ describe('initial state', () => {
     expect(initAges()).toEqual({ age: 'foundation', program: null, programs: {} });
   });
 
-  it('snapshot version is 5 (delegation/superweapons/economy added in step 9)', () => {
-    expect(SNAPSHOT_VERSION).toBe(5);
+  it('snapshot version is 6 (upgrades added by the roster expansion)', () => {
+    expect(SNAPSHOT_VERSION).toBe(6);
   });
 });
 
@@ -315,17 +325,24 @@ describe('age-gated units', () => {
     expect(UNIT_DEFS.fighter.minAge).toBe('connectivity');
   });
 
-  it('non-naval, non-fighter units are available in Foundation', () => {
-    const skip = new Set(['fighter', 'patrolBoat', 'destroyer', 'transportShip']);
-    for (const [kind, def] of Object.entries(UNIT_DEFS)) {
-      if (skip.has(kind)) continue;
-      expect(def.minAge).toBe('foundation');
-    }
-  });
-
-  it('naval units require the Industry age', () => {
-    for (const kind of ['patrolBoat', 'destroyer', 'transportShip'] as const) {
-      expect(UNIT_DEFS[kind].minAge).toBe('industry');
+  it('every unit carries its spec §6 minimum age', () => {
+    // Exact roster-expansion age assignments (docs/research/roster-expansion.md §6).
+    const expected: Record<string, string> = {
+      engineer: 'foundation', rifles: 'foundation', hauler: 'foundation',
+      drone: 'foundation', spectre: 'foundation', hq: 'foundation',
+      tank: 'foundation', artillery: 'foundation', aa: 'foundation',
+      fishingBoat: 'foundation',
+      patrolBoat: 'industry', transportShip: 'industry', destroyer: 'industry',
+      sniperTeam: 'connectivity', combatMedic: 'connectivity', apc: 'connectivity',
+      attackHeli: 'connectivity', missileBoat: 'connectivity',
+      tankDestroyer: 'industry', mlrs: 'industry', fighterBomber: 'industry',
+      frigate: 'industry', submarine: 'industry',
+      awacs: 'information', carrier: 'information', commandShip: 'information',
+      fighter: 'connectivity', transport: 'foundation',
+    };
+    expect(Object.keys(UNIT_DEFS).sort()).toEqual(Object.keys(expected).sort());
+    for (const [kind, age] of Object.entries(expected)) {
+      expect(UNIT_DEFS[kind as UnitKind].minAge).toBe(age);
     }
   });
 

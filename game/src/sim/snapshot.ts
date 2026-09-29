@@ -53,6 +53,7 @@ import type { DelegationState } from './delegation';
 import { encodeDelegationState, decodeDelegationState, initDelegation } from './delegation';
 import type { SuperweaponState } from './superweapons';
 import { encodeSuperweaponState, decodeSuperweaponState, initSuperweapons } from './superweapons';
+import { encodeUpgrades, decodeUpgrades } from './upgrades';
 
 /**
  * Snapshot format version. Bump on any breaking change to the shape below.
@@ -62,8 +63,13 @@ import { encodeSuperweaponState, decodeSuperweaponState, initSuperweapons } from
  * v4: Age state (Foundation → Connectivity + National Program) added (Phase 1, step 8).
  * v5: Chain-of-command state, superweapon state, city specialization and
  *     trade routes added (Phase 3).
+ * v6: Per-player researched upgrades added (roster expansion, Phase 4).
+ *     v5 snapshots still load: upgrades default to {} per the spec.
  */
-export const SNAPSHOT_VERSION = 5;
+export const SNAPSHOT_VERSION = 6;
+
+/** Oldest snapshot version that still loads (pre-v6 gains empty upgrades). */
+export const OLDEST_SUPPORTED_SNAPSHOT_VERSION = 5;
 
 /** Plain-data snapshot of the world at a tick boundary. */
 export interface Snapshot {
@@ -81,6 +87,7 @@ export interface Snapshot {
   ages: AgeState;
   delegation: DelegationState;
   superweapons: SuperweaponState;
+  upgrades: Record<number, string[]>;
 }
 
 /** Thrown when a snapshot's version doesn't match. Names expected vs found. */
@@ -215,18 +222,20 @@ export function takeSnapshot(world: World): Snapshot {
     ages: encodeAgeState(world.ages) as AgeState,
     delegation: encodeDelegationState(world.delegation) as DelegationState,
     superweapons: encodeSuperweaponState(world.superweapons) as SuperweaponState,
+    upgrades: encodeUpgrades(world.upgrades),
   };
 }
 
 /**
  * Rebuild a world from a snapshot. The result shares no references with the
- * snapshot. Throws SnapshotVersionError on version mismatch.
+ * snapshot. Throws SnapshotVersionError on version mismatch. v5 snapshots
+ * still load: per the spec, old saves default upgrades to {}.
  */
 export function restoreSnapshot(snap: Snapshot): World {
   if (snap === null || typeof snap !== 'object') {
     throw new SnapshotVersionError(SNAPSHOT_VERSION, snap);
   }
-  if (snap.version !== SNAPSHOT_VERSION) {
+  if (snap.version !== SNAPSHOT_VERSION && snap.version !== 5) {
     throw new SnapshotVersionError(SNAPSHOT_VERSION, snap.version);
   }
   const world = createWorld(snap.seed);
@@ -248,5 +257,7 @@ export function restoreSnapshot(snap: Snapshot): World {
   world.delegation = snap.delegation ? decodeDelegationState(snap.delegation) : initDelegation();
   // Defensive: older snapshots lack superweapon state — init instead of crashing.
   world.superweapons = snap.superweapons ? decodeSuperweaponState(snap.superweapons) : initSuperweapons();
+  // v5 snapshots lack upgrades — per the spec they default to {}.
+  world.upgrades = decodeUpgrades(snap.upgrades ?? {});
   return world;
 }

@@ -52,6 +52,7 @@ import type { DelegationState } from './delegation';
 import { initDelegation } from './delegation';
 import type { SuperweaponState } from './superweapons';
 import { initSuperweapons } from './superweapons';
+import { initUpgrades } from './upgrades';
 
 /** Minimal per-entity record. Later steps add components; the shape stays plain. */
 export interface EntityRecord {
@@ -92,6 +93,8 @@ export interface World {
   delegation: DelegationState;
   /** Superweapon slots, scheduled strikes, fx. Snapshotted + digested. */
   superweapons: SuperweaponState;
+  /** Per-player researched upgrade ids (spec docs/research/roster-expansion.md §4). */
+  upgrades: Record<number, string[]>;
 }
 
 /** First assignable entity id (0 stays reserved as the "no entity" sentinel). */
@@ -113,6 +116,7 @@ export function createWorld(seed: number): World {
     ages: initAges(),
     delegation: initDelegation(),
     superweapons: initSuperweapons(),
+    upgrades: initUpgrades(),
   };
 }
 

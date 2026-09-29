@@ -17,7 +17,7 @@
 /**
  * NOVATERRA — sim combat tests (Phase 1, step 7).
  *
- * Covers the 11-unit roster (8 land + 3 air), combat resolution
+ * Covers the 28-unit roster (13 land + 6 air + 9 sea), combat resolution
  * (targeting, range, cooldowns, armor/domain counters, HQ aura), the
  * attackUnit command, death cleanup, air-unit direct flight, and
  * determinism of combat via digest comparison.
@@ -55,6 +55,10 @@ import { digestWorld } from '../src/sim/digest';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
 import { registerAgeCommands, CONNECTIVITY_COST } from '../src/sim/ages';
 import { getPlayer } from '../src/sim/city';
+import {
+  grantAllTrainingResources,
+  completeBuildings,
+} from './sim.roster-fixtures';
 
 interface Ctx {
   terrain: TerrainData;
@@ -72,6 +76,12 @@ function getTerrain(): TerrainData {
 function setup(seed = 20260928): Ctx {
   const terrain = getTerrain();
   const world = createWorld(seed);
+  // Tests don't run the economy: grant training funds/materials/manpower
+  // and the production buildings the roster expansion requires.
+  grantAllTrainingResources(world);
+  for (const p of world.city.players) {
+    completeBuildings(world, p.id, ['barracks', 'warFactory', 'airfield']);
+  }
   const queue = createCommandQueue();
   registerCoreCommands(queue);
   registerUnitCommands(queue, terrain);
@@ -145,21 +155,26 @@ function advanceToConnectivity(ctx: Ctx, owner = 0): void {
 }
 
 describe('roster', () => {
-  it('has exactly the 14 kinds (8 land + 3 air + 3 sea)', () => {
+  it('has exactly the 28 kinds (13 land + 6 air + 9 sea)', () => {
     const kinds = Object.keys(UNIT_DEFS).sort();
     expect(kinds).toEqual(
       [
         'artillery', 'drone', 'engineer', 'fighter', 'hauler',
         'aa', 'hq', 'rifles', 'spectre', 'tank', 'transport',
         'patrolBoat', 'destroyer', 'transportShip',
+        // Roster expansion (docs/research/roster-expansion.md §2).
+        'sniperTeam', 'combatMedic', 'apc', 'tankDestroyer', 'mlrs',
+        'fighterBomber', 'attackHeli', 'awacs',
+        'missileBoat', 'frigate', 'submarine', 'carrier', 'commandShip',
+        'fishingBoat',
       ].sort(),
     );
     const land = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'land');
     const air = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'air');
     const sea = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'sea');
-    expect(land).toHaveLength(8);
-    expect(air).toHaveLength(3);
-    expect(sea).toHaveLength(3);
+    expect(land).toHaveLength(13);
+    expect(air).toHaveLength(6);
+    expect(sea).toHaveLength(9);
   });
 
   it('spawns with full hp, zero cooldown, no target', () => {

@@ -41,6 +41,17 @@ import type { SimSystem } from './tick';
 import type { CommandQueue, CommandSpec } from './commands';
 import { getTaxMultiplier, getFactoryOutputMult, getInfluenceMult, getGoodsOutputMult, getUpkeepMult, getUtilityDemandMult, getTaxMultiplierFull } from './ages';
 import {
+  hasUpgrade,
+  effectivePowerSupply,
+  effectiveWaterDemand,
+  PRECISION_MANUFACTURING_MULT,
+  VERTICAL_FARMING_FOOD_MULT,
+  FREE_TRADE_MARKET_MULT,
+  FREE_TRADE_SHOP_MULT,
+  FREE_TRADE_TRADE_ROUTE_INCOME,
+} from './upgrades';
+import { UNIT_DEFS } from './units';
+import {
   BUILDING_DEFS,
   UTILITY_PENALTY,
   FOOD_PER_POP_PER_SEC,
@@ -140,7 +151,7 @@ interface UtilityAllocation {
  * Fund upkeep and allocate power/water per player. Mutates building
  * operational/powered/watered flags. Deterministic: id-ordered.
  */
-function allocateUtilities(city: CityState): UtilityAllocation {
+function allocateUtilities(world: World, city: CityState): UtilityAllocation {
   const powerHeadroom: number[] = [];
   const waterHeadroom: number[] = [];
   for (const player of city.players) {
@@ -165,12 +176,14 @@ function allocateUtilities(city: CityState): UtilityAllocation {
     player.funds -= charged;
 
     // 3. Power: supply from road-adjacent plants, demand in id order.
+    // Smart Grid raises plant supply (powerPlant 25->35, solarFarm
+    // 15->20, nuclearPlant 60->75).
     let powerSupply = 0;
     for (const b of completed) {
       const def = BUILDING_DEFS[b.kind];
       if (def.powerSupply > 0 && funded.has(b.id) &&
           isRoadAdjacent(city, b.cx, b.cz, def.footprintW, def.footprintH)) {
-        powerSupply += def.powerSupply;
+        powerSupply += effectivePowerSupply(world, b.owner, b.kind, def.powerSupply);
       }
     }
     const powerDemanders = completed
@@ -200,7 +213,8 @@ function allocateUtilities(city: CityState): UtilityAllocation {
     let waterLeft = waterSupply;
     const wateredSet = new Set<number>();
     for (const b of waterDemanders) {
-      const need = BUILDING_DEFS[b.kind].waterDemand;
+      // Vertical Farming trims the farm's water demand (4->3).
+      const need = effectiveWaterDemand(world, b.owner, b.kind, BUILDING_DEFS[b.kind].waterDemand);
       if (waterLeft >= need) {
         waterLeft -= need;
         wateredSet.add(b.id);
@@ -260,6 +274,11 @@ function runProduction(world: World, city: CityState): void {
     let mult = penalty * levelMult(b);
     // Heavy Industry boosts factory output.
     if (b.kind === 'factory') mult *= factoryMult;
+    // Precision Manufacturing: factory output +25% (stacks multiplicatively
+    // with Heavy Industry's 1.5x — the boom path).
+    if (b.kind === 'factory' && hasUpgrade(world, b.owner, 'precisionManufacturing')) {
+      mult *= PRECISION_MANUFACTURING_MULT;
+    }
     // Phase 3: city specialization boosts/penalizes zoned output.
     mult *= specializationMult(player, def.zone);
     // Inputs first: a building starved of fuel sits idle this tick.
@@ -281,7 +300,36 @@ function runProduction(world: World, city: CityState): void {
       // Apply age program multipliers to specific resources.
       if (key === 'influence') gain *= influenceMult;
       if (key === 'goods') gain *= goodsMult;
+      // Vertical Farming: farm food output x1.5 (water demand trimmed in
+      // allocateUtilities).
+      if (key === 'food' && b.kind === 'farm' && hasUpgrade(world, b.owner, 'verticalFarming')) {
+        gain *= VERTICAL_FARMING_FOOD_MULT;
+      }
+      // Free Trade: market funds x1.5, shop funds x1.25.
+      if (key === 'funds' && hasUpgrade(world, b.owner, 'freeTrade')) {
+        if (b.kind === 'market') gain *= FREE_TRADE_MARKET_MULT;
+        else if (b.kind === 'shop') gain *= FREE_TRADE_SHOP_MULT;
+      }
       if (gain > 0) addStock(player, key, gain);
+    }
+  }
+}
+
+/**
+ * Passive harvest (spec §5.6): living units whose def carries `harvest`
+ * (fishingBoat: +0.6 food/s) add to their owner's stockpile each economy
+ * tick. O(units), once per sim-second — negligible.
+ */
+function runHarvest(world: World, city: CityState): void {
+  for (const u of world.units) {
+    if (u.hp <= 0) continue;
+    const def = UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS];
+    if (!def?.harvest) continue;
+    const player = getPlayer(city, u.owner);
+    if (!player) continue;
+    for (const key of RESOURCE_KEYS) {
+      const rate = def.harvest[key] ?? 0;
+      if (rate > 0) addStock(player, key, rate);
     }
   }
 }
@@ -337,13 +385,16 @@ function hasTradeCapacity(city: CityState, owner: number): boolean {
   return false;
 }
 
-function runTradeRoutes(city: CityState): void {
+function runTradeRoutes(world: World, city: CityState): void {
   for (const route of city.tradeRoutes) {
     const owner = getPlayer(city, route.owner);
     if (!owner) continue;
     if (!getPlayer(city, route.partner)) continue;
     if (hasTradeCapacity(city, route.owner) && hasTradeCapacity(city, route.partner)) {
-      owner.funds += TRADE_ROUTE_INCOME_PER_SEC;
+      // Free Trade lifts route income 3 -> 4.5/s.
+      owner.funds += hasUpgrade(world, route.owner, 'freeTrade')
+        ? FREE_TRADE_TRADE_ROUTE_INCOME
+        : TRADE_ROUTE_INCOME_PER_SEC;
     }
   }
 }
@@ -405,11 +456,12 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   recountPopulation(city);
   generateManpower(city);
   runConstruction(city);
-  const { powerHeadroom, waterHeadroom } = allocateUtilities(city);
+  const { powerHeadroom, waterHeadroom } = allocateUtilities(world, city);
   runProduction(world, city);
+  runHarvest(world, city);
   runFood(city);
   runTaxes(world, economyTickIndex(world));
-  runTradeRoutes(city);
+  runTradeRoutes(world, city);
   runLevels(world);
   runGrowth(t, world, powerHeadroom, waterHeadroom);
 }

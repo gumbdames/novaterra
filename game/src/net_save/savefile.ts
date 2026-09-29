@@ -35,7 +35,7 @@
  */
 
 import type { GameSession } from '../ui/session';
-import { takeSnapshot, SNAPSHOT_VERSION, type Snapshot } from '../sim/snapshot';
+import { takeSnapshot, SNAPSHOT_VERSION, OLDEST_SUPPORTED_SNAPSHOT_VERSION, type Snapshot } from '../sim/snapshot';
 import type { AIDifficulty } from '../sim/ai';
 
 /** SaveFile envelope version. Bump if SaveMetadata changes shape. */
@@ -116,7 +116,8 @@ export function summarizeSave(file: SaveFile): SaveMetadata {
  */
 export function validateSaveVersion(file: SaveFile): string | null {
   const found = (file.snapshot as { version?: unknown } | null)?.version;
-  if (found === SNAPSHOT_VERSION) return null;
+  // v5 saves still load (upgrades default to {}); anything older is rejected.
+  if (found === SNAPSHOT_VERSION || found === OLDEST_SUPPORTED_SNAPSHOT_VERSION) return null;
   return (
     'This save is from an older version of NOVATERRA and can\u2019t be loaded. ' +
     'Starting a new game is recommended \u2014 your other saves are unaffected.'

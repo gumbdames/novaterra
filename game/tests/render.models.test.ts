@@ -95,9 +95,9 @@ function worldBox(root: THREE.Object3D): THREE.Box3 {
 }
 
 describe('MODEL_PATHS real mapping', () => {
-  it('maps 32 CC0 keys to .glb paths with positive finite scales', () => {
+  it('maps 58 CC0 keys to .glb paths with positive finite scales', () => {
     const keys = Object.keys(MODEL_PATHS);
-    expect(keys).toHaveLength(32);
+    expect(keys).toHaveLength(58);
     for (const [key, spec] of Object.entries(MODEL_PATHS)) {
       expect(typeof key).toBe('string');
       expect(spec.path).toMatch(/\.glb$/);
@@ -113,10 +113,19 @@ describe('MODEL_PATHS real mapping', () => {
       // units (1:1)
       'engineer', 'rifles', 'tank', 'hauler', 'spectre', 'hq',
       'patrolBoat', 'transportShip',
+      // NOVATERRA roster-expansion units (1:1)
+      'sniperTeam', 'combatMedic', 'tankDestroyer', 'awacs',
+      'missileBoat', 'commandShip', 'fishingBoat',
       // building pieces (composites assemble several)
       'house', 'apartment', 'shop', 'lab', 'factory', 'waterPump',
       'aegisMain', 'farmBarn', 'farmSilo', 'powerPlantMain',
       'powerPlantChimney', 'shipyardCrane', 'shipyardMachine',
+      // NOVATERRA roster-expansion building pieces
+      'barracks', 'warFactoryMain', 'industrialStack', 'airfieldHangar',
+      'airfieldHangar2', 'navalYardCrane', 'navalYardHall', 'radarStation',
+      'oilRefineryTank', 'industrialTank', 'recyclingCenter', 'market',
+      'solarFarmA', 'solarFarmB', 'nuclearPlantMain', 'desalinationHall',
+      'hospital', 'university', 'school',
       // nature props
       'propTreeOak', 'propTreeCone', 'propTreePineTall', 'propTreeBlocks',
       'propTreeDetailed', 'propTreePlateau', 'propRockLarge', 'propRockTall',
@@ -131,9 +140,17 @@ describe('MODEL_PATHS real mapping', () => {
     expect(MODEL_PATHS['spectre']?.rotY).toBeCloseTo(Math.PI, 10);
     expect(MODEL_PATHS['hq']?.rotY).toBeCloseTo(Math.PI, 10);
     expect(MODEL_PATHS['transportShip']?.rotY).toBeCloseTo(Math.PI, 10);
+    // NOVATERRA roster expansion: tankDestroyer's Quaternius tank is
+    // authored facing +x (yaw π/2 like the original tank); the AWACS
+    // cargo plane, command ship, and fishing boat follow the +z-bow
+    // convention (yaw π).
+    expect(MODEL_PATHS['tankDestroyer']?.rotY).toBeCloseTo(Math.PI / 2, 10);
+    expect(MODEL_PATHS['awacs']?.rotY).toBeCloseTo(Math.PI, 10);
+    expect(MODEL_PATHS['commandShip']?.rotY).toBeCloseTo(Math.PI, 10);
+    expect(MODEL_PATHS['fishingBoat']?.rotY).toBeCloseTo(Math.PI, 10);
     // Boats sink (negative yOffset) so the waterline sits partway up the
     // hull instead of at the keel — never a positive (hovering) offset.
-    for (const key of ['patrolBoat', 'transportShip']) {
+    for (const key of ['patrolBoat', 'transportShip', 'missileBoat', 'commandShip', 'fishingBoat']) {
       const yOffset = MODEL_PATHS[key]?.yOffset;
       expect(yOffset).toBeDefined();
       expect(yOffset as number).toBeLessThan(0);

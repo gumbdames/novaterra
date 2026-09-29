@@ -6,7 +6,7 @@ Save / load / resume (Phase 1, step 11). See docs/ARCHITECTURE.md §4.
 
 - `savefile.ts` — the `SaveFile` envelope: `{ version, metadata,
   snapshot }`. `SAVEFILE_VERSION` (1) is the envelope version, independent
-  of the sim snapshot version (sim/snapshot.ts v4) — slot metadata can
+  of the sim snapshot version (sim/snapshot.ts v6, accepting v5) — slot metadata can
   evolve without touching the sim. `SaveMetadata` is everything the load
   UI shows without reading the snapshot: slot id, name, savedAt (ISO),
   tick, seed, AI difficulty, age, National Program, and the `cheated`

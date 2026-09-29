@@ -52,6 +52,7 @@ import { isWater } from './terrain';
 import type { World } from './world';
 import { rngBank } from './world';
 import type { CommandQueue, CommandSpec } from './commands';
+import type { Age } from './ages';
 
 // ---------------------------------------------------------------------------
 // Grid
@@ -170,7 +171,7 @@ export interface TradeRoute {
   establishedTick: number;
 }
 
-/** Phase-1 building kinds, plus Phase 3 superweapon facilities. */
+/** Phase-1 building kinds, plus Phase 3 superweapon facilities, plus the roster-expansion set. */
 export const BuildingKind = {
   HOUSE: 'house',
   APARTMENT: 'apartment',
@@ -186,6 +187,24 @@ export const BuildingKind = {
   AEGIS_CONTROL: 'aegisControl',
   /** Phase 3: Storm Engine superweapon array (Ascendance only). */
   STORM_ARRAY: 'stormArray',
+  // Roster expansion (spec docs/research/roster-expansion.md §3): the four
+  // production buildings (military tech tree made physical) + economy.
+  BARRACKS: 'barracks',
+  WAR_FACTORY: 'warFactory',
+  AIRFIELD: 'airfield',
+  NAVAL_YARD: 'navalYard',
+  RADAR_STATION: 'radarStation',
+  QUARRY: 'quarry',
+  OIL_REFINERY: 'oilRefinery',
+  RECYCLING_CENTER: 'recyclingCenter',
+  MARKET: 'market',
+  SOLAR_FARM: 'solarFarm',
+  NUCLEAR_PLANT: 'nuclearPlant',
+  DESALINATION: 'desalination',
+  HOSPITAL: 'hospital',
+  UNIVERSITY: 'university',
+  SCHOOL: 'school',
+  MONUMENT: 'monument',
 } as const;
 export type BuildingKind = (typeof BuildingKind)[keyof typeof BuildingKind];
 
@@ -221,6 +240,8 @@ export interface BuildingDef {
   population: number;
   /** Taxable value in funds/sec (zoned buildings only). */
   taxBasePerSec: number;
+  /** Minimum age required to place this building (spec §6). */
+  minAge: Age;
 }
 
 export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
@@ -230,6 +251,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 10, upkeepFundsPerSec: 0.15,
     powerDemand: 1, powerSupply: 0, waterDemand: 1, waterSupply: 0,
     output: {}, input: {}, population: 6, taxBasePerSec: 1.0,
+    minAge: 'foundation',
   },
   apartment: {
     kind: 'apartment', name: 'Apartment Block', zone: ZoneType.RESIDENTIAL,
@@ -237,6 +259,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 30, upkeepFundsPerSec: 0.7,
     powerDemand: 3, powerSupply: 0, waterDemand: 3, waterSupply: 0,
     output: {}, input: {}, population: 30, taxBasePerSec: 5.0,
+    minAge: 'foundation',
   },
   shop: {
     kind: 'shop', name: 'Shop', zone: ZoneType.COMMERCIAL,
@@ -244,6 +267,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 15, upkeepFundsPerSec: 0.4,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
     output: { funds: 1.8 }, input: { goods: 0.5 }, population: 0, taxBasePerSec: 6.0,
+    minAge: 'foundation',
   },
   lab: {
     kind: 'lab', name: 'Research Lab', zone: ZoneType.COMMERCIAL,
@@ -251,6 +275,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 45, upkeepFundsPerSec: 1.2,
     powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: { research: 0.4 }, input: {}, population: 0, taxBasePerSec: 6.0,
+    minAge: 'foundation',
   },
   factory: {
     kind: 'factory', name: 'Factory', zone: ZoneType.INDUSTRIAL,
@@ -258,6 +283,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 40, upkeepFundsPerSec: 1.6,
     powerDemand: 5, powerSupply: 0, waterDemand: 3, waterSupply: 0,
     output: { materials: 2.5, goods: 1.5 }, input: { fuel: 0.4 }, population: 0, taxBasePerSec: 8.0,
+    minAge: 'foundation',
   },
   farm: {
     kind: 'farm', name: 'Farm', zone: ZoneType.INDUSTRIAL,
@@ -265,6 +291,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 15, upkeepFundsPerSec: 0.6,
     powerDemand: 1, powerSupply: 0, waterDemand: 4, waterSupply: 0,
     output: { food: 3.0 }, input: {}, population: 0, taxBasePerSec: 2.5,
+    minAge: 'foundation',
   },
   powerPlant: {
     kind: 'powerPlant', name: 'Power Plant', zone: UTILITY_ZONE,
@@ -272,6 +299,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 60, upkeepFundsPerSec: 0.8,
     powerDemand: 0, powerSupply: 25, waterDemand: 2, waterSupply: 0,
     output: {}, input: { fuel: 1.0 }, population: 0, taxBasePerSec: 3.0,
+    minAge: 'foundation',
   },
   waterPump: {
     kind: 'waterPump', name: 'Water Pump', zone: UTILITY_ZONE,
@@ -279,6 +307,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 20, upkeepFundsPerSec: 0.4,
     powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 25,
     output: {}, input: {}, population: 0, taxBasePerSec: 1.5,
+    minAge: 'foundation',
   },
   mediaCenter: {
     kind: 'mediaCenter', name: 'Media Center', zone: ZoneType.COMMERCIAL,
@@ -286,6 +315,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 45, upkeepFundsPerSec: 1.0,
     powerDemand: 4, powerSupply: 0, waterDemand: 1, waterSupply: 0,
     output: { influence: 0.8 }, input: {}, population: 0, taxBasePerSec: 7.0,
+    minAge: 'foundation',
   },
   shipyard: {
     kind: 'shipyard', name: 'Shipyard', zone: UTILITY_ZONE,
@@ -293,6 +323,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 60, upkeepFundsPerSec: 1.5,
     powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 4.0,
+    minAge: 'foundation',
   },
   aegisControl: {
     kind: 'aegisControl', name: 'Aegis Control', zone: UTILITY_ZONE,
@@ -300,6 +331,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 120, upkeepFundsPerSec: 5.0,
     powerDemand: 10, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 6.0,
+    minAge: 'ascendance',
   },
   stormArray: {
     kind: 'stormArray', name: 'Storm Array', zone: UTILITY_ZONE,
@@ -307,6 +339,135 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 150, upkeepFundsPerSec: 6.0,
     powerDemand: 12, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 6.0,
+    minAge: 'ascendance',
+  },
+  barracks: {
+    kind: 'barracks', name: 'Barracks', zone: ZoneType.INDUSTRIAL,
+    footprintW: 3, footprintH: 3, costFunds: 700, costMaterials: 250,
+    buildSeconds: 40, upkeepFundsPerSec: 1.0,
+    powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: { manpower: 0.8 }, input: {}, population: 0, taxBasePerSec: 4.0,
+    minAge: 'foundation',
+  },
+  warFactory: {
+    kind: 'warFactory', name: 'War Factory', zone: ZoneType.INDUSTRIAL,
+    footprintW: 4, footprintH: 3, costFunds: 1100, costMaterials: 450,
+    buildSeconds: 60, upkeepFundsPerSec: 1.8,
+    powerDemand: 6, powerSupply: 0, waterDemand: 3, waterSupply: 0,
+    output: { materials: 0.5 }, input: {}, population: 0, taxBasePerSec: 6.0,
+    minAge: 'foundation',
+  },
+  airfield: {
+    kind: 'airfield', name: 'Airfield', zone: UTILITY_ZONE,
+    footprintW: 5, footprintH: 4, costFunds: 1500, costMaterials: 600,
+    buildSeconds: 75, upkeepFundsPerSec: 2.0,
+    powerDemand: 5, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 5.0,
+    minAge: 'connectivity',
+  },
+  navalYard: {
+    kind: 'navalYard', name: 'Naval Yard', zone: UTILITY_ZONE,
+    footprintW: 5, footprintH: 4, costFunds: 1800, costMaterials: 700,
+    buildSeconds: 80, upkeepFundsPerSec: 2.2,
+    powerDemand: 6, powerSupply: 0, waterDemand: 3, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 5.0,
+    minAge: 'industry',
+  },
+  radarStation: {
+    kind: 'radarStation', name: 'Radar Station', zone: UTILITY_ZONE,
+    footprintW: 2, footprintH: 2, costFunds: 600, costMaterials: 200,
+    buildSeconds: 30, upkeepFundsPerSec: 0.8,
+    powerDemand: 3, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: { research: 0.5 }, input: {}, population: 0, taxBasePerSec: 3.0,
+    minAge: 'connectivity',
+  },
+  quarry: {
+    kind: 'quarry', name: 'Quarry', zone: ZoneType.INDUSTRIAL,
+    footprintW: 3, footprintH: 3, costFunds: 350, costMaterials: 100,
+    buildSeconds: 25, upkeepFundsPerSec: 0.7,
+    powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: { materials: 2.0 }, input: {}, population: 0, taxBasePerSec: 3.0,
+    minAge: 'foundation',
+  },
+  oilRefinery: {
+    kind: 'oilRefinery', name: 'Oil Refinery', zone: ZoneType.INDUSTRIAL,
+    footprintW: 4, footprintH: 3, costFunds: 900, costMaterials: 350,
+    buildSeconds: 50, upkeepFundsPerSec: 1.4,
+    powerDemand: 4, powerSupply: 0, waterDemand: 3, waterSupply: 0,
+    output: { fuel: 1.5 }, input: { materials: 0.3 }, population: 0, taxBasePerSec: 6.0,
+    minAge: 'connectivity',
+  },
+  recyclingCenter: {
+    kind: 'recyclingCenter', name: 'Recycling Center', zone: ZoneType.INDUSTRIAL,
+    footprintW: 3, footprintH: 3, costFunds: 500, costMaterials: 180,
+    buildSeconds: 35, upkeepFundsPerSec: 0.9,
+    powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: { materials: 1.0 }, input: { goods: 0.5 }, population: 0, taxBasePerSec: 4.0,
+    minAge: 'connectivity',
+  },
+  market: {
+    kind: 'market', name: 'Market', zone: ZoneType.COMMERCIAL,
+    footprintW: 3, footprintH: 3, costFunds: 600, costMaterials: 200,
+    buildSeconds: 30, upkeepFundsPerSec: 1.0,
+    powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: { funds: 2.5 }, input: { food: 0.5, goods: 0.5 }, population: 0, taxBasePerSec: 10.0,
+    minAge: 'connectivity',
+  },
+  solarFarm: {
+    kind: 'solarFarm', name: 'Solar Farm', zone: UTILITY_ZONE,
+    footprintW: 4, footprintH: 3, costFunds: 700, costMaterials: 250,
+    buildSeconds: 35, upkeepFundsPerSec: 0.5,
+    powerDemand: 0, powerSupply: 15, waterDemand: 1, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'connectivity',
+  },
+  nuclearPlant: {
+    kind: 'nuclearPlant', name: 'Nuclear Plant', zone: UTILITY_ZONE,
+    footprintW: 4, footprintH: 4, costFunds: 2500, costMaterials: 1000,
+    buildSeconds: 100, upkeepFundsPerSec: 2.5,
+    powerDemand: 0, powerSupply: 60, waterDemand: 6, waterSupply: 0,
+    output: {}, input: { fuel: 0.5 }, population: 0, taxBasePerSec: 8.0,
+    minAge: 'industry',
+  },
+  desalination: {
+    kind: 'desalination', name: 'Desalination Plant', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 800, costMaterials: 300,
+    buildSeconds: 40, upkeepFundsPerSec: 1.0,
+    powerDemand: 6, powerSupply: 0, waterDemand: 0, waterSupply: 40,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'industry',
+  },
+  hospital: {
+    kind: 'hospital', name: 'Hospital', zone: ZoneType.COMMERCIAL,
+    footprintW: 3, footprintH: 3, costFunds: 800, costMaterials: 280,
+    buildSeconds: 40, upkeepFundsPerSec: 1.2,
+    powerDemand: 4, powerSupply: 0, waterDemand: 3, waterSupply: 0,
+    output: { manpower: 0.4 }, input: {}, population: 0, taxBasePerSec: 5.0,
+    minAge: 'connectivity',
+  },
+  university: {
+    kind: 'university', name: 'University', zone: ZoneType.COMMERCIAL,
+    footprintW: 4, footprintH: 3, costFunds: 1400, costMaterials: 500,
+    buildSeconds: 60, upkeepFundsPerSec: 1.8,
+    powerDemand: 5, powerSupply: 0, waterDemand: 3, waterSupply: 0,
+    output: { research: 1.0 }, input: {}, population: 0, taxBasePerSec: 8.0,
+    minAge: 'connectivity',
+  },
+  school: {
+    kind: 'school', name: 'School', zone: ZoneType.RESIDENTIAL,
+    footprintW: 2, footprintH: 2, costFunds: 250, costMaterials: 80,
+    buildSeconds: 20, upkeepFundsPerSec: 0.4,
+    powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: { research: 0.25 }, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'foundation',
+  },
+  monument: {
+    kind: 'monument', name: 'Monument', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 3000, costMaterials: 1200,
+    buildSeconds: 90, upkeepFundsPerSec: 2.0,
+    powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: { influence: 1.0 }, input: {}, population: 0, taxBasePerSec: 6.0,
+    minAge: 'information',
   },
 };
 
@@ -487,6 +648,25 @@ export function buildingAtCell(city: CityState, cell: number): BuildingRecord | 
   return undefined;
 }
 
+/** True when any footprint cell is orthogonally adjacent to a water cell. */
+export function isCoastal(t: TerrainData, cx: number, cz: number, w: number, h: number): boolean {
+  for (let dz = 0; dz < h; dz++) {
+    for (let dx = 0; dx < w; dx++) {
+      const nx = cx + dx;
+      const nz = cz + dz;
+      if (
+        (inBounds(nx + 1, nz) && cellIsWater(t, nx + 1, nz)) ||
+        (inBounds(nx - 1, nz) && cellIsWater(t, nx - 1, nz)) ||
+        (inBounds(nx, nz + 1) && cellIsWater(t, nx, nz + 1)) ||
+        (inBounds(nx, nz - 1) && cellIsWater(t, nx, nz - 1))
+      ) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 /** True when any footprint cell is orthogonally adjacent to a road cell. */
 export function isRoadAdjacent(city: CityState, cx: number, cz: number, w: number, h: number): boolean {
   for (let dz = 0; dz < h; dz++) {
@@ -580,6 +760,11 @@ export function validatePlacement(t: TerrainData, city: CityState, p: Placement)
   }
   if (!isRoadAdjacent(city, p.cx, p.cz, def.footprintW, def.footprintH)) {
     return `${def.name}: must be adjacent to a road`;
+  }
+  // Roster expansion: the naval yard is coastal construction — at least one
+  // footprint cell must touch water (makes coastline valuable).
+  if (p.kind === 'navalYard' && !isCoastal(t, p.cx, p.cz, def.footprintW, def.footprintH)) {
+    return `${def.name}: must be built on the coast (adjacent to water)`;
   }
   const player = getPlayer(city, p.owner) as PlayerState;
   if (player.funds < def.costFunds || player.materials < def.costMaterials) {
@@ -747,6 +932,45 @@ function validateRoadCells(t: TerrainData, city: CityState, cells: number[]): st
   return null;
 }
 
+/** Age order for minAge gating. Local copy of AGE_ORDER (ages.ts) —
+// city.ts cannot import ages.ts (that module imports getPlayer from here),
+// so the order is mirrored with a comment instead of shared. */
+const AGE_ORDER_LOCAL: readonly Age[] = [
+  'foundation',
+  'connectivity',
+  'industry',
+  'information',
+  'ascendance',
+];
+
+/** True when the world's current age meets a building's minimum age. */
+export function isBuildingAgeMet(currentAge: Age, minAge: Age): boolean {
+  return AGE_ORDER_LOCAL.indexOf(currentAge) >= AGE_ORDER_LOCAL.indexOf(minAge);
+}
+
+/**
+ * True when the owner holds a completed production building of `kind` —
+ * either a real one on the city grid (progress >= 1) or one the Classic
+ * AI virtually constructed (spec docs/research/roster-expansion.md §7.1:
+ * the AI pays the full funds/materials cost and waits the full build
+ * time, but owns no physical footprint — it paints no zones and lays no
+ * roads). Human players never have virtual buildings, so for them this
+ * is exactly the real-building check.
+ *
+ * Shared by `spawnUnit` production gating (units.ts) and `researchUpgrade`
+ * building prerequisites (upgrades.ts) so the AI's virtual construction
+ * unlocks the same roster a physical building would.
+ */
+export function hasProductionBuilding(world: World, owner: number, kind: BuildingKind): boolean {
+  for (const b of world.city.buildings) {
+    if (b.owner === owner && b.kind === kind && b.progress >= 1) return true;
+  }
+  // AI virtual construction (see sim/ai.ts): completed virtual buildings
+  // live on the AI player's state, not on the city grid.
+  const ai = world.ai.players.find((p) => p.owner === owner);
+  return ai !== undefined && ai.virtualBuildings.completed.includes(kind);
+}
+
 function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
   const buildRoad: CommandSpec = {
     validate(cmd, world): string | null {
@@ -853,11 +1077,14 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       if (owner === null || cx === null || cz === null) {
         return 'placeBuilding: payload needs kind, owner, cx, cz (facing optional)';
       }
-      // Phase 3: superweapon facilities need the Ascendance age. (Reads
-      // world.ages directly instead of importing ages.ts — that module
-      // imports getPlayer from here, so an import would be a cycle.)
-      if ((kind === 'aegisControl' || kind === 'stormArray') && world.ages.age !== 'ascendance') {
-        return `placeBuilding: ${BUILDING_DEFS[kind].name} requires the Ascendance age`;
+      // Age gating: each building kind has a minimum age (spec §6). The old
+      // aegisControl/stormArray Ascendance special-case is subsumed by their
+      // minAge: 'ascendance' defs. (Reads world.ages directly instead of
+      // importing ages.ts — that module imports getPlayer from here, so an
+      // import would be a cycle.)
+      const bdef = BUILDING_DEFS[kind];
+      if (!isBuildingAgeMet(world.ages.age, bdef.minAge)) {
+        return `placeBuilding: ${bdef.name} requires the ${bdef.minAge} age`;
       }
       if (facing < 0 || facing > 3) return 'placeBuilding: facing must be 0..3';
       return validatePlacement(t, world.city, { kind, owner, cx, cz, facing: facing as 0 | 1 | 2 | 3 });

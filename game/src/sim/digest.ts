@@ -125,6 +125,14 @@ export function canonicalizeWorld(world: World): string {
     out += `${p.nextThinkTick},`;
     out += p.forwardBase ? `${canonicalNumber(p.forwardBase.x)},${canonicalNumber(p.forwardBase.z)},` : '-,';
     out += `${p.scoutIndex},${p.superweapons.aegisReadyTick},${p.superweapons.stormReadyTick},`;
+    const vb = p.virtualBuildings ?? { completed: [], constructing: null };
+    out += `vb=${[...vb.completed].sort().join(',')}|`;
+    out += vb.constructing ? `${vb.constructing.kind}:${vb.constructing.readyTick},` : '-,';
+    out += `nav=${p.navalStatus ?? 'unknown'},${p.navalProbeIndex ?? 0},`;
+    out += p.navalWater
+      ? `${canonicalNumber(p.navalWater.x)},${canonicalNumber(p.navalWater.z)},`
+      : '-,';
+    out += `${p.seenSubmarine ? 1 : 0},`;
     const keys = Object.keys(p.builtCounts).sort();
     out += keys.map((k) => `${k}:${p.builtCounts[k]}`).join(',') + ';';
   }
@@ -153,6 +161,17 @@ export function canonicalizeWorld(world: World): string {
   }
   out += `|strikes=${world.superweapons.strikes.map((s) => `${s.owner}:${canonicalNumber(s.x)},${canonicalNumber(s.z)}@${s.atTick}`).join(',')};`;
   out += `|fx=${world.superweapons.fx.map((f) => `${f.kind}:${canonicalNumber(f.x)},${canonicalNumber(f.z)}@${f.untilTick}`).join(',')};`;
+  // Upgrades: per-owner id lists, owners sorted numerically, ids sorted
+  // (research appends, so world lists are already sorted — sort defensively
+  // for hand-built states). Missing owners digest as empty.
+  out += '|upg=';
+  const upgradeOwners = Object.keys(world.upgrades ?? {})
+    .map(Number)
+    .sort((a, b) => a - b);
+  for (const owner of upgradeOwners) {
+    const ids = [...(world.upgrades[owner] ?? [])].sort();
+    out += `u${owner}:${ids.join(',')};`;
+  }
   out += '|';
   return out;
 }

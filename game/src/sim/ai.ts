@@ -17,28 +17,52 @@
 /**
  * NOVATERRA — sim/ai.ts — Classic AI (deterministic, fair).
  *
- * Three difficulty levels for the single-player skirmish opponent:
- *  - cadet:     reacts every ~8s (240 ticks), trickles a few basic units,
- *               never expands, never builds counters, never attacks.
- *  - citizen:   reacts every ~4s (120 ticks), builds a basic army, attacks
- *               visible enemies, builds simple counters (AA vs air).
- *  - commander: reacts every ~2s (60 ticks), scouts with fast units,
- *               builds a balanced force, counters visible enemy composition,
- *               and expands to a forward position.
+ * Five difficulty levels for the single-player skirmish opponent:
+ *  - cadet:     reacts every ~8s (240 ticks), trickles basic rifles,
+ *               never builds, never researches, never counters, never attacks.
+ *  - citizen:   reacts every ~4s (120 ticks), virtually constructs
+ *               barracks → warFactory, fields a foundation-age combined
+ *               force, attacks visible enemies, simple counters (AA vs air).
+ *  - commander: reacts every ~2s (60 ticks), adds a lab + upgrade
+ *               research, scouts with drones, builds the full counter
+ *               table, and expands to a forward position.
+ *  - general:   reacts every ~1.5s (45 ticks), larger army, basic navy
+ *               (fishing economy + patrol boats) on coastal maps.
+ *  - marshal:   reacts every ~1s (30 ticks), largest army, advances ages,
+ *               full navy on coastal maps, uses superweapons fairly.
+ *
+ * Production buildings (spec docs/research/roster-expansion.md §7.1):
+ * the AI never paints zones or lays roads, so it *virtually* constructs
+ * production buildings in priority order as funds allow: it pays the
+ * full funds/materials cost upfront and the building unlocks after the
+ * real build time — the exact precedent of the Phase 3 superweapon
+ * facilities below. Until a building unlocks, the kinds it gates are
+ * skipped in composition (the same fallback pattern as the old
+ * fighter→aa fallback). Virtual buildings also yield their def.output
+ * rates (the lab's research income is what funds upgrade research);
+ * upkeep is waived — the AI's abstract economy has no tax loop to pay
+ * it from, and charging upkeep against a fixed stockpile would punish
+ * the AI for building rather than reward it.
  *
  * Fairness (no cheating, no fog-of-war omniscience):
  *  - The AI only "sees" enemy units within sight range of its own units.
  *    All decisions flow through `getVisibleEnemies()` — the AI never reads
  *    enemy positions directly.
  *  - The AI issues the same commands a human player would (spawnUnit,
- *    moveUnit, moveGroup, attackUnit) through the command queue. It does
- *    not mutate world state directly.
+ *    moveUnit, moveGroup, attackUnit, researchUpgrade) through the command
+ *    queue. It does not mutate world state directly (except its own
+ *    `world.ai` record and the virtual-economy credit, which mirrors what
+ *    the economy system does for real buildings).
+ *  - Water detection is by trial, not maphack: the AI probes for water by
+ *    attempting real fishing-boat spawns around its base. Failed probes
+ *    cost nothing (rejected at enqueue); a successful probe IS the first
+ *    fishing boat.
  *
  * Determinism:
  *  - Decisions run on a fixed tick cadence per difficulty. All randomness
  *    flows through the named 'ai' RNG stream. Iteration order is by
- *    stable unit id. AI state is plain JSON-safe data, snapshotted and
- *    digested like everything else.
+ *    stable unit id (or fixed tables). AI state is plain JSON-safe data,
+ *    snapshotted and digested like everything else.
  *
  * Pure module: no DOM, no three.js, no wall clock, no Math.random.
  * Safe under Node/vitest.
@@ -51,7 +75,15 @@ import { findUnit, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
 import { rngBank } from './world';
 import { canTarget } from './combat';
 import { isUnitAvailableForAge, getSightBonus, AGE_PROGRESSION } from './ages';
-import { getPlayer } from './city';
+import { effectiveSight, hasUpgrade, registerUpgradeCommands, UPGRADE_DEFS, type UpgradeId } from './upgrades';
+import {
+  getPlayer,
+  hasProductionBuilding,
+  isBuildingAgeMet,
+  BUILDING_DEFS,
+  MAP_HALF_SIZE,
+  type BuildingKind,
+} from './city';
 import { isAegisReady, isStormReady } from './superweapons';
 import { CommandRejectedError } from './commands';
 
@@ -67,14 +99,23 @@ export const AI_THINK_TICKS: Record<AIDifficulty, number> = {
   marshal: 30,
 };
 
-/** Max army sizes per difficulty (soft caps for production). */
+/**
+ * Max army sizes per difficulty (soft caps for production).
+ * Roster grew 14→28 kinds; caps grew ~40% per spec §7.5.
+ * The cap counts ALL of the AI's units, so starting forces must leave
+ * headroom — `ui/session.ts` gives cadet 2 starters (cap 6), everyone
+ * else 6.
+ */
 export const AI_MAX_UNITS: Record<AIDifficulty, number> = {
-  cadet: 4,
-  citizen: 10,
-  commander: 18,
-  general: 26,
-  marshal: 36,
+  cadet: 6,
+  citizen: 14,
+  commander: 26,
+  general: 34,
+  marshal: 48,
 };
+
+/** What the AI knows about nearby water (found by probing, never maphack). */
+export type AINavalStatus = 'unknown' | 'landlocked' | 'coastal';
 
 /** Per-player AI state. Plain data — snapshotted + digested. */
 export interface AIPlayerState {
@@ -100,6 +141,24 @@ export interface AIPlayerState {
    * time. 0 = not built. Plain data — snapshotted + digested.
    */
   superweapons: { aegisReadyTick: number; stormReadyTick: number };
+  /**
+   * Virtually-constructed production buildings (spec §7.1). The AI pays
+   * the full cost upfront; `constructing` completes at `readyTick`
+   * (buildSeconds × 30 ticks), then joins `completed` and unlocks the
+   * gated roster via `hasProductionBuilding` (city.ts). One at a time.
+   */
+  virtualBuildings: {
+    completed: BuildingKind[];
+    constructing: { kind: BuildingKind; readyTick: number } | null;
+  };
+  /** Water scouting result: found by probe spawns, never by maphack. */
+  navalStatus: AINavalStatus;
+  /** Index into the deterministic naval probe ring. */
+  navalProbeIndex: number;
+  /** Where the probe found water (null until coastal). Navy spawns here. */
+  navalWater: { x: number; z: number } | null;
+  /** Set once a submarine is ever seen — gates the Sonar Suite priority. */
+  seenSubmarine: boolean;
 }
 
 /** AI state for the world. Plain data — snapshotted + digested. */
@@ -133,6 +192,11 @@ export function addAIPlayer(
     scoutIndex: 0,
     builtCounts: {},
     superweapons: { aegisReadyTick: 0, stormReadyTick: 0 },
+    virtualBuildings: { completed: [], constructing: null },
+    navalStatus: 'unknown',
+    navalProbeIndex: 0,
+    navalWater: null,
+    seenSubmarine: false,
   });
 }
 
@@ -146,13 +210,14 @@ export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
   if (own.length === 0) return [];
   const out: UnitRecord[] = [];
   const seen = new Set<number>();
-  // Signals Grid (Connectivity age) grants +sight to all units.
+  // Signals Grid (Connectivity age) grants +sight to all units; upgrade
+  // effects (Drone Optics, Advanced Avionics, Sonar Suite) stack on top.
   const sightBonus = getSightBonus(world);
   for (const e of world.units) {
     if (e.owner === owner || e.hp <= 0) continue;
     for (const o of own) {
       const def = UNIT_DEFS[o.kind as UnitKind];
-      const sight = def.sight + sightBonus;
+      const sight = effectiveSight(world, owner, def) + sightBonus;
       const dx = e.x - o.x;
       const dz = e.z - o.z;
       // Compare squared distances; sight is in world units.
@@ -190,7 +255,25 @@ function totalUnits(world: World, owner: number): number {
   return n;
 }
 
-/** Issue a spawnUnit command through the queue. Skips if the AI lacks manpower. */
+/**
+ * Enqueue a command, swallowing rejections. A rejected enqueue (failed
+ * validation, or a race at apply time) is "couldn't do it this tick" —
+ * the AI must never crash the tick on a rejected command. Non-rejection
+ * errors still throw: those are real bugs.
+ */
+function issue(world: World, queue: CommandQueue, kind: string, payload: Record<string, unknown>): void {
+  try {
+    queue.enqueue(world, { issuer: 'ai', kind, payload });
+  } catch (e) {
+    if (e instanceof CommandRejectedError) return;
+    throw e;
+  }
+}
+
+/**
+ * Issue a spawnUnit command through the queue. Skips if the AI lacks
+ * manpower or cannot afford the training cost.
+ */
 function spawn(
   world: World,
   queue: CommandQueue,
@@ -200,11 +283,41 @@ function spawn(
   z: number,
 ): void {
   const def = UNIT_DEFS[kind];
-  if (def.manpowerCost > 0) {
-    const player = getPlayer(world.city, owner);
-    if (!player || player.manpower < def.manpowerCost) return;
+  const player = getPlayer(world.city, owner);
+  if (!player) return;
+  if (player.manpower < def.manpowerCost) return;
+  if (player.funds < def.trainFunds || player.materials < def.trainMaterials) return;
+  issue(world, queue, 'spawnUnit', { kind, owner, x, z });
+}
+
+/**
+ * Attempt a spawn and report the outcome: null when the spawn was
+ * accepted (it applies at the next tick start), otherwise the rejection
+ * reason. Used by the naval probe, which must distinguish "no water
+ * here" (keep searching) from "can't afford it" (try again later).
+ */
+function trySpawn(
+  world: World,
+  queue: CommandQueue,
+  owner: number,
+  kind: UnitKind,
+  x: number,
+  z: number,
+): string | null {
+  const def = UNIT_DEFS[kind];
+  const player = getPlayer(world.city, owner);
+  if (!player) return 'trySpawn: unknown owner';
+  if (player.manpower < def.manpowerCost) return `spawnUnit: not enough manpower (need ${def.manpowerCost})`;
+  if (player.funds < def.trainFunds || player.materials < def.trainMaterials) {
+    return `spawnUnit: cannot afford training cost for ${kind}`;
   }
-  queue.enqueue(world, { issuer: 'ai', kind: 'spawnUnit', payload: { kind, owner, x, z } });
+  try {
+    queue.enqueue(world, { issuer: 'ai', kind: 'spawnUnit', payload: { kind, owner, x, z } });
+  } catch (e) {
+    if (e instanceof CommandRejectedError) return e.reason;
+    throw e;
+  }
+  return null;
 }
 
 /** Issue an attackUnit command through the queue. */
@@ -215,11 +328,7 @@ function attack(
   unitId: number,
   targetId: number,
 ): void {
-  queue.enqueue(world, {
-    issuer: 'ai',
-    kind: 'attackUnit',
-    payload: { unitId, targetId, owner },
-  });
+  issue(world, queue, 'attackUnit', { unitId, targetId, owner });
 }
 
 /** Issue a moveUnit command through the queue. */
@@ -231,11 +340,7 @@ function moveTo(
   x: number,
   z: number,
 ): void {
-  queue.enqueue(world, {
-    issuer: 'ai',
-    kind: 'moveUnit',
-    payload: { unitId, owner, x, z },
-  });
+  issue(world, queue, 'moveUnit', { unitId, owner, x, z });
 }
 
 /** Issue a moveGroup command through the queue. */
@@ -247,14 +352,415 @@ function moveGroupTo(
   x: number,
   z: number,
 ): void {
-  queue.enqueue(world, {
-    issuer: 'ai',
-    kind: 'moveGroup',
-    payload: { unitIds, owner, x, z },
-  });
+  issue(world, queue, 'moveGroup', { unitIds, owner, x, z });
 }
 
-/** Cadet think: trickle basic units, never attack, never expand. */
+/**
+ * True when the AI can currently train `kind`: the age gate is met and
+ * any required production building is held (real or virtually
+ * constructed). Composition skips anything false here — this is what
+ * keeps the AI from stalling on locked kinds (the old "stuck at 6
+ * units" failure: citizen kept ordering tanks it could never receive).
+ */
+export function canTrain(world: World, owner: number, kind: UnitKind): boolean {
+  const def = UNIT_DEFS[kind];
+  if (!isUnitAvailableForAge(world, def.minAge)) return false;
+  if (def.requiredBuilding && !hasProductionBuilding(world, owner, def.requiredBuilding)) return false;
+  return true;
+}
+
+// ---------------------------------------------------------------------------
+// Virtual construction (spec §7.1)
+// ---------------------------------------------------------------------------
+
+/**
+ * Construction priority per difficulty, in order. Skipped entries: kinds
+ * already held (real or virtual), kinds whose minAge isn't met yet, and
+ * shipyard/navalYard until water is found (no point without a coast).
+ * Cadet builds nothing — consistent with its "no decisions" profile.
+ */
+const CONSTRUCTION_PRIORITY: Record<AIDifficulty, BuildingKind[]> = {
+  cadet: [],
+  citizen: ['barracks', 'warFactory'],
+  commander: ['barracks', 'warFactory', 'lab'],
+  general: ['barracks', 'warFactory', 'lab'],
+  marshal: ['barracks', 'warFactory', 'lab', 'airfield', 'radarStation', 'shipyard', 'navalYard'],
+};
+
+/** Complete whatever finished building; start the next priority kind. */
+function thinkConstruction(world: World, ai: AIPlayerState): void {
+  const vb = ai.virtualBuildings;
+  // Complete finished construction.
+  if (vb.constructing && world.tick >= vb.constructing.readyTick) {
+    vb.completed.push(vb.constructing.kind);
+    vb.constructing = null;
+  }
+  // One building at a time.
+  if (vb.constructing) return;
+  const player = getPlayer(world.city, ai.owner);
+  if (!player) return;
+  for (const kind of CONSTRUCTION_PRIORITY[ai.difficulty]) {
+    if (vb.completed.includes(kind)) continue;
+    if (hasProductionBuilding(world, ai.owner, kind)) continue;
+    const def = BUILDING_DEFS[kind];
+    // Age-gated kinds wait for the age (marshal may get there).
+    if (!isBuildingAgeMet(world.ages.age, def.minAge)) continue;
+    // Naval production only makes sense with a coast to use it from.
+    if ((kind === 'shipyard' || kind === 'navalYard') && ai.navalStatus !== 'coastal') continue;
+    if (player.funds < def.costFunds || player.materials < def.costMaterials) continue;
+    // Pay the full cost upfront (superweapon virtual-construction precedent).
+    player.funds -= def.costFunds;
+    player.materials -= def.costMaterials;
+    vb.constructing = { kind, readyTick: world.tick + def.buildSeconds * 30 };
+    return;
+  }
+}
+
+/**
+ * Virtual-building economy: completed virtual buildings yield their
+ * def.output rates (per sim-second), credited on the 1 Hz economy
+ * cadence — the same tick the economy system runs for real buildings.
+ * This is what gives the AI lab research income (and the barracks /
+ * warFactory trickles). Upkeep is intentionally waived (see header).
+ */
+function creditVirtualEconomy(world: World): void {
+  if (world.tick % 30 !== 0) return;
+  for (const ai of world.ai.players) {
+    const player = getPlayer(world.city, ai.owner);
+    if (!player) continue;
+    const stocks = player as unknown as Record<string, number>;
+    for (const kind of ai.virtualBuildings.completed) {
+      const def = BUILDING_DEFS[kind];
+      for (const [res, rate] of Object.entries(def.output)) {
+        stocks[res] = (stocks[res] ?? 0) + (rate ?? 0);
+      }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Composition (spec §7.2): counters first, then base-mix shares of the cap
+// ---------------------------------------------------------------------------
+
+/** Base-mix shares of the army cap (spec §7.2), per decision level. */
+const BASE_MIX: Record<'citizen' | 'commander', Array<{ kind: UnitKind; share: number }>> = {
+  citizen: [
+    { kind: 'rifles', share: 0.35 },
+    { kind: 'tank', share: 0.25 },
+    { kind: 'artillery', share: 0.15 },
+    { kind: 'aa', share: 0.15 },
+    { kind: 'spectre', share: 0.1 },
+  ],
+  commander: [
+    { kind: 'rifles', share: 0.3 },
+    { kind: 'tank', share: 0.2 },
+    { kind: 'artillery', share: 0.1 },
+    { kind: 'aa', share: 0.1 },
+    { kind: 'apc', share: 0.1 },
+    { kind: 'sniperTeam', share: 0.05 },
+    { kind: 'spectre', share: 0.05 },
+    { kind: 'fighter', share: 0.05 },
+    { kind: 'attackHeli', share: 0.05 },
+  ],
+};
+
+const KIND_OF = (u: UnitRecord): UnitKind => u.kind as UnitKind;
+const DOMAIN_OF = (u: UnitRecord): string => UNIT_DEFS[KIND_OF(u)].domain;
+const ARMOR_OF = (u: UnitRecord): string => UNIT_DEFS[KIND_OF(u)].armor;
+
+/**
+ * Pick the next unit kind to train. Counter logic (spec §7.2) runs
+ * first — each branch gated by canTrain so locked kinds are skipped —
+ * then the base mix fills whatever is furthest below its share.
+ * Always returns a trainable kind (rifles is the un-gated backbone).
+ */
+function chooseUnitKind(
+  world: World,
+  ai: AIPlayerState,
+  counts: Map<UnitKind, number>,
+  visible: UnitRecord[],
+): UnitKind {
+  const owner = ai.owner;
+  const fullCounters = ai.difficulty !== 'citizen';
+  const get = (k: UnitKind): number => counts.get(k) ?? 0;
+
+  if (visible.length > 0) {
+    const enemyAir = visible.filter((e) => DOMAIN_OF(e) === 'air');
+    const enemySubs = visible.filter((e) => KIND_OF(e) === 'submarine');
+    const enemyCapitals = visible.filter((e) =>
+      KIND_OF(e) === 'destroyer' || KIND_OF(e) === 'carrier' || KIND_OF(e) === 'commandShip',
+    );
+    const enemyHeavy = visible.filter(
+      (e) => DOMAIN_OF(e) === 'land' && (KIND_OF(e) === 'tank' || KIND_OF(e) === 'tankDestroyer'),
+    );
+    const enemyLight = visible.filter(
+      (e) =>
+        DOMAIN_OF(e) === 'land' &&
+        (KIND_OF(e) === 'rifles' || KIND_OF(e) === 'sniperTeam') &&
+        ARMOR_OF(e) === 'light',
+    );
+    const enemyArty = visible.filter(
+      (e) => KIND_OF(e) === 'artillery' || KIND_OF(e) === 'mlrs',
+    );
+    const enemyNavy = visible.filter((e) => DOMAIN_OF(e) === 'sea');
+
+    // vs air: aa up to air+1, then fighters.
+    if (enemyAir.length > 0 && get('aa') < enemyAir.length + 1 && canTrain(world, owner, 'aa')) {
+      return 'aa';
+    }
+    if (fullCounters && enemyAir.length > 0 && get('fighter') < 2 && canTrain(world, owner, 'fighter')) {
+      return 'fighter';
+    }
+    // vs subs: frigate screen, ×2 per sub.
+    if (
+      fullCounters &&
+      enemySubs.length > 0 &&
+      get('frigate') < enemySubs.length * 2 &&
+      canTrain(world, owner, 'frigate')
+    ) {
+      return 'frigate';
+    }
+    // vs capitals: submarines, else a missile-boat pack.
+    if (fullCounters && enemyCapitals.length > 0) {
+      if (get('submarine') < 2 && canTrain(world, owner, 'submarine')) return 'submarine';
+      if (get('missileBoat') < 3 && canTrain(world, owner, 'missileBoat')) return 'missileBoat';
+    }
+    // vs heavy armor: tank destroyers first, then artillery.
+    if (fullCounters && enemyHeavy.length >= 3) {
+      if (
+        get('tankDestroyer') < Math.min(enemyHeavy.length, 4) &&
+        canTrain(world, owner, 'tankDestroyer')
+      ) {
+        return 'tankDestroyer';
+      }
+      if (get('artillery') < 3 && canTrain(world, owner, 'artillery')) return 'artillery';
+    }
+    // vs light masses: apc, else mlrs, else artillery.
+    if (fullCounters && enemyLight.length >= 4) {
+      if (canTrain(world, owner, 'apc')) return 'apc';
+      if (canTrain(world, owner, 'mlrs')) return 'mlrs';
+      if (canTrain(world, owner, 'artillery')) return 'artillery';
+    }
+    // vs artillery parks: spectres slip inside minRange; snipers outrange
+    // the crews; fighter-bombers strike from above.
+    if (fullCounters && enemyArty.length >= 2) {
+      if (canTrain(world, owner, 'spectre')) return 'spectre';
+      if (canTrain(world, owner, 'sniperTeam')) return 'sniperTeam';
+      if (canTrain(world, owner, 'fighterBomber')) return 'fighterBomber';
+    }
+    // vs any navy on a coastal map: a frigate screen before capitals.
+    if (
+      fullCounters &&
+      enemyNavy.length > 0 &&
+      ai.navalStatus === 'coastal' &&
+      get('frigate') === 0 &&
+      canTrain(world, owner, 'frigate')
+    ) {
+      return 'frigate';
+    }
+  }
+
+  // Force multiplier: one medic per ~12 land combat units (commander+).
+  if (fullCounters && canTrain(world, owner, 'combatMedic')) {
+    let landCombat = 0;
+    for (const [kind, n] of counts) {
+      const def = UNIT_DEFS[kind];
+      if (def.domain === 'land' && def.damage > 0) landCombat += n;
+    }
+    const want = landCombat >= 8 ? Math.max(1, Math.floor(landCombat / 12)) : 0;
+    if (get('combatMedic') < want) return 'combatMedic';
+  }
+
+  // Basic navy maintenance on coastal maps (general+ only). The probe
+  // itself (thinkNavalProbe) runs for commander+ so the naval counters
+  // above can find water to launch from.
+  if (
+    (ai.difficulty === 'general' || ai.difficulty === 'marshal') &&
+    ai.navalStatus === 'coastal'
+  ) {
+    if (get('fishingBoat') < 4 && canTrain(world, owner, 'fishingBoat')) return 'fishingBoat';
+    if (get('patrolBoat') < 3 && canTrain(world, owner, 'patrolBoat')) return 'patrolBoat';
+    if (get('missileBoat') < 3 && canTrain(world, owner, 'missileBoat')) return 'missileBoat';
+  }
+
+  // Base mix: the trainable kind furthest below its share of the cap.
+  const mix = BASE_MIX[ai.difficulty === 'citizen' ? 'citizen' : 'commander'];
+  const cap = AI_MAX_UNITS[ai.difficulty];
+  let best: UnitKind | null = null;
+  let bestScore = -Infinity;
+  for (const { kind, share } of mix) {
+    if (!canTrain(world, owner, kind)) continue;
+    const score = share * cap - get(kind);
+    if (score > bestScore) {
+      bestScore = score;
+      best = kind;
+    }
+  }
+  // Everything at share (or nothing trainable): keep building the rifles
+  // backbone — the one kind that is never gated.
+  if (best === null || bestScore <= 0) return 'rifles';
+  return best;
+}
+
+/** Where a new unit spawns: sea kinds at the probed water, else base. */
+function spawnPoint(ai: AIPlayerState, kind: UnitKind, n: number): { x: number; z: number } {
+  if (UNIT_DEFS[kind].domain === 'sea' && ai.navalWater) {
+    return { x: ai.navalWater.x, z: ai.navalWater.z };
+  }
+  const bx = ai.forwardBase ? ai.forwardBase.x : ai.baseX;
+  const bz = ai.forwardBase ? ai.forwardBase.z : ai.baseZ;
+  return { x: bx + (n % 4) * 4 - 6, z: bz + Math.floor(n / 4) * 4 - 6 };
+}
+
+/** Train one unit per think tick (the production step). */
+function thinkProduction(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  counts: Map<UnitKind, number>,
+  n: number,
+  visible: UnitRecord[],
+): void {
+  if (n >= AI_MAX_UNITS[ai.difficulty]) return;
+  const kind = chooseUnitKind(world, ai, counts, visible);
+  const p = spawnPoint(ai, kind, n);
+  spawn(world, queue, ai.owner, kind, p.x, p.z);
+  ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
+}
+
+// ---------------------------------------------------------------------------
+// Upgrade research (spec §7.4, commander+)
+// ---------------------------------------------------------------------------
+
+interface ResearchCandidate {
+  id: UpgradeId;
+  /** Extra condition beyond the def's own prereqs (force shape). */
+  when: (world: World, ai: AIPlayerState, counts: Map<UnitKind, number>) => boolean;
+}
+
+const always: ResearchCandidate['when'] = () => true;
+const vehiclesAtLeast =
+  (n: number): ResearchCandidate['when'] =>
+  (_w, _a, counts) => {
+    let v = 0;
+    for (const k of ['tank', 'apc', 'tankDestroyer', 'artillery', 'mlrs', 'aa'] as UnitKind[]) {
+      v += counts.get(k) ?? 0;
+    }
+    return v >= n;
+  };
+const aircraftAtLeast =
+  (n: number): ResearchCandidate['when'] =>
+  (_w, _a, counts) => {
+    let v = 0;
+    for (const k of ['fighter', 'fighterBomber', 'attackHeli', 'awacs'] as UnitKind[]) {
+      v += counts.get(k) ?? 0;
+    }
+    return v >= n;
+  };
+
+/** Research priority (spec §7.4), then the economy line by cost order. */
+const RESEARCH_PRIORITY: ResearchCandidate[] = [
+  { id: 'apRounds', when: always },
+  { id: 'compositeArmor', when: always },
+  { id: 'engineTuning', when: vehiclesAtLeast(4) },
+  { id: 'sonarSuite', when: (w, ai) => ai.seenSubmarine },
+  { id: 'advancedAvionics', when: aircraftAtLeast(3) },
+  { id: 'droneOptics', when: always },
+  {
+    id: 'fieldMedicine',
+    when: (_w, _a, counts) => {
+      let infantry = 0;
+      for (const k of ['rifles', 'sniperTeam', 'spectre'] as UnitKind[]) infantry += counts.get(k) ?? 0;
+      return (counts.get('combatMedic') ?? 0) >= 1 || infantry >= 6;
+    },
+  },
+  { id: 'precisionManufacturing', when: always },
+  { id: 'smartGrid', when: always },
+  { id: 'verticalFarming', when: always },
+  { id: 'cruiseMissiles', when: always },
+  { id: 'freeTrade', when: always },
+];
+
+/** Research one upgrade per think tick, by priority, when prereqs allow. */
+function thinkResearch(world: World, queue: CommandQueue, ai: AIPlayerState, counts: Map<UnitKind, number>): void {
+  // Research happens at the lab (real or virtually constructed).
+  if (!hasProductionBuilding(world, ai.owner, 'lab')) return;
+  const player = getPlayer(world.city, ai.owner);
+  if (!player) return;
+  for (const { id, when } of RESEARCH_PRIORITY) {
+    if (hasUpgrade(world, ai.owner, id)) continue;
+    if (!when(world, ai, counts)) continue;
+    // Mirror researchUpgrade's own validation (age, building prereqs,
+    // affordability) so we only enqueue commands that should pass; the
+    // enqueue is still guarded — a rejection just means "not this tick".
+    const def = UPGRADE_DEFS[id];
+    if (!isUnitAvailableForAge(world, def.minAge)) continue;
+    let prereqsMet = true;
+    for (const kind of def.requiredBuildings) {
+      if (!hasProductionBuilding(world, ai.owner, kind)) {
+        prereqsMet = false;
+        break;
+      }
+    }
+    if (!prereqsMet) continue;
+    if (player.funds < def.costFunds || player.research < def.costResearch) continue;
+    issue(world, queue, 'researchUpgrade', { owner: ai.owner, upgrade: id });
+    return;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Naval (general+): probe for water, then work the coast
+// ---------------------------------------------------------------------------
+
+/** Deterministic probe ring: radii × 8 compass directions = 32 points. */
+const PROBE_RADII = [40, 80, 140, 220];
+const PROBE_DIRS = 8;
+const PROBE_COUNT = PROBE_RADII.length * PROBE_DIRS;
+
+/** Probe candidate #i around the base (deterministic, no RNG). */
+function probePoint(ai: AIPlayerState, i: number): { x: number; z: number } {
+  const r = PROBE_RADII[Math.floor(i / PROBE_DIRS)] ?? PROBE_RADII[PROBE_RADII.length - 1]!;
+  const a = ((i % PROBE_DIRS) / PROBE_DIRS) * Math.PI * 2;
+  return { x: ai.baseX + Math.round(Math.cos(a) * r), z: ai.baseZ + Math.round(Math.sin(a) * r) };
+}
+
+/**
+ * Water scouting by trial (no maphack): attempt real fishing-boat
+ * spawns (cheap, foundation-age, un-gated) at probe points around the
+ * base, two per think. A rejection for terrain ("sea unit on land")
+ * advances the probe; an economic rejection retries later; a success
+ * marks the map coastal and the probe point becomes the naval base.
+ */
+function thinkNavalProbe(world: World, queue: CommandQueue, ai: AIPlayerState): void {
+  if (ai.navalStatus !== 'unknown') return;
+  for (let t = 0; t < 2 && ai.navalProbeIndex < PROBE_COUNT; t++) {
+    const p = probePoint(ai, ai.navalProbeIndex);
+    // Off-map candidates count as misses (deterministic).
+    if (Math.abs(p.x) >= MAP_HALF_SIZE || Math.abs(p.z) >= MAP_HALF_SIZE) {
+      ai.navalProbeIndex++;
+      continue;
+    }
+    const reason = trySpawn(world, queue, ai.owner, 'fishingBoat', p.x, p.z);
+    if (reason === null) {
+      ai.navalStatus = 'coastal';
+      ai.navalWater = { x: p.x, z: p.z };
+      ai.builtCounts['fishingBoat'] = (ai.builtCounts['fishingBoat'] ?? 0) + 1;
+      return;
+    }
+    if (reason.includes('sea unit on land')) {
+      ai.navalProbeIndex++;
+    }
+    // Economic/age rejections: don't advance — retry the same point later.
+  }
+  if (ai.navalProbeIndex >= PROBE_COUNT) ai.navalStatus = 'landlocked';
+}
+
+// ---------------------------------------------------------------------------
+// Per-level think functions
+// ---------------------------------------------------------------------------
+
+/** Cadet think: trickle rifles, never attack, never expand, never build. */
 function thinkCadet(
   world: World,
   queue: CommandQueue,
@@ -262,19 +768,22 @@ function thinkCadet(
 ): void {
   const n = totalUnits(world, ai.owner);
   if (n >= AI_MAX_UNITS.cadet) return;
-  // Alternate rifles and tanks for a little variety. Deterministic via built counts.
-  const rifles = ai.builtCounts['rifles'] ?? 0;
-  const tanks = ai.builtCounts['tank'] ?? 0;
-  const kind: UnitKind = rifles <= tanks ? 'rifles' : 'tank';
-  // Slight spawn offset so units don't stack exactly.
-  const idx = n;
-  const x = ai.baseX + (idx % 3) * 4 - 4;
-  const z = ai.baseZ + Math.floor(idx / 3) * 4 - 4;
-  spawn(world, queue, ai.owner, kind, x, z);
-  ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
+  // Rifles only: cadet builds no production buildings, so gated kinds
+  // (tank, …) could never unlock — ordering them would stall the AI.
+  const p = spawnPoint(ai, 'rifles', n);
+  spawn(world, queue, ai.owner, 'rifles', p.x, p.z);
+  ai.builtCounts['rifles'] = (ai.builtCounts['rifles'] ?? 0) + 1;
 }
 
-/** Citizen think: build a basic army, attack visible enemies, simple counters. */
+/** Shared per-think bookkeeping: construction, sub sightings. */
+function thinkUpkeep(world: World, ai: AIPlayerState, visible: UnitRecord[]): void {
+  thinkConstruction(world, ai);
+  if (!ai.seenSubmarine && visible.some((e) => KIND_OF(e) === 'submarine')) {
+    ai.seenSubmarine = true;
+  }
+}
+
+/** Citizen think: basic army, simple counters, attacks visible enemies. */
 function thinkCitizen(
   world: World,
   queue: CommandQueue,
@@ -283,29 +792,10 @@ function thinkCitizen(
   const counts = countUnits(world, ai.owner);
   const n = totalUnits(world, ai.owner);
   const visible = getVisibleEnemies(world, ai.owner);
+  thinkUpkeep(world, ai, visible);
 
-  // Production: maintain army up to cap.
-  if (n < AI_MAX_UNITS.citizen) {
-    // Simple counter: if visible enemy air, prioritize AA.
-    const enemyAir = visible.some((e) => UNIT_DEFS[e.kind as UnitKind].domain === 'air');
-    const aa = counts.get('aa') ?? 0;
-    let kind: UnitKind;
-    if (enemyAir && aa < 3) {
-      kind = 'aa';
-    } else {
-      // Mix: mostly rifles and tanks, some artillery.
-      const rifles = counts.get('rifles') ?? 0;
-      const tanks = counts.get('tank') ?? 0;
-      const art = counts.get('artillery') ?? 0;
-      if (tanks < 3) kind = 'tank';
-      else if (rifles < 4) kind = 'rifles';
-      else if (art < 2) kind = 'artillery';
-      else kind = rifles <= tanks ? 'rifles' : 'tank';
-    }
-    const idx = n;
-    spawn(world, queue, ai.owner, kind, ai.baseX + (idx % 4) * 4 - 6, ai.baseZ + Math.floor(idx / 4) * 4 - 6);
-    ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
-  }
+  // Production: one unit per think, counters then base mix.
+  thinkProduction(world, queue, ai, counts, n, visible);
 
   // Attack: order all combat units to attack the nearest visible enemy.
   if (visible.length > 0) {
@@ -324,7 +814,7 @@ function thinkCitizen(
     for (const u of world.units) {
       if (u.owner !== ai.owner || u.hp <= 0) continue;
       const def = UNIT_DEFS[u.kind as UnitKind];
-      if (def.damage <= 0) continue; // unarmed (hauler, transport)
+      if (def.damage <= 0) continue; // unarmed (hauler, transport, medics)
       // Skip units whose weapons can't engage this target's domain
       // (e.g. tanks can't target air) — the attackUnit command would reject.
       if (!canTarget(def, nearest)) continue;
@@ -335,7 +825,16 @@ function thinkCitizen(
   }
 }
 
-/** Commander think: scout, balanced force, counters, expansion. */
+/** Clamp a scout waypoint inside the map (off-map orders reject). */
+function clampWaypoint(x: number, z: number): { x: number; z: number } {
+  const lim = MAP_HALF_SIZE - 10;
+  return {
+    x: Math.max(-lim, Math.min(lim, x)),
+    z: Math.max(-lim, Math.min(lim, z)),
+  };
+}
+
+/** Commander think: scout, balanced force, full counters, expansion. */
 function thinkCommander(
   world: World,
   queue: CommandQueue,
@@ -344,26 +843,41 @@ function thinkCommander(
   const counts = countUnits(world, ai.owner);
   const n = totalUnits(world, ai.owner);
   const visible = getVisibleEnemies(world, ai.owner);
-  const bank = rngBank(world);
+  thinkUpkeep(world, ai, visible);
+  thinkResearch(world, queue, ai, counts);
 
-  // --- Scouting: keep a drone or fighter probing outward waypoints.
-  const scouts = (counts.get('drone') ?? 0) + (counts.get('fighter') ?? 0);
-  if (scouts === 0 && n < AI_MAX_UNITS.commander) {
-    spawn(world, queue, ai.owner, 'drone', ai.baseX, ai.baseZ);
-    ai.builtCounts['drone'] = (ai.builtCounts['drone'] ?? 0) + 1;
+  // --- Scouting: keep one scout probing outward waypoints. At the
+  // information age the awacs replaces the drone (spec §7.2).
+  const scoutKind: UnitKind = canTrain(world, ai.owner, 'awacs') ? 'awacs' : 'drone';
+  const scouts = (counts.get('drone') ?? 0) + (counts.get('awacs') ?? 0) + (counts.get('fighter') ?? 0);
+  if (scouts === 0 && n < AI_MAX_UNITS[ai.difficulty] && canTrain(world, ai.owner, scoutKind)) {
+    const p = spawnPoint(ai, scoutKind, n);
+    spawn(world, queue, ai.owner, scoutKind, p.x, p.z);
+    ai.builtCounts[scoutKind] = (ai.builtCounts[scoutKind] ?? 0) + 1;
   } else {
-    // Order existing scouts to waypoints (cycle through 4 compass points).
+    // Order idle scouts to waypoints (cycle through 4 compass points at
+    // standoff distance); skip waypoints near visible enemy clusters.
     const waypoints = [
-      { x: ai.baseX + 120, z: ai.baseZ },
-      { x: ai.baseX, z: ai.baseZ + 120 },
-      { x: ai.baseX - 120, z: ai.baseZ },
-      { x: ai.baseX, z: ai.baseZ - 120 },
+      clampWaypoint(ai.baseX + 120, ai.baseZ),
+      clampWaypoint(ai.baseX, ai.baseZ + 120),
+      clampWaypoint(ai.baseX - 120, ai.baseZ),
+      clampWaypoint(ai.baseX, ai.baseZ - 120),
     ];
     // Modulo guarantees a valid index.
-    const wp = waypoints[ai.scoutIndex % waypoints.length]!;
+    let wp = waypoints[ai.scoutIndex % waypoints.length]!;
+    for (let tries = 0; tries < waypoints.length; tries++) {
+      const crowded = visible.some((e) => {
+        const dx = e.x - wp.x;
+        const dz = e.z - wp.z;
+        return dx * dx + dz * dz <= 50 * 50;
+      });
+      if (!crowded) break;
+      ai.scoutIndex++;
+      wp = waypoints[ai.scoutIndex % waypoints.length]!;
+    }
     for (const u of world.units) {
       if (u.owner !== ai.owner || u.hp <= 0) continue;
-      if (u.kind !== 'drone' && u.kind !== 'fighter') continue;
+      if (u.kind !== 'drone' && u.kind !== 'fighter' && u.kind !== 'awacs') continue;
       // Only redirect idle scouts (don't interrupt combat).
       if (u.state === 'idle' && u.targetId === 0) {
         moveTo(world, queue, ai.owner, u.id, wp.x, wp.z);
@@ -372,44 +886,36 @@ function thinkCommander(
     ai.scoutIndex++;
   }
 
-  // --- Production: balanced force with counters.
-  if (n < AI_MAX_UNITS.commander) {
-    const enemyAir = visible.filter((e) => UNIT_DEFS[e.kind as UnitKind].domain === 'air').length;
-    const enemyHeavy = visible.filter((e) => UNIT_DEFS[e.kind as UnitKind].armor === 'heavy').length;
-    const enemyInf = visible.filter((e) => UNIT_DEFS[e.kind as UnitKind].armor === 'light' && UNIT_DEFS[e.kind as UnitKind].domain === 'land').length;
-    const aa = counts.get('aa') ?? 0;
-    const art = counts.get('artillery') ?? 0;
-    const tanks = counts.get('tank') ?? 0;
-    const rifles = counts.get('rifles') ?? 0;
-    const fighters = counts.get('fighter') ?? 0;
+  // --- Water reconnaissance: commanders and above probe for water by
+  //     trial (never maphack). The probe is what lets the naval counter
+  //     table (frigates vs subs, ...) function; the economic navy
+  //     (fishing fleet, patrol boats) stays general+ (see chooseUnitKind).
+  thinkNavalProbe(world, queue, ai);
 
-    let kind: UnitKind;
-    if (enemyAir > 0 && aa < enemyAir + 1) kind = 'aa';
-    else if (enemyAir > 0 && fighters < 2) kind = 'fighter';
-    else if (enemyHeavy > 2 && art < 3) kind = 'artillery';
-    else if (enemyInf > 3 && art < 2) kind = 'artillery';
-    else if (tanks < 5) kind = 'tank';
-    else if (rifles < 5) kind = 'rifles';
-    else if (art < 3) kind = 'artillery';
-    else if (aa < 2) kind = 'aa';
-    else kind = 'tank';
+  // --- Production: one unit per think, counters then base mix.
+  thinkProduction(world, queue, ai, counts, n, visible);
 
-    // Age gating (Step 8): the AI stays in Foundation, so if the chosen
-    // unit requires Connectivity (e.g. fighter), fall back to a
-    // Foundation-available counter instead of issuing a rejected command.
-    if (!isUnitAvailableForAge(world, UNIT_DEFS[kind].minAge)) {
-      kind = 'aa';
+  // --- Medics: attach to the land force (centroid), never attack.
+  // (The attack loop below already skips damage-0 units.)
+  let cx = 0;
+  let cz = 0;
+  let landCombat = 0;
+  for (const u of world.units) {
+    if (u.owner !== ai.owner || u.hp <= 0) continue;
+    const def = UNIT_DEFS[u.kind as UnitKind];
+    if (def.domain === 'land' && def.damage > 0) {
+      cx += u.x;
+      cz += u.z;
+      landCombat++;
     }
-
-    // Spawn at forward base if established, else at main base.
-    const bx = ai.forwardBase ? ai.forwardBase.x : ai.baseX;
-    const bz = ai.forwardBase ? ai.forwardBase.z : ai.baseZ;
-    const idx = n;
-    // Deterministic jitter via the ai RNG stream.
-    const jx = Math.floor(bank.next('ai') * 5) - 2;
-    const jz = Math.floor(bank.next('ai') * 5) - 2;
-    spawn(world, queue, ai.owner, kind, bx + (idx % 4) * 4 - 6 + jx, bz + Math.floor(idx / 4) * 4 - 6 + jz);
-    ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
+  }
+  if (landCombat > 0) {
+    cx /= landCombat;
+    cz /= landCombat;
+    for (const u of world.units) {
+      if (u.owner !== ai.owner || u.hp <= 0 || u.kind !== 'combatMedic') continue;
+      moveTo(world, queue, ai.owner, u.id, cx, cz);
+    }
   }
 
   // --- Expansion: once we have 8+ units, establish a forward base
@@ -448,7 +954,8 @@ function thinkCommander(
     }
   }
 
-  // --- Attack: like citizen, but also uses fighters vs air.
+  // --- Attack: like citizen, but fighters prefer air targets and
+  //     missile boats stay in their pack (group order already issued).
   if (visible.length > 0) {
     let nearest: UnitRecord = visible[0]!;
     let best = Infinity;
@@ -465,7 +972,7 @@ function thinkCommander(
       if (u.owner !== ai.owner || u.hp <= 0) continue;
       const def = UNIT_DEFS[u.kind as UnitKind];
       if (def.damage <= 0) continue;
-      if (u.kind === 'drone') continue; // scouts don't fight
+      if (u.kind === 'drone' || u.kind === 'awacs') continue; // scouts don't fight
       if (u.targetId === nearest.id && u.chasing) continue;
       // Fighters prefer air targets; others take the nearest.
       const targetIsAir = UNIT_DEFS[nearest.kind as UnitKind].domain === 'air';
@@ -483,25 +990,40 @@ function thinkCommander(
       attack(world, queue, ai.owner, u.id, nearest.id);
     }
   }
+
+  // --- Capital ships (marshal, coastal): keep the command ship and
+  //     carrier back with the fleet; retreat under 40% hp (spec §7.3).
+  if (ai.difficulty === 'marshal' && ai.navalWater) {
+    for (const u of world.units) {
+      if (u.owner !== ai.owner || u.hp <= 0) continue;
+      if (u.kind !== 'commandShip' && u.kind !== 'carrier') continue;
+      const def = UNIT_DEFS[u.kind as UnitKind];
+      const dx = u.x - ai.navalWater.x;
+      const dz = u.z - ai.navalWater.z;
+      const hurt = u.hp < def.hp * 0.4;
+      const strayed = dx * dx + dz * dz > 60 * 60;
+      if ((hurt || strayed) && u.targetId === 0) {
+        moveTo(world, queue, ai.owner, u.id, ai.navalWater.x, ai.navalWater.z);
+      }
+    }
+  }
 }
 
 /**
- * General (level 4): faster than Commander, larger army, better counters.
- * Forward expansion like Commander. (Navy support requires terrain access;
- * General focuses on land/air dominance.)
+ * General (level 4): faster than Commander, larger army, basic navy.
+ * Naval probing + fishing economy on coastal maps (spec §7.3).
  */
 function thinkGeneral(
   world: World,
   queue: CommandQueue,
   ai: AIPlayerState,
 ): void {
-  // Reuse Commander logic for scouting, production, expansion, and combat.
-  // General thinks faster (45 ticks) and fields a larger army (26 units).
   thinkCommander(world, queue, ai);
+  thinkNavalProbe(world, queue, ai);
 }
 
 /**
- * Marshal (level 5): hardest fair AI. Combined arms, naval invasions,
+ * Marshal (level 5): hardest fair AI. Combined arms, naval play,
  * age advancement. Thinks fastest, fields the largest army.
  */
 function thinkMarshal(
@@ -509,7 +1031,7 @@ function thinkMarshal(
   queue: CommandQueue,
   ai: AIPlayerState,
 ): void {
-  // Start with General's behavior (includes Commander base).
+  // Start with General's behavior (includes Commander base + naval probe).
   thinkGeneral(world, queue, ai);
 
   // --- Age advancement: if we can afford the next age, take it.
@@ -523,9 +1045,6 @@ function thinkMarshal(
     else program = prog.programs[0] ?? 'fiberGrid';
     advanceAge(world, queue, ai.owner, program);
   }
-
-  // --- Combined arms: ensure we have a mix of unit types.
-  // (The base logic already does counters; Marshal just fields more.)
 
   // --- Superweapons: build the facilities, then use them fairly.
   thinkSuperweapons(world, queue, ai);
@@ -545,13 +1064,7 @@ function thinkSuperweapons(
 ): void {
   if (world.ages.age !== 'ascendance') return;
   const enqueue = (kind: string, payload: Record<string, unknown>): void => {
-    try {
-      queue.enqueue(world, { issuer: 'ai', kind, payload });
-    } catch (e) {
-      if (!(e instanceof CommandRejectedError)) throw e;
-      // Validation failed (still building, on cooldown, can't afford):
-      // reassess next think tick. Never crash the tick on a weapon order.
-    }
+    issue(world, queue, kind, payload);
   };
   // Build each facility once, storm first (offense wins games).
   if (ai.superweapons.stormReadyTick === 0) {
@@ -608,20 +1121,28 @@ function canAffordAge(world: World, owner: number, cost: Record<string, number>)
 
 /** Issue an age advancement command. */
 function advanceAge(world: World, queue: CommandQueue, owner: number, program: string): void {
-  queue.enqueue(world, {
-    issuer: 'ai',
-    kind: 'advanceAge',
-    payload: { owner, program },
-  });
+  issue(world, queue, 'advanceAge', { owner, program });
 }
 
 /**
  * The AI system. Runs every tick; each AI player thinks on its own
  * cadence. Issues commands through the queue — never mutates world
- * state directly (except its own `world.ai` state, which is plain data).
+ * state directly (except its own `world.ai` state, which is plain data,
+ * and the virtual-building economy credit, which mirrors the economy
+ * system for real buildings).
  */
 export function createAISystem(queue: CommandQueue): SimSystem {
+  // The AI researches upgrades via `researchUpgrade`; make sure the kind
+  // is registered even if session setup hasn't wired it (registering
+  // twice throws, so tolerate the already-registered case — the UI may
+  // wire it independently later).
+  try {
+    registerUpgradeCommands(queue);
+  } catch (e) {
+    if (!(e instanceof Error) || !e.message.includes('already registered')) throw e;
+  }
   return (world: World) => {
+    creditVirtualEconomy(world);
     // Deterministic iteration: AI players in registration order.
     for (const ai of world.ai.players) {
       if (world.tick < ai.nextThinkTick) continue;
@@ -665,6 +1186,16 @@ export function encodeAIState(ai: AIState): unknown {
         aegisReadyTick: p.superweapons?.aegisReadyTick ?? 0,
         stormReadyTick: p.superweapons?.stormReadyTick ?? 0,
       },
+      virtualBuildings: {
+        completed: [...(p.virtualBuildings?.completed ?? [])],
+        constructing: p.virtualBuildings?.constructing
+          ? { ...p.virtualBuildings.constructing }
+          : null,
+      },
+      navalStatus: p.navalStatus ?? 'unknown',
+      navalProbeIndex: p.navalProbeIndex ?? 0,
+      navalWater: p.navalWater ? { x: p.navalWater.x, z: p.navalWater.z } : null,
+      seenSubmarine: p.seenSubmarine ?? false,
       builtCounts: Object.keys(p.builtCounts).sort().reduce<Record<string, number>>(
         (acc, k) => {
           const v = p.builtCounts[k];
@@ -690,6 +1221,14 @@ export function decodeAIState(data: unknown): AIState {
       scoutIndex: number;
       builtCounts: Record<string, number>;
       superweapons?: { aegisReadyTick: number; stormReadyTick: number };
+      virtualBuildings?: {
+        completed?: BuildingKind[];
+        constructing?: { kind: BuildingKind; readyTick: number } | null;
+      };
+      navalStatus?: AINavalStatus;
+      navalProbeIndex?: number;
+      navalWater?: { x: number; z: number } | null;
+      seenSubmarine?: boolean;
     }[];
   };
   return {
@@ -706,6 +1245,16 @@ export function decodeAIState(data: unknown): AIState {
         aegisReadyTick: p.superweapons?.aegisReadyTick ?? 0,
         stormReadyTick: p.superweapons?.stormReadyTick ?? 0,
       },
+      virtualBuildings: {
+        completed: [...(p.virtualBuildings?.completed ?? [])],
+        constructing: p.virtualBuildings?.constructing
+          ? { ...p.virtualBuildings.constructing }
+          : null,
+      },
+      navalStatus: p.navalStatus ?? 'unknown',
+      navalProbeIndex: p.navalProbeIndex ?? 0,
+      navalWater: p.navalWater ? { x: p.navalWater.x, z: p.navalWater.z } : null,
+      seenSubmarine: p.seenSubmarine ?? false,
     })),
   };
 }

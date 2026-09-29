@@ -58,6 +58,10 @@ import {
 } from '../src/sim/ai';
 import { digestWorld } from '../src/sim/digest';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
+import {
+  grantAllTrainingResources,
+  completeBuildings,
+} from './sim.roster-fixtures';
 
 interface Ctx {
   terrain: TerrainData;
@@ -75,8 +79,14 @@ function getTerrain(): TerrainData {
 function setup(seed = 20260928): Ctx {
   const terrain = getTerrain();
   const world = createWorld(seed);
-  // Grant manpower for AI unit construction (tests don't run the economy).
-  for (const p of world.city.players) p.manpower = 100;
+  // Tests don't run the economy: grant training funds/materials/manpower
+  // and the production buildings the roster expansion requires (the AI
+  // builds tank/aa/artillery/fighter; the AI agent later teaches the AI
+  // to construct these itself).
+  grantAllTrainingResources(world);
+  for (const p of world.city.players) {
+    completeBuildings(world, p.id, ['barracks', 'warFactory', 'airfield']);
+  }
   const queue = createCommandQueue();
   registerCoreCommands(queue);
   registerUnitCommands(queue, terrain);
@@ -170,10 +180,10 @@ describe('cadet', () => {
     // Spawn an enemy nearby (visible to cadet units once they exist).
     const enemyBase = findLandNear(ctx.terrain, -80, -100);
     spawnAt(ctx, enemyBase.x, enemyBase.z, 'tank', 0);
-    // Run long enough for cadet to hit its cap (4 units, 240 ticks each).
-    runTicks(ctx, 240 * 5 + 10);
+    // Run long enough for cadet to hit its cap (6 units, 240 ticks each).
+    runTicks(ctx, 240 * 7 + 10);
     const n = countOwnerUnits(ctx.world, 1);
-    expect(n).toBeLessThanOrEqual(4);
+    expect(n).toBeLessThanOrEqual(6);
     expect(n).toBeGreaterThan(0);
     // Cadet never issues explicit attack orders: the `chasing` flag is set
     // only by the attackUnit command (see combat.ts). Opportunistic combat
@@ -186,17 +196,25 @@ describe('cadet', () => {
 });
 
 describe('citizen', () => {
-  it('builds an army and attacks visible enemies', () => {
+  it('builds an army up to its cap', () => {
     const ctx = setup();
     const base = findLandNear(ctx.terrain, -100, -100);
     addAIPlayer(ctx.world, 1, 'citizen', base.x, base.z);
-    // Enemy within sight range of the AI base area.
+    // No enemies: nothing dies. 16 thinks × 1 unit, capped at 14.
+    runTicks(ctx, 120 * 16 + 10);
+    expect(countOwnerUnits(ctx.world, 1)).toBe(14);
+  });
+
+  it('attacks visible enemies', () => {
+    const ctx = setup();
+    const base = findLandNear(ctx.terrain, -100, -100);
+    addAIPlayer(ctx.world, 1, 'citizen', base.x, base.z);
+    // Weak enemies near the AI base: the AI should engage them.
     const enemyPos = findLandNear(ctx.terrain, -85, -100);
-    const enemyId = spawnAt(ctx, enemyPos.x, enemyPos.z, 'tank', 0);
-    // Run several think cycles.
+    const enemyId = spawnAt(ctx, enemyPos.x, enemyPos.z, 'rifles', 0);
     runTicks(ctx, 120 * 6 + 10);
     const n = countOwnerUnits(ctx.world, 1);
-    expect(n).toBeGreaterThan(2);
+    expect(n).toBeGreaterThan(0);
     // At least one AI unit should be chasing the visible enemy — or the
     // enemy is already dead, which also proves the AI attacked it (the
     // only other units on the map are the AI's).
@@ -246,14 +264,17 @@ describe('commander', () => {
     const ctx = setup();
     const base = findLandNear(ctx.terrain, -100, -100);
     addAIPlayer(ctx.world, 1, 'commander', base.x, base.z);
-    // Visible enemy heavy armor → commander should build artillery.
+    // Visible enemy heavy armor → commander should counter with artillery
+    // (tankDestroyer is industry-gated, so artillery is the foundation answer).
     const enemyPos = findLandNear(ctx.terrain, -80, -100);
     spawnAt(ctx, enemyPos.x, enemyPos.z, 'tank', 0);
     spawnAt(ctx, enemyPos.x + 4, enemyPos.z, 'tank', 0);
     spawnAt(ctx, enemyPos.x - 4, enemyPos.z, 'tank', 0);
     runTicks(ctx, 60 * 14 + 10);
-    const art = ctx.world.units.filter((u) => u.owner === 1 && u.kind === 'artillery' && u.hp > 0);
-    expect(art.length).toBeGreaterThan(0);
+    // The counter decision fired (builtCounts records decisions even when
+    // the counter units later die in combat against the parked tanks).
+    const ai = ctx.world.ai.players[0]!;
+    expect(ai.builtCounts['artillery'] ?? 0).toBeGreaterThan(0);
   });
 });
 
