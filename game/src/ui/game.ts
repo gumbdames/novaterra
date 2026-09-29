@@ -112,6 +112,7 @@ import {
   resolveTrainClick,
   type PlacementResolution,
 } from './placement';
+import { classifyPointerUp } from './pointer';
 import { PauseMenu, loadSettings, type QualityLevel } from './menus';
 import { STRINGS, loc, setUiLanguage } from './strings';
 import { trainPlacementToast } from './palettes';
@@ -204,7 +205,17 @@ export async function startGame(
   if (opts.saveData) session.cheated = opts.saveData.metadata.cheated;
   const saveStore = await createSaveStore();
 
+  // Defensive: never stack a second game canvas over a stale one. A previous
+  // controller always removes its canvas in dispose(), but if one somehow
+  // survived (or a second startGame raced the first), the stale canvas would
+  // paint over — or swallow pointer input meant for — the live game. Only
+  // tagged game canvases are cleared: the menu's untagged backdrop canvas is
+  // hidden (not removed) by the caller and must survive for the return trip.
+  container
+    .querySelectorAll('canvas[data-novaterra="game"]')
+    .forEach((stale) => stale.remove());
   const canvas = document.createElement('canvas');
+  canvas.dataset.novaterra = 'game';
   container.appendChild(canvas);
   // Hang-proof init: a wedged GPU channel falls back to WebGL2 instead of
   // hanging startGame() forever on a blank screen (render/renderer.ts).
@@ -381,6 +392,10 @@ class GameController {
   private roadDragCells: number[] | null = null;
   private zoneDragStart: { cx: number; cz: number } | null = null;
   private disposed = false;
+  /** `?inputdebug=1` — verbose pointer-event console logging for diagnosis. */
+  private readonly inputDebug: boolean =
+    typeof window !== 'undefined' &&
+    new URLSearchParams(window.location.search).get('inputdebug') === '1';
   private removeListeners: Array<() => void> = [];
   // ---- step 11: saves + cheat console ----
   private readonly saveStore: SaveStore;
@@ -1170,6 +1185,14 @@ class GameController {
 
     // --- mouse ---
     on(this.canvas, 'pointerdown', (e) => {
+      if (this.inputDebug) {
+        console.debug('[input] pointerdown', {
+          button: e.button,
+          x: e.clientX,
+          y: e.clientY,
+          placement: this.placement?.kind ?? null,
+        });
+      }
       if (e.button === 0) {
         this.dragStart = { x: e.clientX, y: e.clientY };
         // Road tool: drag-paint accumulates cells until pointerup; a plain
@@ -1223,6 +1246,27 @@ class GameController {
     on(window, 'pointerup', (e) => {
       const start = this.dragStart;
       this.dragStart = null;
+      // Click-vs-drag is anchored on the press (pointer/pointer.ts): a press
+      // that started on the canvas counts as a click even when the release
+      // target isn't the canvas (synthetic events, sub-pixel HUD-edge drift).
+      const gesture = classifyPointerUp({
+        dragStart: start,
+        upX: e.clientX,
+        upY: e.clientY,
+        button: e.button,
+        targetIsCanvas: e.target === this.canvas,
+      });
+      if (this.inputDebug) {
+        console.debug('[input] pointerup', {
+          gesture,
+          button: e.button,
+          x: e.clientX,
+          y: e.clientY,
+          targetIsCanvas: e.target === this.canvas,
+          hadRoadDrag: this.roadDragCells !== null,
+          hadDragRect: this.dragRect !== null,
+        });
+      }
       // Road drag-paint finishes here, before the box-select path: a road
       // gesture must never silently become a unit selection.
       if (this.roadDragCells) {
@@ -1233,7 +1277,7 @@ class GameController {
         if (cells.length > 0) {
           this.enqueue(buildRoadOrder(HUMAN_PLAYER_ID, cells));
           this.audio.playSfx('place');
-        } else if (start && e.button === 0 && e.target === this.canvas) {
+        } else if (gesture === 'click') {
           // Plain click with the road tool: pave the single clicked cell
           // (or explain why nothing was paved).
           const ndc = this.toNDC(e);
@@ -1251,7 +1295,7 @@ class GameController {
         if (start) this.handleDragRect(rect, e.shiftKey);
         return;
       }
-      if (start && e.button === 0 && e.target === this.canvas) {
+      if (gesture === 'click') {
         const ndc = this.toNDC(e);
         this.handleLeftClick(ndc.x, ndc.y, e.shiftKey);
       }

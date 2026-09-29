@@ -22,7 +22,12 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   training costs.
 - `game.ts` — the game controller: renderer, daylight scene, camera
   input, selection, placement modes, fixed-timestep loop, pause menu.
-  DOM + three.js; never imported by headless tests.
+  DOM + three.js; never imported by headless tests. `startGame()` tags
+  its canvas (`data-novaterra="game"`) and removes any stale tagged game
+  canvases first, so a leftover canvas can never paint over or swallow
+  input for the live one (the menu's untagged backdrop canvas is hidden,
+  not removed, and survives). `?inputdebug=1` turns on verbose
+  pointer-event console logging for diagnosis.
   Step 11: owns the save store, the cheat console (backtick), the end
   screen, and autosave (every 5 game-minutes, tick-based).
 - `cheatconsole.ts` — the cheat console overlay. `parseCheatCommand` is
@@ -79,6 +84,14 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   Invariants: a drag in train/building mode places at the release point
   (never becomes a box-select); road drag-paint accumulates `roadDragCells`
   from canvas pointerdown and finishes on pointerup before the select path.
+- `pointer.ts` — **pointer-gesture classification (pure, tested).**
+  `classifyPointerUp` decides click vs drag vs ignore for the
+  controller's `pointerup` handler. The click rule is anchored on the
+  PRESS: a primary-button press that started on the canvas and moved at
+  most 6px counts as a click even when the release event's target is not
+  the canvas (covers synthetic/automated events and sub-pixel drift onto
+  a HUD edge — the old strict `e.target === canvas` gate silently
+  swallowed these).
 - `campaignui.ts` — campaign screens (Phase 2): `MissionSelect`
   (locked/unlocked/done), `MissionBriefing` (paths with 🕊/⚔ markers),
   `MissionDebrief` (debrief copy + diplomat/commander score + the two
