@@ -163,8 +163,8 @@ HOW_TO_PLAY.md).
 ### Muse Commander ✅ COMPLETE (2026-09-29)
 
 The "Live Muse link" from Decision 1 is now real: a sixth skirmish
-difficulty, **Muse — your API key drives the rival**. The player's own
-Anthropic API key (Settings: key + model + 30/60/120 s cadence + Test
+difficulty, **Muse — your Meta Muse drives the rival**. The player's own
+Meta Model API key (Settings: key + model + 30/60/120 s cadence + Test
 connection; key in `localStorage` only, never logged) powers the enemy
 commander. Design holds the Decision-1 guarantees: a compact fog-filtered
 digest (< 2 KB, owner's full state + only visible enemies — the same

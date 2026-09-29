@@ -101,14 +101,15 @@ and (if you're into that) taunts you lightly. Set its **Chattiness** in
 Settings: **Off** (silent), **Quiet** (milestones only), **Normal**
 (events and updates), or **Chatty** (taunts and commentary).
 
-### Playing against Muse (your API key drives the rival)
+### Playing against Muse (your Meta API key drives the rival)
 
-1. Get an API key from [Anthropic](https://console.anthropic.com/)
-   (usage is billed to your Anthropic account).
+1. Get a Meta Model API key from [dev.meta.ai](https://dev.meta.ai)
+   → Model API dashboard → **API keys** (usage is billed to your Meta
+   account).
 2. **Pause menu → Settings → Live Muse**: paste the key (it stays in
-   your browser only), pick a model and how often Muse thinks
-   (30 s / 60 s / 2 min), then **Test connection**.
-3. Start a skirmish and choose **Muse — your API key drives the rival**
+   your browser only), pick a model (Muse Spark 1.3 / 1.1) and how often
+   Muse thinks (30 s / 60 s / 2 min), then **Test connection**.
+3. Start a skirmish and choose **Muse — your Meta Muse drives the rival**
    as the difficulty.
 
 While Muse thinks you'll see a small badge (top-right); the game never

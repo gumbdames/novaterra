@@ -402,11 +402,12 @@ describe('muse/live — API client', () => {
 
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = (fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('https://api.anthropic.com/v1/messages');
+    expect(url).toBe('https://api.meta.ai/v1/messages');
     const headers = init.headers as Record<string, string>;
-    expect(headers['x-api-key']).toBe(TEST_KEY);
-    expect(headers['anthropic-version']).toBe('2023-06-01');
-    expect(headers['anthropic-dangerous-direct-browser-access']).toBe('true');
+    // Exact header set: Bearer auth only — proves no other vendor's
+    // headers are ever sent.
+    expect(Object.keys(headers).sort()).toEqual(['authorization', 'content-type']);
+    expect(headers['authorization']).toBe(`Bearer ${TEST_KEY}`);
     const body = JSON.parse(init.body as string) as { model: string; system: string; messages: unknown[] };
     expect(typeof body.model).toBe('string');
     expect(body.system).toContain('MUSE:');
@@ -419,14 +420,14 @@ describe('muse/live — API client', () => {
 
   it('401 → "invalid API key" error; the key never appears in the message', async () => {
     stubKey();
-    mockFetchResponse(401, { error: { message: 'invalid x-api-key' } });
+    mockFetchResponse(401, { error: { message: 'invalid api key' } });
     const client = createLiveMuseClient();
     const world = createWorld(9);
     const digest = buildCommanderDigest(world, AI, { size: 512, waterPct: 5 });
 
     const err = await client.command(digest).catch((e: unknown) => e);
     expect(err).toBeInstanceOf(LiveMuseError);
-    expect((err as Error).message).toMatch(/invalid api key/i);
+    expect((err as Error).message).toMatch(/invalid meta api key/i);
     expect((err as Error).message).not.toContain(TEST_KEY);
   });
 
@@ -515,7 +516,7 @@ describe('muse/live — API client', () => {
     mockFetchResponse(401, {});
     const bad = await testLiveConnection();
     expect(bad.ok).toBe(false);
-    expect(bad.message).toMatch(/invalid api key/i);
+    expect(bad.message).toMatch(/invalid meta api key/i);
     expect(bad.message).not.toContain(TEST_KEY);
   });
 

@@ -21,7 +21,7 @@
  * `muse` is the player-facing label for the Muse Commander rival; inside
  * the sim it behaves exactly like `commander` (Classic AI drives the
  * routine ticks) while the UI layer optionally enriches its orders with
- * directives fetched from the player's own Anthropic API key.
+ * directives fetched from the player's own Meta Model API key.
  *  - cadet:     reacts every ~8s (240 ticks), trickles a few basic units,
  *               never expands, never builds counters, never attacks.
  *  - citizen:   reacts every ~4s (120 ticks), builds a basic army, attacks

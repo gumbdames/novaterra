@@ -19,7 +19,7 @@
  *
  * UI-owned (not part of the sim): once per cadence interval it builds a
  * compact fog-filtered battle digest (`muse/digest.ts`), POSTs it to the
- * player's own Anthropic API key, and turns the model's `MUSE:`
+ * player's own Meta Model API key, and turns the model's `MUSE:`
  * directives into ordinary validated game commands through the
  * `CommandQueue` (`muse/live.ts`).
  *

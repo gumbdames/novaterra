@@ -71,7 +71,7 @@ game/src/
   muse/           # Phase 2: deterministic persona lines (persona.ts), threat
                   # meter + trick narration from visible state only (director.ts),
                   # event detection + chattiness throttle (controller.ts),
-                  # live Muse link (live.ts: Anthropic API client + MUSE:
+                  # live Muse link (live.ts: Meta Model API client + MUSE:
                   # directive protocol → ordinary queue commands),
                   # commander digest (digest.ts: compact fog-filtered battle
                   # summary), rival controller (commander.ts: off-tick API

@@ -18,7 +18,7 @@
  * NOVATERRA — muse/digest.ts — Muse Commander battle digest.
  *
  * Builds the compact, JSON-safe snapshot of the game that is sent to the
- * player's own Anthropic API key when they pick the "Muse" rival
+ * player's own Meta Model API key when they pick the "Muse" rival
  * difficulty. Two hard fairness rules are structural here, not just
  * promised in docs:
  *

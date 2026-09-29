@@ -41,8 +41,8 @@ export const STRINGS = {
     difficultyCommander: 'Commander — no mercy',
     difficultyGeneral: 'General — combined arms',
     difficultyMarshal: 'Marshal — total war',
-    difficultyMuse: 'Muse — your API key drives the rival',
-    difficultyMuseHint: 'Requires an Anthropic API key — set one in Settings → Live Muse first.',
+    difficultyMuse: 'Muse — your Meta Muse drives the rival',
+    difficultyMuseHint: 'Requires a Meta Model API key — set one in Settings → Live Muse first.',
     chooseMap: 'Choose your map',
     start: 'Start game',
     back: 'Back',
@@ -135,10 +135,11 @@ export const STRINGS = {
     museQuiet: 'Quiet — milestones only',
     museNormal: 'Normal — events and updates',
     museChatty: 'Chatty — taunts and commentary',
-    liveMuseTitle: 'Live Muse',
+    liveMuseTitle: 'Meta Muse',
     liveMuseNote:
-      'Drive the rival commander with your own Muse API key — pick the "Muse" difficulty when starting a skirmish. ' +
-      'Your key stays in this browser and is only ever sent to api.anthropic.com. API usage is billed to your Anthropic account. ' +
+      'Drive the rival commander with your own Meta Muse API key — pick the "Muse" difficulty when starting a skirmish. ' +
+      'Get a key at dev.meta.ai → Model API dashboard → API keys. ' +
+      'Your key stays in this browser and is only ever sent to api.meta.ai. API usage is billed to your Meta account. ' +
       'If the key is missing or a request fails, the rival plays on as a Classic Commander — the game never waits on the network.',
     liveKeyLabel: 'API key',
     liveKeyPlaceholder: 'Stored only in this browser',
@@ -151,7 +152,7 @@ export const STRINGS = {
     liveTestWaiting: 'Testing…',
     museNoKeyTitle: 'No API key yet',
     museNoKeyBody:
-      'The Muse rival is driven by your own Anthropic API key — without one ' +
+      'The Muse rival is driven by your own Meta Model API key — without one ' +
       'there is no live rival to play against. Add your key in Settings → ' +
       'Live Muse, then pick this difficulty again.',
     museNoKeySettings: 'Open Settings',

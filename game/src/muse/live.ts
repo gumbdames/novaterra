@@ -15,7 +15,7 @@
  */
 
 /**
- * NOVATERRA — muse/live.ts — Live Muse link (player's own API key).
+ * NOVATERRA — muse/live.ts — Live Muse link (player's own Meta API key).
  *
  * Two jobs:
  *
@@ -25,16 +25,18 @@
  *    through this path.
  * 2. **Muse Commander (rival AI).** When the player picks the "Muse"
  *    difficulty, a compact battle digest (`muse/digest.ts`) is POSTed to
- *    the Anthropic Messages API once per cadence interval. The model
- *    answers with `MUSE:` directive lines (`build`, `construct`,
+ *    Meta's Model API (api.meta.ai/v1) once per cadence interval. The
+ *    model answers with `MUSE:` directive lines (`build`, `construct`,
  *    `attack`, `defend`, `advance-age`, `advise`); `directivesToCommands`
  *    turns them into ordinary validated game commands through the
  *    `CommandQueue`. Muse never mutates sim state directly, and the
  *    digest is fog-of-war filtered (see `muse/digest.ts`).
  *
- * Key storage: localStorage `novaterra.muse.liveKey` only. The key is
- * never committed, never logged, and never appears in error messages —
- * it is sent only as the `x-api-key` header to api.anthropic.com.
+ * Meta's Model API accepts the Messages-style request format at the
+ * same base URL; auth is a Bearer token. Key storage:
+ * localStorage `novaterra.muse.liveKey` only. The key is never committed,
+ * never logged, and never appears in error messages — it is sent only as
+ * the `Authorization: Bearer` header to api.meta.ai.
  *
  * All failures (no key, timeout, 401/429/5xx, network error, malformed
  * output) throw `LiveMuseError`; callers fall back to the offline
@@ -57,19 +59,14 @@ const LIVE_MODEL_STORAGE = 'novaterra.muse.liveModel';
 const LIVE_CADENCE_STORAGE = 'novaterra.muse.liveCadenceSec';
 
 /** Default model for the Muse Commander rival. */
-export const DEFAULT_LIVE_MODEL = 'claude-sonnet-4-6';
-/** Models offered in Settings. */
-/** Models offered in Settings. Verified 2026-09-29: Sonnet 4.6 (current), Sonnet 4.5, Haiku 4.5. */
-export const LIVE_MODEL_OPTIONS = [
-  'claude-sonnet-4-6',
-  'claude-sonnet-4-5',
-  'claude-haiku-4-5',
-] as const;
+export const DEFAULT_LIVE_MODEL = 'muse-spark-1.3';
+/** Models offered in Settings. Meta Muse Spark models served by Meta's Model API. */
+export const LIVE_MODEL_OPTIONS = ['muse-spark-1.3', 'muse-spark-1.1'] as const;
 /** Default API cadence: one call per 60 game-seconds. */
 export const DEFAULT_LIVE_CADENCE_SEC = 60;
 /** Cadence choices offered in Settings (game-seconds). */
 export const LIVE_CADENCE_OPTIONS = [30, 60, 120] as const;
-/** Anthropic API request timeout. */
+/** Meta Model API request timeout. */
 export const LIVE_REQUEST_TIMEOUT_MS = 30000;
 
 /** Strategic digest sent to the live model (advisory path). JSON-safe. */
@@ -470,7 +467,7 @@ export function setLiveCadenceSec(sec: number): void {
 }
 
 // ---------------------------------------------------------------------------
-// Anthropic API client.
+// Meta Model API client (api.meta.ai/v1).
 // ---------------------------------------------------------------------------
 
 /** Machine-readable failure reason for the live Muse link. */
@@ -493,15 +490,14 @@ export class LiveMuseError extends Error {
   }
 }
 
-const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
-const ANTHROPIC_VERSION = '2023-06-01';
+const META_MODEL_API_URL = 'https://api.meta.ai/v1/messages';
 
 /** System prompt: the model may answer ONLY with MUSE: directive lines. */
 export const COMMANDER_SYSTEM_PROMPT =
-  'You are the rival commander in NOVATERRA, a real-time strategy game. ' +
-  'You command the red army against a human player. Each round you receive ' +
-  'a JSON battle digest. You see ONLY what is in the digest — never assume ' +
-  'hidden enemy information.\n\n' +
+  'You are Meta Muse, commanding the rival army in NOVATERRA, a real-time ' +
+  'strategy game. You command the red army against a human player. Each ' +
+  'round you receive a JSON battle digest. You see ONLY what is in the ' +
+  'digest — never assume hidden enemy information.\n\n' +
   'Respond with ONLY directive lines, one per line, in this exact format:\n' +
   'MUSE: build: <unit> [x<count>]   — train units near your base ' +
   '(units: engineer, rifles, tank, artillery, aa, hauler, spectre, hq, fighter, transport, drone; count 1-10)\n' +
@@ -515,27 +511,30 @@ export const COMMANDER_SYSTEM_PROMPT =
   'no other text, no explanations, no markdown.';
 
 const ADVISE_SYSTEM_PROMPT =
-  'You are Muse, a charming strategic advisor in the game NOVATERRA. ' +
+  'You are Meta Muse, a charming strategic advisor in the game NOVATERRA. ' +
   'You receive a JSON digest of the player\'s game. ' +
   'Respond with ONLY lines in this exact format:\n' +
   'MUSE: advise: <short strategic tip or flavor text, max 280 chars>\n' +
   'No other text, no explanations, no markdown.';
 
-interface AnthropicTextBlock {
+interface MetaTextBlock {
   type: string;
   text?: string;
 }
 
-interface AnthropicResponse {
-  content?: AnthropicTextBlock[];
+interface MetaApiResponse {
+  content?: MetaTextBlock[];
 }
 
 /**
- * POST to the Anthropic Messages API and return the concatenated text.
- * The API key is sent ONLY as the x-api-key header and never appears in
- * errors or logs. Throws LiveMuseError on any failure.
+ * POST to Meta's Model API and return the concatenated text. The API key
+ * is sent ONLY as the `Authorization: Bearer` header and never appears in
+ * errors or logs. Throws LiveMuseError on any failure. Note: whether
+ * api.meta.ai accepts direct browser (CORS) calls is unverified — a
+ * browser-blocked request surfaces as a network error, and the game
+ * falls back to the Classic AI.
  */
-async function callAnthropic(opts: {
+async function callMetaModelApi(opts: {
   key: string;
   model: string;
   system: string;
@@ -546,14 +545,11 @@ async function callAnthropic(opts: {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? LIVE_REQUEST_TIMEOUT_MS);
   try {
-    const res = await fetch(ANTHROPIC_URL, {
+    const res = await fetch(META_MODEL_API_URL, {
       method: 'POST',
       headers: {
-        'x-api-key': opts.key,
-        'anthropic-version': ANTHROPIC_VERSION,
+        authorization: `Bearer ${opts.key}`,
         'content-type': 'application/json',
-        // Required for browser-side calls to the Anthropic API.
-        'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
         model: opts.model,
@@ -564,7 +560,7 @@ async function callAnthropic(opts: {
       signal: controller.signal,
     });
     if (res.status === 401) {
-      throw new LiveMuseError('Live Muse: invalid API key (401). Check your key in Settings.', 'invalid_key');
+      throw new LiveMuseError('Live Muse: invalid Meta API key (401). Check your key in Settings.', 'invalid_key');
     }
     if (res.status === 429) {
       throw new LiveMuseError('Live Muse: rate limited (429). Backing off — Classic AI covers the game.', 'rate_limited');
@@ -572,9 +568,9 @@ async function callAnthropic(opts: {
     if (!res.ok) {
       throw new LiveMuseError(`Live Muse: request failed (${res.status}). Classic AI covers the game.`, 'request_failed');
     }
-    let data: AnthropicResponse;
+    let data: MetaApiResponse;
     try {
-      data = (await res.json()) as AnthropicResponse;
+      data = (await res.json()) as MetaApiResponse;
     } catch {
       throw new LiveMuseError('Live Muse: malformed API response. Classic AI covers the game.', 'malformed');
     }
@@ -611,7 +607,7 @@ export function createLiveMuseClient(): LiveMuseClient {
     async advise(digest: MuseDigest): Promise<string[]> {
       const key = getLiveKey();
       if (key.length === 0) throw new LiveMuseError('Live Muse: no API key set.', 'no_key');
-      const text = await callAnthropic({
+      const text = await callMetaModelApi({
         key,
         model: getLiveModel(),
         system: ADVISE_SYSTEM_PROMPT,
@@ -626,7 +622,7 @@ export function createLiveMuseClient(): LiveMuseClient {
     async command(digest: CommanderDigest, opts?: { timeoutMs?: number }): Promise<CommanderDirective[]> {
       const key = getLiveKey();
       if (key.length === 0) throw new LiveMuseError('Live Muse: no API key set.', 'no_key');
-      const text = await callAnthropic({
+      const text = await callMetaModelApi({
         key,
         model: getLiveModel(),
         system: COMMANDER_SYSTEM_PROMPT,
@@ -648,7 +644,7 @@ export async function testLiveConnection(): Promise<{ ok: boolean; message: stri
   const key = getLiveKey();
   if (key.length === 0) return { ok: false, message: 'No API key set.' };
   try {
-    const text = await callAnthropic({
+    const text = await callMetaModelApi({
       key,
       model: getLiveModel(),
       system: 'Reply with exactly this line and nothing else:\nMUSE: advise: ok',

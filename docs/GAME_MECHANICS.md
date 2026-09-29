@@ -174,15 +174,15 @@ Muse is charming, never annoying: how often they speak is your call —
 only. In campaign missions Muse also delivers the story's scripted
 messages.
 
-## Muse Commander — the rival driven by your API key
+## Muse Commander — the rival driven by your Meta Muse API key
 
-Pick **Muse — your API key drives the rival** as the skirmish difficulty
-and the enemy commander is powered by your own Muse API key. Once per
-minute (30 s / 60 s / 2 min in Settings) the game sends a compact,
-fog-filtered battle summary to the Anthropic API; Muse answers with
-orders like `build: tank`, `attack: 120, 80`, or `defend`, which the
-game executes as ordinary commands — the same ones you and the Classic
-AI use.
+Pick **Muse — your Meta Muse drives the rival** as the skirmish
+difficulty and the enemy commander is powered by your own Meta Muse API
+key. Once per minute (30 s / 60 s / 2 min in Settings) the game sends a
+compact, fog-filtered battle summary to Meta's Model API; Muse answers
+with orders like `build: tank`, `attack: 120, 80`, or `defend`, which
+the game executes as ordinary commands — the same ones you and the
+Classic AI use.
 
 Fairness is structural, not promised:
 
@@ -200,7 +200,7 @@ Fairness is structural, not promised:
   time, so the game is never broken.
 
 Your key lives only in your browser (`localStorage`) and is sent only
-to `api.anthropic.com`; API usage is billed to your Anthropic account.
+to `api.meta.ai`; API usage is billed to your Meta account.
 Test the connection from Settings before you play.
 
 ## Phase 3: Chain of command

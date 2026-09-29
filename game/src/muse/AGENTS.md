@@ -32,8 +32,8 @@ drives the enemy commander through ordinary queued commands).
   water coverage once per game. Pure: no DOM/fetch/clock/randomness.
 - `live.ts` — the live link. Settings storage (key/model/cadence,
   localStorage only — key never logged, never in errors, sent only as
-  the `x-api-key` header to api.anthropic.com; models: Sonnet 4.6/4.5,
-  Haiku 4.5). `parseDirectives` parses the `MUSE:` line protocol
+  the `Authorization: Bearer` header to api.meta.ai; models: Muse Spark
+  1.3 (default), 1.1). `parseDirectives` parses the `MUSE:` line protocol
   (`build`/`train`, `construct`, `attack`, `defend`, `advance-age`,
   `advise`) with canonical case-insensitive kind resolution
   (`patrolBoat`, `signalsGrid` survive any model casing);
@@ -41,9 +41,11 @@ drives the enemy commander through ordinary queued commands).
   backward compatible). `directivesToCommands` turns directives into
   ordinary validated queue commands (never touches `world` directly;
   loud rejections swallowed per directive). `createLiveMuseClient` POSTs
-  to the Anthropic Messages API (30 s timeout, `LiveMuseError` with a
-  machine-readable `code`: 401 → `invalid_key` with an "Invalid API key"
-  message); `testLiveConnection` powers the Settings button.
+  to Meta's Model API (30 s timeout, `LiveMuseError` with a
+  machine-readable `code`: 401 → `invalid_key` with an "invalid Meta API
+  key" message); `testLiveConnection` powers the Settings button.
+  Browser CORS to api.meta.ai is unverified — a blocked request surfaces
+  as a network error with Classic fallback.
 - `commander.ts` — `MuseCommander`: UI-owned rival controller. One API
   call per cadence interval (30/60/120 game-seconds), at most one in
   flight, resolved directives buffered and applied at the next
