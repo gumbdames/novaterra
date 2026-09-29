@@ -25,6 +25,13 @@
 > and a GLB → procedural → placeholder fallback chain (game stays
 > playable with zero GLBs loaded).
 >
+> **Expansion, evening of 2026-09-29:** the library was grown to whole kits —
+> 9 complete Kenney packs, **942 GLB files / ~27.4 MiB** total (see §7).
+> `game/public/models/MANIFEST.md` is the per-file manifest (depicts / tris /
+> KB / pack / license); `THIRD_PARTY_NOTICES.md` lists every file with source
+> URL + license. No game code was touched; `MODEL_PATHS` mapping is the render
+> team's next phase.
+>
 > **Owner:** asset-research workstream.
 > **Scope:** free/open-source 3D model sourcing for units, buildings, and props.
 
@@ -350,3 +357,120 @@ Kenney selection ~3.7 MB + Quaternius/Poly Pizza CC0 ~1.5 MB + gap picks ~2 MB
 4. Poly Pizza downloads need a free API key — obtain before the download step.
 5. Attribution file: draft `THIRD_PARTY_NOTICES.md` listing every bundled file
    with source URL, author, license (CC-BY entries are mandatory credits).
+
+---
+
+## 7. Whole-kit library expansion (2026-09-29, evening)
+
+**Goal:** grow the 36-file curated set into a whole-kit library the design /
+render teams can map the expanded roster (~26–30 units, ~26–30 buildings)
+onto, without touching game code or `MODEL_PATHS`.
+
+### 7.1 License re-verification (primary sources, 2026-09-29)
+
+- **Kenney:** every pack page on kenney.nl carries the license badge linking
+  to `https://creativecommons.org/publicdomain/zero/1.0/` with the text
+  "Creative Commons CC0" (verified in page HTML, e.g. car-kit page:
+  `creativecommons.org/publicdomain/zero/1.0/' target='_blank'>Creative
+  Commons CC0</a>`). Each pack zip ships an upstream `License.txt` (CC0),
+  kept in every `game/public/models/<pack>/` directory.
+- **Quaternius:** pack pages on quaternius.com state "CC0 License" (verified
+  on the Ultimate Animated Character Pack and Toon Shooter Game Kit pages).
+  No new Quaternius files were added in this expansion (see §7.5).
+
+### 7.2 Kenney catalog survey (2026-09-29)
+
+Checked for military/aircraft kits that would close the military gap:
+`military-kit`, `war-kit`, `air-kit`, `aircraft-kit`, `helicopter-kit`,
+`plane-kit` → **all 404**. Kenney still ships **no military and no aircraft**
+kits. `train-kit` and `racing-kit` exist (HTTP 200) but were rejected as
+out of scope (no trains/race cars on the likely roster).
+
+### 7.3 Packs downloaded whole (9 Kenney kits)
+
+Whole-kit zips were resolved per pack from the asset page at download time
+(`https://kenney.nl/media/pages/assets/<slug>/<hash>-<ts>/kenney_<slug>[_<ver>].zip`;
+note the watercraft kit uses the legacy name `kenney_watercraft-pack.zip`)
+and extracted **GLB-only** (+ `License.txt` + the pack's
+`Textures/colormap.png` where the GLBs reference it) into the existing
+per-pack directories — no game code touched, previously shipped files
+overwritten in place with byte-identical upstream content.
+
+| Pack dir | Upstream pack | GLBs | Notable for the roster |
+|---|---|---|---|
+| `kenney-car/` | Car Kit | 50 | ambulance, firetruck, police, taxi, van, garbage-truck, tractors, delivery trucks, sedans/SUVs, karts, wheels, crash debris |
+| `kenney-commercial/` | City Kit (Commercial) | 41 | 14 mid-rise blocks, 5 skyscrapers, awnings/parasols/overhangs, 14 low-detail background blocks |
+| `kenney-suburban/` | City Kit (Suburban) | 40 | 21 house types, driveways, fences, paths, planters |
+| `kenney-industrial/` | City Kit (Industrial) | 37 | 20 factory/warehouse shells, chimneys, storage tanks, shipping containers, **solar panels, wind turbines**, water tower |
+| `kenney-roads/` *(new)* | City Kit (Roads) | 95 | road tiles (straights/curves/junctions/bridges), street lamps, power-line poles + wires, construction barriers/cones/fences, dumpster |
+| `kenney-nature/` | Nature Kit | 329 | trees (oak/pine/palm/cactus/birch…), rocks, cliffs, plants, flowers, mushrooms, bridges, campfires, fences, canoe |
+| `kenney-watercraft/` | Watercraft Kit | 46 | speedboats, sailboats, rowboats, tugboats, tow boats, houseboats, **cargo ships, ocean liners**, buoys, cargo containers/piles, ramps |
+| `kenney-space/` | Space Kit | 153 | spacecraft, hangars, monorail, rocket parts, corridors, platforms, **satelliteDish ×3 (radar-dish candidates)**, **turret_single/turret_double (AA/sentry candidates)**, rover, weapon_gun/weapon_rifle props, astronauts |
+| `kenney-factory/` | Factory Kit | 143 | conveyors, pipes, machines, cranes, catwalks, hoppers, robot arms, screens, structural frames, gears, pistons, doors |
+
+Totals: **942 GLB files, ~27.4 MiB** (906 new; +~23.4 MiB added — under the
+40 MB expansion budget). Triangle counts: hundreds–low-thousands per model
+(max 11.4k, the Quaternius tank-4 already documented); 350k tris across the
+whole library (only roster-mapped models load at runtime).
+
+### 7.4 Zip layout notes / conversions
+
+- **No conversion was needed for Kenney this time.** Newer kits
+  (car/commercial/suburban/industrial/roads/watercraft/factory) ship
+  `Models/GLB format/*.glb` + `Models/GLB format/Textures/colormap.png`;
+  the 2020-era kits (nature, space) ship `Models/GLTF format/*.glb` and are
+  vertex-colored with no textures.
+- **Texture gotcha (confirmed again):** GLBs in the textured packs reference
+  `Textures/colormap.png` relative to the GLB's own URL — each pack dir ships
+  its own copy under `<pack>/Textures/colormap.png` (PNG magic verified).
+  Nature/space/Quaternius models have no external images (vertex-colored /
+  flat PBR).
+- Validation: every GLB checked for `glTF` magic bytes, version 2, parseable
+  JSON chunk, non-empty meshes — **942/942 pass, 0 corrupt**, tri counts
+  recorded in `game/public/models/MANIFEST.md`.
+
+### 7.5 Quaternius expansion — BLOCKED (download denied)
+
+Plan was to add whole packs for infantry variants + military props:
+- **Ultimate Animated Character Pack** (40 animated characters, men + women —
+  infantry variants): CC0 verified on
+  https://quaternius.com/packs/ultimatedanimatedcharacter.html ;
+  Drive folder `https://drive.google.com/drive/folders/1sNi1AfenfPRrvRt5yfaj5QMMd6KKcUJ5`
+- **Toon Shooter Game Kit** (70+ shooter models — guns, barricades, military
+  props): CC0 verified on https://quaternius.com/packs/toonshootergamekit.html ;
+  Drive folder `https://drive.google.com/drive/folders/1-BDs_EIyd6uiF2XuoyiZEcqnMQIJrE0C`
+
+The Google Drive folder download (via `gdown`) failed with a proxy error and
+the retry was **explicitly declined by the user** — per policy it was not
+retried or worked around. The 8 existing Quaternius files remain as-is.
+**To unblock:** the user can approve a fresh Drive download attempt, or drop
+the pack zips (OBJ or FBX) somewhere the agent can read; conversion is the
+proven `obj2gltf@3.2.0` one-liner documented in
+`game/public/models/quaternius/CONVERSION.md` (extend that file's mapping
+table when new files land).
+
+### 7.6 Remaining gaps (no CC0 whole-kit source — render team: procedural gap models)
+
+After the whole-kit expansion, these likely roster items still have **no**
+CC0 model in the library (Kenney has no military/aircraft kits, §7.2):
+- **Submarine** (watercraft kit has no submersible; closest: `ship-small-ghost`)
+- **SAM site / AA missile launcher** (space kit `turret_single`/`turret_double`
+  are gun turrets — usable as *sentry-gun* stand-ins, not missile AA)
+- **Fighter jet / bomber** (space kit `craft_*` are sci-fi; no real aircraft)
+- **Helicopter (transport/gunship)** — no CC0 source in either family
+- **Drone/UAV** — no CC0 source in either family
+- **Artillery / howitzer** — no CC0 source (Quaternius tanks are MBTs)
+- **Destroyer/warship** — watercraft kit tops out at cargo ships/liners; no warship
+- **Broadcast/media tower** — closest: space kit `satelliteDish_*` (dishes, not towers)
+- **Bus** (car kit has none; Quaternius Public Transport Pack would cover it —
+  same blocked-download path as §7.5)
+
+Partially closed by this expansion: **stormArray (radar)** → space kit
+`satelliteDish`/`satelliteDish_detailed`/`satelliteDish_large` are credible
+radar-dish models; **airbase hangar** → space kit `hangar_*`; **power**
+variants → industrial `solar-panel-*`/`windmill*`; **emergency services** →
+car kit ambulance/firetruck/police.
+
+Per-model CC0/CC-BY gap picks (Poly Pizza, Sketchfab) remain a possible
+follow-up per the original §2 table, but were out of scope for this
+whole-kit task.
