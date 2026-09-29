@@ -3,6 +3,24 @@
 three.js rendering only: a read-only view of the last two sim ticks plus the
 interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 
+## Renderer creation (`render/renderer.ts`, 0.1 Alpha)
+
+- `createRenderer(canvas, opts?)` is the ONLY way to build a renderer
+  (menu boot, game start, and `?bench=1` all use it). WebGPU first, with
+  automatic, time-bounded fallback to WebGL2.
+- The hazard it guards: three.js r186 puts NO timeout on
+  `navigator.gpu.requestAdapter()` / `adapter.requestDevice()`. Its WebGL2
+  fallback only runs on *rejection* — a wedged GPU process makes
+  `requestAdapter()` pend forever, which used to hang boot on a blank page.
+  `createRenderer` probes the adapter channel with an 8s deadline
+  (`ADAPTER_PROBE_TIMEOUT_MS`) and races the full init() against 20s
+  (`RENDERER_INIT_TIMEOUT_MS`), then falls back to forced WebGL2 instead of
+  hanging. Every path is bounded; total failure throws
+  `RendererInitTimeoutError` for the caller's showFatal().
+- `withTimeout` / `webgpuAdapterReachable` are exported for tests; both are
+  unit-tested in `tests/render.renderer.test.ts`. The module stays
+  import-safe under Node: the only `three/webgpu` import is type-only.
+
 ## Terrain meshing conventions (`render/terrain.ts`)
 
 - Mesh data is built as **plain typed arrays first** (`buildChunkMeshData` is

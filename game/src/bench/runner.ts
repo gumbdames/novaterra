@@ -43,6 +43,7 @@ import {
   type BenchParams,
 } from './config';
 import { buildBenchScene } from './scene';
+import { createRenderer } from '../render/renderer';
 import { FrameStats, InfoStats } from './stats';
 import {
   formatSummary,
@@ -183,16 +184,14 @@ async function runSweep(params: BenchParams): Promise<void> {
 
   setHud(`Initializing renderer (requested backend: ${params.backend})…`);
 
-  // Dynamic import keeps the bench chunk separate from the game bundle.
-  const { WebGPURenderer } = await import('three/webgpu');
-  const renderer = new WebGPURenderer({
-    canvas,
-    antialias: true,
-    // forceWebGL: the step-1 scaffold reserved this flag for exactly this —
-    // the mobile tier will force WebGL2 the same way (ARCHITECTURE.md §6).
+  // createRenderer() keeps the bench chunk separate from the game bundle
+  // (dynamic three.js import inside) and time-bounds init so a wedged GPU
+  // fails loudly instead of hanging the harness.
+  // forceWebGL: the step-1 scaffold reserved this flag for exactly this —
+  // the mobile tier will force WebGL2 the same way (ARCHITECTURE.md §6).
+  const renderer = await createRenderer(canvas, {
     forceWebGL: params.backend === 'webgl2',
   });
-  await renderer.init();
 
   // The renderer starts its own internal rAF loop inside init(), and that
   // loop calls renderer.info.reset() on every frame while info.autoReset

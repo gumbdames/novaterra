@@ -40,6 +40,7 @@ import * as THREE from 'three';
 import './style.css';
 import { generateTerrain, MERIDIAN_PLAINS } from './sim/terrain';
 import { buildTerrainView } from './render/terrain';
+import { createRenderer } from './render/renderer';
 import { MainMenu, loadSettings, type QualityLevel } from './ui/menus';
 import { startGame } from './ui/game';
 import type { AIDifficulty } from './sim/ai';
@@ -60,7 +61,7 @@ import type { MissionEndResult } from './ui/game';
 /**
  * Boot the menu experience: renderer + Meridian Plains backdrop scene + menu
  * overlay.
- * Async because WebGPURenderer requires `await renderer.init()`.
+ * Async because renderer creation requires `await createRenderer(canvas)`.
  * Safe to call once; throws on unrecoverable renderer failure (the caller
  * surfaces it via showFatal()).
  *
@@ -76,13 +77,12 @@ export async function boot(): Promise<void> {
   }
 
   // Renderer: WebGPU primary, automatic WebGL2 fallback (locked stack D1).
-  // Dynamic import keeps this module import-safe under Node/vitest.
-  const { WebGPURenderer } = await import('three/webgpu');
+  // createRenderer() probes the GPU channel with timeouts first, so a wedged
+  // GPU can never hang boot on a blank page (see render/renderer.ts).
   const canvas = document.createElement('canvas');
   app.appendChild(canvas);
 
-  const renderer = new WebGPURenderer({ canvas, antialias: true });
-  await renderer.init();
+  const renderer = await createRenderer(canvas);
   renderer.setSize(window.innerWidth, window.innerHeight);
   // Cap DPR: first step of the adaptive quality governor (ARCHITECTURE.md §6).
   applyMenuQuality(renderer, loadSettings().quality);

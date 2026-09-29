@@ -53,6 +53,7 @@ import type { AIDifficulty } from '../sim/ai';
 import { CommandRejectedError } from '../sim/commands';
 import { buildTerrainView } from '../render/terrain';
 import { EntityRenderer } from '../render/entities';
+import { createRenderer } from '../render/renderer';
 import { createSession, getSkirmishOutcome, HUMAN_PLAYER_ID, type GameSession } from './session';
 import {
   applyCameraState,
@@ -189,11 +190,11 @@ export async function startGame(
   if (opts.saveData) session.cheated = opts.saveData.metadata.cheated;
   const saveStore = await createSaveStore();
 
-  const { WebGPURenderer } = await import('three/webgpu');
   const canvas = document.createElement('canvas');
   container.appendChild(canvas);
-  const renderer = new WebGPURenderer({ canvas, antialias: true });
-  await renderer.init();
+  // Hang-proof init: a wedged GPU channel falls back to WebGL2 instead of
+  // hanging startGame() forever on a blank screen (render/renderer.ts).
+  const renderer = await createRenderer(canvas);
   renderer.setSize(window.innerWidth, window.innerHeight);
   applyQuality(renderer, opts.quality);
 
