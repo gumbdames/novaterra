@@ -226,6 +226,48 @@ export function checkSkirmishVictory(world: World): boolean {
 }
 
 /**
+ * Conquest defeat check (deterministic): true when the player (owner 0)
+ * has no units and no buildings left. Pure function of world state —
+ * no wall clock, no RNG. Mirror of checkSkirmishVictory.
+ */
+export function checkSkirmishDefeat(world: World): boolean {
+  for (const unit of world.units) {
+    if (unit.owner === HUMAN_PLAYER_ID) return false;
+  }
+  for (const building of world.city.buildings) {
+    if (building.owner === HUMAN_PLAYER_ID) return false;
+  }
+  return true;
+}
+
+/**
+ * Ticks before conquest win/lose checks start firing. Both sides deploy
+ * their starting forces on tick 0, but the grace period guards against
+ * edge cases with slow or delayed spawns.
+ */
+export const CONQUEST_GRACE_TICKS = 30;
+
+export type SkirmishOutcome = 'victory' | 'defeat';
+
+/**
+ * Combined conquest outcome for a skirmish with a rival. Returns null
+ * during the grace period or while both sides still hold forces.
+ *
+ * Defeat takes precedence when both sides are eliminated on the same
+ * tick: the player must survive their victory to claim it.
+ *
+ * Callers should only check when `hasRival` is true; sandbox games
+ * (no rival) have no win/lose condition by design. Campaign missions
+ * use their own director-driven outcome.
+ */
+export function getSkirmishOutcome(world: World): SkirmishOutcome | null {
+  if (world.tick < CONQUEST_GRACE_TICKS) return null;
+  if (checkSkirmishDefeat(world)) return 'defeat';
+  if (checkSkirmishVictory(world)) return 'victory';
+  return null;
+}
+
+/**
  * Create a fresh skirmish session. Deterministic in (seed, aiDifficulty):
  * same inputs, same world, same AI behavior.
  *

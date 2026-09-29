@@ -25,9 +25,13 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   cheats go through the command queue with `issuer: 'cheat'`; `reveal`,
   `win`, `lose`, `help` are UI-only.
 - `endscreen.ts` — victory/defeat overlay. Skirmish conquest victory
-  (rival has no units/buildings) calls `showVictory()` via
-  `checkSkirmishVictory()` in `session.ts`; the `win`/`lose` cheats also
-  use it. No-rival skirmishes are sandbox (no victory condition).
+  (rival has no units/buildings) calls `showVictory()` and conquest
+  defeat (player has no units/buildings) calls `showDefeat()`, both via
+  `checkSkirmishVictory()` / `checkSkirmishDefeat()` in `session.ts`;
+  `getSkirmishOutcome()` adds the 30-tick grace period and the
+  mutual-elimination tiebreak (defeat takes precedence). The
+  `win`/`lose` cheats also use it. No-rival skirmishes are sandbox
+  (no win/lose condition).
 - `saveslots.ts` — save/load slot picker dialog + pure
   `formatSaveSummary`.
 - `hud.ts` — top bar, advisor panel, selection panel, train/build

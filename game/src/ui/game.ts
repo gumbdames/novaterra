@@ -53,7 +53,7 @@ import type { AIDifficulty } from '../sim/ai';
 import { CommandRejectedError } from '../sim/commands';
 import { buildTerrainView } from '../render/terrain';
 import { EntityRenderer } from '../render/entities';
-import { checkSkirmishVictory, createSession, HUMAN_PLAYER_ID, type GameSession } from './session';
+import { createSession, getSkirmishOutcome, HUMAN_PLAYER_ID, type GameSession } from './session';
 import {
   applyCameraState,
   createCameraState,
@@ -299,6 +299,8 @@ class GameController {
   private lastAutosaveTick = 0;
   /** True once the conquest victory screen has been shown (one-shot). */
   private victoryShown = false;
+  /** True once the conquest defeat screen has been shown (one-shot). */
+  private defeatShown = false;
   // ---- Phase 2: campaign + Muse ----
   /** Mission run state (UI-owned). Null in skirmish. */
   private readonly missionRun: MissionRunState | null;
@@ -470,7 +472,7 @@ class GameController {
       if (!this.paused) {
         this.session.driver.step(this.session.world, frameMs * this.speed);
         this.maybeAutosave();
-        this.maybeShowConquestVictory();
+        this.maybeShowConquestOutcome();
       }
       if (now - this.lastAdvisorRefresh > ADVISOR_REFRESH_MS) {
         this.lastAdvisorRefresh = now;
@@ -791,22 +793,24 @@ class GameController {
   }
 
   /**
-   * Conquest victory: when a skirmish has a rival and every rival unit
-   * and building is destroyed, show the victory screen once. Sandbox
-   * games (no rival) have no victory condition by design. Campaign
-   * missions use their own director-driven victory — this only fires
-   * for plain skirmishes.
+   * Conquest outcome: when a skirmish has a rival and one side loses every
+   * unit and building, show the end screen once. Sandbox games (no rival)
+   * have no win/lose condition by design. Campaign missions use their own
+   * director-driven outcome — this only fires for plain skirmishes.
+   *
+   * Defeat takes precedence on mutual elimination (see getSkirmishOutcome):
+   * the player must survive their victory to claim it.
    */
-  private maybeShowConquestVictory(): void {
-    if (this.disposed || this.victoryShown) return;
+  private maybeShowConquestOutcome(): void {
+    if (this.disposed || this.victoryShown || this.defeatShown) return;
     if (!this.session.hasRival) return;
-    // Don't check before the game has meaningfully started — the AI's
-    // starting forces are placed on tick 0, so a tick-0 check would be
-    // safe, but a small grace period avoids edge cases with slow spawns.
-    if (this.session.world.tick < 30) return;
-    if (checkSkirmishVictory(this.session.world)) {
+    const outcome = getSkirmishOutcome(this.session.world);
+    if (outcome === 'victory') {
       this.victoryShown = true;
       this.endScreen.showVictory();
+    } else if (outcome === 'defeat') {
+      this.defeatShown = true;
+      this.endScreen.showDefeat();
     }
   }
 

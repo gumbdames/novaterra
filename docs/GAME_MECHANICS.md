@@ -138,9 +138,11 @@ In skirmish you face the **Classic AI** at one of five levels:
 - **Marshal** — total war. The smartest, toughest fair fight.
 
 The AI never cheats: it sees only what its own units see, and gives
-the same orders a human player would. (In 0.1 Alpha there is no victory
-screen yet — the fight is the game. Wiping out the enemy base is its
-own reward.)
+the same orders a human player would. Destroy every enemy unit and
+building to win the **conquest victory** screen — but if you lose all
+of your own units and buildings first, the **defeat** screen ends your
+run. (If both sides fall on the same tick, defeat takes precedence:
+you must survive your victory to claim it.)
 
 ## The campaign: "The First Term"
 
