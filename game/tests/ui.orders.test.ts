@@ -29,6 +29,7 @@ import {
   buildDemolishOrder,
   buildMoveOrder,
   buildPlaceBuildingOrder,
+  buildResearchUpgradeOrder,
   buildRoadOrder,
   buildSetTaxRateOrder,
   buildStopOrders,
@@ -121,5 +122,12 @@ describe('order builders', () => {
       kind: 'setTaxRate',
       payload: { owner: 0, zone: 2, rate: 0.15 },
     });
+  });
+
+  it('research → researchUpgrade', () => {
+    const cmd = buildResearchUpgradeOrder(0, 'apRounds');
+    expect(cmd.kind).toBe('researchUpgrade');
+    expect(cmd.payload).toEqual({ owner: 0, upgrade: 'apRounds' });
+    expect('issuer' in cmd).toBe(false);
   });
 });

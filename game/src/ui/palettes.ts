@@ -1,0 +1,416 @@
+/*!
+ * NOVATERRA — Copyright (C) 2026 Gumb Dames
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, version 3 of the License.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
+ * NOVATERRA — ui/palettes.ts — tabbed train/build palettes + research panel
+ * data and availability logic (roster expansion).
+ *
+ * Responsibilities:
+ *  - The tab groupings (spec §8): 4 train tabs for the 28 units, 6 build
+ *    tabs for the 28 buildings, 2 research groups for the 12 upgrades.
+ *  - Availability checks that mirror the sim's command validation so the
+ *    UI greys out exactly what the sim would reject: `unitAvailability`
+ *    mirrors `spawnUnit` validate (age → production building →
+ *    funds/materials → manpower), `upgradeAvailability` mirrors
+ *    `researchUpgrade` validate (researched → lab → age → buildings →
+ *    upgrade prereq → funds/research). Reasons are localized strings for
+ *    tooltips; the sim stays the authority at enqueue/apply.
+ *  - Localized cost lines (funds + materials + manpower where applicable)
+ *    and display-name helpers used by hud.ts and game.ts.
+ *
+ * Pure module: no DOM, no three.js. Safe under Node/vitest.
+ */
+
+import type { World } from '../sim/world';
+import { UNIT_DEFS, type UnitKind } from '../sim/units';
+import { BUILDING_DEFS, type BuildingKind, getPlayer } from '../sim/city';
+import { isUnitAvailableForAge } from '../sim/ages';
+import {
+  UPGRADE_DEFS,
+  hasUpgrade,
+  type UpgradeId,
+} from '../sim/upgrades';
+import {
+  STRINGS,
+  loc,
+  fillLoc,
+  type LocalizedString,
+} from './strings';
+
+// ---------------------------------------------------------------------------
+// Tab groupings (spec §8).
+// ---------------------------------------------------------------------------
+
+export type TrainTabId = 'infantry' | 'armor' | 'air' | 'navy';
+
+export interface TrainTab {
+  id: TrainTabId;
+  kinds: readonly UnitKind[];
+}
+
+/** 28 units across 4 tabs. Every unit kind appears in exactly one tab. */
+export const TRAIN_TABS: readonly TrainTab[] = [
+  {
+    id: 'infantry',
+    kinds: ['engineer', 'rifles', 'sniperTeam', 'spectre', 'combatMedic', 'hauler'],
+  },
+  {
+    id: 'armor',
+    kinds: ['tank', 'apc', 'tankDestroyer', 'artillery', 'mlrs', 'aa', 'hq'],
+  },
+  {
+    id: 'air',
+    kinds: ['fighter', 'fighterBomber', 'attackHeli', 'drone', 'awacs', 'transport'],
+  },
+  {
+    id: 'navy',
+    kinds: [
+      'patrolBoat',
+      'missileBoat',
+      'frigate',
+      'submarine',
+      'destroyer',
+      'carrier',
+      'commandShip',
+      'transportShip',
+      'fishingBoat',
+    ],
+  },
+];
+
+export type BuildTabId =
+  | 'housing'
+  | 'commerce'
+  | 'industry'
+  | 'utilities'
+  | 'navalAir'
+  | 'special';
+
+export interface BuildTab {
+  id: BuildTabId;
+  kinds: readonly BuildingKind[];
+}
+
+/** 28 buildings across 6 tabs. Every building kind appears in exactly one. */
+export const BUILD_TABS: readonly BuildTab[] = [
+  { id: 'housing', kinds: ['house', 'apartment', 'school'] },
+  {
+    id: 'commerce',
+    kinds: ['shop', 'market', 'lab', 'mediaCenter', 'hospital', 'university'],
+  },
+  {
+    id: 'industry',
+    kinds: [
+      'factory',
+      'farm',
+      'quarry',
+      'oilRefinery',
+      'recyclingCenter',
+      'barracks',
+      'warFactory',
+    ],
+  },
+  {
+    id: 'utilities',
+    kinds: ['powerPlant', 'solarFarm', 'nuclearPlant', 'waterPump', 'desalination'],
+  },
+  {
+    id: 'navalAir',
+    kinds: ['shipyard', 'navalYard', 'airfield', 'radarStation'],
+  },
+  { id: 'special', kinds: ['monument', 'aegisControl', 'stormArray'] },
+];
+
+export type UpgradeGroupId = 'military' | 'economy';
+
+export interface UpgradeGroup {
+  id: UpgradeGroupId;
+  ids: readonly UpgradeId[];
+}
+
+/** 12 upgrades in 2 research groups. */
+export const UPGRADE_GROUPS: readonly UpgradeGroup[] = [
+  {
+    id: 'military',
+    ids: [
+      'apRounds',
+      'compositeArmor',
+      'engineTuning',
+      'advancedAvionics',
+      'sonarSuite',
+      'cruiseMissiles',
+      'droneOptics',
+      'fieldMedicine',
+    ],
+  },
+  {
+    id: 'economy',
+    ids: ['precisionManufacturing', 'smartGrid', 'verticalFarming', 'freeTrade'],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Display names (localized, with a safe fallback to the raw kind id).
+// ---------------------------------------------------------------------------
+
+/** Localized unit name for palettes/toasts; falls back to the kind id. */
+export function unitName(kind: string): string {
+  const entry = (STRINGS.unitNames as Record<string, LocalizedString | undefined>)[kind];
+  return entry !== undefined ? loc(entry) : kind;
+}
+
+/** Localized building name for palettes/toasts; falls back to the kind id. */
+export function buildingName(kind: string): string {
+  const entry = (STRINGS.buildingNames as Record<string, LocalizedString | undefined>)[kind];
+  return entry !== undefined ? loc(entry) : kind;
+}
+
+/** Localized upgrade name; falls back to the sim def's English name. */
+export function upgradeName(id: UpgradeId): string {
+  const entry = (
+    STRINGS.upgrades as Record<UpgradeId, { name: LocalizedString } | undefined>
+  )[id];
+  return entry !== undefined ? loc(entry.name) : (UPGRADE_DEFS[id]?.name ?? id);
+}
+
+/** Localized one-line upgrade effect. */
+export function upgradeEffect(id: UpgradeId): string {
+  const entry = (
+    STRINGS.upgrades as Record<UpgradeId, { effect: LocalizedString } | undefined>
+  )[id];
+  return entry !== undefined ? loc(entry.effect) : '';
+}
+
+// ---------------------------------------------------------------------------
+// Availability — mirrors of the sim's command validation, for grey-out.
+// ---------------------------------------------------------------------------
+
+/** True when the owner has a completed (progress >= 1) building of kind. */
+export function hasCompletedBuilding(
+  world: World,
+  owner: number,
+  kind: BuildingKind,
+): boolean {
+  return world.city.buildings.some(
+    (b) => b.owner === owner && b.kind === kind && b.progress >= 1,
+  );
+}
+
+export interface Availability {
+  ok: boolean;
+  /** Localized reason when not ok (tooltip / grey-out text). */
+  reason: string;
+}
+
+/**
+ * Can the owner train this unit right now? Mirrors `spawnUnit` validate:
+ * age → production building → funds/materials → manpower. First failure
+ * wins, so the tooltip names the single most relevant blocker.
+ */
+export function unitAvailability(
+  world: World,
+  owner: number,
+  kind: UnitKind,
+): Availability {
+  const def = UNIT_DEFS[kind];
+  const p = STRINGS.palettes;
+  if (!isUnitAvailableForAge(world, def.minAge)) {
+    return {
+      ok: false,
+      reason: fillLoc(p.requiresAge, { age: loc(STRINGS.ageNames[def.minAge]) }),
+    };
+  }
+  if (def.requiredBuilding !== undefined && !hasCompletedBuilding(world, owner, def.requiredBuilding)) {
+    return {
+      ok: false,
+      reason: fillLoc(p.requiresBuilding, { name: buildingName(def.requiredBuilding) }),
+    };
+  }
+  const player = getPlayer(world.city, owner);
+  if (player !== undefined) {
+    if (player.funds < def.trainFunds || player.materials < def.trainMaterials) {
+      return { ok: false, reason: loc(p.cannotAfford) };
+    }
+    if (player.manpower < def.manpowerCost) {
+      return { ok: false, reason: loc(p.notEnoughManpower) };
+    }
+  }
+  return { ok: true, reason: '' };
+}
+
+/**
+ * Palette-side availability for a building: age gate first, then
+ * affordability. Placement-time rules (the navalYard coast rule, zone
+ * and road adjacency) are validated by the sim at placeBuilding time
+ * and surface in the button tooltip instead.
+ */
+export function buildingAvailability(
+  world: World,
+  owner: number,
+  kind: BuildingKind,
+): Availability {
+  const def = BUILDING_DEFS[kind];
+  const p = STRINGS.palettes;
+  if (!isUnitAvailableForAge(world, def.minAge)) {
+    return {
+      ok: false,
+      reason: fillLoc(p.requiresAge, { age: loc(STRINGS.ageNames[def.minAge]) }),
+    };
+  }
+  const player = getPlayer(world.city, owner);
+  if (
+    player !== undefined &&
+    (player.funds < def.costFunds || player.materials < def.costMaterials)
+  ) {
+    return { ok: false, reason: loc(p.cannotAfford) };
+  }
+  return { ok: true, reason: '' };
+}
+
+export type UpgradeAvailabilityState = 'researched' | 'ready' | 'locked';
+
+export interface UpgradeAvailability {
+  state: UpgradeAvailabilityState;
+  /** Localized reason when locked (or "already researched"). */
+  reason: string;
+}
+
+/**
+ * Research state of an upgrade for the owner. Mirrors `researchUpgrade`
+ * validate: researched → lab → age → buildings → upgrade prereq →
+ * funds/research. First failure wins.
+ */
+export function upgradeAvailability(
+  world: World,
+  owner: number,
+  id: UpgradeId,
+): UpgradeAvailability {
+  const def = UPGRADE_DEFS[id];
+  const p = STRINGS.palettes;
+  if (hasUpgrade(world, owner, id)) {
+    return { state: 'researched', reason: loc(p.alreadyResearched) };
+  }
+  if (!hasCompletedBuilding(world, owner, 'lab')) {
+    return { state: 'locked', reason: loc(p.needsLab) };
+  }
+  if (!isUnitAvailableForAge(world, def.minAge)) {
+    return {
+      state: 'locked',
+      reason: fillLoc(p.requiresAge, { age: loc(STRINGS.ageNames[def.minAge]) }),
+    };
+  }
+  const missing = def.requiredBuildings.filter(
+    (k) => !hasCompletedBuilding(world, owner, k),
+  );
+  if (missing.length > 0) {
+    return {
+      state: 'locked',
+      reason: fillLoc(p.requiresBuilding, {
+        name: missing.map((k) => buildingName(k)).join(', '),
+      }),
+    };
+  }
+  if (def.requiredUpgrade !== undefined && !hasUpgrade(world, owner, def.requiredUpgrade)) {
+    return {
+      state: 'locked',
+      reason: fillLoc(p.requiresUpgrade, { name: upgradeName(def.requiredUpgrade) }),
+    };
+  }
+  const player = getPlayer(world.city, owner);
+  if (
+    player === undefined ||
+    player.funds < def.costFunds ||
+    player.research < def.costResearch
+  ) {
+    return { state: 'locked', reason: loc(p.cannotAfford) };
+  }
+  return { state: 'ready', reason: '' };
+}
+
+/** True when the owner has at least one completed lab (research panel). */
+export function playerHasCompletedLab(world: World, owner: number): boolean {
+  return hasCompletedBuilding(world, owner, 'lab');
+}
+
+// ---------------------------------------------------------------------------
+// Cost lines — funds + materials (+ manpower / research where applicable).
+// ---------------------------------------------------------------------------
+
+function joinCostParts(parts: Array<[number, LocalizedString]>): string {
+  return parts
+    .filter(([n]) => n > 0)
+    .map(([n, label]) => `${n} ${loc(label)}`)
+    .join(' · ');
+}
+
+/** Localized training cost: funds + materials + manpower (non-zero parts). */
+export function formatTrainCost(kind: UnitKind): string {
+  const def = UNIT_DEFS[kind];
+  const p = STRINGS.palettes;
+  return joinCostParts([
+    [def.trainFunds, p.resFunds],
+    [def.trainMaterials, p.resMaterials],
+    [def.manpowerCost, p.resManpower],
+  ]);
+}
+
+/** Localized building cost: funds + materials. */
+export function formatBuildCost(kind: BuildingKind): string {
+  const def = BUILDING_DEFS[kind];
+  const p = STRINGS.palettes;
+  return joinCostParts([
+    [def.costFunds, p.resFunds],
+    [def.costMaterials, p.resMaterials],
+  ]);
+}
+
+/** Localized research cost: funds + research points. */
+export function formatResearchCost(id: UpgradeId): string {
+  const def = UPGRADE_DEFS[id];
+  const p = STRINGS.palettes;
+  return joinCostParts([
+    [def.costFunds, p.resFunds],
+    [def.costResearch, p.resResearch],
+  ]);
+}
+
+/** Multi-line train-button tooltip: cost, HP, then the lock reason. */
+export function trainTooltip(world: World, owner: number, kind: UnitKind): string {
+  const def = UNIT_DEFS[kind];
+  const lines = [formatTrainCost(kind), `${loc(STRINGS.palettes.hpLabel)}: ${def.hp}`];
+  const av = unitAvailability(world, owner, kind);
+  if (!av.ok) lines.push(av.reason);
+  return lines.filter((l) => l.length > 0).join('\n');
+}
+
+/** Multi-line build-button tooltip: cost, plus the coast rule for navalYard. */
+export function buildTooltip(kind: BuildingKind): string {
+  const lines = [formatBuildCost(kind)];
+  if (kind === 'navalYard') lines.push(loc(STRINGS.palettes.navalYardCoast));
+  return lines.filter((l) => l.length > 0).join('\n');
+}
+
+/**
+ * Train-placement toast after picking a palette entry: localized unit name
+ * plus the land/sea placement hint (spec §8: sea units get "click WATER").
+ */
+export function trainPlacementToast(kind: UnitKind): string {
+  const def = UNIT_DEFS[kind];
+  const hint = loc(
+    def.domain === 'sea' ? STRINGS.palettes.placeSeaHint : STRINGS.palettes.placeLandHint,
+  );
+  return fillLoc(STRINGS.palettes.trainToast, { name: unitName(kind), hint });
+}

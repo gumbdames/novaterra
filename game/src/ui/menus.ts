@@ -35,7 +35,7 @@
 import { GAME_TAGLINE, GAME_TITLE } from '../config';
 import type { AIDifficulty } from '../sim/ai';
 import { MAP_PRESETS } from '../sim/terrain';
-import { STRINGS } from './strings';
+import { STRINGS, loc, setUiLanguage, type UiLanguage } from './strings';
 import {
   loadAudioSettings,
   saveAudioSettings,
@@ -58,11 +58,13 @@ export interface Settings {
   colorblind: boolean;
   /** Phase 3: UI scale multiplier (0.8 .. 1.5). */
   uiScale: number;
+  /** Roster expansion: UI language (Hebrew-first default). */
+  language: UiLanguage;
 }
 
 const SETTINGS_KEY = 'novaterra.settings.v1';
 
-const DEFAULT_SETTINGS: Settings = { quality: 'high', colorblind: false, uiScale: 1 };
+const DEFAULT_SETTINGS: Settings = { quality: 'high', colorblind: false, uiScale: 1, language: 'he' };
 
 export function loadSettings(): Settings {
   try {
@@ -76,7 +78,10 @@ export function loadSettings(): Settings {
       const uiScale = typeof parsed.uiScale === 'number' && parsed.uiScale >= 0.8 && parsed.uiScale <= 1.5
         ? parsed.uiScale
         : 1;
-      return { quality, colorblind, uiScale };
+      const language = parsed.language === 'en' || parsed.language === 'he'
+        ? parsed.language
+        : DEFAULT_SETTINGS.language;
+      return { quality, colorblind, uiScale, language };
     }
   } catch {
     // Corrupt or unavailable storage — fall through to defaults.
@@ -374,6 +379,29 @@ export class SettingsPanel {
     });
     label.append(select);
     panel.append(label);
+
+    // --- Roster expansion: UI language (Hebrew-first, English option) ---
+    const langLabel = el('label', 'settings-row', `${loc(STRINGS.settings.languageLabel)}: `);
+    const langSelect = document.createElement('select');
+    for (const [value, text] of [
+      ['he', 'עברית'],
+      ['en', 'English'],
+    ] as Array<[UiLanguage, string]>) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = text;
+      opt.selected = settings.language === value;
+      langSelect.append(opt);
+    }
+    langSelect.addEventListener('change', () => {
+      const l = langSelect.value as UiLanguage;
+      saveSettings({ ...loadSettings(), language: l });
+      // Live-applied: the HUD rebuilds every tick, so the new language
+      // shows on the next repaint with no reload.
+      setUiLanguage(l);
+    });
+    langLabel.append(langSelect);
+    panel.append(langLabel);
 
     // --- Phase 3: accessibility ---
     panel.append(el('h3', '', 'Accessibility'));

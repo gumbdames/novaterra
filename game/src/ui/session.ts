@@ -78,6 +78,7 @@ import {
   registerSuperweaponCommands,
   createSuperweaponSystem,
 } from '../sim/superweapons';
+import { registerUpgradeCommands } from '../sim/upgrades';
 import type { OrderIntent } from './orders';
 import type { MissionDef } from '../campaign/missions';
 
@@ -304,6 +305,9 @@ export function createSession(options: SessionOptions): GameSession {
   registerCheatCommands(queue);
   registerDelegationCommands(queue);
   registerSuperweaponCommands(queue);
+  // Roster expansion: the researchUpgrade command is wired here (the sim
+  // module deliberately leaves registration to the UI assembly point).
+  registerUpgradeCommands(queue);
 
   const driver = createTickDriver({
     queue,
@@ -340,7 +344,19 @@ export function createSession(options: SessionOptions): GameSession {
       aiPlayer.manpower = RAID_MANPOWER;
     }
     startingForces(queue, world, terrain, HUMAN_PLAYER_ID, 'player', humanBase);
+
+    // Apply the starting forces now (one fixed tick) so a fresh session
+    // already has both armies on the field.
+    driver.step(world, TICK_MS);
+
     if (mission?.startingResources !== undefined) {
+      // Campaign funds fix: the mission's starting resources are the
+      // player's OPENING stockpile, so they are granted AFTER the initial
+      // spawn tick. spawnUnit now deducts training costs (funds +
+      // materials), and granting before the tick left the player with
+      // e.g. 4660 instead of the designed 5000 funds — the setup costs
+      // were eating into the mission's opening grant. Assignment (not
+      // addition) keeps the mission def as the single source of truth.
       const human = world.city.players[HUMAN_PLAYER_ID];
       if (human !== undefined) {
         for (const [key, value] of Object.entries(mission.startingResources)) {
@@ -348,10 +364,6 @@ export function createSession(options: SessionOptions): GameSession {
         }
       }
     }
-
-    // Apply the starting forces now (one fixed tick) so a fresh session
-    // already has both armies on the field.
-    driver.step(world, TICK_MS);
   }
   // Restored sessions skip all of the above: units, buildings, AI state,
   // and RNG streams come back exactly as saved.

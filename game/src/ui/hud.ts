@@ -23,15 +23,25 @@
  *    menu button.
  *  - Advisor panel: worst problems first (from ui/advisor.ts), or the
  *    all-clear line when nothing is wrong.
- *  - Selection panel: what is selected + contextual actions (Stop; Train
- *    for unit production; Build palette for construction).
+ *  - Selection panel: what is selected + contextual actions (Stop; tabbed
+ *    Train/Build palettes when nothing is selected).
+ *  - Train palette: 4 tabs (spec §8) for the 28 units; production-gated
+ *    units show greyed with the required building named; costs show
+ *    funds + materials + manpower.
+ *  - Build palette: tool row (road/zones/demolish) + 6 tabs (spec §8) for
+ *    the 28 buildings; unaffordable buildings grey out; navalYard's coast
+ *    rule is surfaced in its tooltip.
+ *  - Research panel: at a completed Research Lab (or listed in the HUD
+ *    when the player owns one), the 12 upgrades with funds + research
+ *    cost, prerequisites and one-line effect; unavailable upgrades grey
+ *    out with reasons.
  *  - Toasts: one-line feedback for rejected orders and confirmations.
  *  - `update()` is called every frame but only touches the DOM when a
  *    displayed value actually changed (cheap text updates otherwise).
  *
  * The HUD never mutates sim state — every button calls back into the game
  * controller, which issues commands through the queue. Copy comes from
- * ui/strings.ts.
+ * ui/strings.ts (Hebrew-first); availability mirrors ui/palettes.ts.
  *
  * DOM module: only constructed inside boot()/startGame(), never imported
  * by headless tests.
@@ -40,11 +50,32 @@
 import type { World } from '../sim/world';
 import { getPlayer } from '../sim/city';
 import { UNIT_DEFS, type UnitKind } from '../sim/units';
-import { BUILDING_DEFS, BuildingKind } from '../sim/city';
-import { AGE_PROGRESSION, isUnitAvailableForAge } from '../sim/ages';
+import { type BuildingKind } from '../sim/city';
+import { AGE_PROGRESSION } from '../sim/ages';
+import type { UpgradeId } from '../sim/upgrades';
 import type { Selection } from './selection';
 import type { AdvisorItem } from './advisor';
-import { STRINGS } from './strings';
+import { STRINGS, loc } from './strings';
+import {
+  TRAIN_TABS,
+  BUILD_TABS,
+  UPGRADE_GROUPS,
+  unitName,
+  buildingName,
+  upgradeName,
+  upgradeEffect,
+  unitAvailability,
+  buildingAvailability,
+  upgradeAvailability,
+  playerHasCompletedLab,
+  formatTrainCost,
+  formatBuildCost,
+  formatResearchCost,
+  trainTooltip,
+  buildTooltip,
+  type TrainTabId,
+  type BuildTabId,
+} from './palettes';
 import { HUMAN_PLAYER_ID } from './session';
 
 /** Build-palette tools the HUD can request. */
@@ -91,44 +122,9 @@ export interface HUDActions {
   onDismissGeneral(): void;
   /** Phase 3: change general stance. */
   onSetGeneralStance(stance: string): void;
+  /** Roster expansion: research an upgrade (from the research panel). */
+  onResearchUpgrade(upgradeId: UpgradeId): void;
 }
-
-/** Trainable unit kinds in display order. */
-const TRAIN_ORDER: UnitKind[] = [
-  'engineer',
-  'rifles',
-  'tank',
-  'artillery',
-  'aa',
-  'hauler',
-  'spectre',
-  'hq',
-  'drone',
-  'transport',
-  'fighter',
-  'patrolBoat',
-  'destroyer',
-  'transportShip',
-];
-
-/** Build-palette entries in display order. */
-const BUILD_TOOLS: Array<{ tool: BuildTool; label: string }> = [
-  { tool: 'road', label: 'Road' },
-  { tool: 'zoneR', label: 'Homes' },
-  { tool: 'zoneC', label: 'Shops' },
-  { tool: 'zoneI', label: 'Industry' },
-  { tool: 'building:powerPlant', label: 'Power' },
-  { tool: 'building:waterPump', label: 'Water' },
-  { tool: 'building:house', label: 'House' },
-  { tool: 'building:factory', label: 'Factory' },
-  { tool: 'building:farm', label: 'Farm' },
-  { tool: 'building:mediaCenter', label: 'Media' },
-  { tool: 'building:shipyard', label: 'Shipyard' },
-  // Phase 3: superweapon facilities (Ascendance age; the sim validates).
-  { tool: 'building:aegisControl', label: 'Aegis' },
-  { tool: 'building:stormArray', label: 'Storm' },
-  { tool: 'demolish', label: 'Demolish' },
-];
 
 function el(tag: string, className: string, text?: string): HTMLElement {
   const e = document.createElement(tag);
@@ -163,6 +159,14 @@ export class HUD {
   private toastTimer = 0;
   private lastText = new Map<string, string>();
   private lastAdvisorKey = '';
+  /** Active palette tabs (persist across the per-tick panel rebuilds). */
+  private trainTab: TrainTabId = 'infantry';
+  private buildTab: BuildTabId = 'housing';
+  /**
+   * Set by tab switches / research clicks so the selection panel rebuilds
+   * even when the sim tick hasn't advanced (e.g. while paused).
+   */
+  private paletteDirty = false;
 
   constructor(root: HTMLElement, actions: HUDActions) {
     this.root = root;
@@ -447,9 +451,15 @@ export class HUD {
   private updateSelection(world: World, selection: Selection): void {
     const panel = this.selectionPanel;
     const sel = STRINGS.selection;
-    // Rebuild only when the selection identity changes.
+    // Rebuild when the selection identity changes, each sim tick (costs and
+    // availability move), or when a palette interaction asked for it
+    // (tab switch while paused).
     const key = `u:${selection.unitIds.join(',')}|b:${selection.buildingId}`;
-    if (panel.dataset['key'] === key && panel.dataset['tick'] === String(world.tick)) return;
+    const dirty = this.paletteDirty;
+    this.paletteDirty = false;
+    if (!dirty && panel.dataset['key'] === key && panel.dataset['tick'] === String(world.tick)) {
+      return;
+    }
     panel.dataset['key'] = key;
     panel.dataset['tick'] = String(world.tick);
     panel.textContent = '';
@@ -457,7 +467,12 @@ export class HUD {
     if (selection.unitIds.length === 0 && selection.buildingId === null) {
       panel.append(el('div', 'sel-empty', sel.noSelection));
       this.appendTrainPanel(panel, world);
-      this.appendBuildPanel(panel);
+      this.appendBuildPanel(panel, world);
+      // The research panel is also listed in the HUD whenever the player
+      // owns a completed lab (spec §8), not only when the lab is selected.
+      if (playerHasCompletedLab(world, HUMAN_PLAYER_ID)) {
+        this.appendResearchPanel(panel, world);
+      }
       return;
     }
 
@@ -482,53 +497,158 @@ export class HUD {
 
     const b = world.city.buildings.find((x) => x.id === selection.buildingId);
     if (b) {
-      const def = BUILDING_DEFS[b.kind];
-      panel.append(el('div', 'sel-title', def?.name ?? b.kind));
+      panel.append(el('div', 'sel-title', buildingName(b.kind)));
       panel.append(
         el('div', 'sel-unit', b.operational ? 'Operational' : 'Not operational'),
       );
+      // A completed Research Lab opens the research panel (spec §8).
+      if (b.kind === 'lab' && b.owner === HUMAN_PLAYER_ID && b.progress >= 1) {
+        this.appendResearchPanel(panel, world);
+      }
     }
   }
 
+  /** Tabbed train palette: 4 tabs for the 28 units (spec §8). */
   private appendTrainPanel(panel: HTMLElement, world: World): void {
     const wrap = el('div', 'train-panel');
-    wrap.append(el('div', 'hud-panel-title', STRINGS.selection.train));
-    for (const kind of TRAIN_ORDER) {
-      const def = UNIT_DEFS[kind];
-      // Age gating uses the same rule as spawn validation: a unit appears
-      // in the panel exactly when it can be trained (e.g. fighter needs
-      // Connectivity, ships need Industry).
-      if (!isUnitAvailableForAge(world, def.minAge)) continue;
+    wrap.append(el('div', 'hud-panel-title', loc(STRINGS.palettes.trainTitle)));
+    wrap.append(this.buildTabBar(TRAIN_TABS, STRINGS.unitTabs, this.trainTab, (id) => {
+      this.trainTab = id as TrainTabId;
+    }));
+    const grid = el('div', 'palette-grid');
+    const tab = TRAIN_TABS.find((t) => t.id === this.trainTab) ?? TRAIN_TABS[0]!;
+    for (const kind of tab.kinds) {
+      // Locked units stay visible but greyed, with the blocker named —
+      // the same rule as spawn validation (age → building → cost).
+      const av = unitAvailability(world, HUMAN_PLAYER_ID, kind);
       const b = document.createElement('button');
-      b.className = 'train-btn';
-      b.textContent = def.name;
-      const placeHint =
-        def.domain === 'sea'
-          ? 'Click, then click WATER on the map to place.'
-          : 'Click, then click the map to place.';
-      b.title = `${placeHint} ${def.hp} HP.`;
+      b.className = `train-btn${av.ok ? '' : ' locked'}`;
+      b.disabled = !av.ok;
+      b.append(el('div', 'palette-name', unitName(kind)));
+      b.append(el('div', 'palette-cost', formatTrainCost(kind)));
+      b.title = trainTooltip(world, HUMAN_PLAYER_ID, kind);
       b.addEventListener('click', () => this.actions.onTrainUnit(kind));
-      wrap.append(b);
+      grid.append(b);
     }
+    wrap.append(grid);
     panel.append(wrap);
   }
 
-  private appendBuildPanel(panel: HTMLElement): void {
+  /** Tabbed build palette: tool row + 6 tabs for the 28 buildings (spec §8). */
+  private appendBuildPanel(panel: HTMLElement, world: World): void {
+    const p = STRINGS.palettes;
     const wrap = el('div', 'build-panel');
-    wrap.append(el('div', 'hud-panel-title', STRINGS.selection.build));
-    for (const { tool, label } of BUILD_TOOLS) {
+    wrap.append(el('div', 'hud-panel-title', loc(p.buildTitle)));
+    // Tools are not buildings: road, zones and demolish sit above the tabs.
+    const toolsRow = el('div', 'palette-tools');
+    const tools: Array<{ tool: BuildTool; label: string }> = [
+      { tool: 'road', label: loc(p.toolRoad) },
+      { tool: 'zoneR', label: loc(p.toolZoneR) },
+      { tool: 'zoneC', label: loc(p.toolZoneC) },
+      { tool: 'zoneI', label: loc(p.toolZoneI) },
+      { tool: 'demolish', label: loc(p.toolDemolish) },
+    ];
+    for (const { tool, label } of tools) {
       const b = document.createElement('button');
       b.className = 'build-btn';
       b.textContent = label;
       b.addEventListener('click', () => this.actions.onBuildTool(tool));
-      wrap.append(b);
+      toolsRow.append(b);
     }
+    wrap.append(toolsRow);
+    wrap.append(this.buildTabBar(BUILD_TABS, STRINGS.buildingTabs, this.buildTab, (id) => {
+      this.buildTab = id as BuildTabId;
+    }));
+    const grid = el('div', 'palette-grid');
+    const tab = BUILD_TABS.find((t) => t.id === this.buildTab) ?? BUILD_TABS[0]!;
+    for (const kind of tab.kinds) {
+      // Unavailable buildings grey out with a tooltip reason (age gate,
+      // then affordability). The navalYard coast rule rides in the
+      // tooltip since it is placement-time, not palette-time.
+      const avail = buildingAvailability(world, HUMAN_PLAYER_ID, kind);
+      const b = document.createElement('button');
+      b.className = `build-btn${avail.ok ? '' : ' locked'}`;
+      b.disabled = !avail.ok;
+      b.append(el('div', 'palette-name', buildingName(kind)));
+      b.append(el('div', 'palette-cost', formatBuildCost(kind)));
+      const tip = buildTooltip(kind);
+      b.title = avail.reason !== '' ? `${tip}\n${avail.reason}` : tip;
+      b.addEventListener('click', () => this.actions.onBuildTool(`building:${kind}`));
+      grid.append(b);
+    }
+    wrap.append(grid);
     const cancel = document.createElement('button');
     cancel.className = 'build-btn cancel';
-    cancel.textContent = 'Cancel (Esc)';
+    cancel.textContent = loc(p.cancelPlacement);
     cancel.addEventListener('click', () => this.actions.onCancelPlacement());
     wrap.append(cancel);
     panel.append(wrap);
+  }
+
+  /**
+   * Research panel: the 12 upgrades in Military/Economy groups (spec §8).
+   * Each row shows the localized name, funds + research cost, and the
+   * one-line effect; unavailable upgrades grey out with the reason.
+   * Researched upgrades get a checkmark and stay listed.
+   */
+  private appendResearchPanel(panel: HTMLElement, world: World): void {
+    const p = STRINGS.palettes;
+    const wrap = el('div', 'research-panel');
+    wrap.append(el('div', 'hud-panel-title', loc(p.researchTitle)));
+    for (const group of UPGRADE_GROUPS) {
+      const groupName = STRINGS.upgradeGroups[group.id];
+      wrap.append(el('div', 'research-group', groupName !== undefined ? loc(groupName) : group.id));
+      for (const id of group.ids) {
+        const st = upgradeAvailability(world, HUMAN_PLAYER_ID, id);
+        const row = el('div', `research-row${st.state === 'ready' ? '' : ' locked'}`);
+        const head = el('div', 'research-head');
+        const nameEl = el('span', 'research-name', upgradeName(id));
+        head.append(nameEl);
+        if (st.state === 'researched') {
+          head.append(el('span', 'research-done', loc(p.researchedTag)));
+        }
+        head.append(el('span', 'palette-cost', formatResearchCost(id)));
+        row.append(head);
+        row.append(el('div', 'research-effect', upgradeEffect(id)));
+        const btn = document.createElement('button');
+        btn.className = 'research-btn';
+        btn.textContent = loc(p.researchVerb);
+        btn.disabled = st.state !== 'ready';
+        btn.title = st.state === 'ready' ? upgradeEffect(id) : st.reason;
+        btn.addEventListener('click', () => {
+          this.actions.onResearchUpgrade(id);
+          // Refresh even while paused: the click's effect (or the loud
+          // rejection toast) should be visible immediately.
+          this.paletteDirty = true;
+        });
+        row.append(btn);
+        wrap.append(row);
+      }
+    }
+    panel.append(wrap);
+  }
+
+  /** Shared tab bar: localized tab names, active tab highlighted. */
+  private buildTabBar(
+    tabs: readonly { id: string }[],
+    names: Record<string, { he: string; en: string }>,
+    active: string,
+    onSelect: (id: string) => void,
+  ): HTMLElement {
+    const bar = el('div', 'palette-tabs');
+    for (const tab of tabs) {
+      const b = document.createElement('button');
+      b.className = `palette-tab${tab.id === active ? ' active' : ''}`;
+      const entry = names[tab.id];
+      b.textContent = entry !== undefined ? loc(entry) : tab.id;
+      b.addEventListener('click', () => {
+        onSelect(tab.id);
+        // Tab switches must repaint even while paused (no tick advance).
+        this.paletteDirty = true;
+      });
+      bar.append(b);
+    }
+    return bar;
   }
 
   /** One-line transient feedback. */

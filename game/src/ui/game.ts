@@ -90,27 +90,31 @@ import {
   buildAssignMayorOrder,
   buildAttackOrders,
   buildCancelTradeRouteOrder,
-  buildDemolishOrder,
   buildDismissGeneralOrder,
   buildDismissMayorOrder,
   buildEstablishTradeRouteOrder,
   buildFireAegisOrder,
   buildFireStormOrder,
   buildMoveOrder,
-  buildPlaceBuildingOrder,
   buildRoadOrder,
   buildSetMayorBuildPolicyOrder,
   buildSetGeneralStanceOrder,
   buildSetSpecializationOrder,
   buildStopOrders,
-  buildTrainOrder,
   buildZoneOrder,
+  buildResearchUpgradeOrder,
   type OrderIntent,
 } from './orders';
 import { evaluateAdvisor, type AdvisorItem } from './advisor';
 import { HUD, type BuildTool } from './hud';
+import {
+  resolveBuildToolClick,
+  resolveTrainClick,
+  type PlacementResolution,
+} from './placement';
 import { PauseMenu, loadSettings, type QualityLevel } from './menus';
-import { STRINGS } from './strings';
+import { STRINGS, loc, setUiLanguage } from './strings';
+import { trainPlacementToast } from './palettes';
 import { AudioEngine } from '../audio/engine';
 import { CheatConsole, cheatHelpText, type CheatAction } from './cheatconsole';
 import { EndScreen } from './endscreen';
@@ -440,6 +444,8 @@ class GameController {
     const saved = loadSettings();
     this.setColorblind(saved.colorblind);
     this.setUiScale(saved.uiScale);
+    // Roster expansion: apply the persisted UI language (Hebrew-first).
+    setUiLanguage(saved.language);
 
     this.hud = new HUD(container, {
       onPauseToggle: () => this.togglePause(),
@@ -451,15 +457,16 @@ class GameController {
       onStopSelection: () => this.issueStop(),
       onTrainUnit: (kind) => {
         this.placement = { kind: 'train', unitKind: kind };
-        this.hud.toast(`Place ${UNIT_DEFS[kind].name}: left-click the map. Right-click cancels.`);
+        this.hud.toast(trainPlacementToast(kind));
       },
       onBuildTool: (tool) => {
         this.placement = { kind: 'build', tool };
-        this.hud.toast('Construction: drag or click on the map. Right-click cancels.');
+        this.hud.toast(loc(STRINGS.palettes.buildToast));
       },
       onCancelPlacement: () => {
         this.placement = null;
       },
+      onResearchUpgrade: (id) => this.enqueue(buildResearchUpgradeOrder(HUMAN_PLAYER_ID, id)),
       onAdvanceAge: (program) => this.issueAdvanceAge(program),
       // Phase 3: superweapons, specialization, trade, delegation.
       onFireAegis: () => this.issueOrder(buildFireAegisOrder(HUMAN_PLAYER_ID)),
@@ -1019,17 +1026,29 @@ class GameController {
   private handleLeftClick(ndcX: number, ndcY: number, shift: boolean): void {
     const world = this.session.world;
     const point = this.groundPoint(ndcX, ndcY);
-    if (!point) return;
+    const placing = this.placement?.kind === 'train' || this.placement?.kind === 'build';
+    if (!point) {
+      // Clicking the sky selects nothing (silent), but in a placement mode
+      // the click meant to place something — say so instead of swallowing it.
+      if (placing) {
+        this.placeResolution({
+          kind: 'hint',
+          message:
+            this.placement?.kind === 'train'
+              ? STRINGS.orders.trainFailed
+              : STRINGS.orders.buildFailed,
+        });
+      }
+      return;
+    }
 
     // Placement modes consume the click first.
     if (this.placement?.kind === 'train') {
-      this.enqueue(buildTrainOrder(this.placement.unitKind, HUMAN_PLAYER_ID, point.x, point.z));
-      this.audio.playSfx('place');
+      this.placeResolution(resolveTrainClick(this.placement.unitKind, HUMAN_PLAYER_ID, point));
       return;
     }
     if (this.placement?.kind === 'build') {
       this.handleBuildClick(point.x, point.z);
-      this.audio.playSfx('place');
       return;
     }
     if (this.placement?.kind === 'storm') {
@@ -1081,18 +1100,25 @@ class GameController {
   }
 
   private handleBuildClick(x: number, z: number): void {
+    if (this.placement?.kind !== 'build') return;
     const cell = this.worldToCell(x, z);
-    if (!cell || this.placement?.kind !== 'build') return;
-    const tool = this.placement.tool;
-    if (tool === 'road') {
-      this.enqueue(buildRoadOrder(HUMAN_PLAYER_ID, [cell.cz * CITY_GRID_CELLS + cell.cx]));
-    } else if (tool === 'demolish') {
-      this.enqueue(buildDemolishOrder(HUMAN_PLAYER_ID, cell.cx, cell.cz));
-    } else if (tool.startsWith('building:')) {
-      const kind = tool.slice('building:'.length);
-      this.enqueue(buildPlaceBuildingOrder(kind, HUMAN_PLAYER_ID, cell.cx, cell.cz));
+    // The resolver maps every case to an order or a hint — a click in
+    // build mode never fails silently (off-grid, zone tool, …).
+    this.placeResolution(resolveBuildToolClick(this.placement.tool, HUMAN_PLAYER_ID, cell));
+  }
+
+  /**
+   * Carry out a placement resolution: enqueue the order, or toast the
+   * hint with an error cue. Nothing fails silently.
+   */
+  private placeResolution(resolution: PlacementResolution): void {
+    if (resolution.kind === 'order') {
+      this.enqueue(resolution.intent);
+      this.audio.playSfx('place');
+    } else {
+      this.hud.toast(resolution.message);
+      this.audio.playSfx('error');
     }
-    // Zones are drag-only; a click does nothing (hint via toast once).
   }
 
   private handleZoneDrag(x0: number, z0: number, x1: number, z1: number): void {
@@ -1146,6 +1172,10 @@ class GameController {
     on(this.canvas, 'pointerdown', (e) => {
       if (e.button === 0) {
         this.dragStart = { x: e.clientX, y: e.clientY };
+        // Road tool: drag-paint accumulates cells until pointerup; a plain
+        // click releases with zero cells and paves the single clicked cell.
+        this.roadDragCells =
+          this.placement?.kind === 'build' && this.placement.tool === 'road' ? [] : null;
       } else if (e.button === 2) {
         // Right-click cancels placement, else issues a context order.
         if (this.placement) {
@@ -1163,7 +1193,9 @@ class GameController {
       if (this.dragStart && e.buttons === 1) {
         const dx = e.clientX - this.dragStart.x;
         const dy = e.clientY - this.dragStart.y;
-        if (Math.hypot(dx, dy) > 6 && !this.dragRect) {
+        // No selection rectangle while road-drag-painting: the gesture
+        // belongs to the road tool, not to box-select.
+        if (Math.hypot(dx, dy) > 6 && !this.dragRect && !this.roadDragCells) {
           this.dragRect = document.createElement('div');
           this.dragRect.className = 'select-rect';
           this.container.appendChild(this.dragRect);
@@ -1191,6 +1223,26 @@ class GameController {
     on(window, 'pointerup', (e) => {
       const start = this.dragStart;
       this.dragStart = null;
+      // Road drag-paint finishes here, before the box-select path: a road
+      // gesture must never silently become a unit selection.
+      if (this.roadDragCells) {
+        const cells = this.roadDragCells;
+        this.roadDragCells = null;
+        this.dragRect?.remove();
+        this.dragRect = null;
+        if (cells.length > 0) {
+          this.enqueue(buildRoadOrder(HUMAN_PLAYER_ID, cells));
+          this.audio.playSfx('place');
+        } else if (start && e.button === 0 && e.target === this.canvas) {
+          // Plain click with the road tool: pave the single clicked cell
+          // (or explain why nothing was paved).
+          const ndc = this.toNDC(e);
+          const p = this.groundPoint(ndc.x, ndc.y);
+          const cell = p ? this.worldToCell(p.x, p.z) : null;
+          this.placeResolution(resolveBuildToolClick('road', HUMAN_PLAYER_ID, cell));
+        }
+        return;
+      }
       if (this.dragRect) {
         // Box select (or zone drag) from the screen rect.
         const rect = this.dragRect.getBoundingClientRect();
@@ -1201,24 +1253,7 @@ class GameController {
       }
       if (start && e.button === 0 && e.target === this.canvas) {
         const ndc = this.toNDC(e);
-        // Road tool starts a drag-paint on pointerdown.
-        if (this.placement?.kind === 'build' && this.placement.tool === 'road') {
-          const p = this.groundPoint(ndc.x, ndc.y);
-          const cell = p ? this.worldToCell(p.x, p.z) : null;
-          if (cell) {
-            this.enqueue(buildRoadOrder(HUMAN_PLAYER_ID, [cell.cz * CITY_GRID_CELLS + cell.cx]));
-          }
-          return;
-        }
         this.handleLeftClick(ndc.x, ndc.y, e.shiftKey);
-      }
-      // Finish road drag-paint.
-      if (this.roadDragCells) {
-        const cells = this.roadDragCells;
-        this.roadDragCells = null;
-        if (cells.length > 0) {
-          this.enqueue(buildRoadOrder(HUMAN_PLAYER_ID, cells));
-        }
       }
     });
     on(this.canvas, 'contextmenu', (e) => e.preventDefault());
@@ -1288,6 +1323,17 @@ class GameController {
       (this.placement.tool === 'zoneR' || this.placement.tool === 'zoneC' || this.placement.tool === 'zoneI')
     ) {
       this.handleZoneDrag(pa.x, pa.z, pb.x, pb.z);
+      return;
+    }
+    // Train/building placement: a drag places at the release point instead
+    // of silently becoming a box-select — the armed tool owns the gesture.
+    // (Road drags are consumed earlier by the road-drag-paint path.)
+    if (this.placement?.kind === 'train') {
+      this.placeResolution(resolveTrainClick(this.placement.unitKind, HUMAN_PLAYER_ID, pb));
+      return;
+    }
+    if (this.placement?.kind === 'build') {
+      this.handleBuildClick(pb.x, pb.z);
       return;
     }
     // Otherwise: box-select the player's living units.

@@ -14,6 +14,12 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   names fall back). Starting forces find land per-unit (not just at the
   base center) so high-water maps never reject spawns. `session.cheated`
   is UI-owned metadata (never sim state), stamped into save files.
+  Registers `registerUpgradeCommands` (sim/upgrades.ts) so the research
+  panel's `researchUpgrade` orders execute. Campaign missions grant
+  `startingResources` AFTER the initial spawn tick: mission resources
+  are the designed opening stockpile, so e.g. northern-border always
+  opens at exactly 5000 funds even though spawnUnit now deducts
+  training costs.
 - `game.ts` — the game controller: renderer, daylight scene, camera
   input, selection, placement modes, fixed-timestep loop, pause menu.
   DOM + three.js; never imported by headless tests.
@@ -34,20 +40,45 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   (no win/lose condition).
 - `saveslots.ts` — save/load slot picker dialog + pure
   `formatSaveSummary`.
-- `hud.ts` — top bar, advisor panel, selection panel, train/build
-  palettes, toasts. Calls back into the controller; never touches sim.
-  Train panel lists all TRAIN_ORDER units, age-gated by
-  `isUnitAvailableForAge` (the same rule as spawn validation); sea units
-  get a "click WATER" placement hint. Build palette includes Shipyard
-  and Media Center (the latter is the only influence source — required
-  for age advancement).
+- `hud.ts` — top bar, advisor panel, selection panel, tabbed train/build
+  palettes, research panel, toasts. Calls back into the controller; never
+  touches sim. TRAIN palette has 4 tabs (Infantry / Armor / Air / Navy),
+  BUILD palette has 6 tabs (Housing / Commerce / Industry / Utilities /
+  Naval & Air / Special) — the exact spec groupings, see `palettes.ts`.
+  Unavailable entries stay visible but disabled, with tooltip reasons
+  (age, production building, cost, manpower, Naval Yard coast rule).
+  Train buttons show funds + materials + manpower cost; build buttons
+  show funds + materials. Selecting a completed Research Lab (or owning
+  one with nothing selected) opens the research panel: all 12 upgrades
+  in Military / Economy groups with one-line effects, cost, researched
+  checkmark, and disabled reasons.
 - `menus.ts` — main menu (skirmish setup: map picker + difficulty picker),
-  pause overlay, settings (quality, key list). Quality persists in
-  localStorage. Skirmish setup shows all 8 MAP_PRESETS (name + water %)
-  and all 5 AI difficulties; `onStartSkirmish(difficulty, mapPreset)`.
+  pause overlay, settings (quality, key list, UI language). Quality and
+  language persist in localStorage; language (עברית / English) applies
+  live via `setUiLanguage`. Skirmish setup shows all 8 MAP_PRESETS (name
+  + water %) and all 5 AI difficulties; `onStartSkirmish(difficulty,
+  mapPreset)`.
 - `camera.ts` / `selection.ts` — pure state + transitions, fully tested.
 - `orders.ts` — gesture → `OrderIntent` (`NewCommand` minus issuer);
-  the controller stamps `issuer: 'player'` at enqueue.
+  the controller stamps `issuer: 'player'` at enqueue. Includes
+  `buildResearchUpgradeOrder(owner, upgrade)` for the research panel.
+- `palettes.ts` — headless-safe palette data + availability logic for
+  the tabbed TRAIN/BUILD palettes and the research panel: `TRAIN_TABS`
+  (4 tabs, 28 units), `BUILD_TABS` (6 tabs, 28 buildings),
+  `UPGRADE_GROUPS` (military 8 / economy 4), `unitAvailability` /
+  `buildingAvailability` / `upgradeAvailability` (ready | reason), cost
+  formatters, and the
+  Naval Yard coast-rule tooltip. Availability mirrors sim validation
+  (age gate, production-building gate, affordability, manpower).
+- `placement.ts` — **placement click resolution (pure, tested).** Every map
+  click in a placement mode resolves here to either an `OrderIntent` (built
+  with the `orders.ts` builders — the exact structs the controller
+  enqueues) or a human-readable hint. Nothing fails silently: zone-tool
+  clicks hint "drag a rectangle", off-grid/sky clicks hint train/build
+  failed. `game.ts` enqueues orders / toasts hints via `placeResolution`.
+  Invariants: a drag in train/building mode places at the release point
+  (never becomes a box-select); road drag-paint accumulates `roadDragCells`
+  from canvas pointerdown and finishes on pointerup before the select path.
 - `campaignui.ts` — campaign screens (Phase 2): `MissionSelect`
   (locked/unlocked/done), `MissionBriefing` (paths with 🕊/⚔ markers),
   `MissionDebrief` (debrief copy + diplomat/commander score + the two
@@ -64,7 +95,12 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `onMissionEnd` records progress. Muse settings (frequency + live key)
   live in the settings panel, live-applied in game.
 - `advisor.ts` — pure `evaluateAdvisor(world, playerId)`, worst-first.
-- `strings.ts` — all UI copy in one place (English now, Hebrew later).
+- `strings.ts` — all NEW UI copy in one place, Hebrew-first with an
+  English option: `LocalizedString` (`{he, en}`), module-level language
+  state (`setUiLanguage` / `getUiLanguage` / `loc` / `fillLoc`). Covers
+  all 28 unit names, 28 building names, palette/upgrade tab names, the
+  12 upgrade names + one-line effects, cost labels, and lock reasons.
+  Legacy Phase 3 strings are still English-only; migrate incrementally.
 - Audio: `game.ts` owns an `AudioEngine` (see `src/audio/AGENTS.md`) —
   unlocked on first pointer/key gesture, `updateMusic(world, playerId)`
   polled ~2×/sec, SFX on select/orders/placement/age-advance/rejections/

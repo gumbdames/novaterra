@@ -152,6 +152,20 @@ export function buildAdvanceAgeOrder(
   };
 }
 
+/**
+ * Research panel: research an upgrade at the lab. The sim validates the
+ * lab, prerequisites and affordability at enqueue AND apply time.
+ */
+export function buildResearchUpgradeOrder(
+  owner: number,
+  upgrade: string,
+): OrderIntent {
+  return {
+    kind: 'researchUpgrade',
+    payload: { owner, upgrade },
+  };
+}
+
 /** HUD tax control: set one zone's tax rate (0..1). */
 export function buildSetTaxRateOrder(
   owner: number,
