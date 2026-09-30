@@ -55,6 +55,7 @@ import {
 } from '../sim/city';
 import type { AIDifficulty } from '../sim/ai';
 import { CommandRejectedError } from '../sim/commands';
+import type { TerrainData } from '../sim/terrain';
 import { buildTerrainView, type TerrainView } from '../render/terrain';
 import { EntityRenderer } from '../render/entities';
 import { createRenderer, applyEnvironmentLighting } from '../render/renderer';
@@ -208,6 +209,120 @@ const GAME_FOV_DEG = 55;
 const AUTOSAVE_TICKS = 30 * 60 * 5;
 const CLICK_TOLERANCE = 4; // world units for click-pick
 
+// ---------------------------------------------------------------------------
+// Frame-loop seam (camera/input-freeze hardening, 2026-09-30).
+//
+// The animation-loop callback used to be one inline closure: ANY
+// exception in a single frame (a new building's view creation, a HUD
+// digest update, …) propagated out of the three.js callback and the
+// loop never rescheduled — freezing the camera AND all input at once
+// with no visible error. Two pieces fix that:
+//
+// - `runGameFrame` holds the per-frame body as a standalone exported
+//   function over an explicit dependency interface, so the
+//   loop-error-boundary regression test can drive real frames
+//   headlessly (place buildings via the command queue, advance
+//   frames, assert the world keeps ticking).
+// - `guardGameFrame` is the error boundary around it: a frame's
+//   exception is logged LOUDLY — sim tick + armed tool for repro —
+//   the player gets one throttled toast, and the loop survives.
+//   This must never mask sim bugs silently: every caught error goes
+//   to console.error with its full stack.
+// ---------------------------------------------------------------------------
+
+/** Everything one game frame needs — the seam ui.gameLoop.test.ts drives. */
+export interface GameFrameDeps {
+  session: GameSession;
+  paused: boolean;
+  speed: number;
+  selection: Selection;
+  advisorItems: AdvisorItem[];
+  updateCamera(dtSec: number): void;
+  maybeAutosave(): void;
+  maybeShowConquestOutcome(): void;
+  refreshAdvisor(world: World): void;
+  pruneSelection(): void;
+  syncEntities(world: World): void;
+  setSelectedEntities(unitIds: number[]): void;
+  updateEntitySelectionRings(world: World): void;
+  updateHud(
+    world: World,
+    selection: Selection,
+    advisorItems: AdvisorItem[],
+    paused: boolean,
+    speed: number,
+    terrain: TerrainData,
+  ): void;
+  pollAudioEvents(world: World, nowMs: number): void;
+  pollCampaign(world: World, nowMs: number): void;
+  renderFrame(): void;
+  getLastAdvisorRefresh(): number;
+  setLastAdvisorRefresh(nowMs: number): void;
+}
+
+/**
+ * One frame of the render/sim loop (extracted from
+ * `GameController.start()`). Pure orchestration over `deps` — no DOM,
+ * no three.js at this level (those live behind the dep closures), so
+ * headless tests can run real frames against a real session.
+ */
+export function runGameFrame(deps: GameFrameDeps, nowMs: number, frameMs: number): void {
+  const dtSec = frameMs / 1000;
+  deps.updateCamera(dtSec);
+  const world = deps.session.world;
+  if (!deps.paused) {
+    deps.session.driver.step(world, frameMs * deps.speed);
+    deps.maybeAutosave();
+    deps.maybeShowConquestOutcome();
+  }
+  if (nowMs - deps.getLastAdvisorRefresh() > ADVISOR_REFRESH_MS) {
+    deps.setLastAdvisorRefresh(nowMs);
+    deps.refreshAdvisor(world);
+  }
+  deps.pruneSelection();
+  deps.syncEntities(world);
+  deps.setSelectedEntities(deps.selection.unitIds);
+  deps.updateEntitySelectionRings(world);
+  deps.updateHud(world, deps.selection, deps.advisorItems, deps.paused, deps.speed, deps.session.terrain);
+  deps.pollAudioEvents(world, nowMs);
+  deps.pollCampaign(world, nowMs);
+  deps.renderFrame();
+}
+
+/** Repro context captured when a frame throws. */
+export interface FrameErrorContext {
+  /** Sim tick at the throw — anchors the report to a replay/snapshot. */
+  tick: number;
+  /** What the player had armed (tool id, 'train', 'storm', or null). */
+  armedTool: string | null;
+}
+
+/**
+ * Loop error boundary: runs one frame's work; on exception logs
+ * loudly (tick + armed tool, full error) and lets the loop continue.
+ * The `onFrameError` callback is for player-visible feedback (the
+ * controller throttles it to one toast per few seconds so a
+ * per-frame throw can't spam the HUD).
+ */
+export function guardGameFrame(
+  work: () => void,
+  ctx: FrameErrorContext,
+  onFrameError: (message: string) => void,
+): void {
+  try {
+    work();
+  } catch (err) {
+    // Loud by design — a swallowed frame error would hide sim/render
+    // bugs. Tick + armed tool give the reporter (and us) a repro.
+    console.error(
+      `[novaterra] game-loop frame threw at tick ${ctx.tick} ` +
+        `(armedTool=${ctx.armedTool ?? 'none'}) — the loop survives; please report this.`,
+      err,
+    );
+    onFrameError('A frame glitched, but the game kept running.');
+  }
+}
+
 /**
  * Create and start a game. Async because the WebGPU renderer needs init.
  * The returned controller owns the loop; call `dispose()` to tear down.
@@ -257,7 +372,7 @@ export async function startGame(
     0.5,
     4000,
   );
-  const entities = await loadEntityModels(session, scene);
+  const entities = await loadEntityModels(session, scene, terrainView);
   // Camera for instanced health-bar billboarding (Phase 0 draw-call
   // ceiling: `instanced: true` is set on the EntityRenderer above).
   entities.renderer.setCamera(camera);
@@ -331,6 +446,7 @@ const MODEL_LOAD_ALL_TIMEOUT_MS = 20000;
 async function loadEntityModels(
   session: GameSession,
   scene: THREE.Scene,
+  terrainView: TerrainView,
 ): Promise<{ renderer: EntityRenderer; modelMap: Map<string, LoadedModel>; nature: NatureView | null }> {
   const timeout = new Promise<null>((resolve) => {
     setTimeout(() => resolve(null), MODEL_LOAD_ALL_TIMEOUT_MS);
@@ -376,6 +492,9 @@ async function loadEntityModels(
   }
   const renderer = new EntityRenderer(scene, modelMap, {
     waterLevel: session.terrain.waterLevel,
+    // Living nature: the renderer bobs the TerrainView's water plane
+    // with the ambient swell (caller-owned; never disposed by it).
+    waterMesh: terrainView.water,
     // Entity views ride on the terrain (units/buildings/roads/rings/FX);
     // without this every entity would sit at y=0 and bury itself in
     // hillsides (terrain height ranges −10…+30).
@@ -751,34 +870,66 @@ class GameController {
   /** Begin the render/sim loop. */
   start(): void {
     let last = performance.now();
+    // Throttle the frame-error toast: a throw that repeats every frame
+    // must not spam the HUD (the console still gets every occurrence).
+    let lastFrameErrorToast = 0;
     this.renderer.setAnimationLoop(() => {
       if (this.disposed) return;
       const now = performance.now();
       const frameMs = Math.min(now - last, 250);
       last = now;
-      const dtSec = frameMs / 1000;
-
-      this.updateCamera(dtSec);
-      if (!this.paused) {
-        this.session.driver.step(this.session.world, frameMs * this.speed);
-        this.maybeAutosave();
-        this.maybeShowConquestOutcome();
-      }
-      if (now - this.lastAdvisorRefresh > ADVISOR_REFRESH_MS) {
-        this.lastAdvisorRefresh = now;
-        this.refreshAdvisor(this.session.world);
-      }
-
-      const world = this.session.world;
-      this.pruneSelection();
-      this.entities.sync(world);
-      this.entities.setSelected(this.selection.unitIds);
-      this.entities.updateSelectionRings(EntityRenderer.unitMap(world));
-      this.hud.update(world, this.selection, this.advisorItems, this.paused, this.speed, this.session.terrain);
-      this.pollAudioEvents(world, now);
-      this.pollCampaign(world, now);
-      this.renderer.render(this.scene, this.camera);
+      // Loop error boundary (camera/input-freeze hardening): a single
+      // frame's exception is logged loudly but never kills the loop.
+      const placement = this.placement;
+      guardGameFrame(
+        () => runGameFrame(this.frameDeps(), now, frameMs),
+        {
+          tick: this.session.world.tick,
+          armedTool:
+            placement?.kind === 'build'
+              ? placement.tool
+              : (placement?.kind ?? null),
+        },
+        () => {
+          if (now - lastFrameErrorToast > 5000) {
+            lastFrameErrorToast = now;
+            this.hud.toast('A frame glitched, but the game kept running.');
+          }
+        },
+      );
     });
+  }
+
+  /**
+   * The frame loop's dependency seam (see `runGameFrame`): bound
+   * closures over this controller's collaborators.
+   */
+  private frameDeps(): GameFrameDeps {
+    return {
+      session: this.session,
+      paused: this.paused,
+      speed: this.speed,
+      selection: this.selection,
+      advisorItems: this.advisorItems,
+      updateCamera: (dtSec) => this.updateCamera(dtSec),
+      maybeAutosave: () => this.maybeAutosave(),
+      maybeShowConquestOutcome: () => this.maybeShowConquestOutcome(),
+      refreshAdvisor: (world) => this.refreshAdvisor(world),
+      pruneSelection: () => this.pruneSelection(),
+      syncEntities: (world) => this.entities.sync(world),
+      setSelectedEntities: (unitIds) => this.entities.setSelected(unitIds),
+      updateEntitySelectionRings: (world) =>
+        this.entities.updateSelectionRings(EntityRenderer.unitMap(world)),
+      updateHud: (world, selection, advisorItems, paused, speed, terrain) =>
+        this.hud.update(world, selection, advisorItems, paused, speed, terrain),
+      pollAudioEvents: (world, nowMs) => this.pollAudioEvents(world, nowMs),
+      pollCampaign: (world, nowMs) => this.pollCampaign(world, nowMs),
+      renderFrame: () => this.renderer.render(this.scene, this.camera),
+      getLastAdvisorRefresh: () => this.lastAdvisorRefresh,
+      setLastAdvisorRefresh: (nowMs) => {
+        this.lastAdvisorRefresh = nowMs;
+      },
+    };
   }
 
   /**

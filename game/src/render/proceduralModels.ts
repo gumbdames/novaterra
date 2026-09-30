@@ -31,7 +31,12 @@
  * ordnanceDepot (earth bunkers), fuelDepot (tank farm), supplyTruck
  * (6x6 canvas cargo truck), fuelTruck (6x6 tanker). Workstream P
  * (ambient city life): parkingLot (striped asphalt lot with parked
- * cars), parkingGarage (two-deck concrete garage with ramp). Each builder returns a `LoadedModel`-compatible
+ * cars), parkingGarage (two-deck concrete garage with ramp). Phase 4
+ * (transport, S7): the 17 transport kinds — the 5 transport units
+ * (passengerTrain, freightTrain, bus, tram, ferry), the 5 hubs
+ * (railStation, busDepot, ferryTerminal, marina, marinaLarge), and the
+ * 7 stop/station tiers (busStop, taxiStand, tramStop, ferryPier,
+ * neighborhoodStation, centralStation, airportInterchange). Each builder returns a `LoadedModel`-compatible
  * `{ geometries, materials }` with merged per-material geometry, base at
  * y=0, forward = +z — the same contract as `models.ts`, so
  * `render/entities.ts` can treat GLB and procedural models identically.
@@ -1978,6 +1983,25 @@ export const PROCEDURAL_KINDS = [
   // Workstream P (ambient city life, 2026-09-30): civic parking.
   'parkingLot',
   'parkingGarage',
+  // Grand-expansion Phase 4 (transport, S7): the 17 transport models —
+  // 5 units, 5 hubs, 7 stop/station tiers.
+  'passengerTrain',
+  'freightTrain',
+  'bus',
+  'tram',
+  'ferry',
+  'railStation',
+  'busDepot',
+  'ferryTerminal',
+  'marina',
+  'marinaLarge',
+  'busStop',
+  'taxiStand',
+  'tramStop',
+  'ferryPier',
+  'neighborhoodStation',
+  'centralStation',
+  'airportInterchange',
 ] as const;
 
 export type ProceduralKind = (typeof PROCEDURAL_KINDS)[number];
@@ -2079,7 +2103,788 @@ export function buildProceduralModel(kind: string): LoadedModel | undefined {
       return buildParkingLot();
     case 'parkingGarage':
       return buildParkingGarage();
+    // Grand-expansion Phase 4 (transport, S7): the 17 transport models.
+    case 'passengerTrain':
+      return buildPassengerTrain();
+    case 'freightTrain':
+      return buildFreightTrain();
+    case 'bus':
+      return buildBus();
+    case 'tram':
+      return buildTram();
+    case 'ferry':
+      return buildFerry();
+    case 'railStation':
+      return buildRailStation();
+    case 'busDepot':
+      return buildBusDepot();
+    case 'ferryTerminal':
+      return buildFerryTerminal();
+    case 'marina':
+      return buildMarina();
+    case 'marinaLarge':
+      return buildMarinaLarge();
+    case 'busStop':
+      return buildBusStop();
+    case 'taxiStand':
+      return buildTaxiStand();
+    case 'tramStop':
+      return buildTramStop();
+    case 'ferryPier':
+      return buildFerryPier();
+    case 'neighborhoodStation':
+      return buildNeighborhoodStation();
+    case 'centralStation':
+      return buildCentralStation();
+    case 'airportInterchange':
+      return buildAirportInterchange();
     default:
       return undefined;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Grand-expansion Phase 4 (transport, S7): the 17 transport models.
+//
+// All five transport unit kinds plus the twelve rail/bus/ferry/stop
+// buildings and stations. Every builder is deterministic (no RNG), uses
+// the shared surface-texture materials, and follows the house idioms
+// above (ModelBuilder + smat/pmat + tr). Units face +z (their direction
+// of travel); buildings are centered on the origin, sized to their sim
+// footprint (CELL_WORLD_SIZE = 2 world units per cell).
+// ---------------------------------------------------------------------------
+
+/** Small double-sided triangle (sails, pennants, wedges). */
+function triGeo(
+  ax: number, ay: number, az: number,
+  bx: number, by: number, bz: number,
+  cx: number, cy: number, cz: number,
+): THREE.BufferGeometry {
+  const geo = new THREE.BufferGeometry();
+  const v = new Float32Array([ax, ay, az, bx, by, bz, cx, cy, cz, ax, ay, az, cx, cy, cz, bx, by, bz]);
+  geo.setAttribute('position', new THREE.BufferAttribute(v, 3));
+  // Indexed (like every other part geometry) so ModelBuilder's
+  // mergeGeometries bucket merge succeeds instead of warning.
+  geo.setIndex([0, 1, 2, 3, 4, 5]);
+  geo.computeVertexNormals();
+  const uv = new Float32Array([0, 0, 1, 0, 0.5, 1, 0, 0, 0.5, 1, 1, 0]);
+  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  return geo;
+}
+
+/**
+ * passengerTrain — electric multiple-unit: a streamlined locomotive
+ * with pantograph plus two passenger cars with window bands.
+ */
+export function buildPassengerTrain(): LoadedModel {
+  const b = new ModelBuilder();
+  const livery = smat('paintedMetal', { color: 0x2e5a8c });
+  const liveryDark = smat('paintedMetal', { color: 0x1d3a5c });
+  const roofMat = smat('paintedMetal', { color: 0xb9bec4 });
+  const glass = smat('glassBlue', { color: 0x18242f });
+  const steel = smat('gunmetal');
+  const tire = smat('tireRubber');
+
+  // Locomotive body (front faces +z).
+  b.add(new THREE.BoxGeometry(2.3, 1.9, 3.4), livery, tr(0, 1.6, 2.6));
+  // Stepped nose: lower cap + set-back upper cab, windshield on the step.
+  b.add(new THREE.BoxGeometry(2.28, 1.1, 0.8), liveryDark, tr(0, 1.2, 4.35));
+  b.add(new THREE.BoxGeometry(2.28, 0.7, 0.45), liveryDark, tr(0, 1.95, 4.2));
+  b.add(new THREE.BoxGeometry(1.8, 0.55, 0.1), glass, tr(0, 1.98, 4.44, -0.35, 0, 0));
+  // Side window band + white stripe.
+  b.add(new THREE.BoxGeometry(2.34, 0.5, 2.9), glass, tr(0, 2.05, 2.6));
+  b.add(new THREE.BoxGeometry(2.36, 0.18, 3.42), smat('paintedMetal', { color: 0xf2f0e8 }), tr(0, 1.05, 2.6));
+  // Roof + pantograph.
+  b.add(new THREE.BoxGeometry(2.1, 0.14, 3.2), roofMat, tr(0, 2.62, 2.6));
+  b.beam(-0.5, 2.7, 2.2, 0, 3.5, 2.6, 0.05, steel);
+  b.beam(0.5, 2.7, 2.2, 0, 3.5, 2.6, 0.05, steel);
+  b.beam(-0.7, 3.5, 2.6, 0.7, 3.5, 2.6, 0.045, steel);
+  b.add(new THREE.BoxGeometry(1.5, 0.06, 0.3), steel, tr(0, 3.56, 2.6));
+  // Headlights.
+  const lamp = pmat(0xfff2c0, { emissive: 0x998844 });
+  for (const sx of [-1, 1]) b.add(new THREE.BoxGeometry(0.22, 0.18, 0.1), lamp, tr(sx * 0.75, 1.15, 4.76));
+  // Bogies + wheels.
+  for (const bz of [1.6, 3.6]) {
+    b.add(new THREE.BoxGeometry(1.9, 0.4, 1.1), steel, tr(0, 0.5, bz));
+    for (const wz of [bz - 0.35, bz + 0.35]) {
+      for (const sx of [-1, 1]) {
+        b.add(new THREE.CylinderGeometry(0.34, 0.34, 0.2, 12), tire, tr(sx * 0.85, 0.34, wz, 0, 0, Math.PI / 2));
+      }
+    }
+  }
+  // Two passenger cars.
+  for (const [cz, shade] of [[-0.6, 0x33608f], [-3.4, 0x2e5a8c]] as const) {
+    const carMat = smat('paintedMetal', { color: shade });
+    b.add(new THREE.BoxGeometry(2.3, 1.9, 2.6), carMat, tr(0, 1.6, cz));
+    b.add(new THREE.BoxGeometry(2.34, 0.55, 2.2), glass, tr(0, 2.0, cz));
+    b.add(new THREE.BoxGeometry(2.1, 0.14, 2.5), roofMat, tr(0, 2.62, cz));
+    b.add(new THREE.BoxGeometry(1.9, 0.4, 1.0), steel, tr(0, 0.5, cz));
+    for (const wz of [cz - 0.6, cz + 0.6]) {
+      for (const sx of [-1, 1]) {
+        b.add(new THREE.CylinderGeometry(0.34, 0.34, 0.2, 12), tire, tr(sx * 0.85, 0.34, wz, 0, 0, Math.PI / 2));
+      }
+    }
+  }
+  // Gangway bellows between cars.
+  b.add(new THREE.BoxGeometry(1.6, 1.5, 0.5), tire, tr(0, 1.55, -1.85));
+  return b.build();
+}
+
+/**
+ * freightTrain — heavy diesel locomotive with two boxcars and a
+ * container flatcar.
+ */
+export function buildFreightTrain(): LoadedModel {
+  const b = new ModelBuilder();
+  const locoMat = smat('paintedMetal', { color: 0x3d4a3a });
+  const locoDark = smat('paintedMetal', { color: 0x2a3327 });
+  const carBrown = smat('paintedMetal', { color: 0x7a4a2e });
+  const carGray = smat('paintedMetal', { color: 0x5c6167 });
+  const glass = smat('glassBlue', { color: 0x18242f });
+  const steel = smat('gunmetal');
+  const tire = smat('tireRubber');
+
+  // Locomotive: long hood + cab.
+  b.add(new THREE.BoxGeometry(2.4, 1.7, 4.6), locoMat, tr(0, 1.5, 2.4));
+  b.add(new THREE.BoxGeometry(2.4, 1.1, 1.4), locoDark, tr(0, 2.6, 1.2));
+  b.add(new THREE.BoxGeometry(2.44, 0.45, 1.1), glass, tr(0, 2.75, 1.35));
+  b.add(new THREE.BoxGeometry(2.5, 0.14, 4.7), steel, tr(0, 2.42, 2.4));
+  // Exhaust stacks + horn.
+  b.add(new THREE.CylinderGeometry(0.12, 0.14, 0.5, 8), steel, tr(0.5, 2.7, 3.2));
+  b.add(new THREE.CylinderGeometry(0.12, 0.14, 0.5, 8), steel, tr(0.5, 2.7, 2.5));
+  b.add(new THREE.BoxGeometry(0.5, 0.18, 0.3), steel, tr(0, 3.25, 1.0));
+  // Warning stripe on the nose.
+  b.add(new THREE.BoxGeometry(2.42, 0.3, 0.12), smat('paintedMetal', { color: 0xd8a028 }), tr(0, 1.1, 4.72));
+  const lamp = pmat(0xfff2c0, { emissive: 0x998844 });
+  for (const sx of [-1, 1]) b.add(new THREE.BoxGeometry(0.22, 0.18, 0.1), lamp, tr(sx * 0.8, 1.6, 4.72));
+  // Three-axle bogies.
+  for (const bz of [0.9, 3.9]) {
+    b.add(new THREE.BoxGeometry(2.0, 0.45, 1.5), steel, tr(0, 0.5, bz));
+    for (const wz of [bz - 0.5, bz, bz + 0.5]) {
+      for (const sx of [-1, 1]) {
+        b.add(new THREE.CylinderGeometry(0.36, 0.36, 0.2, 12), tire, tr(sx * 0.9, 0.36, wz, 0, 0, Math.PI / 2));
+      }
+    }
+  }
+  // Two boxcars with sliding doors.
+  for (const [cz, mat] of [[-1.6, carBrown], [-4.6, carGray]] as const) {
+    b.add(new THREE.BoxGeometry(2.4, 2.0, 2.8), mat, tr(0, 1.65, cz));
+    b.add(new THREE.BoxGeometry(2.44, 2.04, 0.7), locoDark, tr(0, 1.65, cz));
+    b.add(new THREE.BoxGeometry(2.5, 0.14, 2.9), steel, tr(0, 2.72, cz));
+    b.add(new THREE.BoxGeometry(2.0, 0.4, 1.2), steel, tr(0, 0.5, cz));
+    for (const wz of [cz - 0.7, cz + 0.7]) {
+      for (const sx of [-1, 1]) {
+        b.add(new THREE.CylinderGeometry(0.34, 0.34, 0.2, 12), tire, tr(sx * 0.9, 0.34, wz, 0, 0, Math.PI / 2));
+      }
+    }
+  }
+  // Flatcar with two containers.
+  b.add(new THREE.BoxGeometry(2.4, 0.35, 3.0), steel, tr(0, 0.85, -7.6));
+  const contA = smat('paintedMetal', { color: 0xa33b32 });
+  const contB = smat('paintedMetal', { color: 0x3f6ea5 });
+  b.add(new THREE.BoxGeometry(2.2, 1.3, 1.35), contA, tr(0, 1.68, -6.9));
+  b.add(new THREE.BoxGeometry(2.2, 1.3, 1.35), contB, tr(0, 1.68, -8.35));
+  b.add(new THREE.BoxGeometry(2.0, 0.4, 1.2), steel, tr(0, 0.5, -7.6));
+  for (const wz of [-8.3, -6.9]) {
+    for (const sx of [-1, 1]) {
+      b.add(new THREE.CylinderGeometry(0.34, 0.34, 0.2, 12), tire, tr(sx * 0.9, 0.34, wz, 0, 0, Math.PI / 2));
+    }
+  }
+  return b.build();
+}
+
+/**
+ * bus — city bus: long body, full window band, sloped windshield,
+ * destination sign, mirrors.
+ */
+export function buildBus(): LoadedModel {
+  const b = new ModelBuilder();
+  const body = smat('paintedMetal', { color: 0x2f8f83 });
+  const skirt = smat('paintedMetal', { color: 0x1f5f58 });
+  const glass = smat('glassBlue', { color: 0x18242f });
+  const steel = smat('gunmetal');
+  const tire = smat('tireRubber');
+  // Body + skirt + roof.
+  b.add(new THREE.BoxGeometry(2.5, 1.9, 5.8), body, tr(0, 1.55, 0));
+  b.add(new THREE.BoxGeometry(2.54, 0.5, 5.84), skirt, tr(0, 0.75, 0));
+  b.add(new THREE.BoxGeometry(2.4, 0.16, 5.6), smat('paintedMetal', { color: 0xd8d4c8 }), tr(0, 2.58, 0));
+  // Window band (sides) + windshield.
+  for (const sx of [-1, 1]) b.add(new THREE.BoxGeometry(0.06, 0.7, 4.9), glass, tr(sx * 1.26, 1.95, -0.2));
+  b.add(new THREE.BoxGeometry(2.1, 0.85, 0.1), glass, tr(0, 1.85, 2.92, -0.18, 0, 0));
+  // White waist stripe.
+  for (const sx of [-1, 1]) b.add(new THREE.BoxGeometry(0.05, 0.16, 5.82), smat('paintedMetal', { color: 0xf2f0e8 }), tr(sx * 1.27, 1.15, 0));
+  // Destination sign (amber, emissive).
+  b.add(new THREE.BoxGeometry(1.1, 0.32, 0.08), pmat(0xd88f28, { emissive: 0x7a4d10 }), tr(0, 2.35, 2.94));
+  // Headlights + taillights.
+  const lamp = pmat(0xfff2c0, { emissive: 0x998844 });
+  const tail = pmat(0xc03028, { emissive: 0x5a0f0a });
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.3, 0.22, 0.08), lamp, tr(sx * 0.85, 0.95, 2.92));
+    b.add(new THREE.BoxGeometry(0.3, 0.22, 0.08), tail, tr(sx * 0.85, 1.0, -2.92));
+    // Mirrors.
+    b.beam(sx * 1.25, 2.2, 2.7, sx * 1.55, 2.2, 2.7, 0.04, steel);
+    b.add(new THREE.BoxGeometry(0.1, 0.3, 0.2), steel, tr(sx * 1.58, 2.2, 2.7));
+  }
+  // Wheels.
+  for (const wz of [1.9, -1.9]) {
+    for (const sx of [-1, 1]) {
+      b.add(new THREE.CylinderGeometry(0.48, 0.48, 0.35, 14), tire, tr(sx * 1.1, 0.48, wz, 0, 0, Math.PI / 2));
+      b.add(new THREE.CylinderGeometry(0.22, 0.22, 0.37, 10), steel, tr(sx * 1.1, 0.48, wz, 0, 0, Math.PI / 2));
+    }
+  }
+  return b.build();
+}
+
+/**
+ * tram — two articulated sections with bellows, pantograph, full
+ * window bands (cream/red city livery).
+ */
+export function buildTram(): LoadedModel {
+  const b = new ModelBuilder();
+  const cream = smat('paintedMetal', { color: 0xe8e0cc });
+  const red = smat('paintedMetal', { color: 0xa32e28 });
+  const glass = smat('glassBlue', { color: 0x18242f });
+  const steel = smat('gunmetal');
+  const tire = smat('tireRubber');
+  for (const [cz, flip] of [[1.7, 1], [-1.7, -1]] as const) {
+    // Section body: cream upper, red lower.
+    b.add(new THREE.BoxGeometry(2.4, 1.2, 3.2), cream, tr(0, 1.9, cz));
+    b.add(new THREE.BoxGeometry(2.4, 1.0, 3.2), red, tr(0, 0.85, cz));
+    b.add(new THREE.BoxGeometry(2.3, 0.14, 3.1), steel, tr(0, 2.56, cz));
+    // Window bands.
+    for (const sx of [-1, 1]) b.add(new THREE.BoxGeometry(0.06, 0.6, 2.8), glass, tr(sx * 1.21, 1.95, cz));
+    // End cab windows (outer ends only).
+    b.add(new THREE.BoxGeometry(1.9, 0.6, 0.08), glass, tr(0, 1.95, cz + flip * 1.62));
+    // Bogie.
+    b.add(new THREE.BoxGeometry(1.9, 0.35, 1.2), steel, tr(0, 0.42, cz));
+    for (const wz of [cz - 0.4, cz + 0.4]) {
+      for (const sx of [-1, 1]) {
+        b.add(new THREE.CylinderGeometry(0.3, 0.3, 0.18, 12), tire, tr(sx * 0.85, 0.3, wz, 0, 0, Math.PI / 2));
+      }
+    }
+  }
+  // Articulation bellows.
+  b.add(new THREE.BoxGeometry(1.9, 1.6, 0.5), tire, tr(0, 1.4, 0));
+  // Pantograph on the rear section.
+  b.beam(-0.45, 2.65, -1.7, 0, 3.4, -1.3, 0.05, steel);
+  b.beam(0.45, 2.65, -1.7, 0, 3.4, -1.3, 0.05, steel);
+  b.beam(-0.65, 3.4, -1.3, 0.65, 3.4, -1.3, 0.045, steel);
+  b.add(new THREE.BoxGeometry(1.4, 0.06, 0.28), steel, tr(0, 3.46, -1.3));
+  // Headlight.
+  const lamp = pmat(0xfff2c0, { emissive: 0x998844 });
+  b.add(new THREE.BoxGeometry(0.3, 0.22, 0.08), lamp, tr(0, 1.1, 3.32));
+  return b.build();
+}
+
+/**
+ * ferry — double-ended car ferry: tapered hull, open car deck with
+ * a few cars, white superstructure with window bands, funnel, mast.
+ */
+export function buildFerry(): LoadedModel {
+  const b = new ModelBuilder();
+  const hullMat = smat('hullGray', { color: 0x4a6a8c });
+  const deckMat = smat('concrete', { color: 0x3d434c });
+  const white = smat('paintedMetal', { color: 0xf0ede4 });
+  const glass = smat('glassBlue', { color: 0x18242f });
+  const steel = smat('gunmetal');
+  // Hull: tapered tube along z (bow +z), keel below the waterline.
+  b.add(new THREE.CylinderGeometry(1.9, 2.6, 11.5, 10), hullMat, tr(0, 0.1, 0, Math.PI / 2, 0, 0, 0.82, 1, 1));
+  // Car deck plate + bulwark.
+  b.add(new THREE.BoxGeometry(3.6, 0.14, 10.6), deckMat, tr(0, 1.75, 0));
+  for (const sx of [-1, 1]) b.add(new THREE.BoxGeometry(0.12, 0.9, 10.6), hullMat, tr(sx * 1.82, 2.25, 0));
+  // Parked cars on the deck (deterministic).
+  const carColors = [0x7a8a99, 0xa33b32, 0x3f6ea5, 0xd8d4c8];
+  const slots: Array<[number, number]> = [[-0.9, 2.6], [0.9, 2.6], [-0.9, 0.2], [0.9, 0.2], [-0.9, -2.2], [0.9, -2.2]];
+  slots.forEach(([sx, sz], i) => {
+    const car = smat('paintedMetal', { color: carColors[i % carColors.length] as number });
+    b.add(new THREE.BoxGeometry(0.85, 0.42, 1.9), car, tr(sx, 2.05, sz));
+    b.add(new THREE.BoxGeometry(0.75, 0.32, 1.0), glass, tr(sx, 2.38, sz - 0.15));
+  });
+  // Superstructure: two decks + bridge.
+  b.add(new THREE.BoxGeometry(2.8, 1.1, 3.4), white, tr(0, 2.9, -3.2));
+  b.add(new THREE.BoxGeometry(2.6, 0.9, 2.6), white, tr(0, 3.9, -3.2));
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.06, 0.4, 3.0), glass, tr(sx * 1.42, 3.0, -3.2));
+    b.add(new THREE.BoxGeometry(0.06, 0.35, 2.3), glass, tr(sx * 1.32, 4.0, -3.2));
+  }
+  b.add(new THREE.BoxGeometry(2.62, 0.35, 0.08), glass, tr(0, 4.0, -1.88));
+  // Funnel + mast + lifeboat.
+  b.add(new THREE.CylinderGeometry(0.4, 0.5, 1.2, 12), smat('paintedMetal', { color: 0xc25a2e }), tr(0, 4.9, -4.2));
+  b.add(new THREE.CylinderGeometry(0.42, 0.42, 0.18, 12), steel, tr(0, 5.55, -4.2));
+  b.beam(0, 4.3, -2.0, 0, 6.4, -2.0, 0.07, steel);
+  b.beam(-0.8, 5.6, -2.0, 0.8, 5.6, -2.0, 0.05, steel);
+  b.add(new THREE.BoxGeometry(1.6, 0.5, 0.7), smat('paintedMetal', { color: 0xd8622a }), tr(1.0, 3.6, -4.6));
+  // Bow/stern ramps (double-ender).
+  for (const sz of [5.4, -5.4]) {
+    b.add(new THREE.BoxGeometry(2.6, 0.12, 0.9), steel, tr(0, 1.9, sz, sz > 0 ? 0.35 : -0.35, 0, 0));
+  }
+  return b.build();
+}
+
+/**
+ * railStation (3x3) — side platform with canopy, brick station
+ * building with pitched roof and clock, benches, lamps.
+ */
+export function buildRailStation(): LoadedModel {
+  const b = new ModelBuilder();
+  const brick = smat('brickRed', { color: 0x9a5f43 });
+  const concrete = smat('concrete', { color: 0x9a9a9e });
+  const concreteDark = smat('concrete', { color: 0x6e6e74 });
+  const roofMat = smat('paintedMetal', { color: 0x3a4a5a });
+  const steel = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x2a3d4d });
+  const wood = smat('woodPlank');
+  // Platform slab (trains run along z on the east side).
+  b.add(new THREE.BoxGeometry(2.4, 0.5, 5.6), concrete, tr(1.7, 0.25, 0));
+  b.add(new THREE.BoxGeometry(2.44, 0.1, 5.64), concreteDark, tr(1.7, 0.55, 0));
+  // Yellow safety line.
+  b.add(new THREE.BoxGeometry(0.12, 0.02, 5.5), smat('paintedMetal', { color: 0xd8b828 }), tr(2.75, 0.61, 0));
+  // Canopy: columns + roof slab over the platform.
+  for (const pz of [-2.4, 0, 2.4]) {
+    b.add(new THREE.BoxGeometry(0.22, 2.6, 0.22), steel, tr(1.0, 1.85, pz));
+  }
+  b.add(new THREE.BoxGeometry(2.9, 0.16, 5.9), roofMat, tr(1.55, 3.2, 0));
+  // Station building (west side).
+  b.add(new THREE.BoxGeometry(2.6, 2.4, 4.4), brick, tr(-1.6, 1.2, 0));
+  // Pitched roof: two slabs.
+  for (const s of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(3.2, 0.14, 4.7), roofMat, tr(-1.6, 3.05, 0, s * 0.5, 0, 0));
+  }
+  b.add(new THREE.BoxGeometry(0.18, 0.5, 4.7), roofMat, tr(-1.6, 3.45, 0));
+  // Door + windows.
+  b.add(new THREE.BoxGeometry(0.9, 1.5, 0.1), steel, tr(-0.28, 0.75, 0.8));
+  for (const pz of [-1.4, 1.9]) {
+    b.add(new THREE.BoxGeometry(0.08, 0.9, 1.0), glass, tr(-0.28, 1.6, pz));
+  }
+  // Clock on the gable (white face, dark hands).
+  b.add(new THREE.CylinderGeometry(0.42, 0.42, 0.08, 16), smat('paintedMetal', { color: 0xf2f0e8 }), tr(-1.6, 2.6, 2.24, Math.PI / 2, 0, 0));
+  b.add(new THREE.BoxGeometry(0.06, 0.3, 0.04), steel, tr(-1.6, 2.66, 2.29));
+  b.add(new THREE.BoxGeometry(0.22, 0.06, 0.04), steel, tr(-1.54, 2.6, 2.29));
+  // Benches + lamps on the platform.
+  for (const pz of [-1.6, 1.6]) {
+    b.add(new THREE.BoxGeometry(1.4, 0.1, 0.45), wood, tr(1.35, 1.05, pz));
+    b.add(new THREE.BoxGeometry(1.4, 0.5, 0.08), wood, tr(1.15, 1.35, pz));
+    for (const px of [0.85, 1.85]) b.add(new THREE.BoxGeometry(0.08, 0.5, 0.4), steel, tr(px, 0.8, pz));
+  }
+  for (const pz of [-2.6, 2.6]) {
+    b.add(new THREE.CylinderGeometry(0.07, 0.09, 3.4, 8), steel, tr(2.4, 2.3, pz));
+    b.add(new THREE.SphereGeometry(0.16, 10, 8), pmat(0xfff2c0, { emissive: 0x887744 }), tr(2.4, 4.05, pz));
+  }
+  return b.build();
+}
+
+/**
+ * busDepot (3x2) — maintenance hall with three open bays, office
+ * block, fuel pump, yard fence.
+ */
+export function buildBusDepot(): LoadedModel {
+  const b = new ModelBuilder();
+  const wall = smat('concrete', { color: 0xb0aca0 });
+  const wallDark = smat('concrete', { color: 0x7e7a70 });
+  const roofMat = smat('paintedMetal', { color: 0x4a5a6a });
+  const steel = smat('gunmetal');
+  const bayDark = smat('concrete', { color: 0x14161a });
+  const glass = smat('glassBlue', { color: 0x2a3d4d });
+  // Main hall (6 wide, 3.8 deep), front faces +z.
+  b.add(new THREE.BoxGeometry(5.8, 2.8, 3.8), wall, tr(0, 1.4, -0.9));
+  b.add(new THREE.BoxGeometry(6.0, 0.18, 4.0), roofMat, tr(0, 2.9, -0.9));
+  // Three open bays (dark recesses with roller-door lintels).
+  for (const px of [-1.9, 0, 1.9]) {
+    b.add(new THREE.BoxGeometry(1.6, 2.0, 0.2), bayDark, tr(px, 1.0, 1.02));
+    b.add(new THREE.BoxGeometry(1.8, 0.25, 0.3), wallDark, tr(px, 2.15, 1.0));
+  }
+  // Office block on the west end.
+  b.add(new THREE.BoxGeometry(1.6, 2.0, 2.4), wallDark, tr(-3.6, 1.0, -0.9));
+  b.add(new THREE.BoxGeometry(1.7, 0.14, 2.5), roofMat, tr(-3.6, 2.05, -0.9));
+  b.add(new THREE.BoxGeometry(0.08, 0.7, 1.4), glass, tr(-2.78, 1.3, -0.9));
+  // Depot sign board.
+  b.add(new THREE.BoxGeometry(3.4, 0.6, 0.12), smat('paintedMetal', { color: 0x2f8f83 }), tr(0, 2.55, 1.06));
+  // Fuel pump + yard lamp.
+  b.add(new THREE.BoxGeometry(0.5, 1.1, 0.4), smat('paintedMetal', { color: 0xc25a2e }), tr(3.4, 0.55, 0.6));
+  b.add(new THREE.CylinderGeometry(0.07, 0.09, 3.2, 8), steel, tr(3.4, 1.6, -2.2));
+  b.add(new THREE.SphereGeometry(0.15, 10, 8), pmat(0xfff2c0, { emissive: 0x887744 }), tr(3.4, 3.25, -2.2));
+  return b.build();
+}
+
+/**
+ * ferryTerminal (3x3) — waterfront terminal: glass-front hall,
+ * covered walkway to the pier, pier deck, bollards, gangway.
+ */
+export function buildFerryTerminal(): LoadedModel {
+  const b = new ModelBuilder();
+  const wall = smat('concrete', { color: 0xc4bdaa });
+  const roofMat = smat('paintedMetal', { color: 0x3a6a8c });
+  const glass = smat('glassBlue', { color: 0x9fd4e8 });
+  const steel = smat('gunmetal');
+  const wood = smat('woodPlank');
+  // Terminal hall (front faces +z toward the water).
+  b.add(new THREE.BoxGeometry(4.6, 2.6, 3.4), wall, tr(0, 1.3, -1.1));
+  // Glass front.
+  b.add(new THREE.BoxGeometry(4.0, 1.7, 0.1), glass, tr(0, 1.45, 0.62));
+  for (const px of [-1.5, -0.5, 0.5, 1.5]) b.add(new THREE.BoxGeometry(0.1, 1.7, 0.12), steel, tr(px, 1.45, 0.62));
+  // Curved-ish roof: two slabs.
+  b.add(new THREE.BoxGeometry(5.0, 0.16, 2.2), roofMat, tr(0, 2.85, -1.7));
+  b.add(new THREE.BoxGeometry(5.0, 0.16, 2.0), roofMat, tr(0, 2.65, 0.0, 0.18, 0, 0));
+  // Entrance canopy on columns.
+  for (const px of [-1.8, 1.8]) b.add(new THREE.CylinderGeometry(0.09, 0.09, 2.4, 8), steel, tr(px, 1.2, 1.4));
+  b.add(new THREE.BoxGeometry(4.4, 0.12, 1.8), roofMat, tr(0, 2.45, 1.4));
+  // Pier deck on pilings (extends +z).
+  b.add(new THREE.BoxGeometry(3.0, 0.18, 2.6), wood, tr(0, 0.55, 2.9));
+  for (const px of [-1.3, 1.3]) {
+    for (const pz of [1.9, 3.9]) b.add(new THREE.CylinderGeometry(0.11, 0.11, 1.2, 8), steel, tr(px, 0.0, pz));
+  }
+  // Gangway + bollards + lamp.
+  b.add(new THREE.BoxGeometry(1.2, 0.1, 1.6), steel, tr(0, 0.75, 4.6, 0.25, 0, 0));
+  for (const px of [-1.2, 1.2]) b.add(new THREE.CylinderGeometry(0.12, 0.14, 0.5, 8), steel, tr(px, 0.85, 3.9));
+  b.add(new THREE.CylinderGeometry(0.07, 0.09, 3.0, 8), steel, tr(-1.3, 2.1, 3.4));
+  b.add(new THREE.SphereGeometry(0.15, 10, 8), pmat(0xfff2c0, { emissive: 0x887744 }), tr(-1.3, 3.65, 3.4));
+  return b.build();
+}
+
+/** Shared sailboat: hull + mast + triangular sail (marinas). */
+function sailboat(b: ModelBuilder, px: number, pz: number, hullColor: number, sailColor: number, ry: number): void {
+  const hullMat = smat('paintedMetal', { color: hullColor });
+  const sailMat = smat('canvasFabric', { color: sailColor });
+  const steel = smat('gunmetal');
+  // Hull: tapered tube pre-rotated to lie along local z, then yawed.
+  const hull = new THREE.CylinderGeometry(0.32, 0.5, 2.2, 8);
+  hull.applyMatrix4(new THREE.Matrix4().makeRotationX(Math.PI / 2));
+  b.add(hull, hullMat, tr(px, 0.35, pz, 0, ry, 0, 0.8, 1, 1));
+  // Deck + cockpit.
+  b.add(new THREE.BoxGeometry(0.55, 0.1, 1.7), smat('woodPlank'), tr(px, 0.62, pz, 0, ry, 0));
+  // Mast + boom.
+  b.beam(px, 0.6, pz, px, 3.1, pz, 0.05, steel);
+  const cs = Math.cos(ry);
+  const sn = Math.sin(ry);
+  // Sail triangle in the boat's local frame (mast top → mast foot →
+  // boom end), yawed about the mast by ry.
+  const boomX = px - 1.15 * sn;
+  const boomZ = pz - 1.15 * cs;
+  b.beam(px, 2.9, pz, boomX, 2.9, boomZ, 0.04, steel);
+  b.add(triGeo(px, 3.0, pz, px, 1.0, pz, boomX, 1.0, boomZ), sailMat);
+}
+
+/**
+ * marina (2x2) — wooden dock fingers with three moored sailboats
+ * and a small clubhouse.
+ */
+export function buildMarina(): LoadedModel {
+  const b = new ModelBuilder();
+  const wood = smat('woodPlank');
+  const woodDark = smat('woodPlank', { color: 0x8a6f4d });
+  const steel = smat('gunmetal');
+  const wall = smat('concrete', { color: 0xd8cfb8 });
+  const roofMat = smat('paintedMetal', { color: 0x7a3b2e });
+  // Main walkway + three fingers (docks run along z).
+  b.add(new THREE.BoxGeometry(3.6, 0.14, 0.5), wood, tr(0, 0.5, 1.55));
+  for (const px of [-1.4, 0, 1.4]) {
+    b.add(new THREE.BoxGeometry(0.45, 0.14, 2.6), wood, tr(px, 0.5, 0.1));
+    for (const pz of [-1.0, 0.4, 1.5]) {
+      b.add(new THREE.CylinderGeometry(0.09, 0.09, 1.1, 8), woodDark, tr(px, 0.0, pz));
+    }
+  }
+  // Moored sailboats between the fingers.
+  sailboat(b, -0.7, -0.3, 0xf0ede4, 0xe8e0cc, 0.15);
+  sailboat(b, 0.7, 0.2, 0x2e5a8c, 0xd8d4c8, -0.2);
+  sailboat(b, -0.7, -1.3, 0xa33b32, 0xf2f0e8, 0.35);
+  // Clubhouse on the shore end.
+  b.add(new THREE.BoxGeometry(1.8, 1.6, 1.6), wall, tr(-1.0, 1.3, -1.35));
+  b.add(new THREE.BoxGeometry(2.1, 0.12, 1.9), roofMat, tr(-1.0, 2.16, -1.35));
+  b.add(new THREE.BoxGeometry(0.9, 0.6, 0.08), smat('glassBlue', { color: 0x2a3d4d }), tr(-1.0, 1.5, -0.54));
+  // Dock lamp.
+  b.add(new THREE.CylinderGeometry(0.06, 0.08, 2.2, 8), steel, tr(1.55, 1.6, 1.55));
+  b.add(new THREE.SphereGeometry(0.13, 10, 8), pmat(0xfff2c0, { emissive: 0x887744 }), tr(1.55, 2.75, 1.55));
+  return b.build();
+}
+
+/**
+ * marinaLarge (4x4) — full marina basin: long breakwater walkway,
+ * five dock fingers, six boats (sail + motor), clubhouse with
+ * terrace, fuel dock.
+ */
+export function buildMarinaLarge(): LoadedModel {
+  const b = new ModelBuilder();
+  const wood = smat('woodPlank');
+  const woodDark = smat('woodPlank', { color: 0x8a6f4d });
+  const steel = smat('gunmetal');
+  const wall = smat('concrete', { color: 0xd8cfb8 });
+  const roofMat = smat('paintedMetal', { color: 0x7a3b2e });
+  const glass = smat('glassBlue', { color: 0x2a3d4d });
+  // Breakwater walkway along the north edge.
+  b.add(new THREE.BoxGeometry(7.6, 0.2, 0.7), smat('concrete', { color: 0x8a8a90 }), tr(0, 0.45, 3.4));
+  // Five fingers.
+  for (const px of [-3.0, -1.5, 0, 1.5, 3.0]) {
+    b.add(new THREE.BoxGeometry(0.5, 0.14, 4.6), wood, tr(px, 0.5, 0.6));
+    for (const pz of [-1.4, 0.4, 2.2]) {
+      b.add(new THREE.CylinderGeometry(0.09, 0.09, 1.1, 8), woodDark, tr(px, 0.0, pz));
+    }
+  }
+  // Six boats (deterministic slips).
+  sailboat(b, -2.25, 0.6, 0xf0ede4, 0xe8e0cc, 0.1);
+  sailboat(b, -0.75, -0.5, 0x2e5a8c, 0xd8d4c8, -0.15);
+  sailboat(b, 0.75, 0.9, 0xa33b32, 0xf2f0e8, 0.2);
+  sailboat(b, 2.25, -0.2, 0x3f6ea5, 0xe8e0cc, -0.1);
+  // Two motorboats: hull + windshield + outboard.
+  for (const [px, pz, col] of [[-2.25, -1.6, 0xd8d4c8], [2.25, 1.8, 0x7a8a99]] as const) {
+    const hullMat = smat('paintedMetal', { color: col });
+    b.add(new THREE.CylinderGeometry(0.4, 0.55, 2.0, 8), hullMat, tr(px, 0.35, pz, Math.PI / 2, 0, 0, 0.85, 1, 1));
+    b.add(new THREE.BoxGeometry(0.7, 0.35, 0.5), glass, tr(px, 0.75, pz + 0.3, -0.3, 0, 0));
+    b.add(new THREE.BoxGeometry(0.25, 0.5, 0.2), steel, tr(px, 0.45, pz - 1.05));
+  }
+  // Clubhouse with terrace.
+  b.add(new THREE.BoxGeometry(3.0, 2.2, 2.4), wall, tr(-2.2, 1.6, -2.6));
+  b.add(new THREE.BoxGeometry(3.3, 0.14, 2.7), roofMat, tr(-2.2, 2.78, -2.6));
+  b.add(new THREE.BoxGeometry(2.4, 0.9, 0.08), glass, tr(-2.2, 1.7, -1.38));
+  b.add(new THREE.BoxGeometry(2.6, 0.12, 1.2), wood, tr(-2.2, 0.56, -0.9));
+  // Fuel dock kiosk.
+  b.add(new THREE.BoxGeometry(0.9, 1.4, 0.9), smat('paintedMetal', { color: 0xc25a2e }), tr(3.3, 1.2, 2.6));
+  b.add(new THREE.BoxGeometry(1.1, 0.1, 1.1), roofMat, tr(3.3, 1.95, 2.6));
+  // Mast lamps.
+  for (const px of [-3.5, 3.5]) {
+    b.add(new THREE.CylinderGeometry(0.06, 0.08, 2.6, 8), steel, tr(px, 1.75, 3.4));
+    b.add(new THREE.SphereGeometry(0.13, 10, 8), pmat(0xfff2c0, { emissive: 0x887744 }), tr(px, 3.1, 3.4));
+  }
+  return b.build();
+}
+
+/** Shared shelter: back glass panel + roof + bench (bus/tram/taxi stops). */
+function stopShelter(b: ModelBuilder, accentColor: number): void {
+  const steel = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x9fd4e8 });
+  const roofMat = smat('paintedMetal', { color: accentColor });
+  const wood = smat('woodPlank');
+  // Back glass panel.
+  b.add(new THREE.BoxGeometry(1.8, 1.5, 0.08), glass, tr(0, 1.15, -0.7));
+  for (const px of [-0.95, 0.95]) {
+    b.add(new THREE.BoxGeometry(0.09, 2.2, 0.09), steel, tr(px, 1.1, -0.7));
+    b.add(new THREE.BoxGeometry(0.09, 2.2, 0.09), steel, tr(px, 1.1, 0.7));
+  }
+  // Roof slab (slight forward tilt).
+  b.add(new THREE.BoxGeometry(2.1, 0.1, 1.7), roofMat, tr(0, 2.28, 0, 0.08, 0, 0));
+  // Bench.
+  b.add(new THREE.BoxGeometry(1.6, 0.08, 0.4), wood, tr(0, 0.65, -0.45));
+  for (const px of [-0.7, 0.7]) b.add(new THREE.BoxGeometry(0.08, 0.6, 0.35), steel, tr(px, 0.32, -0.45));
+}
+
+/**
+ * busStop (1x1) — shelter with teal roof, sign pole, timetable board.
+ */
+export function buildBusStop(): LoadedModel {
+  const b = new ModelBuilder();
+  const steel = smat('gunmetal');
+  stopShelter(b, 0x2f8f83);
+  // Sign pole: teal board with white bus glyph bar.
+  b.add(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 8), steel, tr(1.35, 1.3, 0.6));
+  b.add(new THREE.BoxGeometry(0.55, 0.75, 0.06), smat('paintedMetal', { color: 0x2f8f83 }), tr(1.35, 2.4, 0.6));
+  b.add(new THREE.BoxGeometry(0.4, 0.18, 0.07), smat('paintedMetal', { color: 0xf2f0e8 }), tr(1.35, 2.5, 0.6));
+  b.add(new THREE.BoxGeometry(0.28, 0.14, 0.07), smat('paintedMetal', { color: 0x2f8f83 }), tr(1.35, 2.28, 0.6));
+  // Timetable board on the shelter.
+  b.add(new THREE.BoxGeometry(0.5, 0.65, 0.05), smat('paintedMetal', { color: 0xf2f0e8 }), tr(-0.6, 1.5, -0.64));
+  return b.build();
+}
+
+/**
+ * taxiStand (1x1) — yellow-topped sign pole, curb block, small
+ * waiting marker.
+ */
+export function buildTaxiStand(): LoadedModel {
+  const b = new ModelBuilder();
+  const steel = smat('gunmetal');
+  // Curb block (painted).
+  b.add(new THREE.BoxGeometry(1.9, 0.22, 0.5), smat('concrete', { color: 0xd8b828 }), tr(0, 0.11, 0.75));
+  // Sign pole with checkered TAXI board.
+  b.add(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 8), steel, tr(-0.7, 1.3, 0));
+  b.add(new THREE.BoxGeometry(0.7, 0.5, 0.06), smat('paintedMetal', { color: 0xf2c028 }), tr(-0.7, 2.5, 0));
+  for (let i = 0; i < 4; i++) {
+    b.add(
+      new THREE.BoxGeometry(0.14, 0.14, 0.07),
+      smat('paintedMetal', { color: i % 2 === 0 ? 0x1c1c1c : 0xf2f0e8 }),
+      tr(-0.7 - 0.21 + i * 0.14, 2.32, 0),
+    );
+  }
+  // Small bollard with lamp.
+  b.add(new THREE.CylinderGeometry(0.09, 0.11, 0.9, 8), steel, tr(0.7, 0.45, 0));
+  b.add(new THREE.SphereGeometry(0.12, 10, 8), pmat(0xfff2c0, { emissive: 0x887744 }), tr(0.7, 1.0, 0));
+  return b.build();
+}
+
+/**
+ * tramStop (1x1) — platform slab, shelter with red roof, catenary
+ * pole with a wire arm over the track.
+ */
+export function buildTramStop(): LoadedModel {
+  const b = new ModelBuilder();
+  const steel = smat('gunmetal');
+  const concrete = smat('concrete', { color: 0x9a9a9e });
+  // Raised platform.
+  b.add(new THREE.BoxGeometry(2.0, 0.35, 1.6), concrete, tr(0, 0.175, 0.2));
+  stopShelter(b, 0xa32e28);
+  // Catenary pole + arm over the track side.
+  b.add(new THREE.CylinderGeometry(0.09, 0.11, 4.6, 8), steel, tr(-1.3, 2.3, -0.6));
+  b.beam(-1.3, 4.4, -0.6, 0.6, 4.35, -0.6, 0.06, steel);
+  b.beam(0.6, 4.35, -0.6, 0.6, 3.6, -0.6, 0.03, steel);
+  return b.build();
+}
+
+/**
+ * ferryPier (2x2) — wooden pier on pilings with a small waiting
+ * shelter, gangway, lamps, mooring bollards.
+ */
+export function buildFerryPier(): LoadedModel {
+  const b = new ModelBuilder();
+  const wood = smat('woodPlank');
+  const woodDark = smat('woodPlank', { color: 0x8a6f4d });
+  const steel = smat('gunmetal');
+  // Pier deck on pilings (extends +z over the water).
+  b.add(new THREE.BoxGeometry(2.2, 0.16, 3.4), wood, tr(0, 0.55, 0.6));
+  for (const px of [-0.9, 0.9]) {
+    for (const pz of [-0.9, 0.6, 2.1]) {
+      b.add(new THREE.CylinderGeometry(0.1, 0.1, 1.2, 8), woodDark, tr(px, 0.0, pz));
+    }
+  }
+  // Waiting shelter at the shore end.
+  stopShelter(b, 0x3a6a8c);
+  // Gangway down to a float.
+  b.add(new THREE.BoxGeometry(1.2, 0.1, 1.4), steel, tr(0, 0.45, 2.9, 0.3, 0, 0));
+  b.add(new THREE.BoxGeometry(1.6, 0.14, 1.0), woodDark, tr(0, 0.15, 3.6));
+  // Bollards + lamps.
+  for (const px of [-0.85, 0.85]) {
+    b.add(new THREE.CylinderGeometry(0.1, 0.12, 0.45, 8), steel, tr(px, 0.85, 2.0));
+    b.add(new THREE.CylinderGeometry(0.06, 0.08, 2.0, 8), steel, tr(px, 1.6, -0.9));
+    b.add(new THREE.SphereGeometry(0.12, 10, 8), pmat(0xfff2c0, { emissive: 0x887744 }), tr(px, 2.65, -0.9));
+  }
+  return b.build();
+}
+
+/**
+ * neighborhoodStation (2x2) — combined bus/tram/taxi hub: larger
+ * canopy, two benches, info totem, bike rack.
+ */
+export function buildNeighborhoodStation(): LoadedModel {
+  const b = new ModelBuilder();
+  const steel = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x9fd4e8 });
+  const roofMat = smat('paintedMetal', { color: 0x4a5a8c });
+  const wood = smat('woodPlank');
+  const concrete = smat('concrete', { color: 0x9a9a9e });
+  // Paved forecourt.
+  b.add(new THREE.BoxGeometry(3.8, 0.12, 3.8), concrete, tr(0, 0.06, 0));
+  // Wide canopy on four columns.
+  for (const px of [-1.6, 1.6]) {
+    for (const pz of [-1.2, 1.2]) {
+      b.add(new THREE.BoxGeometry(0.18, 2.8, 0.18), steel, tr(px, 1.4, pz));
+    }
+  }
+  b.add(new THREE.BoxGeometry(4.0, 0.14, 3.2), roofMat, tr(0, 2.9, 0));
+  b.add(new THREE.BoxGeometry(4.04, 0.3, 0.1), smat('paintedMetal', { color: 0xd8b828 }), tr(0, 2.7, 1.62));
+  // Glass windbreak + two benches.
+  b.add(new THREE.BoxGeometry(3.2, 1.3, 0.08), glass, tr(0, 1.15, -1.15));
+  for (const px of [-0.9, 0.9]) {
+    b.add(new THREE.BoxGeometry(1.4, 0.09, 0.42), wood, tr(px, 0.62, -0.5));
+    for (const bx of [px - 0.6, px + 0.6]) b.add(new THREE.BoxGeometry(0.08, 0.55, 0.36), steel, tr(bx, 0.3, -0.5));
+  }
+  // Info totem with three mode glyphs (bus teal / tram red / taxi yellow).
+  b.add(new THREE.BoxGeometry(0.5, 1.9, 0.28), steel, tr(1.55, 1.4, 0.9));
+  const glyphs = [0x2f8f83, 0xa32e28, 0xf2c028];
+  glyphs.forEach((col, i) => {
+    b.add(new THREE.BoxGeometry(0.36, 0.36, 0.05), smat('paintedMetal', { color: col }), tr(1.55, 1.95 - i * 0.5, 1.06));
+  });
+  // Bike rack: two rails + three bike frames (suggestive loops).
+  for (const pz of [0.4, 0.9]) b.beam(-1.7, 0.5, pz, -0.2, 0.5, pz, 0.04, steel);
+  for (const px of [-1.5, -1.0, -0.5]) {
+    b.beam(px, 0.15, 0.65, px, 0.9, 0.65, 0.035, steel);
+    b.beam(px, 0.9, 0.65, px + 0.35, 0.9, 0.65, 0.035, steel);
+  }
+  return b.build();
+}
+
+/**
+ * centralStation (4x3) — grand terminus: arched glass trainshed,
+ * clock tower, side wings, forecourt canopy, flag poles.
+ */
+export function buildCentralStation(): LoadedModel {
+  const b = new ModelBuilder();
+  const stone = smat('concrete', { color: 0xc9bfa8 });
+  const stoneDark = smat('concrete', { color: 0x9a917c });
+  const glass = smat('glassBlue', { color: 0x9fd4e8 });
+  const roofMat = smat('paintedMetal', { color: 0x3a4a5a });
+  const steel = smat('gunmetal');
+  // Main hall (front faces +z).
+  b.add(new THREE.BoxGeometry(5.6, 3.2, 4.2), stone, tr(0, 1.6, -0.9));
+  // Arched glass trainshed: half-cylinder along z over the hall.
+  const shed = new THREE.CylinderGeometry(2.9, 2.9, 4.4, 14, 1, false, 0, Math.PI);
+  shed.applyMatrix4(new THREE.Matrix4().makeRotationX(Math.PI / 2));
+  shed.applyMatrix4(new THREE.Matrix4().makeRotationY(Math.PI / 2));
+  b.add(shed, glass, tr(0, 3.2, -0.9));
+  // Side wings.
+  for (const px of [-3.6, 3.6]) {
+    b.add(new THREE.BoxGeometry(1.8, 2.2, 3.6), stoneDark, tr(px, 1.1, -0.9));
+    b.add(new THREE.BoxGeometry(2.0, 0.14, 3.8), roofMat, tr(px, 2.27, -0.9));
+  }
+  // Clock tower.
+  b.add(new THREE.BoxGeometry(1.6, 6.4, 1.6), stone, tr(0, 3.2, 1.4));
+  b.add(new THREE.BoxGeometry(1.9, 0.5, 1.9), stoneDark, tr(0, 6.55, 1.4));
+  b.add(new THREE.BoxGeometry(1.2, 1.2, 1.2), roofMat, tr(0, 7.3, 1.4, 0, Math.PI / 4, 0));
+  const face = smat('paintedMetal', { color: 0xf2f0e8 });
+  for (const [rz, px, pz] of [[0, 0, 2.22], [Math.PI, 0, 0.58]] as const) {
+    b.add(new THREE.CylinderGeometry(0.5, 0.5, 0.06, 16), face, tr(px, 5.6, pz, Math.PI / 2, 0, 0));
+    b.add(new THREE.BoxGeometry(0.07, 0.34, 0.04), steel, tr(px, 5.68, pz + (rz === 0 ? 0.04 : -0.04)));
+    b.add(new THREE.BoxGeometry(0.26, 0.07, 0.04), steel, tr(px + 0.08, 5.6, pz + (rz === 0 ? 0.04 : -0.04)));
+  }
+  // Entrance arch + doors.
+  b.add(new THREE.BoxGeometry(2.4, 2.0, 0.16), glass, tr(0, 1.0, 1.24));
+  b.add(new THREE.BoxGeometry(2.8, 0.4, 0.3), stoneDark, tr(0, 2.2, 1.24));
+  // Forecourt canopy on columns.
+  for (const px of [-2.2, 2.2]) b.add(new THREE.CylinderGeometry(0.11, 0.11, 2.6, 8), steel, tr(px, 1.3, 2.6));
+  b.add(new THREE.BoxGeometry(5.2, 0.12, 1.8), roofMat, tr(0, 2.68, 2.6));
+  // Flag poles.
+  for (const px of [-3.1, 3.1]) {
+    b.add(new THREE.CylinderGeometry(0.05, 0.05, 3.4, 8), steel, tr(px, 1.7, 2.9));
+    b.add(triGeo(px, 3.3, 2.9, px, 2.7, 2.9, px + 0.8, 3.0, 2.9), smat('canvasFabric', { color: 0x2e5a8c }));
+  }
+  return b.build();
+}
+
+/**
+ * airportInterchange (4x4) — ground transport hub for the airport:
+ * terminal block with glass front, control tower, covered walkway,
+ * taxi loop, radar dome.
+ */
+export function buildAirportInterchange(): LoadedModel {
+  const b = new ModelBuilder();
+  const wall = smat('concrete', { color: 0xd5d2c8 });
+  const wallDark = smat('concrete', { color: 0x9a978c });
+  const glass = smat('glassBlue', { color: 0x9fd4e8 });
+  const roofMat = smat('paintedMetal', { color: 0x4a5a6a });
+  const steel = smat('gunmetal');
+  const asphalt = smat('concrete', { color: 0x5a5e64 });
+  // Terminal block (front faces +z).
+  b.add(new THREE.BoxGeometry(5.2, 2.8, 3.6), wall, tr(-1.0, 1.4, -1.6));
+  b.add(new THREE.BoxGeometry(4.6, 1.8, 0.12), glass, tr(-1.0, 1.5, 0.24));
+  for (const px of [-2.6, -1.5, -0.5, 0.5]) b.add(new THREE.BoxGeometry(0.12, 1.8, 0.14), steel, tr(px, 1.5, 0.24));
+  b.add(new THREE.BoxGeometry(5.5, 0.18, 3.9), roofMat, tr(-1.0, 2.9, -1.6));
+  // Control tower: shaft + glass cab + roof.
+  b.add(new THREE.BoxGeometry(1.3, 5.2, 1.3), wallDark, tr(2.9, 2.6, -1.6));
+  b.add(new THREE.CylinderGeometry(1.25, 1.0, 1.2, 10), glass, tr(2.9, 5.7, -1.6));
+  b.add(new THREE.CylinderGeometry(1.35, 1.35, 0.18, 10), roofMat, tr(2.9, 6.4, -1.6));
+  // Antenna on the tower.
+  b.beam(2.9, 6.5, -1.6, 2.9, 7.6, -1.6, 0.05, steel);
+  // Radar dome on the terminal roof.
+  b.add(new THREE.SphereGeometry(0.7, 14, 10), smat('paintedMetal', { color: 0xe8e4d8 }), tr(-2.6, 3.5, -2.4));
+  b.add(new THREE.BoxGeometry(0.5, 0.5, 0.5), wallDark, tr(-2.6, 3.0, -2.4));
+  // Covered walkway to the curb.
+  for (const px of [-2.8, 0.8]) b.add(new THREE.CylinderGeometry(0.1, 0.1, 2.4, 8), steel, tr(px, 1.2, 1.6));
+  b.add(new THREE.BoxGeometry(4.4, 0.12, 1.6), roofMat, tr(-1.0, 2.46, 1.6));
+  // Taxi loop (asphalt strip with dashes).
+  b.add(new THREE.BoxGeometry(7.4, 0.08, 1.6), asphalt, tr(0, 0.04, 3.1));
+  for (let i = 0; i < 6; i++) {
+    b.add(new THREE.BoxGeometry(0.5, 0.02, 0.1), smat('paintedMetal', { color: 0xe8d44d }), tr(-3.0 + i * 1.2, 0.09, 3.1));
+  }
+  // Mode totem: bus / taxi / train / air glyphs.
+  b.add(new THREE.BoxGeometry(0.5, 2.2, 0.3), steel, tr(3.2, 1.5, 1.6));
+  const glyphs = [0x2f8f83, 0xf2c028, 0x2e5a8c, 0x9fd4e8];
+  glyphs.forEach((col, i) => {
+    b.add(new THREE.BoxGeometry(0.38, 0.38, 0.06), smat('paintedMetal', { color: col }), tr(3.2, 2.25 - i * 0.48, 1.78));
+  });
+  return b.build();
 }

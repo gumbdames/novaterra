@@ -135,11 +135,19 @@ function lay(
   field: 'roads' | 'powerLines' | 'pipes',
   cells: number[],
 ): void {
-  const arr = city[field];
-  for (const c of cells) {
-    if (!arr.includes(c)) arr.push(c);
+  if (field === 'roads') {
+    // Phase 4 (S7): roads are RoadCell[] — lay paved cells.
+    for (const c of cells) {
+      if (!city.roads.some((r) => r.cell === c)) city.roads.push({ cell: c, cls: 'paved' });
+    }
+    city.roads.sort((a, b) => a.cell - b.cell);
+  } else {
+    const arr = city[field];
+    for (const c of cells) {
+      if (!arr.includes(c)) arr.push(c);
+    }
+    arr.sort((a, b) => a - b);
   }
-  arr.sort((a, b) => a - b);
   bumpUtilityEpoch(city);
 }
 

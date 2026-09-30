@@ -19,8 +19,8 @@
  * data and availability logic (roster expansion).
  *
  * Responsibilities:
- *  - The tab groupings (spec §8): 4 train tabs for the 28 units, 6 build
- *    tabs for the 30 buildings, 2 research groups for the 12 upgrades.
+ *  - The tab groupings (spec §8): 5 train tabs for the 35 units, 11 build
+ *    tabs for the 67 buildings, 2 research groups for the 12 upgrades.
  *  - Availability checks that mirror the sim's command validation so the
  *    UI greys out exactly what the sim would reject: `unitAvailability`
  *    mirrors `spawnUnit` validate (age → production building →
@@ -54,14 +54,14 @@ import {
 // Tab groupings (spec §8).
 // ---------------------------------------------------------------------------
 
-export type TrainTabId = 'infantry' | 'armor' | 'air' | 'navy';
+export type TrainTabId = 'infantry' | 'armor' | 'air' | 'navy' | 'transport';
 
 export interface TrainTab {
   id: TrainTabId;
   kinds: readonly UnitKind[];
 }
 
-/** 28 units across 4 tabs. Every unit kind appears in exactly one tab. */
+/** 35 units across 5 tabs. Every unit kind appears in exactly one tab. */
 export const TRAIN_TABS: readonly TrainTab[] = [
   {
     id: 'infantry',
@@ -92,6 +92,13 @@ export const TRAIN_TABS: readonly TrainTab[] = [
       'fishingBoat',
     ],
   },
+  // Grand-expansion Phase 4 S7 (2026-09-30): the civilian transports get
+  // their own tab — they train from transport hubs (railStation/busDepot/
+  // ferryTerminal), never from military production buildings.
+  {
+    id: 'transport',
+    kinds: ['passengerTrain', 'freightTrain', 'bus', 'tram', 'ferry'],
+  },
 ];
 
 export type BuildTabId =
@@ -105,14 +112,16 @@ export type BuildTabId =
   | 'navalAir'
   | 'special'
   // Grand-expansion Phase 3 (logistics): production + depots.
-  | 'logistics';
+  | 'logistics'
+  // Grand-expansion Phase 4 S7 (2026-09-30): transport hubs.
+  | 'transport';
 
 export interface BuildTab {
   id: BuildTabId;
   kinds: readonly BuildingKind[];
 }
 
-/** 55 buildings across 10 tabs. Every building kind appears in exactly one. */
+/** 67 buildings across 11 tabs. Every building kind appears in exactly one. */
 export const BUILD_TABS: readonly BuildTab[] = [
   { id: 'housing', kinds: ['house', 'apartment'] },
   // Workstream Z (2026-09-30): the civic tab — the four education
@@ -186,6 +195,19 @@ export const BUILD_TABS: readonly BuildTab[] = [
     ],
   },
   { id: 'special', kinds: ['monument', 'aegisControl', 'stormArray'] },
+  // Grand-expansion Phase 4 S7 (2026-09-30): the transport hubs — rail
+  // station, bus depot, ferry terminal, and the two marinas — get their
+  // own tab (civilian infrastructure, not military logistics).
+  // Tiered transit stops/stations (2026-09-30): the seven passenger
+  // stops join the same tab — the full civilian-transport palette.
+  {
+    id: 'transport',
+    kinds: [
+      'railStation', 'busDepot', 'ferryTerminal', 'marina', 'marinaLarge',
+      'busStop', 'taxiStand', 'tramStop', 'ferryPier',
+      'neighborhoodStation', 'centralStation', 'airportInterchange',
+    ],
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -212,6 +234,8 @@ export type MenuTabId = 'civilian' | 'military' | 'management';
  *   military production buildings (shipyard, naval yard, airfield,
  *   radar). `special` holds the superweapons (Aegis Control, Storm
  *   Array); the Monument rides along as the one civilian oddity.
+ *   The `transport` build tab is civilian: stations, depots, terminals,
+ *   and marinas are civilian infrastructure.
  */
 export const BUILD_TAB_MENU_TABS: Record<BuildTabId, 'civilian' | 'military'> = {
   housing: 'civilian',
@@ -224,6 +248,7 @@ export const BUILD_TAB_MENU_TABS: Record<BuildTabId, 'civilian' | 'military'> = 
   logistics: 'military',
   navalAir: 'military',
   special: 'military',
+  transport: 'civilian',
 };
 
 /**

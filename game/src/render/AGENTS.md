@@ -287,6 +287,69 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   below the +5 cultural types); `MODEL_SOURCES` maps both to
   `procedural`. Tested in `tests/sim.parking.test.ts`.
 
+## Living nature (`render/ambientTime.ts`, `render/birds.ts`, 0.1 Alpha)
+
+- Decorative wind/water/birds, render-side only, zero sim state —
+  nothing selectable, nothing in the digest/snapshot. One shared
+  ambient clock (`ambientTimeSeconds`, a TSL uniform in
+  `render/ambientTime.ts`) drives every decorative motion; the render
+  sync sets it from `world.tick` only (30 ticks = 1 s), so the same
+  pause rule as the workstream-P crowd holds: frozen tick ⇒ still
+  air, still water, frozen birds. Poses are pure functions of the
+  tick — pause/seek/rebuild exact, identical on every machine.
+- Shader injection is backend-agnostic TSL, not `onBeforeCompile`:
+  the game only ever constructs `WebGPURenderer` (native WebGPU, or
+  the same class with `forceWebGL` for the WebGL2 fallback — see
+  `render/renderer.ts`), whose node pipeline converts classic `three`
+  materials via `fromMaterial`, which copies every own property —
+  including a dynamically assigned `positionNode` / `colorNode` — onto
+  the node material. One TSL injection therefore applies on BOTH
+  backends. `onBeforeCompile` is WebGLRenderer-only and would silently
+  apply to neither (the game never constructs a classic
+  WebGLRenderer). Materials are never cloned after the node is
+  assigned (a clone would drop the expando).
+- Trees (`render/natureTrees.ts` `attachWindSway`): foliage + inner
+  cores sway in the VERTEX shader — height-graded (trunk base at local
+  y≈0 holds still, canopy top moves ±0.11), phased per instance from
+  `instanceIndex` via `hash()`. Zero CPU per frame for ~2,100 tree
+  instances (the CPU-matrix alternative benchmarked 0.485 ms/frame and
+  would re-upload 18 instance buffers per frame — rejected). Trunks
+  stay rigid. Instanced-only contract: these materials feed only the
+  `InstancedMesh` layers in `render/nature.ts`.
+- Water (`render/terrain.ts` `attachWaterFlow` + `waterBobY`): two slow
+  brightness bands drift across the plane in the FRAGMENT shader via
+  `colorNode = materialColor × (0.95…1.05)` — a few ALU per water pixel
+  on 2 triangles, the cheapest moving water there is. Shore foam was
+  deliberately skipped: without a shoreline distance field it would
+  need a texture or a per-frame CPU pass, neither cheap. Plus a gentle
+  whole-plane swell: `water.position.y = waterBobY(waterLevel, tickSec)`
+  (±0.09, ~12.6 s period). The x-ray view still ghosts the water by
+  material opacity — no conflict.
+- Birds (`render/birds.ts`): 10 procedural variants (~22 tris each:
+  stretched-octahedron body, tail fan, 3 tapered swept quads per wing;
+  vertex-colored plumage, `aFlap` 0→1 root→tip attribute), one shared
+  flapping material (vertex-shader wing lift from the ambient clock,
+  per-bird phase + rate from the instance id). One `InstancedMesh` per
+  variant, created LAZILY on the first active flyover (empty sky = zero
+  bird meshes — keeps the instancing draw-call counts honest, same rule
+  as the utility-overlay markers) and hidden when empty (0 draw calls
+  between flyovers). Schedule: flock k spawns at
+  `k·1500 + hash·600` ticks, flies a seeded quadratic bezier
+  edge-to-edge over 1350 ticks (~45 s, altitude 30–49), ≤2 flocks × 6
+  birds = 12 birds alive; ≤12 matrix composes/frame. Tested in
+  `tests/render.birds.test.ts` + `tests/render.ambientNature.test.ts`
+  (25 tests): variant distinctness, geometry validity/lightness,
+  schedule/determinism/pause purity, lazy creation, the sway-node
+  attachment contract (foliage sways, trunks don't), the flow node,
+  and perf smokes.
+- `EntityRenderer` owns one `BirdFlocks` (constructed in the
+  constructor, synced in `sync()` via `syncLivingNature`, disposed in
+  `dispose()`) and bobs the caller-owned water mesh through the new
+  `opts.waterMesh` (`ui/game.ts` passes `terrainView.water`). Frame
+  budget: one float uniform write + ≤12 matrix composes + water Y
+  write per frame (~µs CPU); +0 tris except during flyovers (<300);
+  +0 draw calls except during flyovers (≤10 hidden-otherwise).
+
 ## Utility networks (`render/networks.ts`, 0.1 Alpha)
 
 - Grand-expansion Phase 2: the visible power lines and water pipes.

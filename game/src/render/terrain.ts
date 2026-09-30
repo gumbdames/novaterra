@@ -42,11 +42,41 @@
 
 import * as THREE from 'three';
 import type { TerrainData } from '../sim/terrain';
+import { materialColor, positionLocal, sin } from 'three/tsl';
 import {
   Biome,
   MERIDIAN_PLAINS,
   rawToWorldHeight,
 } from '../sim/terrain';
+import { ambientTimeSeconds } from './ambientTime';
+
+/**
+ * Water surface Y at a sim-time instant: the plane breathes ±0.09 world
+ * units on a ~12.6 s swell around the sim's water level. Pure —
+ * deterministic and pause-consistent (frozen tick ⇒ frozen swell).
+ */
+export function waterBobY(waterLevel: number, tickSeconds: number): number {
+  return waterLevel + Math.sin(tickSeconds * 0.5) * 0.09;
+}
+
+/**
+ * Attach the living-water flow to the water material: two slow
+ * brightness bands drift across the plane in the fragment shader
+ * (vertex colors would need a subdivided plane; this costs a few ALU
+ * per water pixel on 2 triangles — the cheapest moving water there is).
+ * Shore foam is deliberately skipped: without a shoreline distance
+ * field it would need a texture or per-frame CPU pass, neither of
+ * which is cheap.
+ */
+function attachWaterFlow(mat: THREE.MeshStandardMaterial): void {
+  const t = ambientTimeSeconds;
+  const bandA = sin(positionLocal.x.mul(0.045).sub(t.mul(0.28)));
+  const bandB = sin(
+    positionLocal.z.mul(0.06).add(positionLocal.x.mul(0.023)).add(t.mul(0.21)),
+  );
+  const brighten = bandA.mul(bandB).mul(0.05).add(1);
+  mat.colorNode = materialColor.mul(brighten);
+}
 
 /** Plain-array chunk mesh: positions/colors/indices, no three.js types. */
 export interface ChunkMeshData {
@@ -206,16 +236,17 @@ export function buildTerrainView(t: TerrainData): TerrainView {
 
   const waterGeo = new THREE.PlaneGeometry(t.size, t.size);
   waterGeo.rotateX(-Math.PI / 2);
-  const water = new THREE.Mesh(
-    waterGeo,
-    new THREE.MeshStandardMaterial({
-      color: 0x2e6f9e,
-      transparent: true,
-      opacity: 0.72,
-      roughness: 0.3,
-      metalness: 0,
-    }),
-  );
+  const waterMat = new THREE.MeshStandardMaterial({
+    color: 0x2e6f9e,
+    transparent: true,
+    opacity: 0.72,
+    roughness: 0.3,
+    metalness: 0,
+  });
+  // Living nature: the water visibly flows (fragment-shader drift bands)
+  // and breathes (the caller bobs `water.position.y` via `waterBobY`).
+  attachWaterFlow(waterMat);
+  const water = new THREE.Mesh(waterGeo, waterMat);
   water.position.y = t.waterLevel;
   group.add(water);
   triangles += 2;

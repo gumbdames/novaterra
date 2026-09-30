@@ -62,8 +62,10 @@ import type { World } from '../sim/world';
  * drift when the sim adds producers, ports, or harbors in later phases).
  * The sim's canonical list (see the `reloadPoint` doc in sim/city.ts):
  * the four production bases (barracks, warFactory, airfield, navalYard),
- * the two ammo producers (munitionsFactory, missilePlant), and the three
- * purpose-built depots (missileSilo, ordnanceDepot, fuelDepot).
+ * the two ammo producers (munitionsFactory, missilePlant), the three
+ * purpose-built depots (missileSilo, ordnanceDepot, fuelDepot), and —
+ * Phase 4 S7 — the three transport hubs (railStation, busDepot,
+ * ferryTerminal), where civilian units refuel/rearm.
  */
 export const RELOAD_POINT_KINDS: readonly BuildingKind[] = (
   Object.keys(BUILDING_DEFS) as BuildingKind[]

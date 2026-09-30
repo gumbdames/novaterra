@@ -140,7 +140,7 @@ blocks red (low) → green (prime).
 
 ## City life (decorative)
 
-Your city is alive — and you don't have to manage any of it. Three
+Your city is alive — and you don't have to manage any of it. Four
 things happen automatically, purely as decoration:
 
 - **Auto-paved zones.** Painted residential, commercial, and
@@ -155,6 +155,11 @@ things happen automatically, purely as decoration:
   workplaces; cars drive the roads. They are pure decoration: they
   can't be selected, they don't affect the simulation, and pausing
   pauses them.
+- **Living nature.** Trees sway in the wind, water shimmers and
+  breathes as it flows, and flocks of birds (ten kinds — swifts,
+  gulls, crows, hawks, herons, and more) cross the sky every so often
+  on their own curved paths. All decorative, all automatic, all
+  frozen while the game is paused — just like the pedestrians.
 - **Civic parking.** The **Civic** tab also holds the **Parking Lot**
   (180 Funds, 60 Materials) and **Parking Garage** (450 Funds, 180
   Materials): 3×3 buildings that add a little desirability nearby

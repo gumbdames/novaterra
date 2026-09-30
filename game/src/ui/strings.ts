@@ -316,6 +316,13 @@ export const STRINGS = {
     commandShip: { en: 'Command Ship' },
     transportShip: { en: 'Transport Ship' },
     fishingBoat: { en: 'Fishing Boat' },
+    // Phase 4 SIM workstream (2026-09-30): provisional names for the
+    // five civilian transports — the UI workstream owns final copy.
+    passengerTrain: { en: 'Passenger Train' },
+    freightTrain: { en: 'Freight Train' },
+    bus: { en: 'Bus' },
+    tram: { en: 'Tram' },
+    ferry: { en: 'Ferry' },
   } as Record<UnitKind, LocalizedString>,
   /** Localized display names for all building kinds (tab palettes). */
   buildingNames: {
@@ -372,6 +379,22 @@ export const STRINGS = {
     powerSubstation: { en: 'Power Substation' },
     pumpingStation: { en: 'Pumping Station' },
     batteryStation: { en: 'Battery Station' },
+    // Grand-expansion Phase 4 S7 (2026-09-30): the transport hubs
+    // (provisional names — the UI workstream owns final copy).
+    railStation: { en: 'Rail Station' },
+    busDepot: { en: 'Bus Depot' },
+    ferryTerminal: { en: 'Ferry Terminal' },
+    marina: { en: 'Marina' },
+    marinaLarge: { en: 'Large Marina' },
+    // Phase 4 tiered transit stops/stations (2026-09-30, provisional
+    // names — the UI workstream owns final copy).
+    busStop: { en: 'Bus Stop' },
+    taxiStand: { en: 'Taxi Stand' },
+    tramStop: { en: 'Tram Stop' },
+    ferryPier: { en: 'Ferry Pier' },
+    neighborhoodStation: { en: 'Neighborhood Station' },
+    centralStation: { en: 'Central Station' },
+    airportInterchange: { en: 'Airport Interchange' },
     // Grand-expansion Phase 3 (2026-09-30): the logistics roster.
     oilWell: { en: 'Oil Well' },
     oilRig: { en: 'Offshore Oil Rig' },
@@ -387,6 +410,8 @@ export const STRINGS = {
     armor: { en: 'Armor' },
     air: { en: 'Air Force' },
     navy: { en: 'Navy' },
+    // Grand-expansion Phase 4 S7 (2026-09-30): the civilian transports tab.
+    transport: { en: 'Transport' },
   } as Record<string, LocalizedString>,
   /** Build-palette tab names (spec §8). */
   buildingTabs: {
@@ -403,6 +428,8 @@ export const STRINGS = {
     waterNet: { en: 'Water' },
     // Grand-expansion Phase 3 (2026-09-30): the logistics roster tab.
     logistics: { en: 'Logistics' },
+    // Grand-expansion Phase 4 S7 (2026-09-30): the transport hubs tab.
+    transport: { en: 'Transport' },
   } as Record<string, LocalizedString>,
   /** Research-panel upgrade group names. */
   upgradeGroups: {

@@ -123,9 +123,10 @@ function placeBuildingForTest(city: CityState, kind: 'aegisControl' | 'stormArra
     for (let cx = 2; cx < 60; cx++) {
       if (cellIsWater(t, cx, cz) || cellIsWater(t, cx + 1, cz)) continue;
       const roadCell = cellIndex(cx - 1, cz);
-      if (!city.roads.includes(roadCell)) {
-        city.roads.push(roadCell);
-        city.roads.sort((a, b) => a - b);
+      // Phase 4 (S7): roads are RoadCell[].
+      if (!city.roads.some((r) => r.cell === roadCell)) {
+        city.roads.push({ cell: roadCell, cls: 'paved' });
+        city.roads.sort((a, b) => a.cell - b.cell);
       }
       try {
         return placeBuilding(city, { kind, owner, cx, cz, facing: 0 });

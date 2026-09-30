@@ -100,6 +100,9 @@ import { ChevronOverlay } from './chevrons';
 import { ZoneOverlay } from './zoneOverlay';
 import { AmbientCrowd, PavingOverlay } from './cityLife';
 import { XrayView } from './xrayView';
+import { BirdFlocks } from './birds';
+import { ambientSecondsForTick, setAmbientTimeSeconds } from './ambientTime';
+import { waterBobY } from './terrain';
 import { GridView } from './gridView';
 // Phase 2 (utilities): the always-on network runs + the toggleable
 // diagnostic overlay. ui/utilities.ts is a pure contract module (no DOM,
@@ -223,6 +226,16 @@ export type ModelSource =
   carrier: { type: 'procedural' },
   commandShip: { type: 'glb', pieces: [piece('commandShip')] },
   fishingBoat: { type: 'glb', pieces: [piece('fishingBoat')] },
+  // Grand-expansion Phase 4 (transport, S7 — sim workstream): source
+  // entries so modelSourceFor never returns placeholder for the new
+  // kinds. The procedural BUILDERS are the render workstream's Phase 4
+  // follow-up (buildProceduralModel returns undefined until then and
+  // the resolution chain falls back to placeholders — never blank).
+  passengerTrain: { type: 'procedural' },
+  freightTrain: { type: 'procedural' },
+  bus: { type: 'procedural' },
+  tram: { type: 'procedural' },
+  ferry: { type: 'procedural' },
   // ---- NOVATERRA roster-expansion buildings ----
   barracks: { type: 'glb', pieces: [piece('barracks')] },
   // Phase 1 (veterancy): the military academy hall.
@@ -273,6 +286,24 @@ export type ModelSource =
   // Workstream P (ambient city life): civic parking.
   parkingLot: { type: 'procedural' },
   parkingGarage: { type: 'procedural' },
+  // Grand-expansion Phase 4 (transport, S7 — sim workstream): same
+  // arrangement as the transport units above — source entries now,
+  // real procedural builders in the render workstream's Phase 4 pass.
+  railStation: { type: 'procedural' },
+  busDepot: { type: 'procedural' },
+  ferryTerminal: { type: 'procedural' },
+  marina: { type: 'procedural' },
+  marinaLarge: { type: 'procedural' },
+  // Phase 4 tiered transit (2026-09-30 — sim workstream): same
+  // arrangement as the transport hubs above — source entries now,
+  // real procedural builders in the render workstream's Phase 4 pass.
+  busStop: { type: 'procedural' },
+  taxiStand: { type: 'procedural' },
+  tramStop: { type: 'procedural' },
+  ferryPier: { type: 'procedural' },
+  neighborhoodStation: { type: 'procedural' },
+  centralStation: { type: 'procedural' },
+  airportInterchange: { type: 'procedural' },
   monument: { type: 'procedural' },
   // Grand-expansion Phase 2 (utilities, 2026-09-30): the 12 new utility
   // buildings — procedural-first (AD12: zero boot-download growth).
@@ -767,6 +798,13 @@ export interface EntityRendererOptions {
    * by headless tests that don't build a terrain).
    */
   terrain?: TerrainData;
+  /**
+   * The TerrainView's water plane (caller-owned, built in `ui/game.ts` —
+   * the renderer only bobs it and never disposes it). When provided,
+   * `sync` breathes it with the living-nature swell; without it the
+   * water keeps the static level (headless tests).
+   */
+  waterMesh?: THREE.Object3D;
 }
 
 /**
@@ -825,6 +863,15 @@ export class EntityRenderer {
   // instanced ambient pedestrians/cars (render-side only, always on).
   private readonly pavingOverlay: PavingOverlay;
   private readonly ambientCrowd: AmbientCrowd;
+  // Living nature (0.1 Alpha): decorative bird flyovers (render-side
+  // only, always on). Tree sway and water flow live in the materials
+  // themselves (render/ambientTime.ts clock); this only drives poses.
+  private readonly birds: BirdFlocks;
+  /**
+   * The TerrainView's water plane for the living-nature swell
+   * (caller-owned; the renderer bobs it, never disposes it).
+   */
+  private readonly waterMesh: THREE.Object3D | null;
   /**
    * Phase 2 (utilities): the always-on network runs (poles/pipes —
    * visible whenever built, like roads) and the toggleable diagnostic
@@ -964,6 +1011,11 @@ export class EntityRenderer {
     // pedestrian GLBs can lazy-load through it (render/people.ts);
     // without the map it keeps the capsule fallback.
     this.ambientCrowd = new AmbientCrowd(scene, models);
+    // Living nature: bird flyovers (their own instanced meshes; tree
+    // sway + water flow are material-level, driven by the ambient
+    // clock in syncLivingNature below).
+    this.birds = new BirdFlocks(scene);
+    this.waterMesh = opts.waterMesh ?? null;
     // Phase 2 (utilities): network runs render always; the diagnostic
     // overlay starts hidden (top-bar toggle flips it).
     this.networkOverlay = new NetworkOverlay(scene);
@@ -994,6 +1046,7 @@ export class EntityRenderer {
     this.syncRoads(world);
     this.syncZoneOverlay(world);
     this.syncCityLife(world);
+    this.syncLivingNature(world);
     this.syncNetworks(world);
     this.syncUtilityOverlay(world);
     // Phase 4 RENDER workstream A (item 5): per-building utility
@@ -1109,6 +1162,23 @@ export class EntityRenderer {
       t === null ? undefined : (x: number, z: number): number => heightAt(t, x, z);
     this.pavingOverlay.sync(world.city.zones, heightFn);
     this.ambientCrowd.sync(world, heightFn);
+  }
+
+  /**
+   * Living nature (0.1 Alpha): the decorative ambient clock + bird
+   * flyovers + water swell. Everything is a pure function of
+   * `world.tick` — the same pause rule as the workstream-P crowd:
+   * frozen tick ⇒ still air, still water, frozen birds. Render-side
+   * only; nothing here touches sim state.
+   */
+  private syncLivingNature(world: World): void {
+    const tickSec = ambientSecondsForTick(world.tick);
+    setAmbientTimeSeconds(tickSec);
+    if (this.waterMesh !== null) {
+      this.waterMesh.position.y = waterBobY(this.waterLevel, tickSec);
+    }
+    const mapHalf = this.terrain !== null ? this.terrain.size / 2 : 256;
+    this.birds.sync(world.tick, mapHalf);
   }
 
   /**
@@ -1412,6 +1482,8 @@ export class EntityRenderer {
     // Workstream P (ambient city life).
     this.pavingOverlay.dispose();
     this.ambientCrowd.dispose();
+    // Living nature.
+    this.birds.dispose();
     this.networkOverlay.dispose();
     this.utilityOverlay.dispose();
     this.utilityIndicators.dispose();
@@ -2355,11 +2427,16 @@ export class EntityRenderer {
   private syncRoads(world: World): void {
     const roads = world.city.roads;
     // Digest, not just the count: replacing road cells with the same count
-    // must still refresh the mesh.
+    // must still refresh the mesh. Phase 4 (S7): digest cell AND class —
+    // an upgrade re-renders (the render workstream owns class visuals).
     let digest = 2166136261;
-    for (const cell of roads) {
-      digest ^= cell as number;
+    for (const r of roads) {
+      digest ^= r.cell as number;
       digest = Math.imul(digest, 16777619);
+      for (let i = 0; i < r.cls.length; i++) {
+        digest ^= r.cls.charCodeAt(i);
+        digest = Math.imul(digest, 16777619);
+      }
     }
     if (digest === this.roadDigest) return;
     this.roadDigest = digest;
@@ -2369,8 +2446,8 @@ export class EntityRenderer {
     // The ribbon drapes over the terrain (per-corner height sampling) so
     // roads ride hillsides instead of clipping through them.
     const cells: Array<{ x: number; z: number }> = [];
-    for (const c of roads) {
-      const { cx, cz } = cellCoords(c as number);
+    for (const r of roads) {
+      const { cx, cz } = cellCoords(r.cell);
       cells.push({ x: cellCenterWorld(cx), z: cellCenterWorld(cz) });
     }
     const heightFn = this.roadHeightSampler();

@@ -18,7 +18,7 @@
  * NOVATERRA — ui/icons.ts — inline SVG icon set for menus and palettes.
  *
  * Responsibilities:
- *  - One glyph per palette/menu item: all 28 units, all 30 buildings, the
+ *  - One glyph per palette/menu item: all 35 units, all 67 buildings, the
  *    5 build tools, map presets (by water fraction), AI difficulties
  *    (rank chevrons), and the main/pause menu actions.
  *  - Icons are returned as SVG markup strings (24×24 viewBox, stroke =
@@ -167,6 +167,24 @@ const UNIT_ICONS: Record<UnitKind, string> = {
   fishingBoat:
     '<path d="M3 14.5h18l-2.5 5h-13Z"/><rect x="12.5" y="10" width="4" height="4.5"/>' +
     '<path d="M14.5 10 20 4"/><path d="M20 4v3.5"/>',
+  // Phase 4 SIM workstream (2026-09-30): provisional glyphs for the five
+  // civilian transports — added only to keep `Record<UnitKind, string>`
+  // compiling (tsc-enforced). The UI workstream owns the final art.
+  passengerTrain:
+    '<rect x="3" y="7" width="18" height="8" rx="2"/>' +
+    '<path d="M3 12h18"/><circle cx="7" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/>',
+  freightTrain:
+    '<rect x="2" y="8" width="8" height="7"/><rect x="11" y="8" width="11" height="7"/>' +
+    '<circle cx="6" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/>',
+  bus:
+    '<rect x="3" y="5" width="18" height="12" rx="2"/>' +
+    '<path d="M3 11h18"/><circle cx="7" cy="19" r="1.6"/><circle cx="17" cy="19" r="1.6"/>',
+  tram:
+    '<rect x="4" y="8" width="16" height="9" rx="2"/>' +
+    '<path d="M12 8V3"/><path d="M7 3h10"/>',
+  ferry:
+    '<path d="M3 15h18l-2.5 5h-13Z"/><rect x="7" y="10" width="10" height="5"/>' +
+    '<path d="M9 10V7h6v3"/>',
 };
 
 // ---------------------------------------------------------------------------
@@ -214,6 +232,49 @@ const BUILDING_ICONS: Record<BuildingKind, string> = {
   parkingGarage:
     '<rect x="4" y="4" width="16" height="17"/>' +
     '<path d="M4 10.5h16M4 17h16"/><path d="M6 17 18 10.5"/>',
+  // Phase 4 SIM workstream (2026-09-30): provisional glyphs for the five
+  // transport hubs — added only to keep `Record<BuildingKind, string>`
+  // compiling (tsc-enforced). The UI workstream owns the final art.
+  railStation:
+    '<rect x="3" y="10" width="18" height="8"/>' +
+    '<path d="M3 10l4-6h10l4 6"/><path d="M12 4v6"/>',
+  busDepot:
+    '<rect x="3" y="6" width="18" height="11" rx="1"/>' +
+    '<path d="M3 12h18"/><path d="M8 6v11M16 6v11"/>',
+  ferryTerminal:
+    '<path d="M3 17h18"/><rect x="6" y="9" width="12" height="8"/>' +
+    '<path d="M6 13h12"/>',
+  marina:
+    '<path d="M2 18c2 1.5 4 1.5 6 0s4-1.5 6 0 4 1.5 6 0"/>' +
+    '<path d="M12 16V6"/><path d="M12 6l6 4"/>',
+  marinaLarge:
+    '<path d="M2 18c2 1.5 4 1.5 6 0s4-1.5 6 0 4 1.5 6 0"/>' +
+    '<path d="M7 16V5"/><path d="M7 5l5 3.5"/><path d="M15 16v-8"/><circle cx="15" cy="6" r="2"/>',
+  // Phase 4 tiered transit (2026-09-30): provisional glyphs for the
+  // seven stops/stations — added only to keep
+  // `Record<BuildingKind, string>` compiling (tsc-enforced). The UI
+  // workstream owns the final art.
+  busStop:
+    '<rect x="4" y="4" width="16" height="8" rx="1"/>' +
+    '<path d="M8 4v8M16 4v8"/><path d="M4 16h16"/>',
+  taxiStand:
+    '<rect x="5" y="8" width="14" height="7" rx="2"/>' +
+    '<path d="M9 8V5h6v3"/><circle cx="8.5" cy="17.5" r="1.6"/><circle cx="15.5" cy="17.5" r="1.6"/>',
+  tramStop:
+    '<rect x="5" y="9" width="14" height="7" rx="1"/>' +
+    '<path d="M12 9V4"/><path d="M8 4h8"/>',
+  ferryPier:
+    '<path d="M3 8h18"/><path d="M5 8v8M10 8v8M15 8v8M20 8v8"/>' +
+    '<path d="M2 19c2 1.5 4 1.5 6 0s4-1.5 6 0 4 1.5 6 0"/>',
+  neighborhoodStation:
+    '<rect x="3" y="8" width="18" height="10"/>' +
+    '<path d="M3 8l3-4h12l3 4"/><path d="M9 18v-4h6v4"/>',
+  centralStation:
+    '<rect x="2" y="9" width="20" height="10"/>' +
+    '<path d="M2 9l5-6h10l5 6"/><circle cx="12" cy="14" r="2.5"/>',
+  airportInterchange:
+    '<path d="M12 3l3 7 7 3-7 3-3 7-3-7-7-3 7-3Z"/>' +
+    '<path d="M4 21h16"/>',
   shop:
     '<path d="M4 9.5 6 5h12l2 4.5"/><path d="M4 9.5h16"/>' +
     '<rect x="5" y="9.5" width="14" height="10.5"/><path d="M10 20v-5h4v5"/>',

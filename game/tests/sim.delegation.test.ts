@@ -367,9 +367,10 @@ describe('sim/delegation — mayor building automation', () => {
   function prepBuildable(ctx: Ctx): void {
     for (let i = 24; i <= 40; i++) {
       const c = cellIndex(i, 28);
-      if (!ctx.world.city.roads.includes(c)) ctx.world.city.roads.push(c);
+      // Phase 4 (S7): roads are RoadCell[].
+      if (!ctx.world.city.roads.some((r) => r.cell === c)) ctx.world.city.roads.push({ cell: c, cls: 'paved' });
     }
-    ctx.world.city.roads.sort((a, b) => a - b);
+    ctx.world.city.roads.sort((a, b) => a.cell - b.cell);
     // Zone starts at z=29 so buildings sit zoned AND road-adjacent.
     enqueue(ctx, [{
       kind: 'paintZone',

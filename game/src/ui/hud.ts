@@ -30,11 +30,12 @@
  *    palette, unit orders, the military build tabs, superweapons),
  *    Management (taxes, city focus, the mayor/general cabinet, the
  *    research panel).
- *  - Train palette: 4 tabs (spec §8) for the 30 units; production-gated
+ *  - Train palette: 5 tabs (spec §8 + Phase 4 S7 transport) for the 35 units; production-gated
  *    units show greyed with the required building named; costs show
  *    funds + materials + manpower.
- *  - Build palette: 10 tabs (spec §8 + the civic tab + Phase 2 utility
- *    tabs + the Phase 3 logistics tab) for the 55 buildings, split
+ *  - Build palette: 11 tabs (spec §8 + the civic tab + Phase 2 utility
+ *    tabs + the Phase 3 logistics tab + Phase 4 S7 transport) for the
+ *    67 buildings, split
  *    across the Civilian and Military main tabs; unaffordable buildings
  *    grey out; navalYard's coast rule is surfaced in its tooltip.
  *  - Research panel: at a completed Research Lab (or in the Management
@@ -1091,7 +1092,7 @@ export class HUD {
     }
   }
 
-  /** Tabbed train palette: 4 tabs for the 30 units (spec §8). */
+  /** Tabbed train palette: 5 tabs for the 35 units (spec §8 + Phase 4 S7 transport). */
   private appendTrainPanel(panel: HTMLElement, world: World): void {
     const wrap = el('div', 'train-panel');
     wrap.append(el('div', 'hud-panel-title', loc(STRINGS.palettes.trainTitle)));

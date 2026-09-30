@@ -59,9 +59,34 @@
 
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
+import { hash, instanceIndex, positionLocal, sin, vec3 } from 'three/tsl';
 
+import { ambientTimeSeconds } from './ambientTime';
 import { modelBaseUrl, type LoadedModel } from './models';
 import { withTimeout } from './renderer';
+
+/**
+ * Wind sway for one foliage material — vertex-shader only, zero CPU per
+ * frame. `positionNode` is honored by the game's `WebGPURenderer` on both
+ * backends (see render/ambientTime.ts). The sway is height-graded (the
+ * trunk base at local y≈0 holds still; the canopy top moves most) and
+ * phased per instance from the instance id, so neighboring trees never
+ * move in lockstep. Pure function of (instanceId, ambient tick):
+ * deterministic, and it freezes when the game pauses because the
+ * ambient clock is tick-driven.
+ *
+ * Instanced-only contract: these materials are used solely by the
+ * `InstancedMesh` layers in render/nature.ts, so `instanceIndex` is
+ * always defined.
+ */
+function attachWindSway(mat: THREE.MeshStandardMaterial): void {
+  const phase = hash(instanceIndex).mul(Math.PI * 2);
+  const t = ambientTimeSeconds;
+  const weight = positionLocal.y.clamp(0, 4).div(4);
+  const swayX = sin(t.mul(1.35).add(phase)).mul(0.11).mul(weight);
+  const swayZ = sin(t.mul(0.95).add(phase.mul(1.7)).add(1.3)).mul(0.08).mul(weight);
+  mat.positionNode = positionLocal.add(vec3(swayX, 0, swayZ));
+}
 
 /** Tree species keyed exactly like the nature-scatter prop keys they fill. */
 export type NatureTreeKind =
@@ -442,12 +467,22 @@ function barkMaterial(map: THREE.Texture): THREE.MeshStandardMaterial {
 export function makeNatureTreeMaterials(tex: NatureTreeTextures): NatureTreeMaterials {
   const core = new THREE.MeshStandardMaterial({ color: 0x143d1c, roughness: 1, metalness: 0 });
   const pineCore = new THREE.MeshStandardMaterial({ color: 0x0f3318, roughness: 1, metalness: 0 });
+  const leaves = foliageMaterial(tex.leaves);
+  const birchLeaves = foliageMaterial(tex.birchLeaves);
+  const pineLeaves = foliageMaterial(tex.pineLeaves);
+  // Living nature: foliage + inner cores sway in the vertex shader
+  // (zero CPU/frame); trunks stay rigid so trees never slide at the base.
+  attachWindSway(leaves);
+  attachWindSway(birchLeaves);
+  attachWindSway(pineLeaves);
+  attachWindSway(core);
+  attachWindSway(pineCore);
   return {
     bark: barkMaterial(tex.bark),
     birchBark: barkMaterial(tex.birchBark),
-    leaves: foliageMaterial(tex.leaves),
-    birchLeaves: foliageMaterial(tex.birchLeaves),
-    pineLeaves: foliageMaterial(tex.pineLeaves),
+    leaves,
+    birchLeaves,
+    pineLeaves,
     core,
     pineCore,
   };

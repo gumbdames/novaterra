@@ -46,6 +46,7 @@ import {
   cellCoords,
   cellIndex,
   cellIsWater,
+  type RoadCell,
 } from '../src/sim/city';
 import { findUnit, registerUnitCommands } from '../src/sim/units';
 import {
@@ -201,7 +202,7 @@ function cellIdxIsWater(t: TerrainData, cell: number): boolean {
   return cellIsWater(t, cx, cz);
 }
 
-function pathCost(t: TerrainData, city: { roads: number[] }, path: number[]): number {
+function pathCost(t: TerrainData, city: { roads: RoadCell[] }, path: number[]): number {
   let cost = 0;
   for (let i = 1; i < path.length; i++) {
     const a = cellCoords(path[i - 1] as number);
@@ -585,7 +586,7 @@ describe('time-sliced request processing', () => {
 describe('A* path quality', () => {
   it('avoids water and never cuts corners', () => {
     const t = flatTerrain(getTerrain());
-    const city = { roads: [] as number[] };
+    const city = { roads: [] as RoadCell[] };
     makeWaterCells(t, [[10, 10]]);
     const { path } = findPath(t, city as never, cellIndex(8, 8), cellIndex(12, 12));
     expect(path).not.toBeNull();
@@ -608,21 +609,21 @@ describe('A* path quality', () => {
 
   it('prefers roads: paved route costs less and a road detour wins', () => {
     const t = flatTerrain(getTerrain());
-    const city = { roads: [] as number[] };
+    const city = { roads: [] as RoadCell[] };
     const start = cellIndex(20, 25);
     const goal = cellIndex(50, 25);
     const straight = findPath(t, city as never, start, goal).path!;
     expect(straight).not.toBeNull();
     expect(pathCost(t, city, straight)).toBe(30);
     // Pave the straight row: cost halves.
-    for (let cx = 20; cx <= 50; cx++) city.roads.push(cellIndex(cx, 25));
-    city.roads.sort((a, b) => a - b);
+    for (let cx = 20; cx <= 50; cx++) city.roads.push({ cell: cellIndex(cx, 25), cls: 'paved' });
+    city.roads.sort((a, b) => a.cell - b.cell);
     const paved = findPath(t, city as never, start, goal).path!;
     expect(pathCost(t, city, paved)).toBe(15);
     // Now unpave it and pave a parallel row 5 cells south: the detour wins.
     city.roads.length = 0;
-    for (let cx = 20; cx <= 50; cx++) city.roads.push(cellIndex(cx, 30));
-    city.roads.sort((a, b) => a - b);
+    for (let cx = 20; cx <= 50; cx++) city.roads.push({ cell: cellIndex(cx, 30), cls: 'paved' });
+    city.roads.sort((a, b) => a.cell - b.cell);
     const detour = findPath(t, city as never, start, goal).path!;
     expect(detour).not.toBeNull();
     // 5 south + 30 east + 5 north = 40 road cells × 0.5 = 20 < 30.
@@ -633,7 +634,7 @@ describe('A* path quality', () => {
 
   it('cross-component searches fail fast without expanding', () => {
     const t = getTerrain();
-    const city = { roads: [] as number[] };
+    const city = { roads: [] as RoadCell[] };
     const comps = landComponents(t);
     const west = worldToCell(-200, -200);
     const east = worldToCell(200, 100);
@@ -649,7 +650,7 @@ describe('A* path quality', () => {
 describe('chunked flow-field builds', () => {
   it('matches the synchronous flood cell-for-cell', () => {
     const t = flatTerrain(getTerrain());
-    const city = { roads: [] as number[] };
+    const city = { roads: [] as RoadCell[] };
     const mask = passabilityMask(t);
     const roads = city.roads;
     const comps = landComponents(t);
@@ -666,7 +667,7 @@ describe('chunked flow-field builds', () => {
 
   it('early exit reaches every waiting unit with identical directions', () => {
     const t = getTerrain();
-    const city = { roads: [] as number[] };
+    const city = { roads: [] as RoadCell[] };
     const mask = passabilityMask(t);
     const roads = city.roads;
     const comps = landComponents(t);

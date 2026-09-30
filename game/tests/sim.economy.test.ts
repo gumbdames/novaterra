@@ -98,8 +98,12 @@ function roadCells(cx0: number, rz: number, len: number): number[] {
 
 /** Directly pave cells (tests that bypass command validation). */
 function pave(city: CityState, cells: number[]): void {
-  city.roads.push(...cells);
-  city.roads.sort((a, b) => a - b);
+  // Phase 4 (S7): roads are RoadCell[] — tests pave with the legacy
+  // default class, matching the v6→v7 migration.
+  for (const c of cells) {
+    if (!city.roads.some((r) => r.cell === c)) city.roads.push({ cell: c, cls: 'paved' });
+  }
+  city.roads.sort((a, b) => a.cell - b.cell);
 }
 
 /** Directly place a completed building (bypasses command validation). */
