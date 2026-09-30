@@ -424,7 +424,9 @@ describe('building definitions (§3 + Phase 1 + Workstream Z)', () => {
     // oilRig, munitionsFactory, missilePlant, missileSilo, ordnanceDepot,
     // fuelDepot) → 51.
     // Workstream W (2026-09-30): +2 civic amenities (library, park) → 53.
-    expect(Object.keys(BUILDING_DEFS)).toHaveLength(53);
+    // Workstream P (ambient city life, 2026-09-30): +2 civic parking
+    // buildings (parkingLot, parkingGarage) → 55.
+    expect(Object.keys(BUILDING_DEFS)).toHaveLength(55);
     expect(BUILDING_DEFS.barracks).toMatchObject({
       costFunds: 700, costMaterials: 250, buildSeconds: 40, minAge: 'foundation',
     });

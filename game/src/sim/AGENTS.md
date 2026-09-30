@@ -46,8 +46,9 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   desirability model: per-residential-cell 0–100 from elevation
   (+0..10), water proximity (+0..15), pollution (−0..25), and the amenity
   table (library/park/school/kindergarten/college/university +5 each ≤12
-  cells, `waterfrontAmenity` +10 ≤15 — the Phase 4 marina hook — all
-  capped +20). Land-value tiers (low ×0.8 / modest ×1.0 / nice ×1.3 /
+  cells, parking lot +3 ≤8 / parking garage +4 ≤10 (workstream P —
+  convenience scores below the cultural types), `waterfrontAmenity`
+  +10 ≤15 — the Phase 4 marina hook — all capped +20). Land-value tiers (low ×0.8 / modest ×1.0 / nice ×1.3 /
   prime ×1.7) feed the residential tax multiplier in `economy.ts`
   `runTaxes`; `migrationPull` (peaks ×1.594 at d=0.72, fades through
   prime) scales the residential growth roll in `city.ts`

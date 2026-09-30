@@ -114,7 +114,11 @@ fastest, and the tax rate each home effectively pays.
 - **Clean air** — distance from smoke and smog (coal plants and the
   like): up to −25 right next to a polluter, fading with distance.
 - **Amenities** — a nearby library, park, school, kindergarten,
-  college, or university: +5 per type, up to +20 total.
+  college, or university: +5 per type, up to +20 total. Civic
+  parking counts too, as a convenience: a **Parking Lot** adds +3
+  within 8 cells, a **Parking Garage** +4 within 10 — toward the same
+  +20 cap. Parking is convenient, not beloved: it scores below the
+  cultural buildings.
 
 **Land value tiers.** The score maps to a land-value tier, and homes pay
 tax on their land value: Low (×0.8), Modest (×1.0), Nice (×1.3),
@@ -129,6 +133,27 @@ sweet spot is nice-but-affordable: those blocks grow fastest of all.
 
 Toggle the **Land value** button in the top bar to tint residential
 blocks red (low) → green (prime).
+
+## City life (decorative)
+
+Your city is alive — and you don't have to manage any of it. Three
+things happen automatically, purely as decoration:
+
+- **Auto-paved zones.** Painted residential, commercial, and
+  industrial zones get a concrete sidewalk wash under the zone tint,
+  so built-up areas read as city ground. No tool, no toggle, no cost.
+- **Pedestrians and cars.** Completed homes fill the streets with
+  walkers and drivers — more people means a busier city (roughly one
+  walker per 4 residents, one car per 20, up to 500 walkers and 150
+  cars). Walkers stroll between home, shops, and workplaces; cars
+  drive the roads. They are pure decoration: they can't be selected,
+  they don't affect the simulation, and pausing pauses them.
+- **Civic parking.** The **Civic** tab also holds the **Parking Lot**
+  (180 Funds, 60 Materials) and **Parking Garage** (450 Funds, 180
+  Materials): 3×3 buildings that add a little desirability nearby
+  (see above). Ambient buses, trams, ferries, and airliners join the
+  bustle in later expansions — their hooks are already in the code,
+  sized by population.
 
 ## Education
 

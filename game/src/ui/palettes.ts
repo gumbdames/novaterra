@@ -112,7 +112,7 @@ export interface BuildTab {
   kinds: readonly BuildingKind[];
 }
 
-/** 53 buildings across 10 tabs. Every building kind appears in exactly one. */
+/** 55 buildings across 10 tabs. Every building kind appears in exactly one. */
 export const BUILD_TABS: readonly BuildTab[] = [
   { id: 'housing', kinds: ['house', 'apartment'] },
   // Workstream Z (2026-09-30): the civic tab — the four education
@@ -120,7 +120,9 @@ export const BUILD_TABS: readonly BuildTab[] = [
   // hospital stays in Commerce (leave-hospital-alone rule).
   // Workstream W (2026-09-30): the two civic amenities (library/park)
   // join the civic tab — they raise nearby residential desirability.
-  { id: 'civic', kinds: ['kindergarten', 'school', 'college', 'university', 'library', 'park'] },
+  // Workstream P (ambient city life, 2026-09-30): civic parking joins
+  // them — the same desirability story (convenience amenities).
+  { id: 'civic', kinds: ['kindergarten', 'school', 'college', 'university', 'library', 'park', 'parkingLot', 'parkingGarage'] },
   {
     id: 'commerce',
     kinds: ['shop', 'market', 'lab', 'mediaCenter', 'hospital'],

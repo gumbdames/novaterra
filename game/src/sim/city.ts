@@ -265,6 +265,12 @@ export const BuildingKind = {
   MISSILE_SILO: 'missileSilo',
   ORDNANCE_DEPOT: 'ordnanceDepot',
   FUEL_DEPOT: 'fuelDepot',
+  // Workstream P (ambient city life, 2026-09-30): civic parking.
+  // Parking lots/garages plug into the desirability amenity table
+  // (sim/desirability.ts) as their own types — nearby houses/shops
+  // get a small land-value boost.
+  PARKING_LOT: 'parkingLot',
+  PARKING_GARAGE: 'parkingGarage',
 } as const;
 export type BuildingKind = (typeof BuildingKind)[keyof typeof BuildingKind];
 
@@ -671,6 +677,30 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 15, upkeepFundsPerSec: 0.2,
     powerDemand: 0, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 0.5,
+    minAge: 'foundation',
+  },
+  // Workstream P (ambient city life, 2026-09-30): civic parking.
+  // Placeable anywhere on land (UTILITY_ZONE, like park/library); each
+  // completed one counts as an amenity TYPE in the desirability model
+  // (parkingLot +3 within 8 cells, parkingGarage +4 within 10 cells,
+  // toward the same +20 amenity cap — see the amenity table in
+  // sim/desirability.ts; convenience amenities score below the +5
+  // cultural/education types). The garage costs more but serves more
+  // cars, hence the stronger/longer-reaching bonus.
+  parkingLot: {
+    kind: 'parkingLot', name: 'Parking Lot', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 180, costMaterials: 60,
+    buildSeconds: 15, upkeepFundsPerSec: 0.15,
+    powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 1.0,
+    minAge: 'foundation',
+  },
+  parkingGarage: {
+    kind: 'parkingGarage', name: 'Parking Garage', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 450, costMaterials: 180,
+    buildSeconds: 30, upkeepFundsPerSec: 0.5,
+    powerDemand: 3, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.5,
     minAge: 'foundation',
   },
   monument: {

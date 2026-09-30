@@ -29,7 +29,9 @@
  * munitionsFactory (shell-casing hall), missilePlant (assembly hall +
  * transporter-erector), missileSilo (blast doors + berm),
  * ordnanceDepot (earth bunkers), fuelDepot (tank farm), supplyTruck
- * (6x6 canvas cargo truck), fuelTruck (6x6 tanker). Each builder returns a `LoadedModel`-compatible
+ * (6x6 canvas cargo truck), fuelTruck (6x6 tanker). Workstream P
+ * (ambient city life): parkingLot (striped asphalt lot with parked
+ * cars), parkingGarage (two-deck concrete garage with ramp). Each builder returns a `LoadedModel`-compatible
  * `{ geometries, materials }` with merged per-material geometry, base at
  * y=0, forward = +z — the same contract as `models.ts`, so
  * `render/entities.ts` can treat GLB and procedural models identically.
@@ -1006,6 +1008,97 @@ function buildPark(): LoadedModel {
   return b.build();
 }
 
+/**
+ * Workstream P (ambient city life, 2026-09-30): the civic parking lot —
+ * asphalt pad with painted stall stripes, a lamp pole, and a few parked
+ * cars in muted colors (hardcoded slots: deterministic, no RNG).
+ * 3×3 footprint (6×6 world units).
+ */
+function buildParkingLot(): LoadedModel {
+  const b = new ModelBuilder();
+  const asphalt = smat('concrete', { color: 0x4a4a50 });
+  const stripe = smat('paintedMetal', { color: 0xf2f0e8 });
+  const pole = smat('gunmetal', { color: 0x3a3f45 });
+  const lampGlow = pmat(0xfff2c8, { emissive: 0xffe9a8, emissiveIntensity: 0.9 });
+  // Asphalt pad.
+  b.add(new THREE.BoxGeometry(5.8, 0.1, 5.8), asphalt, tr(0, 0.05, 0));
+  // Two rows of stalls: painted divider stripes (thin, low boxes).
+  for (const rz of [-1.5, 1.5]) {
+    b.add(new THREE.BoxGeometry(4.4, 0.12, 0.12), stripe, tr(0, 0.06, rz));
+    for (let i = -2; i <= 2; i++) {
+      b.add(new THREE.BoxGeometry(0.12, 0.12, 2.6), stripe, tr(i * 1.1, 0.06, rz));
+    }
+  }
+  // Parked cars in deterministic slots (between the dividers).
+  const carColors = [0x7a8a99, 0xa33b32, 0x3f6ea5, 0xc8c8c8];
+  const slots: Array<[number, number]> = [
+    [-1.65, -1.5],
+    [0.55, -1.5],
+    [1.65, 1.5],
+    [-0.55, 1.5],
+  ];
+  slots.forEach(([sx, sz], i) => {
+    const car = smat('paintedMetal', { color: carColors[i % carColors.length] as number });
+    b.add(new THREE.BoxGeometry(0.9, 0.42, 2.0), car, tr(sx, 0.32, sz));
+    b.add(new THREE.BoxGeometry(0.8, 0.36, 1.1), smat('glassBlue', { color: 0x9fd4e8 }), tr(sx, 0.68, sz - 0.15));
+  });
+  // Lamp pole with a glowing head.
+  b.add(new THREE.CylinderGeometry(0.07, 0.09, 3.4, 8), pole, tr(2.4, 1.7, -2.4));
+  b.add(new THREE.BoxGeometry(0.5, 0.18, 0.3), lampGlow, tr(2.4, 3.45, -2.25));
+  return b.build();
+}
+
+/**
+ * Workstream P (ambient city life, 2026-09-30): the civic parking
+ * garage — two concrete decks on pillars with an end ramp, deck-edge
+ * rails, a stair core, and a few parked cars on the upper deck.
+ * 3×3 footprint (6×6 world units).
+ */
+function buildParkingGarage(): LoadedModel {
+  const b = new ModelBuilder();
+  const deck = smat('concrete', { color: 0x8a8a90 });
+  const deckDark = smat('concrete', { color: 0x6a6a70 });
+  const rail = smat('gunmetal', { color: 0x50555c });
+  const stripe = smat('paintedMetal', { color: 0xf2f0e8 });
+  // Ground slab + pillars + upper deck (2.2 clear height).
+  b.add(new THREE.BoxGeometry(5.8, 0.14, 5.8), deckDark, tr(0, 0.07, 0));
+  for (const px of [-2.5, 0, 2.5]) {
+    for (const pz of [-2.5, 2.5]) {
+      b.add(new THREE.BoxGeometry(0.35, 2.4, 0.35), deckDark, tr(px, 1.2, pz));
+    }
+  }
+  b.add(new THREE.BoxGeometry(5.8, 0.25, 5.8), deck, tr(0, 2.5, 0));
+  // End ramp up to the deck (rotated slab on the east side).
+  b.add(new THREE.BoxGeometry(2.2, 0.2, 2.4), deckDark, tr(3.6, 1.25, 0, 0, 0, -0.62));
+  // Deck-edge rails (front/back edges).
+  for (const pz of [-2.85, 2.85]) {
+    b.add(new THREE.BoxGeometry(5.8, 0.08, 0.08), rail, tr(0, 3.1, pz));
+    for (const px of [-2.7, -0.9, 0.9, 2.7]) {
+      b.add(new THREE.BoxGeometry(0.08, 0.5, 0.08), rail, tr(px, 2.85, pz));
+    }
+  }
+  // Stair/elevator core at the back corner.
+  b.add(new THREE.BoxGeometry(1.4, 3.4, 1.4), deckDark, tr(-2.0, 1.7, -2.0));
+  b.add(new THREE.BoxGeometry(1.6, 0.2, 1.6), deck, tr(-2.0, 3.5, -2.0));
+  // Parked cars on the upper deck (deterministic slots).
+  const carColors = [0x7a8a99, 0xa33b32, 0x3f6ea5];
+  const slots: Array<[number, number]> = [
+    [-1.6, 0.6],
+    [0.4, 0.6],
+    [1.9, -1.2],
+  ];
+  slots.forEach(([sx, sz], i) => {
+    const car = smat('paintedMetal', { color: carColors[i % carColors.length] as number });
+    b.add(new THREE.BoxGeometry(0.9, 0.42, 2.0), car, tr(sx, 2.85, sz));
+    b.add(new THREE.BoxGeometry(0.8, 0.36, 1.1), smat('glassBlue', { color: 0x9fd4e8 }), tr(sx, 3.2, sz - 0.15));
+  });
+  // Stall stripes on the upper deck.
+  for (let i = -2; i <= 2; i++) {
+    b.add(new THREE.BoxGeometry(0.12, 0.02, 2.4), stripe, tr(i * 1.1, 2.64, 0.6));
+  }
+  return b.build();
+}
+
 function buildMonument(): LoadedModel {
   const b = new ModelBuilder();
   const stone = smat('concrete', { color: 0xd8d4c8 });
@@ -1882,6 +1975,9 @@ export const PROCEDURAL_KINDS = [
   // Grand-expansion Phase 3 (logistics): the 2 supply trucks.
   'supplyTruck',
   'fuelTruck',
+  // Workstream P (ambient city life, 2026-09-30): civic parking.
+  'parkingLot',
+  'parkingGarage',
 ] as const;
 
 export type ProceduralKind = (typeof PROCEDURAL_KINDS)[number];
@@ -1978,6 +2074,11 @@ export function buildProceduralModel(kind: string): LoadedModel | undefined {
       return buildSupplyTruck();
     case 'fuelTruck':
       return buildFuelTruck();
+    // Workstream P (ambient city life, 2026-09-30): civic parking.
+    case 'parkingLot':
+      return buildParkingLot();
+    case 'parkingGarage':
+      return buildParkingGarage();
     default:
       return undefined;
   }

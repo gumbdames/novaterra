@@ -42,6 +42,11 @@
  *    (`render/zoneOverlay.ts`) reading `world.city.zones` directly —
  *    one merged translucent mesh (1 draw call), rebuilt only when the
  *    zone digest changes.
+ *  - Ambient city life (Workstream P): a `PavingOverlay`
+ *    (`render/cityLife.ts`) that auto-paves painted zones with a
+ *    concrete decal (1 draw call), plus an `AmbientCrowd` of instanced
+ *    pedestrians and cars whose density scales with city population —
+ *    poses are pure functions of (seed, index, tick), never sim state.
  *  - Superweapon FX: the Aegis energy dome and Storm Engine strikes,
  *    driven by the sim's deterministic `world.superweapons.fx` records
  *    (animation phase derives from `world.tick`, never wall clock).
@@ -93,6 +98,7 @@ import {
 import { surfaceRoughnessTexture } from './surfaceTextures';
 import { ChevronOverlay } from './chevrons';
 import { ZoneOverlay } from './zoneOverlay';
+import { AmbientCrowd, PavingOverlay } from './cityLife';
 // Phase 2 (utilities): the always-on network runs + the toggleable
 // diagnostic overlay. ui/utilities.ts is a pure contract module (no DOM,
 // no three.js) — safe to import from the render layer.
@@ -261,6 +267,9 @@ export type ModelSource =
   // (AD12: zero boot-download growth).
   library: { type: 'procedural' },
   park: { type: 'procedural' },
+  // Workstream P (ambient city life): civic parking.
+  parkingLot: { type: 'procedural' },
+  parkingGarage: { type: 'procedural' },
   monument: { type: 'procedural' },
   // Grand-expansion Phase 2 (utilities, 2026-09-30): the 12 new utility
   // buildings — procedural-first (AD12: zero boot-download growth).
@@ -809,6 +818,10 @@ export class EntityRenderer {
   private readonly chevrons: ChevronOverlay;
   // Workstream Z: zone-tint ground decals (visible by default).
   private readonly zoneOverlay: ZoneOverlay;
+  // Workstream P (ambient city life): auto-paved zone decals +
+  // instanced ambient pedestrians/cars (render-side only, always on).
+  private readonly pavingOverlay: PavingOverlay;
+  private readonly ambientCrowd: AmbientCrowd;
   /**
    * Phase 2 (utilities): the always-on network runs (poles/pipes —
    * visible whenever built, like roads) and the toggleable diagnostic
@@ -924,6 +937,10 @@ export class EntityRenderer {
     this.barTexture = new THREE.CanvasTexture(c);
     this.chevrons = new ChevronOverlay(scene);
     this.zoneOverlay = new ZoneOverlay(scene);
+    // Workstream P (ambient city life): paving is a sibling of the zone
+    // decals (same digest cadence); the crowd reads zones/roads/seed.
+    this.pavingOverlay = new PavingOverlay(scene);
+    this.ambientCrowd = new AmbientCrowd(scene);
     // Phase 2 (utilities): network runs render always; the diagnostic
     // overlay starts hidden (top-bar toggle flips it).
     this.networkOverlay = new NetworkOverlay(scene);
@@ -939,6 +956,7 @@ export class EntityRenderer {
     this.syncBuildings(world);
     this.syncRoads(world);
     this.syncZoneOverlay(world);
+    this.syncCityLife(world);
     this.syncNetworks(world);
     this.syncUtilityOverlay(world);
     this.syncLogisticsOverlay(world);
@@ -1038,6 +1056,19 @@ export class EntityRenderer {
     const heightFn =
       t === null ? undefined : (x: number, z: number): number => heightAt(t, x, z);
     this.zoneOverlay.sync(world.city.zones, heightFn);
+  }
+
+  /**
+   * Workstream P (ambient city life): auto-paved zone decals and the
+   * ambient crowd. Both are render-side only — they read the world and
+   * never write it. Synced every frame like the other overlays.
+   */
+  private syncCityLife(world: World): void {
+    const t = this.terrain;
+    const heightFn =
+      t === null ? undefined : (x: number, z: number): number => heightAt(t, x, z);
+    this.pavingOverlay.sync(world.city.zones, heightFn);
+    this.ambientCrowd.sync(world, heightFn);
   }
 
   /**
@@ -1283,6 +1314,9 @@ export class EntityRenderer {
     this.barTexture.dispose();
     this.chevrons.dispose();
     this.zoneOverlay.dispose();
+    // Workstream P (ambient city life).
+    this.pavingOverlay.dispose();
+    this.ambientCrowd.dispose();
     this.networkOverlay.dispose();
     this.utilityOverlay.dispose();
     this.logisticsOverlay.dispose();

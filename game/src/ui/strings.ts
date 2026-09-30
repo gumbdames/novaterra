@@ -317,7 +317,7 @@ export const STRINGS = {
     transportShip: { en: 'Transport Ship' },
     fishingBoat: { en: 'Fishing Boat' },
   } as Record<UnitKind, LocalizedString>,
-  /** Localized display names for all 30 building kinds (tab palettes). */
+  /** Localized display names for all building kinds (tab palettes). */
   buildingNames: {
     house: { en: 'House' },
     apartment: { en: 'Apartment Block' },
@@ -328,6 +328,10 @@ export const STRINGS = {
     // Workstream W (2026-09-30): civic amenities (desirability drivers).
     library: { en: 'Library' },
     park: { en: 'Park' },
+    // Workstream P (ambient city life, 2026-09-30): civic parking
+    // (desirability drivers — convenience amenities).
+    parkingLot: { en: 'Parking Lot' },
+    parkingGarage: { en: 'Parking Garage' },
     shop: { en: 'Shop' },
     market: { en: 'Market' },
     lab: { en: 'Research Lab' },

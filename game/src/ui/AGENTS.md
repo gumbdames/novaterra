@@ -134,7 +134,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `palettes.ts` — headless-safe palette data + availability logic for
   the tabbed TRAIN/BUILD palettes and the research panel: `TRAIN_TABS`
   (4 tabs, 30 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck),
-  `BUILD_TABS` (10 tabs, 53 buildings — workstream W added library+park),
+  `BUILD_TABS` (10 tabs, 55 buildings — workstream W added library+park, workstream P added the two parking buildings),
   `UPGRADE_GROUPS` (military 8 / economy 4 / infrastructure 6 / logistics 1), `unitAvailability` /
   `buildingAvailability` / `upgradeAvailability` (ready | reason), cost
   formatters, and the
@@ -221,7 +221,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `icons.ts` — **hand-drawn inline SVG icon set (pure, tested,
   `tests/ui.icons.test.ts`).** Every button shows icon AND text (user
   directive 2026-09-30) — icons are `aria-hidden`, never icon-only.
-  `unitIcon` / `buildingIcon` cover all 30 units + 53 buildings
+  `unitIcon` / `buildingIcon` cover all 30 units + 55 buildings
   (`Record<UnitKind, string>` so a missing glyph is a compile error);
   `toolIcon` for the build tools row (incl. the Phase 2 powerLine /
   waterPipe tools); `mapIcon(waterFraction)` for the
@@ -251,7 +251,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `LocalizedString` (`{en}` — the localization indirection, kept as the
   extension point), module-level language
   state (`setUiLanguage` / `getUiLanguage` / `loc` / `fillLoc`). Covers
-  all 30 unit names, 53 building names, palette/upgrade tab names, the
+  all 30 unit names, 55 building names, palette/upgrade tab names, the
   19 upgrade names + one-line effects, cost labels, and lock reasons.
   Legacy Phase 3 strings are still English-only; they were never localized.
 - Audio: `game.ts` owns an `AudioEngine` (see `src/audio/AGENTS.md`) —

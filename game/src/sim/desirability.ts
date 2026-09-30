@@ -41,7 +41,9 @@
  *    2026-09-30). Full bonus within 6 cells, linear decay to zero at
  *    20 cells.
  *  - Amenities: +5 per amenity TYPE within 12 cells (park, library,
- *    school, kindergarten, college, university), capped at +20 total.
+ *    school, kindergarten, college, university), +3/+4 for the two
+ *    parking types within 8/10 cells (workstream P — convenience scores
+ *    below the cultural types), capped at +20 total.
  *    Defs carrying `waterfrontAmenity` (the Phase 4 marina hook — Phase 4
  *    just sets the flag, no desirability code changes then) count as a
  *    waterfront amenity: +10 within 15 cells, toward the same +20 cap.
@@ -126,11 +128,11 @@ export const WATERFRONT_BONUS = 10;
  * One amenity type. A residential cell gains `bonus` desirability when a
  * completed source building is within `radius` cells (Chebyshev).
  *
- * EXTENSIBILITY (workstream P, 2026-09-30): parking lots/garages plug in
- * here — add one row, e.g.
- *   `{ kind: 'parkingLot', radius: 8, bonus: 3, note: '...' }`,
- * no other desirability code changes needed. The table is data; the scan
- * below is generic over it.
+ * EXTENSIBILITY (proven by workstream P, 2026-09-30): parking
+ * lots/garages plugged in here as two rows — no other desirability
+ * code changes were needed. Future amenity kinds (the Phase 4 marina
+ * uses the `waterfront` row) add one row to AMENITY_TABLE. The table
+ * is data; the scan below is generic over it.
  */
 export interface AmenityDef {
   /** Building kind that counts as this amenity (completed buildings only). */
@@ -148,7 +150,9 @@ export interface AmenityDef {
 }
 
 /**
- * The amenity table. Six civic/education types at +5/12 cells plus the
+ * The amenity table. Six civic/education types at +5/12 cells, two civic
+ * parking types (workstream P: lot +3/8, garage +4/10 — convenience
+ * amenities score below the cultural/education types), plus the
  * waterfront hook at +10/15 cells. Total amenity contribution is capped
  * at AMENITY_BONUS_CAP (see `amenityBonusFor`).
  */
@@ -159,6 +163,15 @@ export const AMENITY_TABLE: readonly AmenityDef[] = [
   { kind: 'kindergarten', radius: AMENITY_RADIUS_CELLS, bonus: AMENITY_BONUS_PER_TYPE },
   { kind: 'college', radius: AMENITY_RADIUS_CELLS, bonus: AMENITY_BONUS_PER_TYPE },
   { kind: 'university', radius: AMENITY_RADIUS_CELLS, bonus: AMENITY_BONUS_PER_TYPE },
+  // Workstream P (ambient city life, 2026-09-30): civic parking is its
+  // own two amenity TYPES (they stack with each other and with the
+  // cultural types toward the same +20 cap). The lot is the small
+  // convenience amenity (+3 within 8 cells); the multi-deck garage
+  // serves more cars, so it reaches a little farther and scores a
+  // little higher (+4 within 10 cells). Both sit deliberately below the
+  // +5 cultural/education types — parking is convenient, not beloved.
+  { kind: 'parkingLot', radius: 8, bonus: 3 },
+  { kind: 'parkingGarage', radius: 10, bonus: 4 },
   // Phase 4 marina hook: any def with waterfrontAmenity: true. Worth +10
   // within 15 cells — toward the same +20 amenity cap, not on top of it.
   { waterfront: true, radius: WATERFRONT_RADIUS_CELLS, bonus: WATERFRONT_BONUS },

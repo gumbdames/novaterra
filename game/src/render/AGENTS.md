@@ -237,6 +237,47 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   in `dispose()`. Tested in `tests/render.zoneOverlay.test.ts`
   (13 tests).
 
+## Ambient city life (`render/cityLife.ts`, 0.1 Alpha)
+
+- Render-side-only city decoration (Workstream P): painted zones get
+  an automatic concrete paving wash, and completed homes fill the
+  streets with instanced pedestrians and cars. Nothing for the player
+  to manage — it is all derived from zones, roads, buildings, seed,
+  and tick. Ambient entities NEVER enter sim state: not selectable,
+  not in any entity list, never in the digest/snapshot (the no-leak
+  test pins `digestWorld` across syncs).
+- `PavingOverlay`: one merged translucent concrete decal
+  (`surfaceTexture('concrete')`, 0.4 opacity, renderOrder 2 — above
+  the zone tint at 1, below the road ribbon), rebuilt only when the
+  zone digest changes. 0/1 draw calls.
+- The crowd: `AmbientCrowd` owns one instanced layer for pedestrians
+  (capsule, ≤500) and one for cars (merged body+cabin, ≤150), each
+  with per-instance coat/paint colors set at rebuild. Density scales
+  with city population (1 walker per 4 residents, 1 car per 20).
+  Poses are pure functions of (seed, index, tick) — ping-pong tracks
+  with no per-agent state, so pause/seek/rebuild are exact.
+  `EntityRenderer` constructs the overlay + crowd in its constructor,
+  syncs both in `sync()`, and disposes them in `dispose()`.
+- Transit hooks for Phases 4–6: `ambientTransitDensity(pop)` sizes
+  bus/tram/ferry/airliner counts; phases register an
+  `AmbientTransitProvider` per type (provider-owned geometry/material,
+  pure `poseAt(index, tick)`) — the crowd renders one instanced layer
+  per registered type.
+- Tested in `tests/render.cityLife.test.ts` (29 tests): paving
+  geometry/digest/rebuild contract, density scaling (0 pop ⇒ 0
+  agents), zone-weighted homes, direction-biased targets, road-bound
+  cars, pose purity/determinism, the no-sim-leakage rule, transit
+  density pins + provider registry round-trip, and a 500/150 worst-
+  case perf sync with headroom.
+- Parking buildings (same workstream): `proceduralModels.ts` has
+  `buildParkingLot` / `buildParkingGarage` (registered in
+  `PROCEDURAL_KINDS` and the `buildProceduralModel` switch);
+  `sim/city.ts` defs are civic/utility-zone/foundation (lot 180/60,
+  garage 450/180); they are amenity rows in `sim/desirability.ts`
+  (lot +3/8 cells, garage +4/10, same +20 cap — convenience scores
+  below the +5 cultural types); `MODEL_SOURCES` maps both to
+  `procedural`. Tested in `tests/sim.parking.test.ts`.
+
 ## Utility networks (`render/networks.ts`, 0.1 Alpha)
 
 - Grand-expansion Phase 2: the visible power lines and water pipes.

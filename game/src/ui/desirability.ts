@@ -37,6 +37,10 @@
  *    `buildingTaxMultiplier(model, b)`.
  *  - `STRINGS.desirability` carries the overlay toggle/legend, tier
  *    display names, and the land-value line template.
+ *  - `AMENITY_TABLE` rows include the workstream P parking types
+ *    (`parkingLot` +3/8 cells, `parkingGarage` +4/10 — convenience
+ *    amenities, below the +5 cultural types, same +20 cap); the UI
+ *    reads their effect only through the model, never the table.
  */
 
 import type { TerrainData } from '../sim/terrain';

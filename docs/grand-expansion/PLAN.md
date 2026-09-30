@@ -727,6 +727,16 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   value automatically (user request 2026-09-30: marinas and beaches
   must raise desirability; beaches/shoreline are already covered by
   the water-proximity driver).
+- **Ambient city-life hook (workstream P, already in place):**
+  `render/cityLife.ts` sizes ambient bus/tram/ferry counts from city
+  population (`ambientTransitDensity`) and renders one instanced layer
+  per type registered via `registerAmbientTransitProvider(type,
+  provider)`. This phase's job: build the provider(s) — provider-owned
+  geometry/material, a pure `poseAt(index, tick)` over the phase's own
+  route data (tram lines, bus routes, ferry loops), and `count: 0`
+  until the player's network exists (no routes ⇒ no vehicles, never a
+  crash). Provider geometry should be instancing-friendly; the crowd
+  never disposes provider-owned assets.
 
 ### Phase 5 — Airports + airline (M–L)
 - **Goal:** airport zones, capability-gated tiers, hangars, civilian
@@ -743,6 +753,13 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   phase that forces the Phase-0 download decision to be real.
 - **AI work:** hangar-aware `canTrain`; AI builds civil airports and
   runs routes (static income).
+- **Ambient city-life hook:** register an `airliner` provider with
+  `registerAmbientTransitProvider('airliner', …)` — ambient airliners
+  sized by `ambientTransitDensity(pop).airliner` (1 per 2000 people,
+  cap 8). `poseAt` should fly circuit patterns over/near the player's
+  civil airports; `count: 0` until at least one civil airport is
+  completed. Same contract as Phase 4's providers: provider-owned
+  assets, pure pose function, no sim coupling.
 
 ### Phase 6 — Naval expansion + carrier wings (M)
 - **Goal:** sub variants, surface combatants, logistics ships,
@@ -757,6 +774,13 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   carrier/battleship/airliner-grade hulls).
 - **AI work:** AI fills wings before sailing; builds escorts;
   minesweeping (later).
+- **Ambient city-life hook (naval):** the workstream P transit hook is
+  sized for land/air vehicles; if Phase 6 wants ambient civilian
+  shipping, extend the `AmbientTransitType` union in
+  `render/cityLife.ts` (e.g. `'cargoShip'`) — the provider registry
+  and instanced layer are type-generic, so this is a one-line union
+  change plus a Phase-6 provider. Do NOT put ambient ships in the sim
+  (no unit records — the render-only rule holds).
 
 ### Phase 7 — Intel + spies + recon (M; L with full actions)
 - **Goal:** deterministic asset economy, named spies, recon value,

@@ -204,6 +204,16 @@ const BUILDING_ICONS: Record<BuildingKind, string> = {
   park:
     '<circle cx="9.5" cy="8" r="4.8"/><path d="M9.5 12.8V19"/>' +
     '<path d="M13 16h7"/><path d="M13.8 16v3.5M19.2 16v3.5"/>',
+  // Workstream P (ambient city life, 2026-09-30): civic parking. The
+  // lot reads as an open pad with painted stall dividers (distinct
+  // from everything else); the garage reads as stacked decks with a
+  // ramp (the diagonal sets it apart from the lot).
+  parkingLot:
+    '<rect x="4" y="5" width="16" height="15"/>' +
+    '<path d="M4 12.5h16"/><path d="M8 12.5v7.5M12 12.5v7.5M16 12.5v7.5"/>',
+  parkingGarage:
+    '<rect x="4" y="4" width="16" height="17"/>' +
+    '<path d="M4 10.5h16M4 17h16"/><path d="M6 17 18 10.5"/>',
   shop:
     '<path d="M4 9.5 6 5h12l2 4.5"/><path d="M4 9.5h16"/>' +
     '<rect x="5" y="9.5" width="14" height="10.5"/><path d="M10 20v-5h4v5"/>',

@@ -19,11 +19,15 @@ land, sea and air — or play a fully peaceful game with war disabled.
 
 - City building with visible zoning, terrain-following roads, and
   power/water utility networks you drag-paint across the map
-- 53 buildings and 30 units across land, sea, and air, with tech ages
+- 55 buildings and 30 units across land, sea, and air, with tech ages
 - Unit veterancy (Recruit → Elite), a Military Academy, education and civic
   systems, land value and desirability (elevation, shoreline, clean air,
-  and nearby libraries/parks/schools set each block's 0–100 score;
-  homes pay tax on their land value, people migrate toward nicer areas)
+  and nearby libraries/parks/schools/parking set each block's 0–100
+  score; homes pay tax on their land value, people migrate toward
+  nicer areas)
+- Ambient city life: painted zones auto-pave, and completed homes fill
+  the streets with pedestrians and cars — pure decoration, nothing to
+  manage
 - Missile/fuel logistics: fuel burn, ammo magazines, depots, supply trucks,
   resupply orders, reload-point aura
 - 5 Classic AI rivals with per-match personalities, 5 difficulties, skirmish
