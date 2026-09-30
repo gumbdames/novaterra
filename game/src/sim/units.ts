@@ -20,12 +20,14 @@
  * Responsibilities:
  *  - Plain-data records for mobile entities (units): id, owner, kind,
  *    position, speed, order state, and combat state (hp, cooldown,
- *    target). The roster is 19 land + 22 air + 25 sea (66 kinds; the sea
+ *    target). The roster is 21 land + 22 air + 25 sea (68 kinds; the sea
  *    count grew in grand-expansion Phase 6's naval expansion —
  *    workstream C, 2026-09-30: coastalSub, missileSub, corvette,
  *    cruiser, battleship, heavyDestroyer, cargoFreighter, fuelTanker,
  *    ammoShip, repairShip, minelayer, navalMine, coastGuardCutter,
- *    cruiseLiner, yacht — 15 new sea kinds).
+ *    cruiseLiner, yacht — 15 new sea kinds; the land count grew with
+ *    the grand-expansion intel roster (§3.8/S6, workstream 2,
+ *    2026-09-30): spy, reconTeam).
  *  - Unit ids come from `world.nextId` (the same counter as entities), so
  *    they are stable, never reused, and never collide with entity ids.
  *  - Movement state lives here too (`path`, `fieldId`, `destX/Z`); the
@@ -51,12 +53,13 @@ import { isUnitAvailableForAge } from './ages';
 import { effectiveMaxHp, effectiveSpeed } from './upgrades';
 
 /**
- * The full 66-unit roster (spec docs/research/roster-expansion.md §2,
+ * The full 68-unit roster (spec docs/research/roster-expansion.md §2,
  * plus Phase 3 logistics trucks, Phase 4 transports, Phase 5 aircraft
- * expansion, Phase 6 naval expansion).
- * Land (19): engineer, rifles, tank, artillery, aa, hauler, supplyTruck,
+ * expansion, Phase 6 naval expansion, and the grand-expansion intel
+ * roster §3.8/S6 workstream 2).
+ * Land (21): engineer, rifles, tank, artillery, aa, hauler, supplyTruck,
  * fuelTruck, spectre, hq, apc, tankDestroyer, mlrs, sniperTeam, combatMedic,
- * passengerTrain, freightTrain, bus, tram.
+ * passengerTrain, freightTrain, bus, tram, spy, reconTeam.
  * Air (22): fighter, transport, drone, fighterBomber, attackHeli, awacs,
  * strategicBomber, maritimePatrol, reconUAV, armedUAV, reconPlane, gunship,
  * tanker, militaryCargo, trainer, navalFighter, airliner, jumboAirliner,
@@ -151,6 +154,15 @@ export const UNIT_KINDS = [
   'coastGuardCutter',
   'cruiseLiner',
   'yacht',
+  // ------------------------------------------------------------------
+  // Grand-expansion intel roster (§3.8 / §4 S6, workstream 2,
+  // 2026-09-30). Two land kinds: the spy (stealth, trained at the
+  // intelHQ, acts through the sim-core workstream's infiltrate/
+  // sabotage commands) and the reconTeam (the overt recon option —
+  // fast, high sight, no stealth).
+  // ------------------------------------------------------------------
+  'spy',
+  'reconTeam',
 ] as const;
 export type UnitKind = (typeof UNIT_KINDS)[number];
 
@@ -341,6 +353,19 @@ export interface UnitDef {
    * Default 'land' — the combatMedic behavior is unchanged.
    */
   healDomain?: UnitDomain;
+  // ------------------------------------------------------------------
+  // Grand-expansion intel roster (§3.8 / §4 S6, workstream 2,
+  // 2026-09-30). The def-side of the stealth contract: the sim-core
+  // workstream's `isDetected(unit, viewerOwner, world)` (sim/intel.ts)
+  // treats a stealthed unit as invisible unless it stands inside a
+  // detection radius, and combat.ts `acquireTarget` skips stealthed
+  // units unless detected. Set on `spy` only.
+  // ------------------------------------------------------------------
+  /**
+   * When true, this unit is invisible to enemies unless detected (see
+   * `isDetected` in sim/intel.ts). Only the spy sets this.
+   */
+  stealth?: boolean;
 }
 
 /** Mobile HQ command aura: radius and friendly damage bonus. */
@@ -948,6 +973,28 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     fuelCapacity: 50, fuelPerSecond: 0.15, fuelType: 'fossil', // ~333 s
     harvest: { funds: 0.15 }, // civilian sea income
   },
+  // ------------------------------------------------------------------
+  // Grand-expansion intel roster (§3.8 / §4 S6, workstream 2,
+  // 2026-09-30). Balance rationale in docs/research/intel-roster.md.
+  // ------------------------------------------------------------------
+  spy: {
+    kind: 'spy', name: 'Spy', domain: 'land', hp: 60, speed: 10, armor: 'light',
+    // Unarmed: a spy caught in open combat is fragile by design — its
+    // power is infiltrate/sabotage/steal via the sim-core workstream's
+    // commands, not firepower.
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 30, minAge: 'information',
+    manpowerCost: 2, trainFunds: 400, trainMaterials: 40, requiredBuilding: 'intelHQ',
+    stealth: true,
+  },
+  reconTeam: {
+    kind: 'reconTeam', name: 'Recon Team', domain: 'land', hp: 100, speed: 14, armor: 'light',
+    // Light self-defense only — this is the overt recon option: fast,
+    // high sight, no stealth (enemy players always see it coming).
+    damage: 8, range: 12, minRange: 0, cooldownTicks: 30, targets: 'ground',
+    vsLight: 0.8, vsMedium: 0.4, vsHeavy: 0.2, vsAir: 1.0, sight: 44, minAge: 'connectivity',
+    manpowerCost: 2, trainFunds: 150, trainMaterials: 15, requiredBuilding: 'barracks',
+  },
 };
 
 /**
@@ -1095,6 +1142,24 @@ export interface UnitRecord {  /** Stable id from `world.nextId`. Never reused. 
    * Snapshotted and digest-covered (PLAN §4 S4).
    */
   embarkedOn?: number;
+  /**
+   * Grand-expansion Phase 6 (S6 intel): spy mission state. All optional;
+   * reads use `?? 0` (AD9 — the fuel/ammo precedent, no version bump,
+   * stays v8). Snapshotted and digest-covered (PLAN §4 S6).
+   *  - `missionEndsAt`: tick when the current infiltration completes
+   *    (0 = no infiltration in progress).
+   *  - `missionTargetId`: building id being infiltrated (0 = none).
+   *  - `infiltrationProgress`: elapsed infiltration ticks (UI progress).
+   *  - `embeddedIn`: building id the spy is embedded in (0 = not
+   *    embedded; required for `stealTech` against that building).
+   *  - `spottedUntil`: tick until which the spy is burned — visible to
+   *    everyone (set by sabotage spot checks and failed tech-steals).
+   */
+  missionEndsAt?: number;
+  missionTargetId?: number;
+  infiltrationProgress?: number;
+  embeddedIn?: number;
+  spottedUntil?: number;
 }
 
 /** Spawn a unit into the world. Returns the new record. Caller validates. */
@@ -1145,6 +1210,13 @@ export function spawnUnit(world: World, kind: string, owner: number, x: number, 
     // unembarked — parking/embarking are commands, never conjured.
     hangarBuildingId: 0,
     embarkedOn: 0,
+    // Grand-expansion Phase 6 (S6 intel): spies spawn with no mission,
+    // unembedded, unspotted — missions start via `infiltrateBuilding`.
+    missionEndsAt: 0,
+    missionTargetId: 0,
+    infiltrationProgress: 0,
+    embeddedIn: 0,
+    spottedUntil: 0,
   };
   world.nextId += 1;
   world.units.push(record);

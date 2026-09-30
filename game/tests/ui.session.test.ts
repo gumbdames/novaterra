@@ -64,8 +64,10 @@ describe('session', () => {
 
   it('registers the documented system order', () => {
     const session = createSession({ seed: 1234 });
-    // pathfinding → movement → combat → superweapons → economy → mayors → generals → AI: eight systems.
-    expect(session.driver.systems).toHaveLength(8);
+    // pathfinding → movement → combat → superweapons → economy → intel →
+    // mayors → AI → generals: nine systems. (The intel system is the
+    // sim-core workstream's — pinned here so the order stays documented.)
+    expect(session.driver.systems).toHaveLength(9);
   });
 
   it('routes player intents through the command queue', () => {

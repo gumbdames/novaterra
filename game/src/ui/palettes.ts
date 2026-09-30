@@ -54,7 +54,7 @@ import {
 // Tab groupings (spec §8).
 // ---------------------------------------------------------------------------
 
-export type TrainTabId = 'infantry' | 'armor' | 'air' | 'navy' | 'transport';
+export type TrainTabId = 'infantry' | 'armor' | 'air' | 'navy' | 'transport' | 'intel';
 
 export interface TrainTab {
   id: TrainTabId;
@@ -146,6 +146,14 @@ export const TRAIN_TABS: readonly TrainTab[] = [
     id: 'transport',
     kinds: ['passengerTrain', 'freightTrain', 'bus', 'tram', 'ferry'],
   },
+  // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+  // the intel pair gets its own tab — the spy trains at the intelHQ
+  // (never at the barracks), and the reconTeam is the overt recon
+  // option alongside it.
+  {
+    id: 'intel',
+    kinds: ['spy', 'reconTeam'],
+  },
 ];
 
 export type BuildTabId =
@@ -163,14 +171,17 @@ export type BuildTabId =
   // Grand-expansion Phase 4 S7 (2026-09-30): transport hubs.
   | 'transport'
   // Grand-expansion Phase 5 (S5+S8, 2026-09-30): the airport roster.
-  | 'airports';
+  | 'airports'
+  // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+  // the intel buildings.
+  | 'intel';
 
 export interface BuildTab {
   id: BuildTabId;
   kinds: readonly BuildingKind[];
 }
 
-/** 85 buildings across 12 tabs. Every building kind appears in exactly one. */
+/** 89 buildings across 13 tabs. Every building kind appears in exactly one. */
 export const BUILD_TABS: readonly BuildTab[] = [
   { id: 'housing', kinds: ['house', 'apartment'] },
   // Workstream Z (2026-09-30): the civic tab — the four education
@@ -257,6 +268,14 @@ export const BUILD_TABS: readonly BuildTab[] = [
     ],
   },
   { id: 'special', kinds: ['monument', 'aegisControl', 'stormArray'] },
+  // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+  // the four intel buildings — the intelHQ (trains spies, generates
+  // operational assets), the two detection-radius sources
+  // (listeningPost, signalsStation), and the late-age satelliteUplink.
+  {
+    id: 'intel',
+    kinds: ['intelHQ', 'listeningPost', 'signalsStation', 'satelliteUplink'],
+  },
   // Grand-expansion Phase 4 S7 (2026-09-30): the transport hubs — rail
   // station, bus depot, ferry terminal, and the two marinas — get their
   // own tab (civilian infrastructure, not military logistics).
@@ -328,6 +347,9 @@ export const BUILD_TAB_MENU_TABS: Record<BuildTabId, 'civilian' | 'military'> = 
   transport: 'civilian',
   // Grand-expansion Phase 5 (S5+S8): airports are civilian infrastructure.
   airports: 'civilian',
+  // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+  // intel buildings are military infrastructure.
+  intel: 'military',
 };
 
 /**
@@ -343,14 +365,14 @@ export function buildTabsForMenuTab<T extends { id: BuildTabId }>(
   return tabs.filter((t) => BUILD_TAB_MENU_TABS[t.id] === menuTab);
 }
 
-export type UpgradeGroupId = 'military' | 'economy' | 'infrastructure' | 'logistics';
+export type UpgradeGroupId = 'military' | 'economy' | 'infrastructure' | 'logistics' | 'intel';
 
 export interface UpgradeGroup {
   id: UpgradeGroupId;
   ids: readonly UpgradeId[];
 }
 
-/** 19 upgrades in 4 research groups. */
+/** 21 upgrades in 5 research groups. */
 export const UPGRADE_GROUPS: readonly UpgradeGroup[] = [
   {
     id: 'military',
@@ -387,6 +409,13 @@ export const UPGRADE_GROUPS: readonly UpgradeGroup[] = [
   {
     id: 'logistics',
     ids: ['advancedLogistics'],
+  },
+  // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+  // the intel upgrade pair — its own group so the other groups' pins
+  // keep their meaning.
+  {
+    id: 'intel',
+    ids: ['signalsIntel', 'counterIntel'],
   },
 ];
 

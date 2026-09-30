@@ -74,10 +74,10 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   ferry routes on units; v6/v7 still load, v5 with empty upgrades).
 - `terrain.ts` — seeded mapgen (not snapshotted); `spatial.ts` — hash grid.
 - `units.ts` — `UnitRecord` store (stable ids, owner/kind/speed/state),
-  `spawnUnit` command. The 66-unit roster (19 land: engineer, rifles,
+  `spawnUnit` command. The 68-unit roster (21 land: engineer, rifles,
   tank, artillery, aa, hauler, supplyTruck, fuelTruck, spectre, hq,
   sniperTeam, combatMedic, apc, tankDestroyer, mlrs, passengerTrain,
-  freightTrain, bus, tram; 22 air: fighter, transport, drone,
+  freightTrain, bus, tram, spy, reconTeam; 22 air: fighter, transport, drone,
   fighterBomber, attackHeli, awacs, strategicBomber, maritimePatrol,
   reconUAV, armedUAV, reconPlane, gunship, tanker, militaryCargo,
   trainer, navalFighter, airliner, jumboAirliner, regionalJet,
@@ -210,7 +210,9 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   (`getSightBonus`, applied in `ai.ts` `getVisibleEnemies`). `UnitDef`
   carries `minAge`; fighter requires Connectivity (gated in `spawnUnit`
   validation).
-- `upgrades.ts` — the 19 researchable upgrades (roster expansion, Phase 4).
+- `upgrades.ts` — the 21 researchable upgrades (roster expansion's 12 +
+  Phase 2's utility ladder 6 + Phase 3's advancedLogistics + the intel
+  roster's signalsIntel/counterIntel).
   `UpgradeDef`: cost (funds + research), `minAge`, building prerequisites
   (Advanced Avionics needs airfield AND radarStation). `researchUpgrade`
   command: completed lab required; age/prereq/affordability/duplicates
@@ -225,6 +227,41 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   Avionics, Sonar Suite), `units.ts` spawn HP (Field Medicine), and
   `economy.ts` (Precision Manufacturing, Vertical Farming, Free Trade).
   Not registered in `ui/session.ts` — UI wires `registerUpgradeCommands`.
+- `intel.ts` — (grand-expansion intel roster §3.8/S6, workstream 2 defs +
+  sim-core mechanics, 2026-09-30) the intel asset economy, detection,
+  and covert operations. Owns: `runIntelAccrual` (deterministic
+  per-player asset accrual from `BuildingDef.intelOutput` — completed +
+  operational + unsabotaged buildings, placement order, upgrade
+  multipliers; wired into the economy tick, dt = 1 sim-second),
+  `isDetected(unit, viewerOwner, world)` + `detectionRadiusAt(world,
+  owner, x, z)` (the stealth contract: pure position geometry plus the
+  unit's `spottedUntil` burn timer — the geometry itself needs zero
+  snapshot/digest cost), `sabotageDurationSec` (counterIntel
+  resistance), and `intelSightBonus` (satelliteUplink + signalsIntel —
+  the S6 `effectiveSight` hook input). The sim-core half adds the asset
+  plumbing (`addIntelAsset` / `spendIntelAsset` — the roster seam),
+  spy mission state on `UnitRecord` (`missionEndsAt`,
+  `missionTargetId`, `embeddedIn`, `infiltrationProgress`,
+  `spottedUntil`; advanced by `createIntelSystem()` every tick), the
+  `infiltrateBuilding` / `sabotage` / `stealTech` commands
+  (`registerIntelCommands` — adjacency-validated, asset costs,
+  deterministic tech pick, research grant via the `addStock`
+  precedent), and the stochastic action rolls (steal success on the
+  thief's `intel-<owner>` stream, sabotage spot checks on the victim's;
+  failures/spot-checks burn the spy). Consumed by: `acquireTarget`
+  (combat.ts skips undetected stealth), `getVisibleEnemies` (ai.ts —
+  the AI perceives only what its side detects), `effectiveSight`
+  (upgrades.ts += intelSightBonus). Player state shape
+  `world.city.players[o].intel` and `BuildingRecord.sabotagedUntil`
+  live in `city.ts` (exact contract names). Import discipline (R2):
+  value-imports city/units, type-only commands/world/tick; the
+  upgrades→intel edge is one-directional (upgrades.ts implements
+  `intelSightBonus` next to its only consumer; intel.ts re-exports it
+  so the §3.8 contract keeps working — a units→upgrades→intel→units
+  value cycle is deliberately avoided); economy.ts imports intel.ts for
+  accrual + the sabotage offline gate, so intel.ts must never import
+  economy.ts by value (the steal research grant inlines the
+  `addStock(player, 'research', n)` mutation instead).
 - `veterancy.ts` — unit veterancy (grand-expansion Phase 1, pure: no
   imports from combat/city, so no cycles). `UnitRecord.xp` grows on
   kills (`xpForKillValue = trainFunds + trainMaterials`), `vetLevel`

@@ -39,9 +39,9 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import * as THREE from 'three';
 
-import { EntityRenderer, modelSourceFor, isDegradedResolution } from '../src/render/entities';
+import { EntityRenderer, modelSourceFor, isDegradedResolution, hullSizeFor } from '../src/render/entities';
 import type { ResolvedVisual } from '../src/render/entities';
-import { buildProceduralModel } from '../src/render/proceduralModels';
+import { buildProceduralModel, buildSignalMast } from '../src/render/proceduralModels';
 import type { LoadedModel } from '../src/render/models';
 import { UNIT_DEFS, type UnitKind, type UnitRecord } from '../src/sim/units';
 import {
@@ -306,6 +306,77 @@ describe('phase-5 air/naval mapping depth', () => {
       expect(m.geometries.length).toBeGreaterThan(0);
       expect(m.materials.length).toBeGreaterThan(0);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Grand-expansion Phase 6 — intel roster mapping depth (workstream 5,
+// art, 2026-09-30): the 6 §3.8 keys resolve to real GLB pieces in
+// MODEL_PATHS (never an unmapped stub), with the intelHQ roof antenna
+// and the signalsStation SIGINT mast as attach props.
+// ---------------------------------------------------------------------------
+
+describe('phase-6 intel mapping depth', () => {
+  // kind → expected MODEL_PATHS piece keys.
+  const intel: Record<string, string[]> = {
+    spy: ['spy'],
+    reconTeam: ['reconTeam'],
+    intelHQ: ['intelHQMain'],
+    listeningPost: ['listeningPostHut', 'listeningPostDish'],
+    satelliteUplink: ['satelliteUplink'],
+    signalsStation: ['signalsStationHut'],
+  };
+
+  it('maps all 6 intel keys to their GLB pieces', () => {
+    for (const [kind, pieceKeys] of Object.entries(intel)) {
+      const src = modelSourceFor(kind);
+      expect(src.type).toBe('glb');
+      expect(src.type === 'glb' ? src.pieces.map((p) => p.key) : []).toEqual(pieceKeys);
+    }
+  });
+
+  it('gives every intel key a sane hull size', () => {
+    for (const kind of Object.keys(intel)) {
+      const h = hullSizeFor(kind);
+      expect(h.x).toBeGreaterThan(0);
+      expect(h.y).toBeGreaterThan(0);
+      expect(h.z).toBeGreaterThan(0);
+      expect([h.x, h.y, h.z].every(Number.isFinite)).toBe(true);
+    }
+    // Spot pins: spy is infantry-scale, the buildings are footprint-scale.
+    expect(hullSizeFor('spy')).toEqual({ x: 1.4, y: 1.8, z: 1.4 });
+    expect(hullSizeFor('intelHQ')).toEqual({ x: 6, y: 6.5, z: 6 });
+    expect(hullSizeFor('signalsStation')).toEqual({ x: 4, y: 7, z: 4 });
+  });
+
+  it('attaches the intelHQ roof antenna and the signalsStation mast', () => {
+    expect(EntityRenderer.propSpecsFor('intelHQ').map((p) => p.prop)).toEqual(['hqAntenna']);
+    expect(EntityRenderer.propSpecsFor('signalsStation').map((p) => p.prop)).toEqual(['signalMast']);
+    // The propFor switch must wire signalMast to its builder (a
+    // typo'd key would silently fall through to the radar dish).
+    const renderer = new EntityRenderer(new THREE.Scene());
+    const propFor = (
+      renderer as unknown as { propFor(k: string): LoadedModel }
+    ).propFor.bind(renderer);
+    const m = propFor('signalMast');
+    expect(m.geometries.length).toBeGreaterThan(0);
+    expect(m.materials.length).toBeGreaterThan(0);
+    renderer.dispose();
+  });
+
+  it('builds a signalMast with sane bounds (rests at y=0, ~7 tall)', () => {
+    const m = buildSignalMast();
+    const box = new THREE.Box3();
+    for (const g of m.geometries) {
+      g.computeBoundingBox();
+      box.union(g.boundingBox!);
+    }
+    expect(box.isEmpty()).toBe(false);
+    expect(box.min.y).toBeGreaterThanOrEqual(-0.01);
+    // ~7 tall: between the hqAntenna (~1.8) and the control tower.
+    expect(box.max.y).toBeGreaterThan(6);
+    expect(box.max.y).toBeLessThan(8);
+    expect([box.min.x, box.max.x, box.min.z, box.max.z].every(Number.isFinite)).toBe(true);
   });
 });
 

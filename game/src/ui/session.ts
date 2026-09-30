@@ -65,6 +65,7 @@ import {
   registerMovementCommands,
 } from '../sim/movement';
 import { createCombatSystem, registerCombatCommands } from '../sim/combat';
+import { createIntelSystem, registerIntelCommands } from '../sim/intel';
 import { registerLogisticsCommands } from '../sim/commands';
 import { registerAgeCommands } from '../sim/ages';
 import { registerCheatCommands } from '../sim/cheats';
@@ -310,6 +311,9 @@ export function createSession(options: SessionOptions): GameSession {
   registerUnitCommands(queue, terrain);
   registerMovementCommands(queue, terrain);
   registerCombatCommands(queue);
+  // Grand-expansion Phase 6 (S6 intel): the covert-op commands
+  // (infiltrateBuilding / sabotage / stealTech).
+  registerIntelCommands(queue);
   // Phase 3 logistics (workstream 3): resupply + supply toggles.
   registerLogisticsCommands(queue, terrain);
   registerAgeCommands(queue);
@@ -328,6 +332,9 @@ export function createSession(options: SessionOptions): GameSession {
       createCombatSystem(),
       createSuperweaponSystem(),
       createEconomySystem(terrain),
+      // Grand-expansion Phase 6 (S6 intel): spy infiltration missions
+      // advance every tick (asset accrual rides the economy tick).
+      createIntelSystem(),
       createMayorSystem(queue, terrain),
       // AI needs the queue to issue its orders through.
       createAISystem(queue),

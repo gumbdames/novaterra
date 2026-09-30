@@ -363,6 +363,8 @@ describe('age-gated units', () => {
       commandShip: 'information', strategicBomber: 'information',
       maritimePatrol: 'information', missileSub: 'information',
       cruiser: 'information', battleship: 'information',
+      // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30).
+      reconTeam: 'connectivity', spy: 'information',
     };
     expect(Object.keys(UNIT_DEFS).sort()).toEqual(Object.keys(expected).sort());
     for (const [kind, age] of Object.entries(expected)) {

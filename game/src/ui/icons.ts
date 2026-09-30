@@ -295,6 +295,18 @@ const UNIT_ICONS: Record<UnitKind, string> = {
   yacht:
     '<path d="M3.5 15.5h17l-2 4h-13Z"/><path d="M12 15.5V5l7 10.5Z"/>' +
     '<rect x="10.5" y="12" width="3" height="3.5"/>',
+  // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+  // provisional glyphs for the two intel units — added only to keep
+  // `Record<UnitKind, string>` compiling (tsc-enforced). The UI
+  // workstream owns the final art.
+  spy:
+    '<circle cx="12" cy="8" r="3.2"/>' +
+    '<path d="M5 21c0-4 3-6.5 7-6.5s7 2.5 7 6.5"/>' +
+    '<path d="M4 4l3 3M20 4l-3 3"/>',
+  reconTeam:
+    '<circle cx="12" cy="12" r="8"/>' +
+    '<circle cx="12" cy="12" r="3.5"/>' +
+    '<path d="M12 4v3.5M12 16.5V20M4 12h3.5M16.5 12H20"/>',
 };
 
 // ---------------------------------------------------------------------------
@@ -632,6 +644,31 @@ const BUILDING_ICONS: Record<BuildingKind, string> = {
     '<path d="M2 13.5v6h20v-6"/>' +
     '<path d="M5 16.5h3M10.5 16.5h3M16 16.5h3"/>' +
     '<path d="M12 13.5V8l4 1.5-4 1.5"/>',
+  // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+  // provisional glyphs for the four intel buildings — added only to
+  // keep `Record<BuildingKind, string>` compiling (tsc-enforced). The
+  // UI workstream owns the final art.
+  intelHQ:
+    '<rect x="5" y="7" width="14" height="10" rx="1"/>' +
+    '<path d="M9 7V4h6v3"/>' +
+    '<circle cx="12" cy="12" r="2.4"/>' +
+    '<path d="M12 9.6V5M12 18.4V14M9.6 12H5M18.4 12H14"/>',
+  listeningPost:
+    '<path d="M12 21v-9"/>' +
+    '<path d="M12 12 7 5"/>' +
+    '<path d="M5 9a5 5 0 0 1 4-4"/>' +
+    '<path d="M3.5 11.5a8 8 0 0 1 5.5-6"/>' +
+    '<path d="M8 21h8"/>',
+  satelliteUplink:
+    '<ellipse cx="12" cy="8" rx="6" ry="2.5"/>' +
+    '<path d="M12 10.5V21"/>' +
+    '<path d="M12 10.5 6.5 6"/>' +
+    '<path d="M8 21h8"/>',
+  signalsStation:
+    '<rect x="9" y="9" width="6" height="12"/>' +
+    '<path d="M12 9V3"/>' +
+    '<circle cx="12" cy="5.5" r="2.2"/>' +
+    '<path d="M5 21h14"/>',
 };
 
 // ---------------------------------------------------------------------------

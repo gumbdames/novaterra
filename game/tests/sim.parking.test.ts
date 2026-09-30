@@ -242,11 +242,11 @@ describe('parking UI coverage', () => {
     expect(idx('parkingGarage')).toBeGreaterThan(idx('parkingLot'));
   });
 
-  it('85 building kinds across palettes, icons, strings, and defs', () => {
+  it('89 building kinds across palettes, icons, strings, and defs', () => {
     const kinds = Object.keys(BUILDING_DEFS) as BuildingKind[];
-    expect(kinds).toHaveLength(85);
+    expect(kinds).toHaveLength(89);
     const paletteKinds = new Set(BUILD_TABS.flatMap((t) => t.kinds));
-    expect(paletteKinds.size).toBe(85);
+    expect(paletteKinds.size).toBe(89);
     for (const kind of kinds) {
       expect(paletteKinds.has(kind)).toBe(true);
       expect(buildingIcon(kind)).toBeTruthy();

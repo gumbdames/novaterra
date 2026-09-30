@@ -102,6 +102,7 @@ import type { RngBank } from './rng';
 import { canTarget } from './combat';
 import { isUnitAvailableForAge, getSightBonus, AGE_PROGRESSION } from './ages';
 import { effectiveSight, hasUpgrade, registerUpgradeCommands, UPGRADE_DEFS, type UpgradeId } from './upgrades';
+import { isDetected } from './intel';
 import { vetSightMult } from './veterancy';
 import {
   getPlayer,
@@ -407,6 +408,11 @@ export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
   const sightBonus = getSightBonus(world);
   for (const e of world.units) {
     if (e.owner === owner || e.hp <= 0) continue;
+    // Grand-expansion Phase 6 (S6 intel): stealthed units (spies) are
+    // invisible to the AI unless detected — the AI perceives exactly
+    // what its side can see (the `isDetected` stealth contract in
+    // intel.ts). No omniscience, no cheating.
+    if (!isDetected(e, owner, world)) continue;
     for (const o of own) {
       const def = UNIT_DEFS[o.kind as UnitKind];
       // (?? 0: hand-built records without the field count as Recruit.)

@@ -538,6 +538,16 @@ export const BuildingKind = {
   CONTAINER_PORT: 'containerPort',
   FISHING_HARBOR: 'fishingHarbor',
   NAVAL_BASE: 'navalBase',
+  // Grand-expansion intel roster (§3.8 / §4 S6, workstream 2,
+  // 2026-09-30): the four intel buildings. The intelHQ trains spies
+  // and generates operational assets; listeningPost / signalsStation
+  // are detection-radius sources (def.detectionRadius) generating
+  // surveillance / counter-intel assets; satelliteUplink is the late-age
+  // surveillance + sight-bonus building. All zone: UTILITY_ZONE.
+  INTEL_HQ: 'intelHQ',
+  LISTENING_POST: 'listeningPost',
+  SATELLITE_UPLINK: 'satelliteUplink',
+  SIGNALS_STATION: 'signalsStation',
 } as const;
 export type BuildingKind = (typeof BuildingKind)[keyof typeof BuildingKind];
 
@@ -769,7 +779,66 @@ export interface BuildingDef {
    * runwayS/runwayM/runwayL only.
    */
   runwayClass?: AircraftClass;
+  // ------------------------------------------------------------------
+  // Grand-expansion intel roster (§3.8 / §4 S6, workstream 2,
+  // 2026-09-30). The def-side of the intel interface contract: the
+  // sim-core workstream owns the mechanics (infiltrate/sabotage
+  // commands, acquireTarget + getVisibleEnemies hooks, the intel panel)
+  // and consumes these fields plus sim/intel.ts.
+  // ------------------------------------------------------------------
+  /**
+   * Intel assets generated per sim-second by a completed, operational
+   * building (intelHQ: operational; listeningPost: surveillance;
+   * signalsStation: counterIntel; satelliteUplink: surveillance).
+   * Accrued by `runIntelAccrual` (sim/intel.ts) — NOT by the generic
+   * economy output path, because these are plain per-player asset
+   * counters, not tradeable resources.
+   */
+  intelOutput?: Partial<Record<IntelAssetKey, number>>;
+  /**
+   * Detection radius in world units. A completed building contributes
+   * this radius (centered on its footprint center) to its owner's
+   * `detectionRadiusAt` — stealthed enemy units inside are detected
+   * (see `isDetected` in sim/intel.ts). Set on listeningPost and
+   * signalsStation only.
+   */
+  detectionRadius?: number;
+  /**
+   * Unit sight bonus in world units. A completed building adds this to
+   * its owner's unit sight (consumed by the sim-core workstream's
+   * effectiveSight hook). Set on satelliteUplink only.
+   */
+  sightBonus?: number;
 }
+
+/**
+ * Intel asset kinds (grand-expansion §3.8 / §4 S6, workstream 2,
+ * 2026-09-30). Per-player counters on `PlayerState.intel` — the
+ * interface contract with the sim-core workstream (exact names):
+ * - `surveillance` — earned by listening posts / satellite uplinks;
+ *   feeds recon value and the signalsIntel upgrade line.
+ * - `operational` — earned by the intel HQ; spent by the
+ *   `infiltrateBuilding` / `sabotage` commands (tech steal via
+ *   `addStock`).
+ * - `counterIntel` — earned by signals stations; spent on defensive
+ *   posture and boosts detection (the visible answer to spies).
+ * Plain numbers, snapshotted and digested (PLAN §4 S6).
+ */
+export type IntelAssetKey = 'surveillance' | 'operational' | 'counterIntel';
+
+/** One player's intel asset counters. */
+export interface IntelAssets {
+  surveillance: number;
+  operational: number;
+  counterIntel: number;
+}
+
+/** Fresh intel counters — zero assets, no posture. */
+export const ZERO_INTEL_ASSETS: IntelAssets = {
+  surveillance: 0,
+  operational: 0,
+  counterIntel: 0,
+};
 
 export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   house: {
@@ -1742,6 +1811,68 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     ammoStorage: 100,
     jobs: 35,
   },
+  // ------------------------------------------------------------------
+  // Grand-expansion intel roster (§3.8 / §4 S6, workstream 2,
+  // 2026-09-30). All four zone: UTILITY_ZONE (placeable anywhere on
+  // land, like the radarStation) and accrue their assets through
+  // `runIntelAccrual` (sim/intel.ts). Balance rationale lives in
+  // docs/research/intel-roster.md; art keys are the art workstream's
+  // (render falls back to placeholders for unmapped kinds, so the
+  // 8 MiB boot gate is untouched).
+  // ------------------------------------------------------------------
+  intelHQ: {
+    kind: 'intelHQ', name: 'Intelligence Headquarters', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 1400, costMaterials: 450,
+    buildSeconds: 55, upkeepFundsPerSec: 1.2,
+    powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 4.0,
+    minAge: 'information',
+    // Trains spies (units.ts `spy.requiredBuilding`) and generates the
+    // operational assets missions spend, plus a trickle of analysis
+    // (surveillance) from its own desks.
+    intelOutput: { operational: 0.2, surveillance: 0.1 },
+    jobs: 12,
+  },
+  listeningPost: {
+    kind: 'listeningPost', name: 'Listening Post', zone: UTILITY_ZONE,
+    footprintW: 2, footprintH: 2, costFunds: 500, costMaterials: 150,
+    buildSeconds: 30, upkeepFundsPerSec: 0.6,
+    powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'connectivity',
+    // The early SIGINT building: steady surveillance income and the
+    // first detection-radius source (stealthed units inside are seen).
+    intelOutput: { surveillance: 0.25 },
+    detectionRadius: 60,
+    jobs: 6,
+  },
+  satelliteUplink: {
+    kind: 'satelliteUplink', name: 'Satellite Uplink', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 2500, costMaterials: 900,
+    buildSeconds: 90, upkeepFundsPerSec: 2.0,
+    powerDemand: 8, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 5.0,
+    minAge: 'ascendance',
+    // Late-age: the big surveillance earner, plus a standing sight
+    // bonus for the owner's units (consumed by the sim-core
+    // workstream's effectiveSight hook).
+    intelOutput: { surveillance: 0.6 },
+    sightBonus: 12,
+    jobs: 8,
+  },
+  signalsStation: {
+    kind: 'signalsStation', name: 'Signals Station', zone: UTILITY_ZONE,
+    footprintW: 2, footprintH: 2, costFunds: 900, costMaterials: 300,
+    buildSeconds: 45, upkeepFundsPerSec: 1.0,
+    powerDemand: 4, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 3.0,
+    minAge: 'information',
+    // Counter-intel asset generation and the second detection-radius
+    // source — the visible answer to enemy spies.
+    intelOutput: { counterIntel: 0.2 },
+    detectionRadius: 45,
+    jobs: 10,
+  },
 };
 
 /** Defs in a fixed order (cheapest funds cost first) — used by growth. */
@@ -1968,6 +2099,17 @@ export interface BuildingRecord {
    * Snapshotted (v8) and digest-covered.
    */
   hangars?: HangarSlot[];
+  /**
+   * Grand-expansion intel roster (§3.8 / §4 S6, workstream 2,
+   * 2026-09-30): world tick until which this building stays sabotaged
+   * (the interface contract — exact name). While sabotaged the
+   * building accrues no intel assets; the wider sabotage effect (how
+   * much it hurts) is the sim-core workstream's `sabotage` command
+   * design — set ONLY on that path, never by a timer. 0/undefined =
+   * not sabotaged (the meltdown `?? 0` precedent). Snapshotted (v8,
+   * AD9 additive — no version bump) and digest-covered.
+   */
+  sabotagedUntil?: number;
 }
 
 /** One player's stockpiles and policy. */
@@ -2000,6 +2142,15 @@ export interface PlayerState {
    * to other zoned buildings. Set via the `setSpecialization` command.
    */
   specialization: CitySpecialization;
+  /**
+   * Grand-expansion intel roster (§3.8 / §4 S6, workstream 2,
+   * 2026-09-30): per-player intel asset counters (the interface
+   * contract — exact shape `world.city.players[o].intel`). Plain
+   * numbers; snapshotted and digested. Accrued by `runIntelAccrual`
+   * (sim/intel.ts); spent by the sim-core workstream's
+   * `infiltrateBuilding` / `sabotage` commands.
+   */
+  intel: IntelAssets;
 }
 
 /** The whole city. Lives on `World.city`; snapshotted and digested. */
@@ -2083,6 +2234,9 @@ function createPlayer(id: number, name: string): PlayerState {
     taxRates: [DEFAULT_TAX_RATE, DEFAULT_TAX_RATE, DEFAULT_TAX_RATE, DEFAULT_TAX_RATE],
     population: 0,
     specialization: 'balanced',
+    // Grand-expansion intel roster (workstream 2, 2026-09-30): every
+    // player starts with zero intel assets.
+    intel: { ...ZERO_INTEL_ASSETS },
   };
 }
 

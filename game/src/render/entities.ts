@@ -95,6 +95,9 @@ import {
   buildSeaplaneFloats,
   buildMineRails,
   buildNavalMineSpikes,
+  // Grand-expansion Phase 6 — intel roster (workstream 5, art): the
+  // SIGINT mast prop for signalsStation.
+  buildSignalMast,
 } from './proceduralModels';
 import {
   buildRoadGeometry,
@@ -402,6 +405,32 @@ export type ModelSource =
       piece('cargoContainerC', 3.2, 0, -2.2),
     ],
   },
+  // Grand-expansion Phase 6 — intel roster (workstream 5, art): the
+  // §3.8 keys, mapped ahead of the sim defs so modelSourceFor resolves
+  // the moment they arrive. All lazy (never boot — see bootModelKeys).
+  // spy: a lone civilian figure (quaternius-civilians). The unit's
+  // team stripe + pennant keep the nondescript figure selectable.
+  spy: { type: 'glb', pieces: [piece('spy')] },
+  // reconTeam: a scout SUV (kenney-car).
+  reconTeam: { type: 'glb', pieces: [piece('reconTeam')] },
+  // intelHQ 6×6 world: office block; the hqAntenna attach prop rides
+  // the roof (extraPropSpecs below).
+  intelHQ: { type: 'glb', pieces: [piece('intelHQMain')] },
+  // listeningPost 4×4 world: low hut + the space-kit dish roof-mounted
+  // (roof ≈3.3 at this scale).
+  listeningPost: {
+    type: 'glb',
+    pieces: [
+      piece('listeningPostHut'),
+      piece('listeningPostDish', 0.3, 3.3, 0),
+    ],
+  },
+  // satelliteUplink 6×6 world: one big ground dish (1:1, the
+  // radarStation precedent — different dish silhouette).
+  satelliteUplink: { type: 'glb', pieces: [piece('satelliteUplink')] },
+  // signalsStation 4×4 world: equipment shed; the procedural signalMast
+  // prop rides beside it (extraPropSpecs below).
+  signalsStation: { type: 'glb', pieces: [piece('signalsStationHut')] },
   // ---- NOVATERRA roster-expansion buildings ----
   barracks: { type: 'glb', pieces: [piece('barracks')] },
   // Phase 1 (veterancy): the military academy hall.
@@ -743,6 +772,22 @@ export function hullSizeFor(kind: string): { x: number; y: number; z: number } {
       return { x: 8, y: 6, z: 24 };
     case 'yacht':
       return { x: 2.6, y: 1.8, z: 6.5 };
+    // Grand-expansion Phase 6 — intel roster (workstream 5, art). The
+    // §3.8 sim defs do not exist yet; these sizes pin the footprint
+    // convention the MODEL_PATHS scales above were measured against,
+    // plus selection-ring sizing when the defs arrive.
+    case 'spy':
+      return { x: 1.4, y: 1.8, z: 1.4 };
+    case 'reconTeam':
+      return { x: 3.0, y: 1.8, z: 4.6 };
+    case 'intelHQ':
+      return { x: 6, y: 6.5, z: 6 };
+    case 'listeningPost':
+      return { x: 4, y: 4.5, z: 4 };
+    case 'satelliteUplink':
+      return { x: 6, y: 5.5, z: 6 };
+    case 'signalsStation':
+      return { x: 4, y: 7, z: 4 };
     default:
       return { x: 1.6, y: 2.2, z: 1.6 }; // infantry-ish
   }
@@ -1844,7 +1889,7 @@ export class EntityRenderer {
    * 'gear:engineer', 'gear:sniper', 'gear:medic', 'hqAntenna',
    * 'radarDish', 'awacsDome', 'shipMast', 'runwayStrip',
    * 'coolingTower', 'hospitalCross', 'seaplaneFloats', 'mineRails',
-   * 'navalMineSpikes'.
+   * 'navalMineSpikes', 'signalMast'.
    */
   private propFor(key: string): LoadedModel {
     let m = this.propCache.get(key);
@@ -1853,6 +1898,10 @@ export class EntityRenderer {
         m = buildInfantryGear(key.slice('gear:'.length) as 'rifles' | 'engineer' | 'sniper' | 'medic');
       } else if (key === 'hqAntenna') {
         m = buildHqAntenna();
+        // Grand-expansion Phase 6 — intel roster (workstream 5, art):
+        // the tall SIGINT mast for signalsStation.
+      } else if (key === 'signalMast') {
+        m = buildSignalMast();
       } else if (key === 'awacsDome') {
         m = buildAwacsDome();
       } else if (key === 'shipMast') {
@@ -1910,7 +1959,10 @@ export class EntityRenderer {
    * command antenna, the aegisControl radar dish, the AWACS rotodome,
    * the command-ship comms mast, the airfield runway strip, the nuclear
    * cooling tower, the hospital cross, and the airport anchors' runway
-   * strip + procedural control tower (grand-expansion Phase 5, S5+S8). Declared as data so both the
+   * strip + procedural control tower (grand-expansion Phase 5, S5+S8).
+   * The intel roster (grand-expansion Phase 6, workstream 5) reuses the
+   * hqAntenna on the intelHQ roof and adds the signalMast for
+   * signalsStation. Declared as data so both the
    * legacy per-view path (`attachModelExtras`) and the instanced path
    * (`resolveVisualPieces`) place them identically.
    */
@@ -1978,6 +2030,14 @@ export class EntityRenderer {
       case 'navalMine':
         // Contact spikes on the buoy crown.
         return [{ prop: 'navalMineSpikes', dx: 0, dy: 0, dz: 0 }];
+      // Grand-expansion Phase 6 — intel roster (workstream 5, art).
+      case 'intelHQ':
+        // The command antenna rides the office-block roof
+        // (roof ≈6.5 at this scale; the 'hq' precedent).
+        return [{ prop: 'hqAntenna', dx: 0, dy: 6.6, dz: -0.5 }];
+      case 'signalsStation':
+        // The SIGINT mast stands beside the equipment shed.
+        return [{ prop: 'signalMast', dx: 1.7, dy: 0, dz: 0.5 }];
       default:
         return [];
     }

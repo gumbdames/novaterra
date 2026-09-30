@@ -262,7 +262,7 @@ describe('research groups', () => {
     }
   });
 
-  it('groups are Military (8), Economy (4), Infrastructure (6), and Logistics (1)', () => {
+  it('groups are Military (8), Economy (4), Infrastructure (6), Logistics (1), and Intel (2)', () => {
     const byId = new Map(UPGRADE_GROUPS.map((g) => [g.id, [...g.ids]]));
     expect(byId.get('military')).toHaveLength(8);
     expect(byId.get('economy')).toEqual([
@@ -282,6 +282,9 @@ describe('research groups', () => {
     ]);
     // Phase 3 workstream 2 (2026-09-30): the logistics group.
     expect(byId.get('logistics')).toEqual(['advancedLogistics']);
+    // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+    // the intel group.
+    expect(byId.get('intel')).toEqual(['signalsIntel', 'counterIntel']);
   });
 });
 

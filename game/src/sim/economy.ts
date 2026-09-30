@@ -76,6 +76,7 @@ import {
   type UtilitySideModel,
 } from './utilityNetworks';
 import { UNIT_DEFS, supplyLevel, type UnitRecord } from './units';
+import { runIntelAccrual, isSabotaged } from './intel';
 import { createSpatialHash, shInsert, shQueryRadius } from './spatial';
 import { buildingTaxMultiplier, getDesirabilityModel } from './desirability';
 import {
@@ -281,6 +282,12 @@ function allocateUtilities(world: World, city: CityState): UtilityAllocation {
         meltedDown.add(b.id);
         continue;
       }
+      // Grand-expansion Phase 6 (S6 intel): a sabotaged building is
+      // offline — it supplies nothing until its sabotage window
+      // passes (the meltdown precedent directly above).
+      if (isSabotaged(b, world.tick)) {
+        continue;
+      }
       // Cross-utility hooks (previous-tick flags — 1-tick bootstrap).
       if (b.kind === 'nuclearPlant' && !b.watered) continue;
       if ((b.kind === 'desalination' || b.kind === 'waterTreatment') && !b.powered) continue;
@@ -437,7 +444,10 @@ function allocateUtilities(world: World, city: CityState): UtilityAllocation {
     // Flags + diags for every completed building.
     for (const b of completed) {
       const def = BUILDING_DEFS[b.kind];
-      b.operational = funded.has(b.id);
+      // Grand-expansion Phase 6 (S6 intel): sabotage takes the building
+      // offline even when funded — the same gate the utility online
+      // sets use above (the meltdown precedent).
+      b.operational = funded.has(b.id) && !isSabotaged(b, world.tick);
       if (!funded.has(b.id)) {
         // Shut down: not participating. Flags keep the legacy
         // demand-zero semantics; diag mirrors the legacy decode.
@@ -1215,6 +1225,12 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   recomputeOccupancy(city);
   recountPopulation(city);
   generateManpower(city);
+  // Grand-expansion Phase 6 (S6 intel): asset accrual rides the economy
+  // tick (1 Hz ⇒ dt = 1 sim-second). Placement is deliberate: after
+  // the utility allocation (so `operational` flags are this tick's)
+  // and before production (a sabotaged building accrues nothing AND
+  // produces nothing — one consistent offline gate).
+  runIntelAccrual(world, 1);
   runProduction(world, city);
   runHarvest(world, city);
   // Phase 4 transport (S7): civilian fare/freight earnings ride right

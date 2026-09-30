@@ -43,6 +43,7 @@ import {
   buildRunwayStrip,
   buildCoolingTower,
   buildHospitalCross,
+  buildSignalMast,
 } from '../src/render/proceduralModels';
 import { SURFACE_CATEGORIES, surfaceTexture, surfaceRoughnessTexture } from '../src/render/surfaceTextures';
 import { SURFACE_MATERIALS } from '../src/render/surfaceMaterials';
@@ -223,6 +224,7 @@ describe('procedural builders wear surfaces', () => {
     ['runwayStrip', buildRunwayStrip],
     ['coolingTower', buildCoolingTower],
     ['hospitalCross', buildHospitalCross],
+    ['signalMast', buildSignalMast],
   ];
 
   it('every non-emissive part is tagged with a surface category', () => {

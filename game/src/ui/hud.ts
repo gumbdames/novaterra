@@ -39,7 +39,7 @@
  *    across the Civilian and Military main tabs; unaffordable buildings
  *    grey out; navalYard's coast rule is surfaced in its tooltip.
  *  - Research panel: at a completed Research Lab (or in the Management
- *    tab when the player owns one), the 19 upgrades with funds +
+ *    tab when the player owns one), the 21 upgrades with funds +
  *    research cost, prerequisites and one-line effect; unavailable
  *    upgrades grey out with reasons.
  *  - Toasts: one-line feedback for rejected orders and confirmations.
@@ -1503,8 +1503,8 @@ export class HUD {
   }
 
   /**
-   * Research panel: the 19 upgrades in Military/Economy/Infrastructure/
-   * Logistics groups (spec §8). Each row shows the localized name, funds
+   * Research panel: the 21 upgrades in Military/Economy/Infrastructure/
+   * Logistics/Intel groups (spec §8). Each row shows the localized name, funds
    * + research cost, and the one-line effect; unavailable upgrades grey
    * out with the reason. Researched upgrades get a checkmark and stay
    * listed. Shown in the Management tab whenever the player owns a

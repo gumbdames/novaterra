@@ -6,7 +6,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 ## Modules (0.1 Alpha)
 
 - `session.ts` — canonical skirmish assembly (terrain, world, queue,
-  driver, 5 systems in fixed order, starting forces, AI rival). The one
+  driver, systems in fixed order, starting forces, AI rival). The one
   place the full game is wired; headless-safe (no DOM/three.js).
   `createSession({ snapshot })` restores a saved game: no re-seeded
   starting forces, no duplicate AI player. `createSession({ mapPreset })`
@@ -15,7 +15,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   base center) so high-water maps never reject spawns. `session.cheated`
   is UI-owned metadata (never sim state), stamped into save files.
   Registers `registerUpgradeCommands` (sim/upgrades.ts) so the research
-  panel's `researchUpgrade` orders execute. Campaign missions grant
+  panel's `researchUpgrade` orders execute, and `registerIntelCommands`
+  (sim/intel.ts) for the covert-op commands (`infiltrateBuilding` /
+  `sabotage` / `stealTech`); the intel mission system
+  (`createIntelSystem`) runs in the fixed system order after the
+  economy system. Campaign missions grant
   `startingResources` AFTER the initial spawn tick: mission resources
   are the designed opening stockpile, so e.g. northern-border always
   opens at exactly 5000 funds even though spawnUnit now deducts
@@ -212,10 +216,12 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `baseAircraft`; `buildLaunchOrder(unitId, owner)` → `launchAircraft`.
 - `palettes.ts` — headless-safe palette data + availability logic for
   the tabbed TRAIN/BUILD palettes and the research panel: `TRAIN_TABS`
-  (5 tabs, 66 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck;
-  Phase 5 workstream B added the 16-aircraft air tab),
-  `BUILD_TABS` (12 tabs, 85 buildings — workstream W added library+park, workstream P added the two parking buildings),
-  `UPGRADE_GROUPS` (military 8 / economy 4 / infrastructure 6 / logistics 1), `unitAvailability` /
+  (6 tabs, 68 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck;
+  Phase 5 workstream B added the 16-aircraft air tab; the intel roster
+  workstream (§3.8/S6, 2026-09-30) added the intel tab: spy + reconTeam),
+  `BUILD_TABS` (13 tabs, 89 buildings — workstream W added library+park, workstream P added the two parking buildings,
+  the intel roster workstream added the intel tab: intelHQ/listeningPost/signalsStation/satelliteUplink),
+  `UPGRADE_GROUPS` (military 8 / economy 4 / infrastructure 6 / logistics 1 / intel 2), `unitAvailability` /
   `buildingAvailability` / `upgradeAvailability` (ready | reason), cost
   formatters, and the
   Naval Yard coast-rule tooltip. Availability mirrors sim validation
@@ -318,7 +324,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `icons.ts` — **hand-drawn inline SVG icon set (pure, tested,
   `tests/ui.icons.test.ts`).** Every button shows icon AND text (user
   directive 2026-09-30) — icons are `aria-hidden`, never icon-only.
-  `unitIcon` / `buildingIcon` cover all 66 units + 85 buildings
+  `unitIcon` / `buildingIcon` cover all 68 units + 89 buildings
   (`Record<UnitKind, string>` so a missing glyph is a compile error);
   `toolIcon` for the build tools row (incl. the Phase 2 powerLine /
   waterPipe tools); `viewIcon` for the top-bar view toggles (Phase 4
@@ -350,8 +356,8 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `LocalizedString` (`{en}` — the localization indirection, kept as the
   extension point), module-level language
   state (`setUiLanguage` / `getUiLanguage` / `loc` / `fillLoc`). Covers
-  all 66 unit names, 85 building names, palette/upgrade tab names, the
-  19 upgrade names + one-line effects, cost labels, and lock reasons.
+  all 68 unit names, 89 building names, palette/upgrade tab names, the
+  21 upgrade names + one-line effects, cost labels, and lock reasons.
   Legacy Phase 3 strings are still English-only; they were never localized.
 - Audio: `game.ts` owns an `AudioEngine` (see `src/audio/AGENTS.md`) —
   unlocked on first pointer/key gesture, `updateMusic(world, playerId)`

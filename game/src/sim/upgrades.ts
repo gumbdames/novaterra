@@ -49,7 +49,7 @@ import { getPlayer, BUILDING_DEFS, hasProductionBuilding } from './city';
 import type { CommandQueue } from './commands';
 import type { UnitDef } from './units';
 
-/** The 19 upgrade ids (roster expansion's 12 + Phase 2's utility ladder 6 + Phase 3's advancedLogistics). */
+/** The 21 upgrade ids (roster expansion's 12 + Phase 2's utility ladder 6 + Phase 3's advancedLogistics + the grand-expansion intel roster's 2). */
 export const UPGRADE_IDS = [
   'apRounds',
   'compositeArmor',
@@ -73,6 +73,12 @@ export const UPGRADE_IDS = [
   // Phase 3 (grand expansion): Advanced Logistics — depot capacity and
   // ammo production.
   'advancedLogistics',
+  // Grand-expansion intel roster (§3.8 / §4 S6, workstream 2,
+  // 2026-09-30): the intel upgrade pair — signals intelligence
+  // (sight/surveillance) and counter-intelligence (detection
+  // radius/sabotage resistance).
+  'signalsIntel',
+  'counterIntel',
 ] as const;
 export type UpgradeId = (typeof UPGRADE_IDS)[number];
 
@@ -180,6 +186,22 @@ export const UPGRADE_DEFS: Record<UpgradeId, UpgradeDef> = {
     id: 'advancedLogistics', name: 'Advanced Logistics', costFunds: 1000, costResearch: 100,
     requiredBuildings: ['munitionsFactory'], minAge: 'industry',
   },
+  // ------------------------------------------------------------------
+  // Grand-expansion intel roster (§3.8 / §4 S6, workstream 2,
+  // 2026-09-30). The intel upgrade pair. Effect hooks live in
+  // sim/intel.ts (consumed by the sim-core workstream's mechanics):
+  // signalsIntel → surveillance accrual ×1.5 and +4 unit sight;
+  // counterIntel → counter-intel accrual ×1.25, +25 detection radius,
+  // and sabotage duration ×0.5 (the visible answer to spies).
+  // ------------------------------------------------------------------
+  signalsIntel: {
+    id: 'signalsIntel', name: 'Signals Intelligence', costFunds: 1000, costResearch: 100,
+    requiredBuildings: ['listeningPost'], minAge: 'information',
+  },
+  counterIntel: {
+    id: 'counterIntel', name: 'Counter-Intelligence', costFunds: 900, costResearch: 90,
+    requiredBuildings: ['signalsStation'], minAge: 'information',
+  },
 };
 
 /** Fresh upgrade state: no player has researched anything. */
@@ -247,6 +269,34 @@ export const AVIONICS_AWACS_SIGHT_BONUS = 15;
 export const SONAR_VS_MEDIUM_MULT = 1.3;
 export const SONAR_KINDS = ['frigate', 'destroyer'];
 export const SONAR_SEA_SIGHT_BONUS = 8;
+
+/**
+ * Grand-expansion intel roster (§3.8/S6): Signals Intelligence —
+ * standing unit-sight bonus for the owner's units.
+ */
+export const SIGNALS_INTEL_SIGHT_BONUS = 4;
+
+/**
+ * Standing unit-sight bonus (world units) for `owner` from intel
+ * sources: the sum of completed satelliteUplink `sightBonus` values
+ * plus SIGNALS_INTEL_SIGHT_BONUS when `signalsIntel` is researched.
+ *
+ * Implemented HERE (not in intel.ts) next to its only consumer
+ * (`effectiveSight`): intel.ts imports units.ts by value and units.ts
+ * imports this module, so an intel.ts implementation would close a
+ * units→upgrades→intel→units value cycle (R2). It is re-exported from
+ * sim/intel.ts so the §3.8 contract ("import it from sim/intel.ts")
+ * keeps working.
+ */
+export function intelSightBonus(world: World, owner: number): number {
+  let bonus = 0;
+  for (const b of world.city.buildings) {
+    if (b.owner !== owner || b.progress < 1) continue;
+    bonus += BUILDING_DEFS[b.kind]?.sightBonus ?? 0;
+  }
+  if (hasUpgrade(world, owner, 'signalsIntel')) bonus += SIGNALS_INTEL_SIGHT_BONUS;
+  return bonus;
+}
 
 /** Cruise Missiles: mlrs +10 range, artillery +8 range. */
 export const CRUISE_MISSILE_RANGE_BONUS: Record<string, number> = {
@@ -370,6 +420,10 @@ export function effectiveSight(world: World, owner: number, def: UnitDef): numbe
   if (def.domain === 'sea' && hasUpgrade(world, owner, 'sonarSuite')) {
     sight += SONAR_SEA_SIGHT_BONUS;
   }
+  // Grand-expansion Phase 6 (S6 intel): intel sources add standing
+  // sight — completed satelliteUplinks plus the signalsIntel upgrade.
+  // (The intel panel and AI both read through this hook.)
+  sight += intelSightBonus(world, owner);
   return sight;
 }
 

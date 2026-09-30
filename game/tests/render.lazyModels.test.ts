@@ -263,6 +263,22 @@ describe('bootModelKeys', () => {
     expect(keys.has('harborCanoe')).toBe(true);
   });
 
+  it('excludes the Phase 6 intel keys (all lazy, never boot)', () => {
+    const keys = new Set(bootModelKeys());
+    // The §3.8 intel roster (workstream 5, art): later-age kinds, so
+    // their pieces stay lazy. Note 'spy' shares its GLB file with the
+    // lazy-only personCasualMan — no boot path can reach it.
+    for (const k of [
+      'spy', 'reconTeam',
+      'intelHQMain',
+      'listeningPostHut', 'listeningPostDish',
+      'satelliteUplink',
+      'signalsStationHut',
+    ]) {
+      expect(keys.has(k)).toBe(false);
+    }
+  });
+
   it('excludes later-age keys and the tree GLB fallbacks', () => {
     const keys = new Set(bootModelKeys());
     for (const late of [

@@ -2544,6 +2544,56 @@ export function buildNavalMineSpikes(): LoadedModel {
   return b.build();
 }
 
+/**
+ * signalMast — a tall SIGINT lattice mast for signalsStation (attach at
+ * dy = 0 beside the hut). Tapered mast with three crossbar antenna
+ * arrays, two small dishes and a red aircraft-warning beacon. ~7 world
+ * units tall so it reads at game zoom. All parts smat()/pmat()-tagged
+ * for the surface pipeline.
+ */
+export function buildSignalMast(): LoadedModel {
+  const b = new ModelBuilder();
+  const mastMat = smat('gunmetal');
+  const dishMat = smat('paintedMetal');
+  const dark = smat('gunmetal', { color: 0x2c3138 });
+  const beacon = pmat(0xff2222, { emissive: 0xff2222, emissiveIntensity: 2.0 });
+  // Concrete footing.
+  b.add(new THREE.CylinderGeometry(0.55, 0.7, 0.4, 10), smat('concrete'), tr(0, 0.2, 0));
+  // Tapered lattice mast: central column + 4 corner legs converging.
+  b.add(new THREE.CylinderGeometry(0.09, 0.16, 6.4, 8), mastMat, tr(0, 3.5, 0));
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+    b.beam(sx * 0.55, 0.4, sz * 0.55, sx * 0.12, 6.4, sz * 0.12, 0.05, mastMat, 6);
+  }
+  // Horizontal lattice braces.
+  for (const hy of [1.8, 3.2, 4.6, 5.8]) {
+    const w = 0.55 - (hy / 6.4) * 0.43;
+    b.add(new THREE.BoxGeometry(w * 2, 0.06, 0.06), mastMat, tr(0, hy, w));
+    b.add(new THREE.BoxGeometry(w * 2, 0.06, 0.06), mastMat, tr(0, hy, -w));
+    b.add(new THREE.BoxGeometry(0.06, 0.06, w * 2), mastMat, tr(w, hy, 0));
+    b.add(new THREE.BoxGeometry(0.06, 0.06, w * 2), mastMat, tr(-w, hy, 0));
+  }
+  // Three crossbar antenna arrays with whip elements.
+  for (const [hy, hw] of [[2.6, 1.1], [4.0, 0.9], [5.3, 0.7]] as const) {
+    b.add(new THREE.BoxGeometry(hw * 2, 0.07, 0.07), dark, tr(0, hy, 0));
+    for (const sx of [-1, 1]) {
+      b.add(new THREE.CylinderGeometry(0.025, 0.025, 0.8, 6), dark, tr(sx * hw * 0.6, hy + 0.4, 0));
+      b.add(new THREE.CylinderGeometry(0.025, 0.025, 0.8, 6), dark, tr(sx * hw, hy + 0.4, 0));
+    }
+  }
+  // Two small tilted dishes (the hqAntenna dish idiom).
+  for (const [dx, hy, tilt] of [[0.3, 3.3, 0.7], [-0.28, 4.7, -0.6]] as const) {
+    const q = new THREE.Quaternion().setFromEuler(new THREE.Euler(tilt, 0.3, 0));
+    b.add(
+      new THREE.SphereGeometry(0.3, 10, 6, 0, Math.PI * 2, 0, 0.9),
+      dishMat,
+      new THREE.Matrix4().compose(new THREE.Vector3(dx, hy, 0), q, new THREE.Vector3(1, 1, 1)),
+    );
+  }
+  // Red aircraft-warning beacon at the crown.
+  b.add(new THREE.SphereGeometry(0.09, 8, 8), beacon, tr(0, 6.85, 0));
+  return b.build();
+}
+
 export const PROCEDURAL_KINDS = [
   'artillery',
   'aa',

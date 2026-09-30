@@ -116,9 +116,9 @@ function worldBox(root: THREE.Object3D): THREE.Box3 {
 }
 
 describe('MODEL_PATHS real mapping', () => {
-  it('maps 94 CC0 keys to .glb paths with positive finite scales', () => {
+  it('maps 101 CC0 keys to .glb paths with positive finite scales', () => {
     const keys = Object.keys(MODEL_PATHS);
-    expect(keys).toHaveLength(94);
+    expect(keys).toHaveLength(101);
     for (const [key, spec] of Object.entries(MODEL_PATHS)) {
       expect(typeof key).toBe('string');
       expect(spec.path).toMatch(/\.glb$/);
@@ -167,6 +167,11 @@ describe('MODEL_PATHS real mapping', () => {
       'repairShipHull', 'minelayerHull', 'deckCrate', 'repairCrane',
       'deckRowboat', 'harborCanoe', 'cargoContainerA', 'cargoContainerB',
       'cargoContainerC',
+      // NOVATERRA intel roster (§3.8/S6, workstream 2, 2026-09-30):
+      // the intel art kit (units 1:1, buildings as composite pieces)
+      'spy', 'reconTeam',
+      'intelHQMain', 'listeningPostHut', 'listeningPostDish',
+      'satelliteUplink', 'signalsStationHut',
       // nature props (tree keys are overlaid by render/natureTrees.ts at
       // game start; the GLB paths here are the silent fallback)
       'propTreeOak', 'propTreeBirch', 'propTreePineTall', 'propTreePine',

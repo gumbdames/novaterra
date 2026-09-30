@@ -506,6 +506,18 @@ export const KEY_TREATMENTS: Record<string, KeyTreatment> = {
   cargoContainerA: { default: T.hull },
   cargoContainerB: { default: T.hull },
   cargoContainerC: { default: T.hull },
+
+  // ---- intel roster (Phase 6 workstream 5, art) ----
+  // spy wears the pedestrian fabric treatment (same Quaternius figure
+  // as personCasualMan); the office blocks wear the lab/university
+  // concrete treatment; the dishes wear the radarStation space hull.
+  spy: INFANTRY_FABRIC,
+  reconTeam: { default: T.vehiclePaint },
+  intelHQMain: { default: T.concreteBld },
+  listeningPostHut: { default: T.concreteBld },
+  listeningPostDish: SPACE_HULL,
+  satelliteUplink: SPACE_HULL,
+  signalsStationHut: { default: T.concreteBld },
 };
 
 // ---------------------------------------------------------------------------

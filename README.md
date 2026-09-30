@@ -33,7 +33,7 @@ land, sea and air — or play a fully peaceful game with war disabled.
 
 - City building with visible zoning, terrain-following roads, and
   power/water utility networks you drag-paint across the map
-- 85 buildings and 66 units across land, sea, and air, with tech ages
+- 89 buildings and 68 units across land, sea, and air, with tech ages
 - Unit veterancy (Recruit → Elite), a Military Academy, education and civic
   systems, land value and desirability (elevation, shoreline, clean air,
   and nearby libraries/parks/schools/parking/marinas set each block's
@@ -49,6 +49,12 @@ land, sea and air — or play a fully peaceful game with war disabled.
   (residents/workers) in the selection panel
 - Missile/fuel logistics: fuel burn, ammo magazines, depots, supply trucks,
   resupply orders, reload-point aura
+- Intel (Phase 7): 4 intel buildings generating surveillance /
+  operational / counter-intel assets, the stealthy **Spy** (from the
+  Intelligence Headquarters) and the overt **Recon Team**, two lab
+  upgrades (Signals Intelligence, Counter-Intelligence) — plus the
+  covert-op sim core: infiltrate/sabotage/tech-steal missions,
+  detection coverage, and burned-spy visibility. Intel panel UI next
 - 5 Classic AI rivals with per-match personalities, 5 difficulties, skirmish
   maps, deterministic simulation (seeded replays and saves)
 

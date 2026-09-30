@@ -504,6 +504,10 @@ might or economic boom, your choice:
 - **Cruise Missiles** — +range for MLRS and artillery.
 - **Drone Optics** — drones and spectres see much further.
 - **Field Medicine** — medics heal twice as fast; infantry tougher.
+- **Signals Intelligence** — surveillance income ×1.5; all units +4
+  sight.
+- **Counter-Intelligence** — counter-intel income ×1.25; +25
+  detection radius; sabotage against you lasts half as long.
 - **Precision Manufacturing** — factories produce +25%.
 - **Smart Grid** — power plants, solar farms and nuclear plants
   supply more power.
@@ -512,6 +516,48 @@ might or economic boom, your choice:
 
 Each upgrade has prerequisites — buildings, ages, sometimes another
 upgrade — shown in the research panel with the reason when locked.
+
+## Intel and spies
+
+Knowledge is a resource. The **Intel** tab in the build menu holds
+four buildings that quietly generate intel assets over time:
+
+- **Listening Post** (Connectivity age) — 500 funds. Generates
+  surveillance and watches a 60-unit radius for hidden units.
+- **Signals Station** (Information age) — 900 funds. Generates
+  counter-intel (your defense) and detects spies in a 45-unit radius.
+- **Intelligence Headquarters** (Information age) — 1400 funds.
+  Generates surveillance *and* operational assets, and it is the only
+  building that can train **spies**.
+- **Satellite Uplink** (Ascendance age) — 2500 funds. The late-game
+  eye: heavy surveillance income plus +12 sight for all your units.
+
+The three assets do different jobs: **surveillance** is your passive
+picture of the battlefield, **operational** funds spy missions, and
+**counter-intel** protects you — your detection posts see further
+and sabotage against your buildings ends sooner.
+
+Your **Spy** (400 funds + 40 materials, Information age, from the
+Intelligence Headquarters) is the only unit built to go unseen: it
+stays hidden from the enemy unless it walks inside one of their
+detection radii. Your **Recon Team** (150 + 15, Connectivity age,
+from the Barracks) is the honest alternative — great eyes (44 sight),
+but the enemy can see it too.
+
+Two lab upgrades sharpen the whole system: **Signals Intelligence**
+(surveillance income ×1.5, all units +4 sight) and
+**Counter-Intelligence** (counter-intel income ×1.25, +25 detection
+radius, sabotage lasts half as long).
+
+Spy missions spend the assets above: a spy standing next to an enemy
+building can **infiltrate** it (20 seconds, interrupted if the spy
+moves away), then **sabotage** it (25 operational assets — the target
+goes dark for 45 seconds, 22.5 if the victim researched
+Counter-intelligence) or **steal a technology** (15 surveillance
+assets, +40 research on success). Getting caught burns the spy: it
+becomes visible to everyone for 30 seconds. Keep your spies inside
+your own detection coverage and research Counter-intelligence to
+catch theirs.
 
 ## Maps
 

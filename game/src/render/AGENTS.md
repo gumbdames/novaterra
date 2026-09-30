@@ -47,7 +47,7 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   textures to `<name>.glbTextures/...`. Same fix in `natureTrees.ts`,
   which appended a second `models/` onto `modelBaseUrl()` (it already
   ends with `models/`). Pinned by `render.models.test.ts`.
-- `MODEL_PATHS` is the key -> GLB mapping: **94 real CC0 entries**
+- `MODEL_PATHS` is the key -> GLB mapping: **101 real CC0 entries**
   (Kenney + Quaternius + styloo "Tiny Plane Asset Pack"; see THIRD_PARTY_NOTICES.md for the per-file
   listing). The 13 styloo aircraft pieces and 14 of the 16 workstream-E
   kitbash pieces are LAZY-only, never in the boot set (see `bootModelKeys`
@@ -172,7 +172,7 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   back to up-facing; never emits NaNs. `ensureBoxUVs` projects only when no
   `uv` attribute exists.
 - Wired in by the texture-integration phase (`render/entitySurfaces.ts`,
-  0.1 Alpha): `KEY_TREATMENTS` maps all 94 `MODEL_PATHS` keys to surface
+  0.1 Alpha): `KEY_TREATMENTS` maps all 101 `MODEL_PATHS` keys to surface
   categories; `applySurfaceTreatment` runs once at load in `models.ts`
   (per-material, never per-view); procedural builders tag materials via
   `surfaceMaterial()` in `proceduralModels.ts`; roads emit world-scale UVs

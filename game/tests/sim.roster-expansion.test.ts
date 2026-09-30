@@ -273,8 +273,8 @@ function findCoastalFootprint(
 }
 
 describe('roster definitions (§2)', () => {
-  it('has exactly the 66 unit kinds (35 + 16 Phase 5 aircraft + 15 Phase 6 naval)', () => {
-    expect(UNIT_KINDS).toHaveLength(66);
+  it('has exactly the 68 unit kinds (35 + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel)', () => {
+    expect(UNIT_KINDS).toHaveLength(68);
     const expected = [
       'engineer', 'rifles', 'spectre', 'sniperTeam', 'combatMedic',
       'tank', 'apc', 'tankDestroyer', 'artillery', 'mlrs', 'aa',
@@ -296,6 +296,9 @@ describe('roster definitions (§2)', () => {
       'heavyDestroyer', 'cargoFreighter', 'fuelTanker', 'ammoShip',
       'repairShip', 'minelayer', 'navalMine', 'coastGuardCutter',
       'cruiseLiner', 'yacht',
+      // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+      // the two land intel units.
+      'spy', 'reconTeam',
     ];
     expect([...UNIT_KINDS].sort()).toEqual([...expected].sort());
   });
@@ -449,7 +452,10 @@ describe('building definitions (§3 + Phase 1 + Workstream Z)', () => {
     // maintenanceHangar, runwayS, runwayM, runwayL) → 81.
     // Grand-expansion Phase 6 workstream C (2026-09-30): +4 ports
     // (commercialPort, containerPort, fishingHarbor, navalBase) → 85.
-    expect(Object.keys(BUILDING_DEFS)).toHaveLength(85);
+    // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+    // +4 intel buildings (intelHQ, listeningPost, satelliteUplink,
+    // signalsStation) → 89.
+    expect(Object.keys(BUILDING_DEFS)).toHaveLength(89);
     expect(BUILDING_DEFS.barracks).toMatchObject({
       costFunds: 700, costMaterials: 250, buildSeconds: 40, minAge: 'foundation',
     });
@@ -868,7 +874,9 @@ describe('upgrade effects (§4)', () => {
     // gridStorage) → 18.
     // Phase 3 workstream 2 (2026-09-30): +1 logistics upgrade
     // (advancedLogistics) → 19.
-    expect(UPGRADE_IDS).toHaveLength(19);
+    // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+    // +2 intel upgrades (signalsIntel, counterIntel) → 21.
+    expect(UPGRADE_IDS).toHaveLength(21);
     expect(UPGRADE_DEFS.apRounds).toMatchObject({
       costFunds: 800, costResearch: 60, minAge: 'industry',
       requiredBuildings: ['warFactory'],

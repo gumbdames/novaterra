@@ -98,6 +98,10 @@ export function canonicalizeWorld(world: World): string {
     out += `${b.reservedAmmo ?? 0},${b.reservedFuel ?? 0},`;
     // Workstream M: meltdown outage state (legacy decode default 0).
     out += `${b.meltdownUntilTick ?? 0},`;
+    // Grand-expansion Phase 6 (S6 intel): sabotage outage state
+    // (legacy decode default 0). Behavior-affecting (sabotaged
+    // buildings produce nothing) ⇒ digest-covered (PLAN §11).
+    out += `${b.sabotagedUntil ?? 0},`;
     // Phase 4 occupancy + variety (2026-09-30): behavior-affecting
     // (occupancy) and selection-panel-visible (variant), so both are
     // digest-covered (legacy decode defaults 0/0/0/1).
@@ -115,6 +119,11 @@ export function canonicalizeWorld(world: World): string {
     out += `${canonicalNumber(p.fuel)},${canonicalNumber(p.food)},${canonicalNumber(p.research)},`;
     out += `${canonicalNumber(p.goods)},${canonicalNumber(p.influence)},${canonicalNumber(p.manpower)},`;
     out += `${p.taxRates.join(',')},${p.population},${p.specialization};`;
+    // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+    // per-player intel asset counters — behavior-affecting (they fund
+    // infiltrate/sabotage missions) ⇒ digest-covered (PLAN §11).
+    const intel = p.intel ?? { surveillance: 0, operational: 0, counterIntel: 0 };
+    out += `|intel${p.id}=${canonicalNumber(intel.surveillance)},${canonicalNumber(intel.operational)},${canonicalNumber(intel.counterIntel)};`;
   }
   out += `|shortage=${world.city.foodShortage ? 1 : 0}`;
   // Trade routes: owner→partner pairs in establishment order.
@@ -156,7 +165,13 @@ export function canonicalizeWorld(world: World): string {
     // state. 0 = unparked / unembarked (the legacy decode default).
     // Behavior-affecting (parked/embarked units are skipped by target
     // acquisition and move with their carrier) ⇒ digest-covered.
-    out += `${u.hangarBuildingId ?? 0},${u.embarkedOn ?? 0};`;
+    out += `${u.hangarBuildingId ?? 0},${u.embarkedOn ?? 0},`;
+    // v8 (grand-expansion Phase 6, S6 intel): spy mission state (0 = no
+    // mission / unembedded / unspotted — the legacy decode default).
+    // Behavior-affecting (embedded spies steal tech, spotted spies are
+    // targetable) ⇒ digest-covered (PLAN §11).
+    out += `${u.missionEndsAt ?? 0},${u.missionTargetId ?? 0},${u.infiltrationProgress ?? 0},`;
+    out += `${u.embeddedIn ?? 0},${u.spottedUntil ?? 0};`;
   }
   // Pathfinding: queues in FIFO order, fields in creation order; dirs are
   // small ints so they join cheaply. The active build's dist array is

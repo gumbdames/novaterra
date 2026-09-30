@@ -366,6 +366,9 @@ export const STRINGS = {
     coastGuardCutter: { en: 'Coast Guard Cutter' },
     cruiseLiner: { en: 'Cruise Liner' },
     yacht: { en: 'Yacht' },
+    // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30).
+    spy: { en: 'Spy' },
+    reconTeam: { en: 'Recon Team' },
   } as Record<UnitKind, LocalizedString>,
   /** Localized display names for all building kinds (tab palettes). */
   buildingNames: {
@@ -468,6 +471,11 @@ export const STRINGS = {
     runwayS: { en: 'Runway (Light)' },
     runwayM: { en: 'Runway (Medium)' },
     runwayL: { en: 'Runway (Heavy)' },
+    // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30).
+    intelHQ: { en: 'Intelligence Headquarters' },
+    listeningPost: { en: 'Listening Post' },
+    satelliteUplink: { en: 'Satellite Uplink' },
+    signalsStation: { en: 'Signals Station' },
   } as Record<BuildingKind, LocalizedString>,
   /** Train-palette tab names (spec §8). */
   unitTabs: {
@@ -477,6 +485,8 @@ export const STRINGS = {
     navy: { en: 'Navy' },
     // Grand-expansion Phase 4 S7 (2026-09-30): the civilian transports tab.
     transport: { en: 'Transport' },
+    // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30).
+    intel: { en: 'Intel' },
   } as Record<string, LocalizedString>,
   /** Build-palette tab names (spec §8). */
   buildingTabs: {
@@ -497,6 +507,8 @@ export const STRINGS = {
     transport: { en: 'Transport' },
     // Grand-expansion Phase 5 (S5+S8, 2026-09-30): the airport roster tab.
     airports: { en: 'Airports' },
+    // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30).
+    intel: { en: 'Intel' },
   } as Record<string, LocalizedString>,
   /** Research-panel upgrade group names. */
   upgradeGroups: {
@@ -506,6 +518,8 @@ export const STRINGS = {
     infrastructure: { en: 'Infrastructure' },
     // Grand-expansion Phase 3 (2026-09-30): the logistics upgrade.
     logistics: { en: 'Logistics' },
+    // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30).
+    intel: { en: 'Intel' },
   } as Record<string, LocalizedString>,
   /** Localized age names for lock reasons ("requires the Industry age"). */
   ageNames: {
@@ -516,7 +530,7 @@ export const STRINGS = {
     ascendance: { en: 'Ascendance' },
   } as Record<Age, LocalizedString>,
   /**
-   * The 19 researchable upgrades: localized name + one-line effect
+   * The 21 researchable upgrades: localized name + one-line effect
    * (spec §4; effects mirror the sim's upgrade hooks, not marketing).
    */
   upgrades: {
@@ -597,6 +611,16 @@ export const STRINGS = {
     advancedLogistics: {
       name: { en: 'Advanced Logistics' },
       effect: { en: 'Depot ammo/fuel storage ×1.5; ammo production ×1.5' },
+    },
+    // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+    // the intel upgrade pair.
+    signalsIntel: {
+      name: { en: 'Signals Intelligence' },
+      effect: { en: 'Surveillance income ×1.5; all units +4 sight' },
+    },
+    counterIntel: {
+      name: { en: 'Counter-Intelligence' },
+      effect: { en: 'Counter-intel income ×1.25; +25 detection radius; sabotage lasts half as long' },
     },
   } as Record<UpgradeId, { name: LocalizedString; effect: LocalizedString }>,
   /** Utility networks (grand-expansion Phase 2). English-only. */

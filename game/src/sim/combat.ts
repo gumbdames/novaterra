@@ -80,6 +80,7 @@ import {
 } from './veterancy';
 import { orderMoveTo } from './movement';
 import { MAP_HALF_SIZE } from './city';
+import { isDetected } from './intel';
 
 /** Can this weapon be aimed at that target's domain? */
 export function canTarget(def: UnitDef, target: UnitRecord): boolean {
@@ -219,6 +220,10 @@ export function acquireTarget(world: World, unit: UnitRecord, def: UnitDef): Uni
     // hangar or embarked on a carrier) are not valid targets — they
     // are inside the shelter, not on the battlespace.
     if (isSheltered(other)) continue;
+    // Grand-expansion Phase 6 (S6 intel): stealthed units (spies) are
+    // invisible unless detected — the shooter cannot acquire what its
+    // side cannot see (the `isDetected` stealth contract in intel.ts).
+    if (!isDetected(other, unit.owner, world)) continue;
     if (!canTarget(def, other)) continue;
     const d = Math.hypot(other.x - unit.x, other.z - unit.z);
     if (d > range || d < def.minRange) continue;
@@ -465,7 +470,11 @@ export function createCombatSystem(): SimSystem {
         const t = findUnit(world, u.targetId);
         // A target that parked/embarked mid-chase leaves the
         // battlespace — drop it like a dead one.
-        if (t && t.hp > 0 && t.owner !== u.owner && !isSheltered(t)) {
+        // Grand-expansion Phase 6 (S6 intel): a target that went
+        // undetected mid-chase (the spy slipped out of detection
+        // coverage, or its burn timer expired) is dropped the same
+        // way — the pursuer lost sight of it.
+        if (t && t.hp > 0 && t.owner !== u.owner && !isSheltered(t) && isDetected(t, u.owner, world)) {
           target = t;
         } else {
           u.targetId = 0;
@@ -565,6 +574,12 @@ export function registerCombatCommands(queue: CommandQueue): void {
       if (!target) return `attackUnit: no target with id ${targetId}`;
       if (target.owner === owner) return 'attackUnit: cannot attack your own unit';
       if (isSheltered(target)) return `attackUnit: target ${targetId} is parked or embarked (not on the battlespace)`;
+      // Grand-expansion Phase 6 (S6 intel): no ordering an attack on a
+      // stealthed unit your side cannot see — find it first (detection
+      // coverage, or burn it with a spot check). Loud, never silent.
+      if (!isDetected(target, owner, world)) {
+        return `attackUnit: target ${targetId} is stealthed and undetected (no valid target)`;
+      }
       if (!canTarget(def, target)) {
         return `attackUnit: ${attacker.kind} cannot target ${target.domain} units`;
       }

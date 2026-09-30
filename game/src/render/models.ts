@@ -343,6 +343,43 @@ export const MODEL_PATHS: Record<string, ModelSpec> = {
   personCasualWoman: { path: 'quaternius-civilians/civilian-woman.glb', scale: 1 },
   personWorker: { path: 'quaternius-civilians/civilian-worker.glb', scale: 1 },
   personWomanTwo: { path: 'quaternius-civilians/civilian-woman-2.glb', scale: 1 },
+  // ── NOVATERRA Phase 6 workstream 5 (intel art, 0.1 Alpha) ─────────
+  // The §3.8 intel roster. All seven keys are LAZY (never in the boot
+  // set — see bootModelKeys): the intel sim defs are later-age, so
+  // these load on first intel build like the other late-game keys.
+  // Zero new bytes vendored: every file below is already in the CC0
+  // library (THIRD_PARTY_NOTICES.md); ~0.58 MiB lazy total. Footprints
+  // follow the sim defs (city.ts): intelHQ 3×3, listeningPost 2×2,
+  // satelliteUplink 3×3, signalsStation 2×2.
+  // spy 1.4×1.4 / 1.8 tall: civilian-man (1.43×4.84×0.82) ⇒ 0.37
+  // (height-fit; the Quaternius infantry convention — engineer/rifles
+  // use 0.372). A spy that looks like an ordinary civilian is the
+  // correct read; the team stripe + pennant keep it selectable.
+  spy: { path: 'quaternius-civilians/civilian-man.glb', scale: 0.37 },
+  // reconTeam 3.0×4.6 / 1.8 tall: kenney-car suv (1.50×1.30×2.70) ⇒
+  // 1.385 (height-fit, the hauler/hq convention). Car-kit authors the
+  // cab at -z → rotY π (same as hauler/hq).
+  reconTeam: { path: 'kenney-car/suv.glb', scale: 1.385, rotY: Math.PI },
+  // intelHQ 3×3 / 6.5 tall: commercial building-h (0.88×1.29×1.01) ⇒
+  // 5.03 (height-fit to 6.5; footprint stays inside 6×6). Reads as an
+  // agency HQ block with the hqAntenna attach prop on the roof
+  // (entities.ts).
+  intelHQMain: { path: 'kenney-commercial/building-h.glb', scale: 5.03 },
+  // listeningPost 2×2 / 4.5 tall: hut = commercial building-c
+  // (0.88×0.89×1.09) ⇒ 3.67 (footprint-constrained); dish =
+  // satelliteDish (0.69×0.62×0.57) ⇒ 1.8, roof-mounted (roof ≈3.3 at
+  // this scale) — the rooftop-SIGINT read.
+  listeningPostHut: { path: 'kenney-commercial/building-c.glb', scale: 3.67 },
+  listeningPostDish: { path: 'kenney-space/satelliteDish.glb', scale: 1.8 },
+  // satelliteUplink 3×3 / 5.5 tall: satelliteDish_detailed
+  // (0.70×0.62×0.70) ⇒ 8.57 (footprint-constrained). 1:1 like
+  // radarStation, but the detailed silhouette keeps the two distinct.
+  satelliteUplink: { path: 'kenney-space/satelliteDish_detailed.glb', scale: 8.57 },
+  // signalsStation 2×2 / 7 tall: hut = commercial building-e
+  // (1.64×0.89×1.01) ⇒ 2.44 (footprint-constrained; a low equipment
+  // shed — the station's identity is the procedural signalMast attach
+  // prop beside it, entities.ts).
+  signalsStationHut: { path: 'kenney-commercial/building-e.glb', scale: 2.44 },
 };
 
 /** One successfully loaded + normalized model. */

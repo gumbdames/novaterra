@@ -179,6 +179,10 @@ function copyBuilding(b: BuildingRecord, legacy = false): BuildingRecord {
     // Workstream M: attack-triggered meltdown state. ?? 0 = no meltdown
     // (legacy saves never had one — no version bump, stays v6).
     meltdownUntilTick: b.meltdownUntilTick ?? 0,
+    // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+    // sabotage state. ?? 0 = not sabotaged (legacy saves never were —
+    // no version bump, stays v8; the meltdown ?? 0 precedent).
+    sabotagedUntil: b.sabotagedUntil ?? 0,
     // Phase 4 occupancy + variety (2026-09-30). AD9 ?? defaults: legacy
     // v6/v7 saves decode to empty buildings with the default look —
     // no version bump (the veterancy ?? 0 precedent).
@@ -214,6 +218,15 @@ function copyPlayer(p: PlayerState): PlayerState {
     ],
     population: p.population,
     specialization: p.specialization,
+    // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
+    // per-player intel asset counters. ?? 0 per counter so legacy
+    // saves decode to zero assets — no version bump, stays v8 (the
+    // meltdown ?? 0 precedent).
+    intel: {
+      surveillance: p.intel?.surveillance ?? 0,
+      operational: p.intel?.operational ?? 0,
+      counterIntel: p.intel?.counterIntel ?? 0,
+    },
   };
 }
 
@@ -303,6 +316,14 @@ function copyUnit(u: UnitRecord): UnitRecord {
     // to 0 via ?? 0 (AD9 — the same precedent as fuel/ammo).
     hangarBuildingId: u.hangarBuildingId ?? 0,
     embarkedOn: u.embarkedOn ?? 0,
+    // v8 (grand-expansion Phase 6, S6 intel): spy mission state (0 =
+    // no mission / unembedded / unspotted). Legacy v7 saves decode to
+    // 0 via ?? 0 (AD9 — no version bump, stays v8).
+    missionEndsAt: u.missionEndsAt ?? 0,
+    missionTargetId: u.missionTargetId ?? 0,
+    infiltrationProgress: u.infiltrationProgress ?? 0,
+    embeddedIn: u.embeddedIn ?? 0,
+    spottedUntil: u.spottedUntil ?? 0,
   };
 }
 

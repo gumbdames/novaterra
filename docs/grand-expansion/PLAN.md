@@ -350,6 +350,15 @@ building tiers via upgrades (`upgrades.ts` patterns).
   `combat.ts: acquireTarget` (stealthed unless detected);
   `upgrades.ts: effectiveSight` (intel tech).
 - Detection: pure function of positions — zero snapshot/digest cost.
+- Status (2026-09-30): sim core DONE — `sim/intel.ts` (accrual, the
+  stealth contract, `infiltrateBuilding`/`sabotage`/`stealTech`,
+  `intel-<owner>` RNG streams), the `acquireTarget` +
+  `getVisibleEnemies` + `effectiveSight` hooks, the sabotage offline
+  gate in `economy.ts`, `createIntelSystem` + `registerIntelCommands`
+  wired in `ui/session.ts`, 30 tests in `tests/sim.intel.test.ts`.
+  Roster defs (spy/reconTeam, 4 intel buildings, signalsIntel/
+  counterIntel) in place. Remaining for the phase: intel panel UI,
+  AI intel play (spends operational on sabotage, steals tech).
 
 ### S7. Transport networks
 - Data: `roads` → `RoadCell[]` `{cell, cls}` sorted by cell
@@ -915,6 +924,21 @@ delta → AI work.** Step gate (§0) applies to every step inside.
 - **AI work:** AI assigns spies, spends operational assets, surges
   counter-intel on warning. **Prototype the mixed-use discovery UX
   early in this phase** (RESEARCH.md open question #1).
+- **Status: IN PROGRESS (2026-09-30, 0.1 Alpha)** — workstream 2
+  (intel roster defs) landed: 4 intel buildings + 2 units (spy,
+  reconTeam) + 2 upgrades (signalsIntel, counterIntel), the
+  `sim/intel.ts` contract surface (`runIntelAccrual`, `isDetected`,
+  `detectionRadiusAt`, `sabotageDurationSec`, `intelSightBonus`),
+  `world.city.players[o].intel` + `BuildingRecord.sabotagedUntil`
+  (v8, no bump — AD9), digest coverage, palette/strings/icons
+  wiring, 21 tests in `tests/sim.intel-roster.test.ts`. The
+  sim-core workstream's mechanics ALSO landed in the same checkout
+  (same file, header documents both halves): `infiltrateBuilding` /
+  `sabotage` / `stealTech` commands, `acquireTarget` +
+  `getVisibleEnemies` + `effectiveSight` hooks, economy-tick wiring
+  (`createIntelSystem`, `registerIntelCommands` in `ui/session.ts`).
+  Balance rationale: `docs/research/intel-roster.md`. Remaining for
+  Phase 7: the intel panel UI (UI workstream).
 
 ### Phase 8 — Tech-level roster pass + peaceful mode (M + S)
 - **Goal:** Mk II/III variants across the roster (art-shared,
