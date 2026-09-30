@@ -74,12 +74,19 @@ export function canonicalizeWorld(world: World): string {
   // buildings are in placement (id) order; floats use canonicalNumber.
   out += '|city:';
   out += `roads=${world.city.roads.join(',')};`;
+  // Phase 2: utility conductors + topology epoch (derived model itself
+  // is not digested — it is a pure function of these inputs).
+  out += `powerLines=${(world.city.powerLines ?? []).join(',')};`;
+  out += `pipes=${(world.city.pipes ?? []).join(',')};`;
+  out += `utilityEpoch=${world.city.utilityEpoch ?? 0};`;
   out += `zones=${world.city.zones.map((z) => `${z.cell}:${z.zone}`).join(',')};`;
   out += `nextBldg=${world.city.nextBuildingId}|`;
   for (const b of world.city.buildings) {
     out += `b${b.id},${b.kind},${b.owner},${b.cx},${b.cz},${b.facing},`;
     out += `${canonicalNumber(b.progress)},${b.level},`;
-    out += `${b.operational ? 1 : 0},${b.powered ? 1 : 0},${b.watered ? 1 : 0};`;
+    out += `${b.operational ? 1 : 0},${b.powered ? 1 : 0},${b.watered ? 1 : 0},`;
+    // Phase 2 utility diagnostics (legacy decode default 'disconnected').
+    out += `${b.powerDiag ?? 'disconnected'},${b.waterDiag ?? 'disconnected'};`;
   }
   out += '|players:';
   for (const p of world.city.players) {

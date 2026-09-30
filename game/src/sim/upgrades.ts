@@ -29,6 +29,10 @@
  *    applied at the existing computation points (combat damageMultiplier,
  *    spawn stats, sight/range reads, economy production) via these pure
  *    helpers — upgrades never store per-unit state.
+ *  - Phase 2 (grand expansion) adds the utility research ladder:
+ *    combustionTech → advancedNuclear → fusionResearch unlock the
+ *    plant ladder in city.ts; groundwaterSurvey / desalinationTech /
+ *    gridStorage unlock the water and storage sides.
  *
  * Upgrade-design rules (locked by the spec): every upgrade changes a
  * capability number; no upgrade has more than two prerequisite *slots*
@@ -45,7 +49,7 @@ import { getPlayer, BUILDING_DEFS, hasProductionBuilding } from './city';
 import type { CommandQueue } from './commands';
 import type { UnitDef } from './units';
 
-/** The 12 upgrade ids (spec §4). */
+/** The 18 upgrade ids (roster expansion's 12 + Phase 2's utility ladder 6). */
 export const UPGRADE_IDS = [
   'apRounds',
   'compositeArmor',
@@ -59,6 +63,13 @@ export const UPGRADE_IDS = [
   'smartGrid',
   'verticalFarming',
   'freeTrade',
+  // Phase 2: the utility research ladder (grand expansion §4).
+  'combustionTech',
+  'advancedNuclear',
+  'fusionResearch',
+  'groundwaterSurvey',
+  'desalinationTech',
+  'gridStorage',
 ] as const;
 export type UpgradeId = (typeof UPGRADE_IDS)[number];
 
@@ -129,6 +140,33 @@ export const UPGRADE_DEFS: Record<UpgradeId, UpgradeDef> = {
   freeTrade: {
     id: 'freeTrade', name: 'Free Trade Policy', costFunds: 1500, costResearch: 200,
     requiredBuildings: ['market'], minAge: 'information',
+  },
+  // Phase 2: the utility research ladder (grand expansion §4). Every
+  // upgrade changes a capability number; none exceeds the two-slot
+  // prerequisite limit (age = one slot, upgrade-chain = the other).
+  combustionTech: {
+    id: 'combustionTech', name: 'Combustion Tech', costFunds: 800, costResearch: 60,
+    requiredBuildings: [], minAge: 'connectivity',
+  },
+  advancedNuclear: {
+    id: 'advancedNuclear', name: 'Advanced Nuclear', costFunds: 1500, costResearch: 150,
+    requiredBuildings: [], minAge: 'industry', requiredUpgrade: 'combustionTech',
+  },
+  fusionResearch: {
+    id: 'fusionResearch', name: 'Fusion Research', costFunds: 3000, costResearch: 400,
+    requiredBuildings: [], minAge: 'ascendance', requiredUpgrade: 'advancedNuclear',
+  },
+  groundwaterSurvey: {
+    id: 'groundwaterSurvey', name: 'Groundwater Survey', costFunds: 500, costResearch: 40,
+    requiredBuildings: [], minAge: 'foundation',
+  },
+  desalinationTech: {
+    id: 'desalinationTech', name: 'Desalination Tech', costFunds: 1000, costResearch: 100,
+    requiredBuildings: [], minAge: 'industry',
+  },
+  gridStorage: {
+    id: 'gridStorage', name: 'Grid Storage', costFunds: 900, costResearch: 80,
+    requiredBuildings: [], minAge: 'connectivity',
   },
 };
 
@@ -218,16 +256,33 @@ export const FIELD_MEDICINE_HP_KINDS = ['rifles', 'sniperTeam', 'spectre'];
 /** Precision Manufacturing: factory output +25% (stacks with Heavy Industry). */
 export const PRECISION_MANUFACTURING_MULT = 1.25;
 
-/** Smart Grid: power supply boosts per plant kind. */
+/** Smart Grid: power supply boosts per plant kind (Phase 2 ladder added). */
 export const SMART_GRID_SUPPLY: Record<string, number> = {
   powerPlant: 35,
   solarFarm: 20,
   nuclearPlant: 75,
+  coalPlant: 40,
+  gasPlant: 45,
+  windFarm: 10,
+  hydroDam: 55,
+  geothermalPlant: 50,
+  fusionPlant: 150,
 };
 
 /** Vertical Farming: farm food x1.5, farm water demand 4 -> 3. */
 export const VERTICAL_FARMING_FOOD_MULT = 1.5;
 export const VERTICAL_FARMING_WATER_DEMAND = 3;
+
+/** Desalination Tech (Phase 2): desalination water output x1.5. */
+export const DESALINATION_TECH_WATER_MULT = 1.5;
+
+/** Water supply of a water plant, with Desalination Tech applied (desalination only). */
+export function effectiveWaterSupply(world: World, owner: number, kind: string, base: number): number {
+  if (kind === 'desalination' && hasUpgrade(world, owner, 'desalinationTech')) {
+    return base * DESALINATION_TECH_WATER_MULT;
+  }
+  return base;
+}
 
 /** Free Trade: market funds x1.5, trade-route income 3 -> 4.5, shop funds x1.25. */
 export const FREE_TRADE_MARKET_MULT = 1.5;

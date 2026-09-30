@@ -45,10 +45,39 @@
 
 ## Power and water
 
-Each power plant supplies 25 power, each water pump 25 water. Buildings
-draw from the shared pool — if demand exceeds supply, the oldest
-buildings get served first. A building without power produces at 25%;
-without water, another 25%. Keep headroom as you grow.
+Power and water flow through **networks**, not a shared pool. A network
+is a connected grid of conductors — roads, power lines, water pipes, and
+the footprints of substations (power) and pumping stations (water).
+Power plants and water plants feed the network they touch; buildings
+draw from it if they touch it (or sit in a zoned district the network
+reaches, which gets underground pipes for free).
+
+- **Build the grid.** Lay power lines and pipes (3 funds + 1 material per
+  cell, up to 512 cells per order) to reach far-flung districts. A plant
+  with no connection still helps: a stranded plant shares its output
+  with any unconnected building, oldest first.
+- **The plant ladder.** Basic power plants (25) and pumps (25) fit
+  anywhere. Research unlocks better ones: coal (30) and gas (35) with
+  Combustion Tech, hydro dams (45, needs shoreline), geothermal (40),
+  and fusion (120) at the top of the Nuclear chain. Wells, treatment
+  works, batteries, water towers, and reservoirs round out the roster.
+- **Storage.** Batteries bank surplus power; water towers and reservoirs
+  bank water. Stored utilities cover shortfalls automatically.
+- **Trade the surplus.** A network touching the map edge auto-sells
+  spare power and water for funds. Shortages are never auto-imported —
+  build more supply.
+- **Keep it clean.** Coal, gas, and oil plants foul adjacent wells and
+  pumps (output halved). Water treatment works scrub the fouling away.
+- **Respect the atom.** Nuclear plants need water cooling and can melt
+  down (rare, seeded) — offline for 3 minutes when they do. Advanced
+  Nuclear (research) cuts the risk 4x.
+- **Mind the sky.** Solar farms only produce by day (4-minute day);
+  wind farms rise and fall with the wind.
+
+If demand exceeds supply, the nearest buildings get served first. A
+building without power produces at 25%; without water, another 25%.
+The overlay shows each building's state: ok, shortage, or disconnected.
+Keep headroom as you grow.
 
 ## Upkeep and taxes
 

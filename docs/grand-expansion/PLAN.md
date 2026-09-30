@@ -609,6 +609,20 @@ delta → AI work.** Step gate (§0) applies to every step inside.
     pool allocator verbatim; the extension hook names
     `getUtilityModel` / `plantNetwork` / `unreached` (verified against
     source, re-verify before wiring).
+  - **Sim verdict (2026-09-30, 0.1 Alpha):** the network model is
+    implemented and green: `utilityNetworks.ts` (integer-BFS flood
+    fill, per-player/per-utility), `economy.ts allocateUtilities`
+    rewritten (per-network allocation, storage, map-edge auto-sell,
+    AD2 pool fallback), 13 plant kinds + 6 research upgrades,
+    `buildPowerLine`/`buildPipe` commands, hydro-dam coastal rule,
+    fouling/treatment, meltdowns, solar/wind. 43 new tests green
+    (`sim.utility-networks`, `sim.utility-plants`); flood fill runs
+    8.5 ms/economy-tick at 600 buildings. Two implementation
+    refinements: (1) a `consider` first-candidate bug meant nothing
+    was ever marked reached — caught by tests, fixed; (2) new
+    buildings start `powered`/`watered` = true (1-tick bootstrap) so
+    the cross-utility hooks (nuclear needs water, desalination needs
+    power) can prime on a fresh grid.
 
 ### Phase 3 — Logistics chains (L; XL only if physical road/rail freight)
 - **Goal:** ammo/fuel as a tempo constraint; supply trucks, depots,

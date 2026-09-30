@@ -125,6 +125,11 @@ function copyBuilding(b: BuildingRecord): BuildingRecord {
     id: b.id, kind: b.kind, owner: b.owner, cx: b.cx, cz: b.cz,
     facing: b.facing, progress: b.progress, level: b.level,
     operational: b.operational, powered: b.powered, watered: b.watered,
+    // Phase 2 utility diagnostics. ?? 'disconnected' so legacy v6 saves
+    // (which lack these fields) decode to the honest pre-evaluation
+    // state — no version bump, stays v6 (the veterancy ?? 0 precedent).
+    powerDiag: b.powerDiag ?? 'disconnected',
+    waterDiag: b.waterDiag ?? 'disconnected',
   };
 }
 
@@ -142,6 +147,11 @@ function copyPlayer(p: PlayerState): PlayerState {
 function copyCity(city: CityState): CityState {
   return {
     roads: [...city.roads],
+    // Phase 2: utility conductors. ?? [] / ?? 0 so legacy v6 saves
+    // decode to "no lines/pipes, epoch zero" — no version bump, stays v6.
+    powerLines: [...(city.powerLines ?? [])],
+    pipes: [...(city.pipes ?? [])],
+    utilityEpoch: city.utilityEpoch ?? 0,
     zones: city.zones.map((z) => ({ cell: z.cell, zone: z.zone })),
     buildings: city.buildings.map(copyBuilding),
     nextBuildingId: city.nextBuildingId,

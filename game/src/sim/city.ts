@@ -28,18 +28,26 @@
  *    at apply time. Roads are purely optional: they cost money and will
  *    serve a future traffic system, but no building or service requires
  *    one (user directive 2026-09-30).
- *  - Power/water is a Phase-1 capacity-pool model: every completed
- *    plant/pump contributes supply; buildings draw demand in id order
- *    until supply runs out. Unpowered/unwatered buildings still run, at a
- *    steep 25% output factor each (documented below). A true
- *    connected-component flow simulation is deferred (see D11).
+ *  - Power/water is a Phase-2 network model (grand expansion): integer
+ *    BFS flood fill over conductor tiles (roads conduct both utilities
+ *    automatically; drag-painted power lines / water pipes are the
+ *    long-hop tool), recomputed on structural change only
+ *    (`utilityEpoch`). Per-network supply sums; consumers draw in fixed
+ *    (network id, BFS distance, building id) order; demand counts only
+ *    reached buildings. Unreached buildings fall back to the legacy
+ *    capacity pool (AD2) so the Classic AI and old saves keep working.
+ *    Unpowered/unwatered buildings still run, at a steep 25% output
+ *    factor each (documented below). See sim/utilityNetworks.ts.
  *  - Growth: zoned cells auto-develop when the economy allows, with a
  *    desirability check the player steers via tax rates and utility
  *    headroom.
  *
  * Key invariants:
- *  - `roads` is always sorted ascending; `zones` is always sorted by cell.
- *    Both are maintained by the mutators — never hand-edit.
+ *  - `roads`, `powerLines` and `pipes` are always sorted ascending;
+ *    `zones` is always sorted by cell. All are maintained by the
+ *    mutators — never hand-edit.
+ *  - `utilityEpoch` is bumped by every structural mutator; the derived
+ *    utility model (utilityNetworks.ts) caches on it.
  *  - `buildings` is in placement (id) order, never reordered; demolish
  *    uses splice like the entity registry.
  *  - All randomness flows through the world's 'city' RNG stream.
@@ -214,6 +222,22 @@ export const BuildingKind = {
   /** Workstream Z (2026-09-30): education ladder — tertiary. */
   COLLEGE: 'college',
   MONUMENT: 'monument',
+  // Phase 2 (grand expansion, 2026-09-30): the utility plant ladder —
+  // power plants across tech levels, water sources, storage, and the
+  // network buildings that tie grids together. All zone: UTILITY_ZONE.
+  COAL_PLANT: 'coalPlant',
+  GAS_PLANT: 'gasPlant',
+  WIND_FARM: 'windFarm',
+  HYDRO_DAM: 'hydroDam',
+  GEOTHERMAL_PLANT: 'geothermalPlant',
+  FUSION_PLANT: 'fusionPlant',
+  WATER_WELL: 'waterWell',
+  WATER_TOWER: 'waterTower',
+  WATER_TREATMENT: 'waterTreatment',
+  RESERVOIR: 'reservoir',
+  POWER_SUBSTATION: 'powerSubstation',
+  PUMPING_STATION: 'pumpingStation',
+  BATTERY_STATION: 'batteryStation',
 } as const;
 export type BuildingKind = (typeof BuildingKind)[keyof typeof BuildingKind];
 
@@ -259,6 +283,43 @@ export interface BuildingDef {
    * completed Barracks.
    */
   requiredBuilding?: BuildingKind;
+  /**
+   * Phase 2 (grand expansion): research upgrade the owner must have
+   * researched to place this kind. Plain string (not upgrades.ts's
+   * UpgradeId — that module imports this one, so sharing the type would
+   * be a cycle). Enforced in the `placeBuilding` command spec alongside
+   * the age and requiredBuilding gates. First uses: the utility plant
+   * ladder (combustionTech gates coal/gas, groundwaterSurvey gates
+   * water wells, gridStorage gates storage buildings).
+   */
+  requiredUpgrade?: string;
+  /**
+   * Phase 2: per-building storage for the utility networks. Only one of
+   * power/water per building (batteryStation stores power; waterTower and
+   * reservoir store water). Network storage capacity is the sum over the
+   * completed, funded storage buildings reached by that network; the
+   * integer stock itself lives in the derived utility model
+   * (utilityNetworks.ts), never in the snapshot.
+   */
+  storageKind?: 'power' | 'water';
+  /** Storage capacity in utility units (requires `storageKind`). */
+  storageCapacity?: number;
+  /**
+   * Phase 2: when true, the completed building's footprint tiles act as
+   * conductors for the named utility even with no lines/pipes painted —
+   * powerSubstation injects a power line onto the road grid, pumpingStation
+   * does the same for water pipes.
+   */
+  conductsPower?: boolean;
+  conductsWater?: boolean;
+  /**
+   * Phase 2: pollution → water fouling (research §1.8). A completed,
+   * funded plant with `fouling` fouls orthogonally-adjacent water
+   * sources (`foulable`), halving their output until a waterTreatment
+   * scrubs them.
+   */
+  fouling?: boolean;
+  foulable?: boolean;
 }
 
 export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
@@ -317,6 +378,8 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 0, powerSupply: 25, waterDemand: 2, waterSupply: 0,
     output: {}, input: { fuel: 1.0 }, population: 0, taxBasePerSec: 3.0,
     minAge: 'foundation',
+    // Phase 2: the oil burner fouls adjacent water sources (like coal/gas).
+    fouling: true,
   },
   waterPump: {
     kind: 'waterPump', name: 'Water Pump', zone: UTILITY_ZONE,
@@ -325,6 +388,8 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 25,
     output: {}, input: {}, population: 0, taxBasePerSec: 1.5,
     minAge: 'foundation',
+    // Phase 2: industrial neighbors can foul this source (halved output).
+    foulable: true,
   },
   mediaCenter: {
     kind: 'mediaCenter', name: 'Media Center', zone: ZoneType.COMMERCIAL,
@@ -514,6 +579,126 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: { influence: 1.0 }, input: {}, population: 0, taxBasePerSec: 6.0,
     minAge: 'information',
   },
+  // ------------------------------------------------------------------
+  // Phase 2 (grand expansion, 2026-09-30): the utility plant ladder.
+  // All zone: UTILITY_ZONE (placeable anywhere on land). Balance notes:
+  // coal/gas are cheap and strong but foul adjacent water sources and
+  // need combustionTech; wind/solar are the clean baseline (wind is
+  // intermittent on a seeded cycle, solar is day-only); hydro needs a
+  // river/coast adjacency; geothermal is steady but late; fusion is the
+  // ascendance ultimate behind fusionResearch. Water: wells are cheap
+  // and weak (groundwaterSurvey), treatment adds system capacity and
+  // scrubs fouled sources, towers/reservoirs buffer intermittency
+  // (gridStorage). Substations/pumping stations inject lines/pipes
+  // onto the road grid.
+  // ------------------------------------------------------------------
+  coalPlant: {
+    kind: 'coalPlant', name: 'Coal Plant', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 500, costMaterials: 200,
+    buildSeconds: 40, upkeepFundsPerSec: 0.9,
+    powerDemand: 0, powerSupply: 30, waterDemand: 3, waterSupply: 0,
+    output: {}, input: { fuel: 0.8 }, population: 0, taxBasePerSec: 3.0,
+    minAge: 'industry', requiredUpgrade: 'combustionTech', fouling: true,
+  },
+  gasPlant: {
+    kind: 'gasPlant', name: 'Gas Plant', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 700, costMaterials: 280,
+    buildSeconds: 45, upkeepFundsPerSec: 1.0,
+    powerDemand: 0, powerSupply: 35, waterDemand: 2, waterSupply: 0,
+    output: {}, input: { fuel: 1.0 }, population: 0, taxBasePerSec: 3.5,
+    minAge: 'industry', requiredUpgrade: 'combustionTech', fouling: true,
+  },
+  windFarm: {
+    kind: 'windFarm', name: 'Wind Farm', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 450, costMaterials: 150,
+    buildSeconds: 30, upkeepFundsPerSec: 0.4,
+    powerDemand: 0, powerSupply: 8, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 1.5,
+    minAge: 'connectivity',
+  },
+  hydroDam: {
+    kind: 'hydroDam', name: 'Hydro Dam', zone: UTILITY_ZONE,
+    footprintW: 4, footprintH: 2, costFunds: 1200, costMaterials: 500,
+    buildSeconds: 70, upkeepFundsPerSec: 1.0,
+    powerDemand: 0, powerSupply: 45, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 4.0,
+    minAge: 'industry',
+  },
+  geothermalPlant: {
+    kind: 'geothermalPlant', name: 'Geothermal Plant', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 1600, costMaterials: 600,
+    buildSeconds: 80, upkeepFundsPerSec: 1.2,
+    powerDemand: 0, powerSupply: 40, waterDemand: 2, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 5.0,
+    minAge: 'information',
+  },
+  fusionPlant: {
+    kind: 'fusionPlant', name: 'Fusion Plant', zone: UTILITY_ZONE,
+    footprintW: 4, footprintH: 4, costFunds: 4000, costMaterials: 1500,
+    buildSeconds: 120, upkeepFundsPerSec: 3.0,
+    powerDemand: 0, powerSupply: 120, waterDemand: 4, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 8.0,
+    minAge: 'ascendance', requiredUpgrade: 'fusionResearch',
+  },
+  waterWell: {
+    kind: 'waterWell', name: 'Water Well', zone: UTILITY_ZONE,
+    footprintW: 2, footprintH: 2, costFunds: 200, costMaterials: 60,
+    buildSeconds: 15, upkeepFundsPerSec: 0.2,
+    powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 10,
+    output: {}, input: {}, population: 0, taxBasePerSec: 1.0,
+    minAge: 'foundation', requiredUpgrade: 'groundwaterSurvey', foulable: true,
+  },
+  waterTower: {
+    kind: 'waterTower', name: 'Water Tower', zone: UTILITY_ZONE,
+    footprintW: 2, footprintH: 2, costFunds: 350, costMaterials: 120,
+    buildSeconds: 25, upkeepFundsPerSec: 0.3,
+    powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 1.0,
+    minAge: 'connectivity', requiredUpgrade: 'gridStorage',
+    storageKind: 'water', storageCapacity: 200,
+  },
+  waterTreatment: {
+    kind: 'waterTreatment', name: 'Water Treatment Plant', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 900, costMaterials: 350,
+    buildSeconds: 50, upkeepFundsPerSec: 1.2,
+    powerDemand: 5, powerSupply: 0, waterDemand: 0, waterSupply: 20,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.5,
+    minAge: 'industry',
+  },
+  reservoir: {
+    kind: 'reservoir', name: 'Reservoir', zone: UTILITY_ZONE,
+    footprintW: 4, footprintH: 4, costFunds: 800, costMaterials: 300,
+    buildSeconds: 45, upkeepFundsPerSec: 0.5,
+    powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'industry', requiredUpgrade: 'gridStorage',
+    storageKind: 'water', storageCapacity: 800,
+  },
+  powerSubstation: {
+    kind: 'powerSubstation', name: 'Power Substation', zone: UTILITY_ZONE,
+    footprintW: 2, footprintH: 2, costFunds: 300, costMaterials: 100,
+    buildSeconds: 20, upkeepFundsPerSec: 0.4,
+    powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 1.0,
+    minAge: 'connectivity', conductsPower: true,
+  },
+  pumpingStation: {
+    kind: 'pumpingStation', name: 'Pumping Station', zone: UTILITY_ZONE,
+    footprintW: 2, footprintH: 2, costFunds: 300, costMaterials: 100,
+    buildSeconds: 20, upkeepFundsPerSec: 0.4,
+    powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 1.0,
+    minAge: 'connectivity', conductsWater: true,
+  },
+  batteryStation: {
+    kind: 'batteryStation', name: 'Battery Station', zone: UTILITY_ZONE,
+    footprintW: 2, footprintH: 2, costFunds: 500, costMaterials: 180,
+    buildSeconds: 30, upkeepFundsPerSec: 0.4,
+    powerDemand: 0, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 1.0,
+    minAge: 'connectivity', requiredUpgrade: 'gridStorage',
+    storageKind: 'power', storageCapacity: 300,
+  },
 };
 
 /** Defs in a fixed order (cheapest funds cost first) — used by growth. */
@@ -538,10 +723,26 @@ export const ROAD_COST_FUNDS = 5;
 export const ROAD_COST_MATERIALS = 2;
 /** Zone paint cost per cell. */
 export const ZONE_COST_FUNDS_PER_CELL = 1;
+/** Power-line cost per cell (cheaper than road: just wire, no paving). */
+export const POWER_LINE_COST_FUNDS = 3;
+export const POWER_LINE_COST_MATERIALS = 1;
+/** Water-pipe cost per cell. */
+export const PIPE_COST_FUNDS = 3;
+export const PIPE_COST_MATERIALS = 1;
 
 // ---------------------------------------------------------------------------
 // State
 // ---------------------------------------------------------------------------
+
+/**
+ * Phase 2 (grand expansion): per-utility diagnosis for a building.
+ * 'ok' = demand fully met; 'shortage' = on a network (or pool) whose
+ * supply ran out before it; 'disconnected' = no network reaches it and
+ * the pool fallback couldn't serve it (or it is a plant touching no
+ * conductor — the "stranded generator" self-flag). `powered`/`watered`
+ * stay the effective booleans the economy and UI already read.
+ */
+export type UtilityDiag = 'ok' | 'shortage' | 'disconnected';
 
 /** One placed building. Plain data — the renderer draws kind/footprint/pos/facing. */
 export interface BuildingRecord {
@@ -560,6 +761,13 @@ export interface BuildingRecord {
   operational: boolean;
   powered: boolean;
   watered: boolean;
+  /**
+   * Phase 2: per-utility diagnosis (see UtilityDiag). Optional so
+   * pre-Phase-2 record literals keep compiling; every read uses
+   * `?? 'disconnected'` (AD9 — the veterancy `?? 0` precedent).
+   */
+  powerDiag?: UtilityDiag;
+  waterDiag?: UtilityDiag;
 }
 
 /** One player's stockpiles and policy. */
@@ -590,6 +798,21 @@ export interface PlayerState {
 export interface CityState {
   /** Paved cells, sorted ascending. */
   roads: number[];
+  /**
+   * Phase 2: power-line cells, sorted ascending. Conduct power; the
+   * long-hop tool for plant→grid hookup and reaching far zones.
+   */
+  powerLines: number[];
+  /** Phase 2: water-pipe cells, sorted ascending. Conduct water. */
+  pipes: number[];
+  /**
+   * Phase 2: structural-change counter. Incremented by every structural
+   * command (build/demolish road/line/pipe/building/zone) — the derived
+   * utility-network model (utilityNetworks.ts) recomputes only when this
+   * changes. Plain data: snapshotted, digested, defaults to 0 on legacy
+   * saves (no version bump — additive field, neutral default).
+   */
+  utilityEpoch: number;
   /** Painted cells, sorted by cell. */
   zones: Array<{ cell: number; zone: ZoneType }>;
   /** Placed buildings, placement (id) order. */
@@ -639,6 +862,9 @@ function createPlayer(id: number, name: string): PlayerState {
 export function initCity(): CityState {
   return {
     roads: [],
+    powerLines: [],
+    pipes: [],
+    utilityEpoch: 0,
     zones: [],
     buildings: [],
     nextBuildingId: 1,
@@ -646,6 +872,16 @@ export function initCity(): CityState {
     foodShortage: false,
     tradeRoutes: [],
   };
+}
+
+/**
+ * Phase 2: bump the structural-change counter. Called by every mutator
+ * that changes the utility topology: road/line/pipe build/demolish,
+ * building place/demolish, zone paint. The derived utility-network
+ * model keys its cache on this value and recomputes only on change.
+ */
+export function bumpUtilityEpoch(city: CityState): void {
+  city.utilityEpoch += 1;
 }
 
 /** Player record or undefined for a bad id. */
@@ -792,6 +1028,11 @@ export function validatePlacement(t: TerrainData, city: CityState, p: Placement)
   if (p.kind === 'navalYard' && !isCoastal(t, p.cx, p.cz, def.footprintW, def.footprintH)) {
     return `${def.name}: must be built on the coast (adjacent to water)`;
   }
+  // Phase 2: hydro dams need a river or coastline — at least one
+  // footprint cell orthogonally adjacent to water.
+  if (p.kind === 'hydroDam' && !isCoastal(t, p.cx, p.cz, def.footprintW, def.footprintH)) {
+    return `${def.name}: must be built adjacent to water (river or coast)`;
+  }
   const player = getPlayer(city, p.owner) as PlayerState;
   if (player.funds < def.costFunds || player.materials < def.costMaterials) {
     return `${def.name}: cannot afford (needs ${def.costFunds} funds + ${def.costMaterials} materials)`;
@@ -815,11 +1056,24 @@ export function placeBuilding(city: CityState, p: Placement): BuildingRecord {
     progress: 0,
     level: 1,
     operational: false,
-    powered: false,
-    watered: false,
+    // 1-tick bootstrap for the cross-utility hooks (economy.ts): a
+    // hooked plant (nuclearPlant needs water, desalination needs power)
+    // reads the PREVIOUS tick's flags, so a fresh building starts
+    // assumed-served — otherwise a grid of only hooked plants could
+    // never prime itself. The first economy tick recomputes the real
+    // flags before anything else reads them.
+    powered: true,
+    watered: true,
+    // Phase 2: the economy tick recomputes these; 'disconnected' is the
+    // honest pre-first-tick state (nothing evaluated yet).
+    powerDiag: 'disconnected',
+    waterDiag: 'disconnected',
   };
   city.nextBuildingId += 1;
   city.buildings.push(record);
+  // A new footprint can change the utility topology (plants seed
+  // networks, substations conduct) — invalidate the derived model.
+  bumpUtilityEpoch(city);
   return record;
 }
 
@@ -828,6 +1082,7 @@ export function demolishBuilding(city: CityState, id: number): boolean {
   const index = city.buildings.findIndex((b) => b.id === id);
   if (index === -1) return false;
   city.buildings.splice(index, 1);
+  bumpUtilityEpoch(city);
   return true;
 }
 
@@ -873,6 +1128,9 @@ function affordableDefForZone(world: World, zone: ZoneType, owner: number): Buil
     // Prerequisite buildings (e.g. Military Academy needs a Barracks)
     // gate auto-growth exactly like manual placement.
     if (def.requiredBuilding && !hasProductionBuilding(world, owner, def.requiredBuilding)) continue;
+    // Phase 2: research-gated kinds (plant ladder) never auto-develop
+    // before their upgrade is researched — same rule as manual placement.
+    if (def.requiredUpgrade && !((world.upgrades[owner] ?? []) as string[]).includes(def.requiredUpgrade)) continue;
     return def;
   }
   return undefined;
@@ -986,6 +1244,30 @@ function validateRoadCells(t: TerrainData, city: CityState, cells: number[]): st
   return null;
 }
 
+/**
+ * Phase 2: validate power-line / water-pipe cells. Unlike roads, lines
+ * and pipes MAY cross water (the long-hop tool for reaching across
+ * rivers); they may overlap roads but not buildings or their own kind.
+ */
+function validateConductorCells(
+  city: CityState,
+  cells: number[],
+  existing: number[],
+  label: string,
+): string | null {
+  if (cells.length === 0) return `${label}: cells must be a non-empty array`;
+  if (cells.length > 512) return `${label}: at most 512 cells per command`;
+  const seen = new Set<number>();
+  for (const cell of cells) {
+    if (cell < 0 || cell >= CITY_GRID_CELLS * CITY_GRID_CELLS) return `${label}: cell ${cell} out of range`;
+    if (seen.has(cell)) return `${label}: duplicate cell ${cell}`;
+    seen.add(cell);
+    if (sortedHas(existing, cell)) return `${label}: cell ${cell} already has ${label === 'buildPowerLine' ? 'a power line' : 'a pipe'}`;
+    if (buildingAtCell(city, cell)) return `${label}: cell ${cell} occupied by a building`;
+  }
+  return null;
+}
+
 /** Age order for minAge gating. Local copy of AGE_ORDER (ages.ts) —
 // city.ts cannot import ages.ts (that module imports getPlayer from here),
 // so the order is mirrored with a comment instead of shared. */
@@ -1049,9 +1331,61 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       player.funds -= cells.length * ROAD_COST_FUNDS;
       player.materials -= cells.length * ROAD_COST_MATERIALS;
       for (const cell of cells) sortedInsert(world.city.roads, cell);
+      bumpUtilityEpoch(world.city);
       return cells.length;
     },
   };
+
+  /**
+   * Phase 2 (grand expansion): drag-painted utility conductors.
+   * buildPowerLine / buildPipe mirror buildRoad (cell arrays ≤512,
+   * per-cell funds+materials cost, sortedInsert) but conduct only their
+   * own utility and may cross water. They are the long-hop tool:
+   * plant→grid hookup, crossing wilderness/water, reaching a far zone
+   * without a road. Roads keep conducting both utilities automatically.
+   */
+  function makeConductorSpec(
+    label: 'buildPowerLine' | 'buildPipe',
+    target: (city: CityState) => number[],
+    costFunds: number,
+    costMaterials: number,
+  ): CommandSpec {
+    return {
+      validate(cmd, world): string | null {
+        const owner = payloadInt(cmd.payload, 'owner');
+        if (owner === null || !getPlayer(world.city, owner)) return `${label}: unknown owner`;
+        const cells = payloadCells(cmd.payload);
+        if (cells === null) return `${label}: payload.cells must be an array of integers`;
+        const reason = validateConductorCells(world.city, cells, target(world.city), label);
+        if (reason) return reason;
+        const player = getPlayer(world.city, owner) as PlayerState;
+        const needF = cells.length * costFunds;
+        const needM = cells.length * costMaterials;
+        if (player.funds < needF || player.materials < needM) {
+          return `${label}: cannot afford (needs ${needF} funds + ${needM} materials)`;
+        }
+        return null;
+      },
+      apply(cmd, world): unknown {
+        const owner = payloadInt(cmd.payload, 'owner') as number;
+        const cells = payloadCells(cmd.payload) as number[];
+        const player = getPlayer(world.city, owner) as PlayerState;
+        player.funds -= cells.length * costFunds;
+        player.materials -= cells.length * costMaterials;
+        const arr = target(world.city);
+        for (const cell of cells) sortedInsert(arr, cell);
+        bumpUtilityEpoch(world.city);
+        return cells.length;
+      },
+    };
+  }
+
+  const buildPowerLine = makeConductorSpec(
+    'buildPowerLine', (city) => city.powerLines, POWER_LINE_COST_FUNDS, POWER_LINE_COST_MATERIALS,
+  );
+  const buildPipe = makeConductorSpec(
+    'buildPipe', (city) => city.pipes, PIPE_COST_FUNDS, PIPE_COST_MATERIALS,
+  );
 
   const paintZone: CommandSpec = {
     validate(cmd, world): string | null {
@@ -1116,6 +1450,9 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
           world.city.zones.splice(lo, 0, rec);
         }
       }
+      // Zone paint changes the served-zone topology — invalidate the
+      // derived utility model (Phase 2).
+      if (painted > 0) bumpUtilityEpoch(world.city);
       return painted;
     },
   };
@@ -1146,6 +1483,12 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
         const need = BUILDING_DEFS[bdef.requiredBuilding]?.name ?? bdef.requiredBuilding;
         return `placeBuilding: ${bdef.name} requires a completed ${need}`;
       }
+      // Phase 2: research gate for the plant ladder (e.g. Coal Plant
+      // requires combustionTech). Read world.upgrades directly instead
+      // of importing upgrades.ts — that module imports this one.
+      if (bdef.requiredUpgrade && !((world.upgrades[owner as number] ?? []) as string[]).includes(bdef.requiredUpgrade)) {
+        return `placeBuilding: ${bdef.name} requires the ${bdef.requiredUpgrade} upgrade`;
+      }
       if (facing < 0 || facing > 3) return 'placeBuilding: facing must be 0..3';
       return validatePlacement(t, world.city, { kind, owner, cx, cz, facing: facing as 0 | 1 | 2 | 3 });
     },
@@ -1167,7 +1510,14 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
         return 'demolish: payload needs in-bounds integer cx, cz';
       }
       const cell = cellIndex(cx, cz);
-      if (!buildingAtCell(world.city, cell) && !sortedHas(world.city.roads, cell)) {
+      // Phase 2: demolish works cell-wise on buildings, roads, power
+      // lines and pipes alike.
+      if (
+        !buildingAtCell(world.city, cell) &&
+        !sortedHas(world.city.roads, cell) &&
+        !sortedHas(world.city.powerLines, cell) &&
+        !sortedHas(world.city.pipes, cell)
+      ) {
         return 'demolish: nothing to demolish at that cell';
       }
       return null;
@@ -1179,9 +1529,27 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       const b = buildingAtCell(world.city, cell);
       // No refund (D11): demolition is pure loss, like the genre standard.
       if (b) return { removed: 'building', id: demolishBuilding(world.city, b.id) ? b.id : -1 };
+      // demolishBuilding bumps the epoch for buildings; cell removal
+      // below bumps it for conductors (Phase 2 structural changes).
       const i = world.city.roads.indexOf(cell);
-      if (i !== -1) world.city.roads.splice(i, 1);
-      return { removed: 'road', cell };
+      if (i !== -1) {
+        world.city.roads.splice(i, 1);
+        bumpUtilityEpoch(world.city);
+        return { removed: 'road', cell };
+      }
+      const li = world.city.powerLines.indexOf(cell);
+      if (li !== -1) {
+        world.city.powerLines.splice(li, 1);
+        bumpUtilityEpoch(world.city);
+        return { removed: 'powerLine', cell };
+      }
+      const pi = world.city.pipes.indexOf(cell);
+      if (pi !== -1) {
+        world.city.pipes.splice(pi, 1);
+        bumpUtilityEpoch(world.city);
+        return { removed: 'pipe', cell };
+      }
+      return { removed: 'none', cell };
     },
   };
 
@@ -1224,7 +1592,7 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
     },
   };
 
-  return { buildRoad, paintZone, placeBuilding: placeBuildingSpec, demolish, setTaxRate, setSpecialization };
+  return { buildRoad, buildPowerLine, buildPipe, paintZone, placeBuilding: placeBuildingSpec, demolish, setTaxRate, setSpecialization };
 }
 
 /** Register the city-building command kinds on a queue. Needs the terrain for placement rules. */

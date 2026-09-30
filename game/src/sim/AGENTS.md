@@ -22,6 +22,16 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 - `economy.ts` — the 1 Hz economy system (`createEconomySystem`),
   fixed-rate market (`marketTrade`), tax collection. Pure w.r.t.
   rendering.
+- `utilityNetworks.ts` — (grand-expansion Phase 2) the derived utility
+  topology: integer-BFS flood fill over conductors (roads ∪ power
+  lines/pipes ∪ substation/pumping-station footprints) per player per
+  utility. Plants touching the conductor graph seed networks; zone
+  regions conduct via underground pipes when any region cell is served.
+  Pure functions: `daylightFactor` (240 s day), `windFactor` (seeded),
+  `meltdownOffline` (seeded hash). `getUtilityModel` caches on
+  (utilityEpoch, online sets, foulers, treatments); storage stocks are
+  keyed by plant set so charge survives rebuilds. DERIVED DATA ONLY —
+  never snapshotted.
 - `digest.ts` — FNV-1a canonical encoding, including full city state.
 - `snapshot.ts` — versioned snapshots (v6: per-player researched upgrades;
   v5 snapshots still load with empty upgrades).
@@ -172,9 +182,12 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 ## City/economy conventions
 - All rates in `BUILDING_DEFS` are **per sim-second**; the economy system
   advances them once per 30 ticks (`ECONOMY_TICKS`).
-- Utility allocation is id-ordered and per-player; every completed
-  plant/pump contributes supply (no road requirement since 2026-09-30 —
-  user directive: roads are optional).
+- Utility allocation is per-player, per-network (Phase 2): plants that
+  touch the conductor graph seed flood-fill networks
+  (`utilityNetworks.ts`); buildings draw in (BFS distance, building id)
+  order. Stranded plants feed the AD2 pool fallback (id order) for
+  unreached buildings. Cross-utility hooks read the previous tick's
+  flags, with a 1-tick bootstrap (new buildings start assumed-served).
 - Growth draws only from the `'city'` RNG stream.
 - Balance numbers in `BUILDING_DEFS` / `MARKET_PRICES` are Phase 1
   engineering choices — tune them, but keep the tests' reference-city

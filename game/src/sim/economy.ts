@@ -39,10 +39,11 @@ import type { World } from './world';
 import { rngBank } from './world';
 import type { SimSystem } from './tick';
 import type { CommandQueue, CommandSpec } from './commands';
-import { getTaxMultiplier, getFactoryOutputMult, getInfluenceMult, getGoodsOutputMult, getUpkeepMult, getUtilityDemandMult, getTaxMultiplierFull } from './ages';
+import { getTaxMultiplier, getFactoryOutputMult, getInfluenceMult, getGoodsOutputMult, getTaxMultiplierFull } from './ages';
 import {
   hasUpgrade,
   effectivePowerSupply,
+  effectiveWaterSupply,
   effectiveWaterDemand,
   PRECISION_MANUFACTURING_MULT,
   VERTICAL_FARMING_FOOD_MULT,
@@ -50,6 +51,21 @@ import {
   FREE_TRADE_SHOP_MULT,
   FREE_TRADE_TRADE_ROUTE_INCOME,
 } from './upgrades';
+import {
+  getUtilityModel,
+  getNetworkStock,
+  setNetworkStock,
+  networkStorageCapacity,
+  daylightFactor,
+  windFactor,
+  meltdownOffline,
+  MELTDOWN_RISK_DENOMINATOR,
+  POWER_EXPORT_FUNDS_PER_UNIT,
+  WATER_EXPORT_FUNDS_PER_UNIT,
+  type UtilityKind,
+  type UtilityModel,
+  type UtilitySideModel,
+} from './utilityNetworks';
 import { UNIT_DEFS } from './units';
 import {
   BUILDING_DEFS,
@@ -147,12 +163,52 @@ interface UtilityAllocation {
 }
 
 /**
- * Fund upkeep and allocate power/water per player. Mutates building
- * operational/powered/watered flags. Deterministic: id-ordered.
+ * Fund upkeep and allocate power/water per player (Phase 2 network model,
+ * grand expansion AD1/AD2). Mutates building operational / powered /
+ * watered / powerDiag / waterDiag flags. Deterministic: id-ordered
+ * plants, (network id, BFS distance, building id)-ordered consumers.
+ *
+ * Tick order per player:
+ *  1. Upkeep funding (unchanged): newest buildings shut down first on
+ *     shortfall; the funded set is charged.
+ *  2. Online-set computation: completed+funded plants, minus
+ *     cross-utility outages and meltdowns. Cross-utility hooks read the
+ *     PREVIOUS tick's powered/watered flags (1-tick bootstrap,
+ *     deterministic): desalination and waterTreatment supply only when
+ *     powered; nuclearPlant supplies only when watered. Meltdowns are a
+ *     pure seeded hash of (seed, building id, tick) — no RNG draws.
+ *  3. Derived network model (utilityNetworks.getUtilityModel): per
+ *     player, per utility, the conductor flood fill. Recomputed on
+ *     structural change (utilityEpoch) or online-set change — never
+ *     per tick.
+ *  4. Per-network allocation: storage discharges into deficit first,
+ *     then supply meets demand in (BFS distance, building id) order,
+ *     then surplus recharges storage and any remainder exports at the
+ *     map edge (auto-sell; shortage import is deferred — see D11).
+ *  5. Pool fallback (AD2): unreached buildings use the legacy id-order
+ *     pool allocator verbatim, so the Classic AI and old saves work.
+ *  6. Diagnostics: reached+served -> 'ok'; reached+unserved ->
+ *     'shortage'; unreached+pool-served -> 'ok'; unreached+unserved ->
+ *     'disconnected'. Stranded online plants -> 'disconnected';
+ *     meltdown-offline plants -> 'shortage'.
  */
 function allocateUtilities(world: World, city: CityState): UtilityAllocation {
   const powerHeadroom: number[] = [];
   const waterHeadroom: number[] = [];
+  const eIdx = economyTickIndex(world);
+
+  // -- Pass 1: upkeep funding + online-set computation per player. ----
+  interface PlayerPass {
+    player: PlayerState;
+    completed: BuildingRecord[];
+    funded: Set<number>;
+    onlinePower: number[];
+    onlineWater: number[];
+    meltedDown: Set<number>;
+  }
+  const passes: PlayerPass[] = [];
+  const foulers: number[] = [];
+  const treatments: number[] = [];
   for (const player of city.players) {
     // 1. Construction is done only in runEconomyTick; here consider completed.
     const completed = city.buildings.filter((b) => b.owner === player.id && b.progress >= 1);
@@ -174,59 +230,213 @@ function allocateUtilities(world: World, city: CityState): UtilityAllocation {
     }
     player.funds -= charged;
 
-    // 3. Power: supply from every completed, funded plant — no road
-    // requirement (user directive 2026-09-30). Demand in id order.
-    // Smart Grid raises plant supply (powerPlant 25->35, solarFarm
-    // 15->20, nuclearPlant 60->75).
-    let powerSupply = 0;
+    // 3. Online sets: completed + funded plants, minus hook/meltdown
+    // outages. Foulers/scrubbers are collected globally (any owner).
+    const onlinePower: number[] = [];
+    const onlineWater: number[] = [];
+    const meltedDown = new Set<number>();
+    const advancedNuclear = hasUpgrade(world, player.id, 'advancedNuclear');
+    const meltdownDenom = advancedNuclear ? MELTDOWN_RISK_DENOMINATOR * 4 : MELTDOWN_RISK_DENOMINATOR;
     for (const b of completed) {
+      if (!funded.has(b.id)) continue;
       const def = BUILDING_DEFS[b.kind];
-      if (def.powerSupply > 0 && funded.has(b.id)) {
-        powerSupply += effectivePowerSupply(world, b.owner, b.kind, def.powerSupply);
+      if (def.fouling) foulers.push(b.id);
+      if (b.kind === 'waterTreatment' && b.powered) treatments.push(b.id);
+      // Nuclear meltdown: pure seeded function of (seed, id, tick).
+      // A melted-down plant supplies nothing for 180 sim-seconds.
+      if (b.kind === 'nuclearPlant' && meltdownOffline(world.seed, b.id, eIdx, meltdownDenom)) {
+        meltedDown.add(b.id);
+        continue;
       }
+      // Cross-utility hooks (previous-tick flags — 1-tick bootstrap).
+      if (b.kind === 'nuclearPlant' && !b.watered) continue;
+      if ((b.kind === 'desalination' || b.kind === 'waterTreatment') && !b.powered) continue;
+      if (def.powerSupply > 0) onlinePower.push(b.id);
+      if (def.waterSupply > 0) onlineWater.push(b.id);
     }
-    const powerDemanders = completed
-      .filter((b) => funded.has(b.id) && BUILDING_DEFS[b.kind].powerDemand > 0)
-      .sort((a, b) => a.id - b.id);
-    let powerLeft = powerSupply;
-    const poweredSet = new Set<number>();
-    for (const b of powerDemanders) {
-      const need = BUILDING_DEFS[b.kind].powerDemand;
-      if (powerLeft >= need) {
-        powerLeft -= need;
-        poweredSet.add(b.id);
-      }
-    }
-    // 4. Water: same shape — every completed, funded pump counts.
-    let waterSupply = 0;
-    for (const b of completed) {
-      const def = BUILDING_DEFS[b.kind];
-      if (def.waterSupply > 0 && funded.has(b.id)) {
-        waterSupply += def.waterSupply;
-      }
-    }
-    const waterDemanders = completed
-      .filter((b) => funded.has(b.id) && BUILDING_DEFS[b.kind].waterDemand > 0)
-      .sort((a, b) => a.id - b.id);
-    let waterLeft = waterSupply;
-    const wateredSet = new Set<number>();
-    for (const b of waterDemanders) {
-      // Vertical Farming trims the farm's water demand (4->3).
-      const need = effectiveWaterDemand(world, b.owner, b.kind, BUILDING_DEFS[b.kind].waterDemand);
-      if (waterLeft >= need) {
-        waterLeft -= need;
-        wateredSet.add(b.id);
-      }
-    }
+    passes.push({ player, completed, funded, onlinePower, onlineWater, meltedDown });
+  }
 
+  // -- Pass 2: the derived network model (cached; rebuilds on epoch or
+  //    online-set change). -------------------------------------------
+  const model: UtilityModel = getUtilityModel(city, {
+    power: passes.map((p) => p.onlinePower),
+    water: passes.map((p) => p.onlineWater),
+    foulers,
+    treatments,
+  });
+  const fouled = new Set(model.fouledSources);
+
+  // -- Pass 3: allocate per player, per utility. -----------------------
+  passes.forEach((pass, pi) => {
+    const { player, completed, funded } = pass;
+    const byId = new Map<number, BuildingRecord>();
+    for (const b of completed) byId.set(b.id, b);
+
+    // Per-plant supply and per-building demand for both utilities.
+    const powerSupplyOf = (b: BuildingRecord): number => {
+      const def = BUILDING_DEFS[b.kind];
+      let s = effectivePowerSupply(world, player.id, b.kind, def.powerSupply);
+      // Solar is day-only (240-second day); wind is a seeded wobble.
+      if (b.kind === 'solarFarm') s *= daylightFactor(world.tick);
+      if (b.kind === 'windFarm') s *= windFactor(world.seed, eIdx);
+      return s;
+    };
+    const waterSupplyOf = (b: BuildingRecord): number => {
+      const def = BUILDING_DEFS[b.kind];
+      let s = effectiveWaterSupply(world, player.id, b.kind, def.waterSupply);
+      // Fouled sources (unscrubbed) output halved, floored.
+      if (fouled.has(b.id)) s = Math.floor(s / 2);
+      return s;
+    };
+    const powerDemandOf = (b: BuildingRecord): number => BUILDING_DEFS[b.kind].powerDemand;
+    const waterDemandOf = (b: BuildingRecord): number =>
+      effectiveWaterDemand(world, player.id, b.kind, BUILDING_DEFS[b.kind].waterDemand);
+
+    const allocateSide = (utility: UtilityKind, side: UtilitySideModel): number => {
+      const supplyOf = utility === 'power' ? powerSupplyOf : waterSupplyOf;
+      const demandOf = utility === 'power' ? powerDemandOf : waterDemandOf;
+      const setFlag = (b: BuildingRecord, ok: boolean): void => {
+        if (utility === 'power') b.powered = ok;
+        else b.watered = ok;
+      };
+      const setDiag = (b: BuildingRecord, diag: 'ok' | 'shortage' | 'disconnected'): void => {
+        if (utility === 'power') b.powerDiag = diag;
+        else b.waterDiag = diag;
+      };
+      let headroom = 0;
+
+      // Per-network allocation: storage discharges into deficit, demand
+      // draws in (distance, building id) order, surplus recharges
+      // storage then exports at the map edge. Unfunded buildings are
+      // shut down: they neither draw supply nor charge storage (their
+      // flags/diags are set in the final loop below).
+      for (const net of side.networks) {
+        let supply = 0;
+        for (const pid of net.plantIds) {
+          const pb = byId.get(pid);
+          if (pb) supply += supplyOf(pb);
+        }
+        const members = side.networkMembers.get(net.id) ?? [];
+        let demand = 0;
+        for (const m of members) {
+          if (!funded.has(m.buildingId)) continue;
+          const mb = byId.get(m.buildingId);
+          if (mb) demand += demandOf(mb);
+        }
+        const capacity = networkStorageCapacity(city, side, utility, net.id, funded);
+        let stock = getNetworkStock(model, player.id, utility, net);
+        const deficit = demand - supply;
+        if (deficit > 0 && stock > 0) {
+          const use = Math.min(stock, deficit);
+          stock -= use;
+          supply += use;
+        }
+        let left = supply;
+        const served = new Set<number>();
+        for (const m of members) {
+          if (!funded.has(m.buildingId)) continue;
+          const mb = byId.get(m.buildingId);
+          if (!mb) continue;
+          const need = demandOf(mb);
+          if (need <= 0) {
+            served.add(m.buildingId);
+          } else if (left >= need) {
+            left -= need;
+            served.add(m.buildingId);
+          }
+        }
+        const surplus = left;
+        const charge = Math.min(surplus, Math.max(0, capacity - stock));
+        stock += charge;
+        setNetworkStock(model, player.id, utility, net, stock);
+        const exportUnits = surplus - charge;
+        if (exportUnits > 0 && net.touchesEdge) {
+          player.funds +=
+            exportUnits * (utility === 'power' ? POWER_EXPORT_FUNDS_PER_UNIT : WATER_EXPORT_FUNDS_PER_UNIT);
+        }
+        headroom += surplus;
+        for (const m of members) {
+          if (!funded.has(m.buildingId)) continue;
+          const mb = byId.get(m.buildingId);
+          if (!mb) continue;
+          const need = demandOf(mb);
+          const ok = need <= 0 || served.has(m.buildingId);
+          setFlag(mb, ok);
+          setDiag(mb, need <= 0 ? 'ok' : ok ? 'ok' : 'shortage');
+        }
+      }
+
+      // AD2 pool fallback: unreached buildings use the legacy id-order
+      // allocator verbatim (poolPlants supply, unreached demand).
+      let poolSupply = 0;
+      for (const pid of side.poolPlants) {
+        const pb = byId.get(pid);
+        if (pb) poolSupply += supplyOf(pb);
+      }
+      let poolLeft = poolSupply;
+      const poolServed = new Set<number>();
+      for (const bid of side.unreached) {
+        if (!funded.has(bid)) continue;
+        const b = byId.get(bid);
+        if (!b) continue;
+        const need = demandOf(b);
+        if (poolLeft >= need) {
+          poolLeft -= need;
+          poolServed.add(bid);
+        }
+      }
+      headroom += poolLeft;
+      for (const bid of side.unreached) {
+        if (!funded.has(bid)) continue;
+        const b = byId.get(bid);
+        if (!b) continue;
+        const ok = poolServed.has(bid);
+        setFlag(b, ok);
+        setDiag(b, ok ? 'ok' : 'disconnected');
+      }
+      return headroom;
+    };
+
+    powerHeadroom[player.id] = allocateSide('power', model.players[pi]?.power as UtilitySideModel);
+    waterHeadroom[player.id] = allocateSide('water', model.players[pi]?.water as UtilitySideModel);
+
+    // Flags + diags for every completed building.
     for (const b of completed) {
       const def = BUILDING_DEFS[b.kind];
-      b.powered = def.powerDemand === 0 || poweredSet.has(b.id);
-      b.watered = def.waterDemand === 0 || wateredSet.has(b.id);
       b.operational = funded.has(b.id);
+      if (!funded.has(b.id)) {
+        // Shut down: not participating. Flags keep the legacy
+        // demand-zero semantics; diag mirrors the legacy decode.
+        b.powered = def.powerDemand === 0;
+        b.watered = def.waterDemand === 0;
+        b.powerDiag = 'disconnected';
+        b.waterDiag = 'disconnected';
+        continue;
+      }
+      // Plants: diag on the supply utility reflects network state.
+      const isPowerPlant = def.powerSupply > 0;
+      const isWaterPlant = def.waterSupply > 0;
+      if (isPowerPlant) {
+        if (pass.meltedDown.has(b.id)) b.powerDiag = 'shortage';
+        else if (model.players[pi]?.power.plantNetwork.has(b.id)) b.powerDiag = 'ok';
+        else if (pass.onlinePower.includes(b.id)) b.powerDiag = 'disconnected'; // stranded
+        else b.powerDiag = 'shortage'; // hook outage (unpowered desalination etc. N/A here)
+      }
+      if (isWaterPlant) {
+        if (model.players[pi]?.water.plantNetwork.has(b.id)) b.waterDiag = 'ok';
+        else if (pass.onlineWater.includes(b.id)) b.waterDiag = 'disconnected'; // stranded
+        else b.waterDiag = 'shortage'; // hook outage
+      }
     }
-    powerHeadroom[player.id] = powerLeft;
-    waterHeadroom[player.id] = waterLeft;
+  });
+
+  // Under-construction buildings: not participating yet.
+  for (const b of city.buildings) {
+    if (b.progress < 1) {
+      b.powerDiag = 'disconnected';
+      b.waterDiag = 'disconnected';
+    }
   }
   return { powerHeadroom, waterHeadroom };
 }
