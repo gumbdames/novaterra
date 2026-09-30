@@ -150,6 +150,22 @@ export const STRINGS = {
     stop: 'Stop',
     train: 'Train',
     build: 'Build',
+    /** Selected building's crew training level (economy.ts levels 1→3). */
+    levelLine: { en: 'Level {level}/3' },
+  },
+  /** Veterancy display (grand-expansion Phase 1). English-only. */
+  veterancy: {
+    /** Rank names per vetLevel 0..3 — must match sim/veterancy.ts VET_RANK_NAMES. */
+    ranks: [
+      { en: 'Recruit' },
+      { en: 'Regular' },
+      { en: 'Veteran' },
+      { en: 'Elite' },
+    ],
+    /** "{rank} · {xp}/{next} XP", e.g. "Veteran ▲▲ · 700/1000 XP". */
+    xpProgress: { en: '{rank} · {xp}/{next} XP' },
+    /** Elite has no next threshold: "{rank} · {xp} XP". */
+    xpElite: { en: '{rank} · {xp} XP' },
   },
   orders: {
     moveFailed: 'Cannot move there.',
@@ -315,6 +331,7 @@ export const STRINGS = {
     recyclingCenter: { en: 'Recycling Center' },
     barracks: { en: 'Barracks' },
     warFactory: { en: 'War Factory' },
+    militaryAcademy: { en: 'Military Academy' },
     powerPlant: { en: 'Power Plant' },
     solarFarm: { en: 'Solar Farm' },
     nuclearPlant: { en: 'Nuclear Plant' },

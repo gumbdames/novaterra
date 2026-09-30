@@ -121,6 +121,8 @@ export const BUILD_TABS: readonly BuildTab[] = [
       'recyclingCenter',
       'barracks',
       'warFactory',
+      // Phase 1 (veterancy): trains armed units to Regular on spawn.
+      'militaryAcademy',
     ],
   },
   {

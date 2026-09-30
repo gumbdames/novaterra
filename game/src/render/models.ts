@@ -235,6 +235,12 @@ export const MODEL_PATHS: Record<string, ModelSpec> = {
   university: { path: 'kenney-commercial/building-f.glb', scale: 5.33 },
   // school 4×4 / 4 tall: suburban building-type-h (1.30×0.74×0.92) ⇒ 3.08.
   school: { path: 'kenney-suburban/building-type-h.glb', scale: 3.08 },
+  // ── NOVATERRA Phase 1 (veterancy) ──────────────────────────────────
+  // militaryAcademy 3×3 footprint / 4 tall: industrial building-h
+  // (1.32×0.73×1.31) ⇒ 4.54, footprint-constrained — a low parade hall
+  // 3.3 tall. File is 63.6 KB (Phase 1 budget: +1 key ~80 KB) and already
+  // license-manifested (THIRD_PARTY_NOTICES.md, Kenney CC0).
+  militaryAcademy: { path: 'kenney-industrial/building-h.glb', scale: 4.54 },
 };
 
 /** One successfully loaded + normalized model. */

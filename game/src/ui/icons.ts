@@ -203,6 +203,11 @@ const BUILDING_ICONS: Record<BuildingKind, string> = {
   barracks:
     '<rect x="4" y="10" width="16" height="10"/><path d="M4 10l8-6 8 6"/>' +
     '<path d="M12 12.6l.59 1.59 1.69.07-1.33 1.05.46 1.63-1.41-.83-1.41.83.46-1.63-1.33-1.05 1.69-.07Z" fill="currentColor" stroke="none"/>',
+  // Phase 1 (veterancy): academy hall with a rank chevron above the roof
+  // (barracks keeps the star — the chevron reads "school for veterans").
+  militaryAcademy:
+    '<rect x="4" y="11" width="16" height="9"/><path d="M4 11l8-6 8 6"/>' +
+    '<path d="M8.5 7.5 12 4.8l3.5 2.7"/>',
   warFactory:
     '<path d="M3 21v-9.5L9 15V9.5l6 5.5V9.5l6 5.5V21Z"/><circle cx="12" cy="16.5" r="2.6"/>' +
     '<path d="M12 12.5v-1.8M12 20.5v-1.4M8 16.5H6.2M17.8 16.5H16M9.2 13.7l-1.3-1.3M16.1 20.6l-1.3-1.3M14.8 13.7l1.3-1.3M7.9 20.6l1.3-1.3"/>',

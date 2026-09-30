@@ -170,7 +170,7 @@ describe('kind → key resolution', () => {
 });
 
 describe('bootModelKeys', () => {
-  /** The pinned boot set: 28 keys. Growing this list costs startup
+  /** The pinned boot set: 29 keys. Growing this list costs startup
    * download, so it changes only deliberately (update this test too). */
   const EXPECTED_BOOT_KEYS = [
     // foundation-age units (1:1 keys)
@@ -189,6 +189,8 @@ describe('bootModelKeys', () => {
     'factory',
     'waterPump',
     'barracks',
+    // Phase 1 (veterancy): the academy is foundation-age like the barracks.
+    'militaryAcademy',
     'school',
     // farm / powerPlant / shipyard / warFactory composite pieces
     'farmBarn',

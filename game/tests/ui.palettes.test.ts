@@ -157,6 +157,8 @@ describe('build tabs', () => {
       'recyclingCenter',
       'barracks',
       'warFactory',
+      // Phase 1 (veterancy) roster addition; the spec §8 grouping predates it.
+      'militaryAcademy',
     ]);
     expect(byId.get('utilities')).toEqual([
       'powerPlant',

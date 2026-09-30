@@ -394,6 +394,8 @@ export const KEY_TREATMENTS: Record<string, KeyTreatment> = {
   // ---- industrial ----
   factory: { default: T.corrugated, byName: SPECULAR_GLASS },
   barracks: { default: T.concreteBld, byName: SPECULAR_GLASS },
+  // Phase 1 (veterancy): the academy hall wears the barracks treatment.
+  militaryAcademy: { default: T.concreteBld, byName: SPECULAR_GLASS },
   warFactoryMain: { default: T.corrugated, byName: SPECULAR_GLASS },
   recyclingCenter: { default: T.corrugated, byName: SPECULAR_GLASS },
   navalYardHall: { default: T.corrugated, byName: SPECULAR_GLASS },

@@ -56,7 +56,8 @@ import { AGE_PROGRESSION } from '../sim/ages';
 import type { UpgradeId } from '../sim/upgrades';
 import type { Selection } from './selection';
 import type { AdvisorItem } from './advisor';
-import { STRINGS, loc, type LocalizedString } from './strings';
+import { STRINGS, loc, fillLoc, type LocalizedString } from './strings';
+import { vetXpLine } from './veterancy';
 import {
   TRAIN_TABS,
   BUILD_TABS,
@@ -525,6 +526,10 @@ export class HUD {
         const def = UNIT_DEFS[u.kind as UnitKind];
         const hpFrac = def ? Math.max(0, Math.round((u.hp / def.hp) * 100)) : 0;
         panel.append(el('div', 'sel-unit', `${def?.name ?? u.kind} · ${hpFrac}%`));
+        // Veterancy (Phase 1): rank + chevrons + XP progress, e.g.
+        // "Veteran ▲▲ · 320/500 XP". Reuses the 'sel-unit' class — no new
+        // DOM class, no digest-registry change needed for markup.
+        panel.append(el('div', 'sel-unit', vetXpLine(u)));
       }
       if (units.length > 6) panel.append(el('div', 'sel-unit', `… +${units.length - 6} more`));
       const stopBtn = document.createElement('button');
@@ -541,6 +546,8 @@ export class HUD {
       panel.append(
         el('div', 'sel-unit', b.operational ? 'Operational' : 'Not operational'),
       );
+      // Crew training level (economy.ts levels thriving buildings 1→3).
+      panel.append(el('div', 'sel-unit', fillLoc(sel.levelLine, { level: b.level })));
       // A completed Research Lab opens the research panel (spec §8).
       if (b.kind === 'lab' && b.owner === HUMAN_PLAYER_ID && b.progress >= 1) {
         this.appendResearchPanel(panel, world);

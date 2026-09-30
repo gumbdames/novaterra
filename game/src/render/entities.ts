@@ -34,6 +34,10 @@
  *    and (while constructing) cloned fade materials. Shared assets are
  *    never disposed per view.
  *  - Selection rings for the player's current selection.
+ *  - Veterancy chevrons (Phase 1): a `ChevronOverlay` (`render/chevrons.ts`)
+ *    with three instanced meshes (one per vetLevel 1..3) reading
+ *    `world.units` directly — at most 3 draw calls, independent of the
+ *    unit-body render path.
  *  - Superweapon FX: the Aegis energy dome and Storm Engine strikes,
  *    driven by the sim's deterministic `world.superweapons.fx` records
  *    (animation phase derives from `world.tick`, never wall clock).
@@ -81,6 +85,7 @@ import {
   ROAD_DASH_COLOR,
 } from './roads';
 import { surfaceRoughnessTexture } from './surfaceTextures';
+import { ChevronOverlay } from './chevrons';
 import {
   groundYAt,
   unitHoverY,
@@ -184,6 +189,8 @@ export type ModelSource =
   fishingBoat: { type: 'glb', pieces: [piece('fishingBoat')] },
   // ---- NOVATERRA roster-expansion buildings ----
   barracks: { type: 'glb', pieces: [piece('barracks')] },
+  // Phase 1 (veterancy): the military academy hall.
+  militaryAcademy: { type: 'glb', pieces: [piece('militaryAcademy')] },
   warFactory: {
     type: 'glb',
     pieces: [piece('warFactoryMain', -1, 0, 0.5), piece('industrialStack', 2.5, 0, -1)],
@@ -507,6 +514,9 @@ export function buildingHeightFor(kind: BuildingKind): number {
     // NOVATERRA roster-expansion buildings
     case 'barracks':
       return 5;
+    // Phase 1 (veterancy): the academy hall is a low 3×3 block.
+    case 'militaryAcademy':
+      return 4;
     case 'warFactory':
       return 7;
     case 'airfield':
@@ -688,6 +698,12 @@ export class EntityRenderer {
     depthWrite: false,
   });
   private readonly barTexture: THREE.CanvasTexture;
+  /**
+   * Veterancy chevron overlay (render/chevrons.ts): three instanced
+   * meshes reading world.units directly — independent of the unit-body
+   * render path (legacy or Phase 0 instanced).
+   */
+  private readonly chevrons: ChevronOverlay;
   /** Live superweapon FX views, keyed by fx identity. */
   private readonly superweaponFx = new Map<string, SuperweaponFxView>();
   // ---- shared model assets (one copy per kind, never disposed per view) ----
@@ -784,6 +800,7 @@ export class EntityRenderer {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, 1, 1);
     this.barTexture = new THREE.CanvasTexture(c);
+    this.chevrons = new ChevronOverlay(scene);
   }
 
   /** Create/update/remove meshes to match the world. Render-side only. */
@@ -793,6 +810,7 @@ export class EntityRenderer {
     this.syncBuildings(world);
     this.syncRoads(world);
     this.syncSuperweaponFx(world);
+    this.syncChevrons(world);
     this.instancer?.endFrame(this.camera ?? undefined);
   }
 
@@ -858,6 +876,31 @@ export class EntityRenderer {
       const scale = Math.max(s.x, s.z) / 4;
       ring.scale.set(scale, scale, 1);
     }
+  }
+
+  /**
+   * Veterancy chevron overlay (Phase 1): rebuild the per-level instance
+   * lists from `world.units` every frame. Independent of the unit-body
+   * path — it reads the sim records directly, so veterans get chevrons
+   * whether their bodies render instanced or legacy.
+   */
+  private syncChevrons(world: World): void {
+    this.chevrons.sync(
+      world.units,
+      this.terrain,
+      this.waterLevel,
+      (kind) => this.modelTopForKind(kind),
+      this.camera,
+    );
+  }
+
+  /**
+   * Model top for chevron anchoring: the measured per-kind top when a
+   * view has been built for the kind, else the placeholder hull height
+   * (same fallback the legacy view builder uses).
+   */
+  private modelTopForKind(kind: string): number {
+    return this.modelTops.get(kind) ?? hullSizeFor(kind).y;
   }
 
   /**
@@ -988,6 +1031,7 @@ export class EntityRenderer {
     this.ringGeo.dispose();
     this.ringMat.dispose();
     this.barTexture.dispose();
+    this.chevrons.dispose();
     // Shared per-kind assets (never per-view): release once here.
     for (const m of this.proceduralCache.values()) {
       for (const g of m.geometries) g.dispose();

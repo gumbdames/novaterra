@@ -40,7 +40,7 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 
 ## Model loading (`render/models.ts`, 0.1 Alpha)
 
-- `MODEL_PATHS` is the key -> GLB mapping: **58 real CC0 entries**
+- `MODEL_PATHS` is the key -> GLB mapping: **59 real CC0 entries**
   (Kenney + Quaternius; see THIRD_PARTY_NOTICES.md for the per-file
   listing). `path` is relative to `game/public/models/` (served at
   `<import.meta.env.BASE_URL>models/<file>`); `scale` is the uniform
@@ -54,7 +54,7 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   `airfield`, `navalYard`, `oilRefinery`, `solarFarm`, `desalination`
   share the `industrialStack` / `industrialTank` pieces across kinds —
   one key each, loaded once). ~4.6 MiB of GLB downloads at startup
-  (58 keys, 55 unique files; rifleman.glb is keyed 3×, building-e.glb
+  (59 keys, 56 unique files; rifleman.glb is keyed 3×, building-e.glb
   2× — per-key normalization, same as the pre-expansion mapping), plus
   ~0.83 MiB of CC0 tree textures for the procedural nature trees (see
   the Nature scatter section below).
@@ -175,6 +175,26 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   purely as a silent fallback if the texture fetch fails. Scatter
   placement is untouched (same keys, same weights, same order), so the
   same seed grows the same forest.
+
+## Chevron overlay (`render/chevrons.ts`, 0.1 Alpha)
+
+- Veterancy readability cue (grand-expansion Phase 1): floating gold
+  chevron strips above living units at vetLevel 1..3 (Regular / Veteran /
+  Elite). Three `THREE.InstancedMesh` (one per level), each with a
+  deterministic canvas-free `THREE.DataTexture` (pure SDF rasterization —
+  same level ⇒ byte-identical pixels, pinned by test).
+- Per sync, instance lists rebuild from `world.units` directly — the
+  overlay is independent of the unit-body render path (Phase 0 instanced
+  or legacy). At most 3 draw calls; empty level meshes are hidden (0
+  draws when no veteran is alive). Instances billboard via the camera
+  quaternion (identity when headless).
+- Anchor (pure, tested): terrain ground (`groundYAt`) + hover lift
+  (`unitHoverY`) + per-kind model top (measured `modelTops`, placeholder
+  hull height fallback) + `CHEVRON_BASE_OFFSET` (1.6 — clears the legacy
+  health-bar band at modelTop+1.1) + half the strip height
+  (bottom-anchored, so every level starts at the same height).
+- `EntityRenderer` owns one `ChevronOverlay`: constructed in the
+  constructor, synced at the end of `sync()`, disposed in `dispose()`.
 
 ## Entity rendering conventions (`render/entities.ts`, 0.1 Alpha)
 

@@ -85,6 +85,9 @@ export function selectionDigest(
           ? Math.max(0, Math.round((u.hp / def.hp) * 100))
           : 'x';
       parts.push(`uh:${id}:${hp}`);
+      // Veterancy (Phase 1): the panel renders rank + chevrons + XP per
+      // unit, so the digest must move when xp/vetLevel do.
+      parts.push(`uv:${id}:${u !== undefined ? `${u.vetLevel ?? 0}:${u.xp ?? 0}` : 'x'}`);
     }
     if (selection.unitIds.length > 6) parts.push(`um:${selection.unitIds.length}`);
     return parts.join('|');
@@ -95,10 +98,12 @@ export function selectionDigest(
       : undefined;
   if (b !== undefined) {
     // bs: kind + owner (the lab research panel is owner-gated) +
-    // operational + completed.
+    // operational + completed. bl: crew training level 1..3 (the panel
+    // renders "Level 2/3" — economy.ts levels thriving buildings).
     parts.push(
       `bs:${b.kind}:${b.owner}:${b.operational ? 1 : 0}:${b.progress >= 1 ? 1 : 0}`,
     );
+    parts.push(`bl:${b.level ?? 1}`);
   } else {
     // No selection: the train/build palettes render the active tab's
     // buttons; only each button's availability can move per tick.
@@ -223,13 +228,13 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     id: 'selection-units',
     renderedIn: 'updateSelection',
     domClasses: ['sel-title', 'sel-unit', 'sel-action'],
-    digestLabels: ['u:', 'uh:', 'um:'],
+    digestLabels: ['u:', 'uh:', 'uv:', 'um:'],
   },
   {
     id: 'selection-building',
     renderedIn: 'updateSelection',
     domClasses: ['sel-title', 'sel-unit'],
-    digestLabels: ['b:', 'bs:'],
+    digestLabels: ['b:', 'bs:', 'bl:'],
   },
   {
     id: 'train-palette',

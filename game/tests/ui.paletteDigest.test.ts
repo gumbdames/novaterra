@@ -131,6 +131,41 @@ describe('selectionDigest', () => {
     expect(enemy).toContain('bs:lab:2:1:1');
   });
 
+  it('tracks veterancy: xp and vetLevel move the digest', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const unit = world.units.find((u) => u.owner === HUMAN_PLAYER_ID)!;
+    const sel = selectUnits([unit.id]);
+    const base = selectionDigest(world, sel, 'infantry', 'housing');
+    expect(base).toContain(`uv:${unit.id}:0:0`);
+    // XP gain (no threshold crossed) repaints the XP progress line.
+    unit.xp = 120;
+    const xpGain = selectionDigest(world, sel, 'infantry', 'housing');
+    expect(xpGain).not.toBe(base);
+    expect(xpGain).toContain(`uv:${unit.id}:0:120`);
+    // Level-up repaints the rank name and chevrons.
+    unit.xp = 320;
+    unit.vetLevel = 2;
+    const leveled = selectionDigest(world, sel, 'infantry', 'housing');
+    expect(leveled).not.toBe(xpGain);
+    expect(leveled).toContain(`uv:${unit.id}:2:320`);
+  });
+
+  it('tracks the selected building crew level', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const lab = giveCompletedLab(session);
+    const sel = { unitIds: [], buildingId: lab.id };
+    const base = selectionDigest(world, sel, 'infantry', 'housing');
+    expect(base).toContain('bl:1');
+    // A thriving building levels up (economy.ts): the "Level 2/3" line
+    // must repaint, not go stale.
+    lab.level = 2;
+    const leveled = selectionDigest(world, sel, 'infantry', 'housing');
+    expect(leveled).not.toBe(base);
+    expect(leveled).toContain('bl:2');
+  });
+
   it('changes when button availability flips (funds drained)', () => {
     const session = createSession({ seed: 4242 });
     const world = session.world;
@@ -169,14 +204,20 @@ describe('AD11 digest contract', () => {
     const session = createSession({ seed: 4242 });
     const world = session.world;
     switch (branchId) {
-      case 'selection-units':
-        // Eight selected (all unknown ids) so the overflow segment appears.
+      case 'selection-units': {
+        // A real veteran plus unknown ids: the overflow segment appears,
+        // and the veterancy segment carries real xp/vetLevel (a stale
+        // panel that dropped the uv: segment fails the suite).
+        const veteran = world.units.find((u) => u.owner === HUMAN_PLAYER_ID)!;
+        veteran.xp = 320;
+        veteran.vetLevel = 2;
         return selectionDigest(
           world,
-          selectUnits([90001, 90002, 90003, 90004, 90005, 90006, 90007, 90008]),
+          selectUnits([veteran.id, 90002, 90003, 90004, 90005, 90006, 90007, 90008]),
           'infantry',
           'housing',
         );
+      }
       case 'selection-building': {
         const lab = giveCompletedLab(session);
         return selectionDigest(world, { unitIds: [], buildingId: lab.id }, 'infantry', 'housing');

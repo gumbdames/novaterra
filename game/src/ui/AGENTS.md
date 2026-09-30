@@ -61,7 +61,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   show funds + materials. Selecting a completed Research Lab (or owning
   one with nothing selected) opens the research panel: all 12 upgrades
   in Military / Economy groups with one-line effects, cost, researched
-  checkmark, and disabled reasons.
+  checkmark, and disabled reasons. Selected military units show a
+  veterancy line (Phase 1: rank + ▲ chevrons + XP progress, e.g.
+  "Veteran ▲▲ · 320/500 XP" via `ui/veterancy.ts`); selected buildings
+  show their crew training level ("Level 2/3", from economy.ts). Both
+  are digest-covered (`uv:` / `bl:` segments, AD11).
 - `paletteDigest.ts` — **selection-panel content digest (pure, tested,
   `tests/ui.paletteDigest.test.ts`).** `hud.ts` rebuilds the selection
   panel only when this digest changes: it covers everything the panel
@@ -156,6 +160,12 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   Muse ~1×/sec in the game loop. Victory/defeat → debrief overlay →
   `onMissionEnd` records progress. Muse settings (frequency + live key)
   live in the settings panel, live-applied in game.
+- `veterancy.ts` — **veterancy display helpers (Phase 1, pure, tested,
+  `tests/ui.veterancy.test.ts`).** `vetXpLine(u)` formats the selection
+  panel's per-unit line (rank + ▲ glyphs + XP progress, Elite shows the
+  total); thresholds come from the sim's `VET_XP_THRESHOLDS`
+  (single source of truth), rank copy from `STRINGS.veterancy.ranks`
+  (pinned equal to the sim's `VET_RANK_NAMES` by test).
 - `advisor.ts` — pure `evaluateAdvisor(world, playerId)`, worst-first.
 - `strings.ts` — all NEW UI copy in one place, English-only (2026-09-30
   directive; see `docs/I18N.md` for how a future language is added):
