@@ -113,6 +113,14 @@ export interface SessionOptions {
    * director's scripted raids can pay the spawnUnit manpower cost.
    */
   campaignMission?: MissionDef;
+  /**
+   * Sandbox mode (workstream X, 2026-09-30): skip the Classic AI rival
+   * entirely — a peaceful single-player world with no victory
+   * condition, like campaign missions with difficulty 'none'. The menu
+   * demo director uses this so it is the sole author of its movie.
+   * Defaults to false; every existing caller keeps its rival.
+   */
+  sandbox?: boolean;
 }
 
 /** Everything a running game needs. Plain data + live driver/queue. */
@@ -331,7 +339,9 @@ export function createSession(options: SessionOptions): GameSession {
   const aiBase = findLandNear(terrain, AI_CORNER.x, AI_CORNER.z);
   const humanBase = findLandNear(terrain, HUMAN_CORNER.x, HUMAN_CORNER.z);
   if (!options.snapshot) {
-    const hasAIRival = mission === undefined || mission.aiDifficulty !== 'none';
+    const hasAIRival =
+      !options.sandbox &&
+      (mission === undefined || mission.aiDifficulty !== 'none');
     if (hasAIRival) {
       // The AI's production cap counts all its units: starting forces must
       // leave headroom under the cap, or the AI would never build.

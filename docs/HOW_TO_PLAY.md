@@ -1,7 +1,7 @@
 # How to Play — novaterra
 
 > The 0.1 Alpha guide. Kept **clear, short and simple** per the
-> design brief. Last updated: 2026-09-29 (Phase 3: delegation, superweapons, advanced economy, accessibility).
+> design brief. Last updated: 2026-09-30 (Workstream X: living menu demo).
 
 ## Your goal
 
@@ -17,6 +17,12 @@ Destroy every enemy unit and building to win.
 victory condition — just you, your cities, and the map.
 
 ## Starting a game
+
+> The world behind this menu is alive: a scripted demo city builds
+> itself there using the same rules you play by — zones, roads, power
+> and water, an army, the four ages, and a storm strike at the end.
+> It replays the same movie every time, and starting any game discards
+> it completely.
 
 **Missions** → pick an unlocked mission → read the **briefing** (it
 lists every way to win — 🕊 is the peaceful one) → **Start Mission**.

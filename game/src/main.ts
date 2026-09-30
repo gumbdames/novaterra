@@ -20,8 +20,9 @@
  * Responsibilities:
  *  - Create the three.js renderer (WebGPURenderer from `three/webgpu`,
  *    which auto-falls-back to a WebGL2 backend when WebGPU is unavailable —
- *    see ARCHITECTURE.md D1), the Meridian Plains backdrop scene, and the
- *    menu stub.
+ *    see ARCHITECTURE.md D1), the living menu demo (workstream X: a seeded
+ *    sandbox world that plays itself behind the menu through the real
+ *    command queue — see ui/demoDirector.ts), and the menu stub.
  *  - Nothing else. Game systems (sim/render/ui/audio) arrive in later steps
  *    behind the module boundaries in ARCHITECTURE.md §3.
  *
@@ -39,8 +40,8 @@
 import * as THREE from 'three';
 import './style.css';
 import { generateTerrain, MERIDIAN_PLAINS } from './sim/terrain';
-import { buildTerrainView } from './render/terrain';
-import { createRenderer } from './render/renderer';
+import { buildTerrainView, type TerrainView } from './render/terrain';
+import { createRenderer, applyEnvironmentLighting } from './render/renderer';
 import { MainMenu, loadSettings, type QualityLevel } from './ui/menus';
 import { startGame } from './ui/game';
 import type { AIDifficulty } from './sim/ai';
@@ -57,18 +58,54 @@ import {
 } from './campaign/progress';
 import { MissionSelect, MissionBriefing } from './ui/campaignui';
 import type { MissionEndResult } from './ui/game';
+// Workstream X — the living menu demo: a seeded sandbox world that plays
+// itself behind the menu through the real command queue. All three
+// modules are side-effect-free at import (no DOM/GPU at module scope),
+// keeping this file's Node-import safety for the smoke tests.
+import {
+  createDemoSession,
+  DemoDirector,
+  stepDemo,
+  DEMO_FRAME_BUDGET,
+} from './ui/demoDirector';
+import { EntityRenderer } from './render/entities';
+import {
+  LazyModelStore,
+  bootModelKeys,
+  keysForKind,
+} from './render/lazyModels';
+import { MODEL_PATHS, type LoadedModel } from './render/models';
+
+/** A running living-menu demo: director + entity views (workstream X). */
+interface MenuDemo {
+  director: DemoDirector;
+  entities: EntityRenderer;
+}
 
 /**
- * Boot the menu experience: renderer + Meridian Plains backdrop scene + menu
- * overlay.
+ * Menu hooks for flows that leave the menu (missions, load-game): the
+ * living demo must stop and drop its world/models before a game starts,
+ * and a fresh demo starts on return.
+ */
+export interface MenuFlowHooks {
+  onLeaveMenu: () => void;
+  onReturnToMenu: () => void;
+}
+
+/**
+ * Boot the menu experience: renderer + living menu demo (workstream X) +
+ * menu overlay.
  * Async because renderer creation requires `await createRenderer(canvas)`.
  * Safe to call once; throws on unrecoverable renderer failure (the caller
  * surfaces it via showFatal()).
  *
- * Menu ↔ game flow: the menu keeps its own renderer + orbital backdrop.
- * Starting a skirmish hides the menu canvas (loop stopped) and hands the
- * #app container to the game controller; exiting the game disposes it and
- * the menu backdrop resumes.
+ * Menu ↔ game flow: the menu keeps its own renderer + living backdrop.
+ * Starting a skirmish stops the demo, drops its world completely (the
+ * game always builds its own session via createSession — the demo can
+ * never leak into a real game), and hands the #app container to the game
+ * controller; exiting the game disposes it and a fresh demo starts behind
+ * the menu. If the demo fails to start, the menu falls back to the old
+ * static Meridian Plains terrain backdrop.
  */
 export async function boot(): Promise<void> {
   const app = document.getElementById('app');
@@ -87,14 +124,104 @@ export async function boot(): Promise<void> {
   // Cap DPR: first step of the adaptive quality governor (ARCHITECTURE.md §6).
   applyMenuQuality(renderer, loadSettings().quality);
 
-  const { scene, water, waterLevel } = buildBackdropScene();
+  // Base scene: sky, fog, lights, environment. Terrain + demo attach below.
+  const scene = buildMenuScene();
   const camera = new THREE.PerspectiveCamera(
     55,
     window.innerWidth / window.innerHeight,
     0.1,
     3000,
   );
-  // Wide orbit over the 512-unit map so the menu sits over living terrain.
+
+  // -- Living menu demo (workstream X) ---------------------------------
+  // `demo` is non-null while the menu owns the loop. The terrain view is
+  // built once (same seed ⇒ identical terrain on every restart); the
+  // model store is dropped when a game starts and rebuilt on return.
+  let terrainView: TerrainView | null = null;
+  let water: THREE.Mesh | null = null;
+  let waterLevel = 0;
+  let demo: MenuDemo | null = null;
+  let demoModels: LazyModelStore | null = null;
+
+  /** Model keys the demo movie can show: the boot set + the Storm Array. */
+  function demoModelKeys(): string[] {
+    return [...bootModelKeys(), ...keysForKind('stormArray')];
+  }
+
+  function ensureDemoModels(): Map<string, LoadedModel> {
+    if (demoModels === null) {
+      demoModels = new LazyModelStore(MODEL_PATHS);
+      // After first paint: keys stream into the shared map in the
+      // background (Cache API: offline-capable); entity views upgrade
+      // from procedural fallbacks as they arrive — never blocks the menu.
+      void demoModels.requestMany(demoModelKeys()).catch((err: unknown) => {
+        console.warn('[menu] demo models failed to load; fallbacks in use:', err);
+      });
+    }
+    return demoModels.map;
+  }
+
+  function dropDemoModels(): void {
+    demoModels?.dispose();
+    demoModels = null;
+  }
+
+  /**
+   * (Re)start the living demo. Stops any running demo first. Returns true
+   * when the demo is live; false → the caller uses the static backdrop.
+   * Never throws (a throwing demo must not take down the menu).
+   */
+  function startDemo(): boolean {
+    stopDemo();
+    try {
+      const director = new DemoDirector(createDemoSession());
+      if (terrainView === null) {
+        // One terrain view for the scene's lifetime: the demo regenerates
+        // identical terrain every restart (fixed seed), so reusing the
+        // view avoids a rebuild and a GPU-memory churn per loop.
+        terrainView = buildTerrainView(director.session.terrain);
+        scene.add(terrainView.group);
+        water = terrainView.water;
+        waterLevel = director.session.terrain.waterLevel;
+      }
+      const entities = new EntityRenderer(scene, ensureDemoModels(), {
+        waterLevel: director.session.terrain.waterLevel,
+        // Entity views ride on the terrain (units/buildings/roads/FX).
+        terrain: director.session.terrain,
+        // Per-kind instanced views: draw calls scale with distinct kinds,
+        // never with entity count (Phase 0 draw-call ceiling).
+        instanced: true,
+      });
+      entities.setCamera(camera);
+      demo = { director, entities };
+      return true;
+    } catch (err) {
+      console.error('[menu] living demo failed to start; static backdrop in use:', err);
+      return false;
+    }
+  }
+
+  function stopDemo(): void {
+    // EntityRenderer.dispose() removes every mesh it added and frees its
+    // GPU resources; the model map is caller-owned and survives (reused
+    // across restarts, dropped when a game starts).
+    demo?.entities.dispose();
+    demo = null;
+  }
+
+  // Static fallback: plain Meridian Plains terrain, no demo (only used
+  // when the demo fails to start — the wide orbit below keeps it alive).
+  function ensureStaticTerrain(): void {
+    if (terrainView !== null) return;
+    const terrain = generateTerrain(MERIDIAN_PLAINS.seed);
+    terrainView = buildTerrainView(terrain);
+    scene.add(terrainView.group);
+    water = terrainView.water;
+    waterLevel = terrain.waterLevel;
+  }
+
+  if (!startDemo()) ensureStaticTerrain();
+  // Wide orbit for the static fallback (the demo drives its own camera).
   const orbitRadius = 300;
   const orbitHeight = 185;
   camera.position.set(0, orbitHeight, orbitRadius);
@@ -104,6 +231,11 @@ export async function boot(): Promise<void> {
       menu.hide();
       renderer.setAnimationLoop(null);
       canvas.style.display = 'none';
+      // Entering a game discards the demo completely: stop its loop,
+      // free its entity meshes, drop its world and its models. startGame
+      // always builds a fresh session via createSession().
+      stopDemo();
+      dropDemoModels();
       const seed = (Math.random() * 0x7fffffff) | 0;
       startGame(app, {
         seed,
@@ -112,16 +244,33 @@ export async function boot(): Promise<void> {
         quality: loadSettings().quality,
         onExitToMenu: () => {
           canvas.style.display = '';
+          startDemo();
           renderer.setAnimationLoop(menuLoop);
           menu.show();
         },
       }).catch(showFatal);
     },
     onShowMissions: () => {
-      void showMissions(app, menu, renderer, canvas, menuLoop);
+      void showMissions(app, menu, renderer, canvas, menuLoop, {
+        onLeaveMenu: () => {
+          stopDemo();
+          dropDemoModels();
+        },
+        onReturnToMenu: () => {
+          startDemo();
+        },
+      });
     },
     onShowLoadGame: () => {
-      void showLoadGame(app, menu, renderer, canvas, menuLoop);
+      void showLoadGame(app, menu, renderer, canvas, menuLoop, {
+        onLeaveMenu: () => {
+          stopDemo();
+          dropDemoModels();
+        },
+        onReturnToMenu: () => {
+          startDemo();
+        },
+      });
     },
     onResume: () => undefined,
     onExitToMenu: () => undefined,
@@ -135,18 +284,42 @@ export async function boot(): Promise<void> {
     renderer.setSize(window.innerWidth, window.innerHeight);
   });
 
-  // Gentle orbital drift so the backdrop visibly "lives".
+  // Menu loop: the demo sim runs on a fixed tick budget (it can never
+  // stall rendering), then the entity views sync. The camera orbits the
+  // director's focus on a tick-derived angle — deterministic per tick,
+  // so a slow frame delays the movie but never reorders it.
   const start = performance.now();
   const menuLoop = (): void => {
     const t = (performance.now() - start) / 1000;
-    camera.position.set(
-      Math.sin(t * 0.05) * orbitRadius,
-      orbitHeight,
-      Math.cos(t * 0.05) * orbitRadius,
-    );
-    camera.lookAt(0, 4, 0);
+    if (demo !== null) {
+      stepDemo(demo.director, DEMO_FRAME_BUDGET);
+      if (demo.director.done) {
+        // The movie played out — restart it fresh (same seed, same movie).
+        startDemo();
+      }
+    }
+    if (demo !== null) {
+      const world = demo.director.session.world;
+      demo.entities.sync(world);
+      const focus = demo.director.focus;
+      const a = world.tick * 0.0011;
+      camera.position.set(
+        focus.x + Math.sin(a) * 150,
+        85,
+        focus.z + Math.cos(a) * 150,
+      );
+      camera.lookAt(focus.x, 6, focus.z);
+    } else {
+      // Static fallback: gentle orbital drift over the terrain.
+      camera.position.set(
+        Math.sin(t * 0.05) * orbitRadius,
+        orbitHeight,
+        Math.cos(t * 0.05) * orbitRadius,
+      );
+      camera.lookAt(0, 4, 0);
+    }
     // Subtle water shimmer; render-side only, never touches the sim.
-    water.position.y = waterLevel + Math.sin(t * 0.8) * 0.15;
+    if (water !== null) water.position.y = waterLevel + Math.sin(t * 0.8) * 0.15;
     renderer.render(scene, camera);
   };
   renderer.setAnimationLoop(menuLoop);
@@ -162,19 +335,13 @@ function applyMenuQuality(
 }
 
 /**
- * Menu backdrop: gradient sky, fog, lights, and the real Meridian Plains
- * terrain (16 chunk meshes + water plane) generated deterministically from
- * the map seed. Replaces the step-1 placeholder diorama; the menu overlay
- * behavior is unchanged.
- *
- * Returns the scene plus the water mesh and level so the animation loop can
- * bob the water without re-querying the scene graph.
+ * Menu scene base: gradient sky, fog, lights, environment lighting — no
+ * terrain. The living demo (or the static fallback) attaches its own
+ * terrain view; entity views ride on it via EntityRenderer's `terrain`
+ * option. Replaces the old buildBackdropScene's scene half (terrain moved
+ * to the demo/static paths so the demo session's terrain is reused).
  */
-function buildBackdropScene(): {
-  scene: THREE.Scene;
-  water: THREE.Mesh;
-  waterLevel: number;
-} {
+function buildMenuScene(): THREE.Scene {
   const scene = new THREE.Scene();
 
   // Gradient sky baked to a canvas texture (cheap, no shader yet).
@@ -183,7 +350,7 @@ function buildBackdropScene(): {
   skyCanvas.height = 256;
   const ctx = skyCanvas.getContext('2d');
   if (ctx === null) {
-    throw new Error('backdrop scene: 2d canvas context unavailable');
+    throw new Error('menu scene: 2d canvas context unavailable');
   }
   const gradient = ctx.createLinearGradient(0, 0, 0, 256);
   gradient.addColorStop(0.0, '#0b1e3a'); // zenith
@@ -197,23 +364,16 @@ function buildBackdropScene(): {
   scene.background = skyTexture;
   scene.fog = new THREE.Fog(0x1a2230, 320, 1150);
 
-  // Lighting: hemisphere for sky bounce + one directional "sun".
+  // Lighting: hemisphere for sky bounce + one directional "sun" (the key
+  // light), plus the shared procedural environment map so PBR metals on
+  // entity views shade correctly (see render/renderer.ts).
   scene.add(new THREE.HemisphereLight(0x9db8dd, 0x1c2420, 0.9));
   const sun = new THREE.DirectionalLight(0xffe0b3, 1.6);
   sun.position.set(80, 120, 40);
   scene.add(sun);
+  applyEnvironmentLighting(scene);
 
-  // Real terrain: deterministic Meridian Plains, 16 chunks, water plane.
-  // Generation is synchronous (~66k heightfield vertices of value noise +
-  // meshing ≈ 150 ms one-time cost measured in Node on this VM's class of
-  // machine; the browser number will differ). Acceptable for the boot path;
-  // seeded mapgen-before-tick-0 is the sanctioned worker candidate later
-  // (ARCHITECTURE.md §2).
-  const terrain = generateTerrain(MERIDIAN_PLAINS.seed);
-  const view = buildTerrainView(terrain);
-  scene.add(view.group);
-
-  return { scene, water: view.water, waterLevel: terrain.waterLevel };
+  return scene;
 }
 
 /** Full-screen, human-readable failure instead of a blank page. */
@@ -249,6 +409,7 @@ async function showLoadGame(
   renderer: { setAnimationLoop(cb: ((time: number) => void) | null): void },
   canvas: HTMLCanvasElement,
   menuLoop: () => void,
+  hooks: MenuFlowHooks,
 ): Promise<void> {
   const store = await createSaveStore();
   const saves = await store.list();
@@ -274,6 +435,7 @@ async function showLoadGame(
         menu.hide();
         renderer.setAnimationLoop(null);
         canvas.style.display = 'none';
+        hooks.onLeaveMenu();
         startGame(app, {
           seed: file.metadata.seed,
           aiDifficulty: file.metadata.aiDifficulty,
@@ -281,6 +443,7 @@ async function showLoadGame(
           saveData: file,
           onExitToMenu: () => {
             canvas.style.display = '';
+            hooks.onReturnToMenu();
             renderer.setAnimationLoop(menuLoop);
             menu.show();
           },
@@ -306,6 +469,7 @@ async function showMissions(
   renderer: { setAnimationLoop(cb: ((time: number) => void) | null): void },
   canvas: HTMLCanvasElement,
   menuLoop: () => void,
+  hooks: MenuFlowHooks,
 ): Promise<void> {
   const store: CampaignStore = await createCampaignStore();
   let progress: CampaignProgress = await store.load();
@@ -327,6 +491,7 @@ async function showMissions(
     menu.hide();
     renderer.setAnimationLoop(null);
     canvas.style.display = 'none';
+    hooks.onLeaveMenu();
     // Mission seed: fixed per mission so every president faces the same
     // term (deterministic campaign). Replays use the same seed.
     const seed = (mission.order * 2654435761) >>> 0;
@@ -336,6 +501,7 @@ async function showMissions(
       quality: loadSettings().quality,
       onExitToMenu: () => {
         canvas.style.display = '';
+        hooks.onReturnToMenu();
         renderer.setAnimationLoop(menuLoop);
         select.show(progress);
       },

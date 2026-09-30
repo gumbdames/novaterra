@@ -19,7 +19,31 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `startingResources` AFTER the initial spawn tick: mission resources
   are the designed opening stockpile, so e.g. northern-border always
   opens at exactly 5000 funds even though spawnUnit now deducts
-  training costs.
+  training costs. `sandbox: true` builds a peaceful world with no AI
+  rival and no victory condition — the living menu demo uses it (the
+  director is the sole author); default false, existing callers unchanged.
+- `demoDirector.ts` — the living menu demo (workstream X, 2026-09-30).
+  `createDemoSession()` = canonical `createSession()` (sandbox, fixed
+  `DEMO_SEED`) + a designed opening stockpile (campaign
+  `startingResources` precedent); `DemoDirector` then plays a scripted
+  movie through the REAL command queue (`issuer: 'demo'`): zones →
+  roads → buildings → power/water → barracks/warFactory/fuelDepot →
+  rifles/truck/tank + resupply → four age advances → Storm Array →
+  storm strike → `done` (the menu restarts the movie). Chapters fire on
+  `world.tick` only (never frames/wall clock); the director's RNG is a
+  director-owned `createRngBank(DEMO_SEED)` `'demo'` stream — `world.rng`
+  is never touched. Rejections are recorded loudly in `failures` +
+  console (never swallowed); the suite pins `failures` empty, command
+  log + digest identical across runs, and a fresh post-demo session
+  digest-identical to pristine (entering a game discards the demo
+  completely — `startGame` always builds its own session). Headless-safe
+  (no DOM/three.js); covered by `tests/ui.demoDirector.test.ts`.
+  Latent bug fixed alongside: `sim/pathfinding.ts` computed `GRID_CELLS`
+  at module scope from `CITY_GRID_CELLS`, which reads NaN inside the
+  city → world → pathfinding → city import cycle whenever pathfinding is
+  first reached through city (a new entry point like this demo) — the
+  first move order died with `RangeError: Invalid array length`. Now a
+  lazily-computed `gridCells()`; every call site runs at sim time.
 - `game.ts` — the game controller: renderer, daylight scene, camera
   input, selection, placement modes, fixed-timestep loop, pause menu.
   DOM + three.js; never imported by headless tests. `startGame()` tags

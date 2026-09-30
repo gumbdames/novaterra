@@ -681,8 +681,10 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   meltdowns). Gate: full suite 1283/1286 (3 perf-budget p95 failures
   proven environmental — Phase 2 baseline 5/5, current HEAD 5/5 ×2,
   failures move between runs), tsc clean, build clean + license stamps.
-  Queued follow-ups (separate briefs, not Phase 3 scope): X (menu demo
-  director), V (camera controls), P (ambient city life). Y (3-tab menu)
+  Queued follow-ups (separate briefs, not Phase 3 scope): V (camera
+  controls), P (ambient city life). X (menu demo director) LANDED
+  2026-09-30 (0.1 Alpha) — see "Workstream X — Living menu demo" below.
+  Y (3-tab menu)
   LANDED 2026-09-30 (0.1 Alpha): bottom-left menu is Civilian /
   Military / Management tabs — Civilian owns the tools row + the 7
   civilian build tabs, Military owns the train palette + orders hints +
@@ -710,6 +712,44 @@ delta → AI work.** Step gate (§0) applies to every step inside.
 - **Budget delta:** ~6 buildings + 3 units (~9 keys).
 - **AI work:** depot placement, supply-truck ratios, ammo-dry
   retreats. Soak: AI draws depot stocks.
+
+### Workstream X — Living menu demo (0.1 Alpha)
+- **Status: COMPLETE (2026-09-30, 0.1 Alpha).** The main menu background
+  is a living world: a seeded sandbox session plays itself behind the
+  menu through the REAL command queue — no sim special-casing. New
+  `game/src/ui/demoDirector.ts`: `createDemoSession()` (canonical
+  `createSession()` + designed opening stockpile, campaign
+  `startingResources` precedent) and `DemoDirector`, a tick-gated
+  scripted "player" (`issuer: 'demo'`): zones → roads → houses/shop/
+  factory → powerPlant/waterPump + power-line/pipe runs → barracks/
+  warFactory/fuelDepot → 2 rifles + supplyTruck (long patrol burns
+  fuel) + tank → real `resupply` at the depot → four age advances
+  (connectivity → industry → information → ascendance) → Storm Array →
+  storm strike on empty land → `done`, and the menu restarts the movie.
+  Same `DEMO_SEED` (0xde407) → same movie every boot (chapters fire on
+  `world.tick` only; director RNG is a director-owned bank — `world.rng`
+  untouched). `main.ts` renders it with the production pipeline
+  (terrain view + instanced `EntityRenderer` + zone/paving/ambient-crowd
+  overlays + environment lighting), ≤6 ticks/frame behind an 8 ms cap,
+  tick-deterministic cinematic camera that swings to the storm target
+  for the finale; model keys stream in after first paint (boot set +
+  stormArray), static terrain fallback if the demo fails. Entering a
+  game discards the demo completely (`startGame` always builds its own
+  session — pinned by test: fresh post-demo session digest-identical to
+  pristine). Latent bug fixed alongside: `sim/pathfinding.ts` computed
+  `GRID_CELLS` at module scope from `CITY_GRID_CELLS`, which reads NaN
+  inside the city → world → pathfinding → city import cycle whenever
+  pathfinding is first reached through city (the demo tripped it — first
+  move order died `RangeError: Invalid array length`); now a lazy
+  `gridCells()`. Gate: 7 new tests
+  (`game/tests/ui.demoDirector.test.ts`: determinism, full-arc effects,
+  zero failures, RNG isolation, discard guarantee, real-game sessions
+  untouched, cost), full suite 1422/1422, tsc clean, build clean +
+  license stamps. Cost: session creation ~50 ms, full 13,001-tick movie
+  ~200 ms in Node (~0.015 ms/tick).
+- **Goal:** the menu feels alive and shows off real game systems.
+- **Deployable when:** the menu plays the same movie every boot, never
+  stalls rendering, and real games are provably unaffected.
 
 ### Phase 4 — Transport variety (L)
 - **Goal:** road classes, rail, trams/buses/ferries, marinas; civilian

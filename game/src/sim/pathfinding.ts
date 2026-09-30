@@ -152,7 +152,7 @@ const maskCache = new WeakMap<TerrainData, Uint8Array>();
 export function passabilityMask(t: TerrainData): Uint8Array {
   let mask = maskCache.get(t);
   if (!mask) {
-    mask = new Uint8Array(GRID_CELLS);
+    mask = new Uint8Array(gridCells());
     for (let cz = 0; cz < CITY_GRID_CELLS; cz++) {
       for (let cx = 0; cx < CITY_GRID_CELLS; cx++) {
         mask[cellIndex(cx, cz)] = cellIsWater(t, cx, cz) ? 0 : 1;
@@ -168,7 +168,7 @@ const seaMaskCache = new WeakMap<TerrainData, Uint8Array>();
 export function seaPassabilityMask(t: TerrainData): Uint8Array {
   let mask = seaMaskCache.get(t);
   if (!mask) {
-    mask = new Uint8Array(GRID_CELLS);
+    mask = new Uint8Array(gridCells());
     for (let cz = 0; cz < CITY_GRID_CELLS; cz++) {
       for (let cx = 0; cx < CITY_GRID_CELLS; cx++) {
         mask[cellIndex(cx, cz)] = cellIsWater(t, cx, cz) ? 1 : 0;
@@ -221,10 +221,10 @@ export function landComponents(t: TerrainData): Int32Array {
   let comp = componentCache.get(t);
   if (!comp) {
     const mask = passabilityMask(t);
-    comp = new Int32Array(GRID_CELLS).fill(-1);
+    comp = new Int32Array(gridCells()).fill(-1);
     const stack: number[] = [];
     let nextId = 0;
-    for (let cell = 0; cell < GRID_CELLS; cell++) {
+    for (let cell = 0; cell < gridCells(); cell++) {
       if ((mask[cell] as number) === 0 || (comp[cell] as number) !== -1) continue;
       comp[cell] = nextId;
       stack.push(cell);
@@ -275,10 +275,10 @@ export function seaComponents(t: TerrainData): Int32Array {
   let comp = seaComponentCache.get(t);
   if (!comp) {
     const mask = seaPassabilityMask(t);
-    comp = new Int32Array(GRID_CELLS).fill(-1);
+    comp = new Int32Array(gridCells()).fill(-1);
     const stack: number[] = [];
     let nextId = 0;
-    for (let cell = 0; cell < GRID_CELLS; cell++) {
+    for (let cell = 0; cell < gridCells(); cell++) {
       if ((mask[cell] as number) === 0 || (comp[cell] as number) !== -1) continue;
       comp[cell] = nextId;
       stack.push(cell);
@@ -346,9 +346,9 @@ export function findSeaPath(
     return { path: null, expanded: 0, capped: false };
   }
 
-  const gScore = new Float64Array(GRID_CELLS).fill(Infinity);
-  const cameFrom = new Int32Array(GRID_CELLS).fill(-1);
-  const closed = new Uint8Array(GRID_CELLS);
+  const gScore = new Float64Array(gridCells()).fill(Infinity);
+  const cameFrom = new Int32Array(gridCells()).fill(-1);
+  const closed = new Uint8Array(gridCells());
   const open = new BinaryHeap();
   gScore[start] = 0;
   open.push(start, heuristic(start, goal));
@@ -483,7 +483,19 @@ function swap(cells: number[], prios: number[], i: number, j: number): void {
 // A* (8-directional, no corner cutting).
 // ---------------------------------------------------------------------------
 
-const GRID_CELLS = CITY_GRID_CELLS * CITY_GRID_CELLS;
+/**
+ * Total cells in the pathfinding grid. Computed lazily, NOT at module
+ * scope: this module sits in the city → world → pathfinding → city
+ * import cycle, so a module-level `CITY_GRID_CELLS * CITY_GRID_CELLS`
+ * reads an uninitialized binding (NaN) whenever pathfinding is first
+ * reached through city — e.g. from a new entry point like the menu
+ * demo — and the first move order then dies with
+ * `RangeError: Invalid array length`. Every call site runs at sim time,
+ * long after all modules are initialized.
+ */
+function gridCells(): number {
+  return CITY_GRID_CELLS * CITY_GRID_CELLS;
+}
 const SQRT2 = Math.SQRT2;
 
 /** Admissible octile heuristic scaled by the minimum cell cost (0.5). */
@@ -529,9 +541,9 @@ export function findPath(
     return { path: null, expanded: 0, capped: false };
   }
 
-  const gScore = new Float64Array(GRID_CELLS).fill(Infinity);
-  const cameFrom = new Int32Array(GRID_CELLS).fill(-1);
-  const closed = new Uint8Array(GRID_CELLS);
+  const gScore = new Float64Array(gridCells()).fill(Infinity);
+  const cameFrom = new Int32Array(gridCells()).fill(-1);
+  const closed = new Uint8Array(gridCells());
   const open = new BinaryHeap();
   gScore[start] = 0;
   open.push(start, heuristic(start, goal));
@@ -716,10 +728,10 @@ export function beginFieldBuild(
     fieldId,
     destCell,
     unitIds: [...unitIds],
-    waitMark: new Array<number>(GRID_CELLS).fill(0),
+    waitMark: new Array<number>(gridCells()).fill(0),
     waitingCount: 0,
-    dist: new Array<number>(GRID_CELLS).fill(FLOOD_INF),
-    closed: new Array<number>(GRID_CELLS).fill(0),
+    dist: new Array<number>(gridCells()).fill(FLOOD_INF),
+    closed: new Array<number>(gridCells()).fill(0),
     heapCells: [],
     heapPris: [],
     heapTies: [],
@@ -816,7 +828,7 @@ export function stepFieldBuild(
  * the destination is DESTINATION.
  */
 export function finishFieldBuild(build: FieldBuild, mask: Uint8Array, roads: number[]): FlowField {
-  const dirs = new Array<number>(GRID_CELLS);
+  const dirs = new Array<number>(gridCells());
   for (let cz = 0; cz < CITY_GRID_CELLS; cz++) {
     for (let cx = 0; cx < CITY_GRID_CELLS; cx++) {
       const cell = cz * CITY_GRID_CELLS + cx;
