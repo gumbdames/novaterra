@@ -60,7 +60,7 @@ import { generateTerrain, MERIDIAN_PLAINS, type TerrainData } from '../src/sim/t
 import { runEconomyTick } from '../src/sim/economy';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
 import { digestWorld } from '../src/sim/digest';
-import { addAIPlayer, thinkCivilianTransport } from '../src/sim/ai';
+import { addAIPlayer, thinkCivilianTransport, thinkRoadClasses } from '../src/sim/ai';
 import {
   AMENITY_BONUS_CAP,
   AMENITY_TABLE,
@@ -607,6 +607,25 @@ describe('Classic AI ignores transit stops (PLAN §6 no-op)', () => {
     const ai = world.ai.players[0]!;
     const before = digestWorld(world);
     thinkCivilianTransport(world, ai);
+    expect(digestWorld(world)).toBe(before);
+  });
+
+  it('thinkRoadClasses leaves the digest unchanged with mixed road classes present', () => {
+    // Phase 4: road classes need no AI wiring (pathfinding reads the
+    // per-class move cost; the AI never lays roads) — pinned as a no-op.
+    const world = createWorld(80809);
+    addAIPlayer(world, 1, 'citizen', 0, 0);
+    const t = getTerrain();
+    const { cx, cz } = findLandRect(t, 30, 10);
+    const classes = ['dirt', 'country', 'paved', 'highway'] as const;
+    classes.forEach((cls, i) => {
+      for (let j = 0; j < 3; j++) {
+        world.city.roads.push({ cell: cellIndex(cx + j, cz + i), cls });
+      }
+    });
+    const ai = world.ai.players[0]!;
+    const before = digestWorld(world);
+    thinkRoadClasses(world, ai);
     expect(digestWorld(world)).toBe(before);
   });
 });

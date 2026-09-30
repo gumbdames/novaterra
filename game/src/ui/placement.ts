@@ -35,13 +35,14 @@ import {
   buildDemolishOrder,
   buildPlaceBuildingOrder,
   buildPowerLineOrder,
+  buildRailOrder,
   buildRoadOrder,
   buildTrainOrder,
   buildWaterPipeOrder,
   type OrderIntent,
 } from './orders';
 import { STRINGS } from './strings';
-import { CITY_GRID_CELLS } from '../sim/city';
+import { CITY_GRID_CELLS, type RoadClass } from '../sim/city';
 
 /** A picked city-grid cell (from the controller's worldToCell). */
 export interface CellRef {
@@ -63,11 +64,14 @@ export type PlacementResolution =
 /**
  * Resolve a build-palette click. `cell` is null when the picked point is
  * off the city grid (or the pick ray missed the ground entirely).
+ * `roadClass` is the road tool's selected class (single-cell road
+ * click-paves use it).
  */
 export function resolveBuildToolClick(
   tool: BuildTool,
   owner: number,
   cell: CellRef | null,
+  roadClass: RoadClass = 'paved',
 ): PlacementResolution {
   if (cell === null) {
     return { kind: 'hint', message: STRINGS.orders.buildFailed };
@@ -75,7 +79,7 @@ export function resolveBuildToolClick(
   if (tool === 'road') {
     return {
       kind: 'order',
-      intent: buildRoadOrder(owner, [cell.cz * CITY_GRID_CELLS + cell.cx]),
+      intent: buildRoadOrder(owner, [cell.cz * CITY_GRID_CELLS + cell.cx], roadClass),
     };
   }
   // Phase 2 (utilities): network tools paint the single clicked cell —
@@ -90,6 +94,14 @@ export function resolveBuildToolClick(
     return {
       kind: 'order',
       intent: buildWaterPipeOrder(owner, [cell.cz * CITY_GRID_CELLS + cell.cx]),
+    };
+  }
+  // Phase 4 (transport): the rail tool click-paves the single cell with
+  // standard track (the drag path is the primary use).
+  if (tool === 'rail') {
+    return {
+      kind: 'order',
+      intent: buildRailOrder(owner, [cell.cz * CITY_GRID_CELLS + cell.cx]),
     };
   }
   if (tool === 'demolish') {

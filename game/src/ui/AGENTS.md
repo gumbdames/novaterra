@@ -359,19 +359,33 @@ each one. When a branch renders only under a state the default
 
 ## Adding a linear-network kind (Phase 2/4)
 
-Power lines and water pipes (Phase 2, done) — and rail (Phase 4) later —
+Power lines and water pipes (Phase 2, done) and rail (Phase 4, done)
 reuse the road tool's drag gesture through `linearNetworkDrag.ts`: do not
 copy the pipeline. `LinearNetworkKind` is `'road' | 'powerLine' |
-'waterPipe'`; `orders.ts` has `buildPowerLineOrder` / `buildWaterPipeOrder`
-(emitting `buildPowerLine` / `buildPipe` commands); `toolForKind` maps the
-kinds to the `powerLine` / `waterPipe` build tools; `networkKindForTool`
+'waterPipe' | 'rail'`; `orders.ts` has `buildPowerLineOrder` /
+`buildWaterPipeOrder` / `buildRailOrder` (emitting `buildPowerLine` /
+`buildPipe` / `buildRail` commands); `toolForKind` maps the kinds to the
+`powerLine` / `waterPipe` / `rail` build tools; `networkKindForTool`
 starts a drag for those tool strings. Steps for a NEW kind: (1) extend the
 `LinearNetworkKind` union; (2) add the order builder in `orders.ts` and
 wire it into the pipeline's `buildNetworkOrder` switch; (3) map the kind
 to its build tool in the pipeline's `toolForKind` switch; (4) extend
-`networkKindForTool` with the new tool string; (5) add unit tests for the
-new kind (accumulation, order payload, click resolution). The two
-switches are exhaustive with no default arm, so the compiler fails after
-step 1 until steps 2–3 are done — a new kind can never silently fall
-through. The controller wiring in `game.ts` (`bindInput`) is already
-kind-agnostic and needs no change.
+`networkKindForTool` with the new tool string; (5) add the HUD tool
+button (`hud.ts` tools row), its icon (`icons.ts`), its label
+(`strings.ts`), and click resolution (`placement.ts`); (6) add unit
+tests for the new kind (accumulation, order payload, click resolution).
+The two switches are exhaustive with no default arm, so the compiler
+fails after step 1 until steps 2–3 are done — a new kind can never
+silently fall through. The controller wiring in `game.ts` (`bindInput`)
+is already kind-agnostic and needs no change.
+
+### Road classes (Phase 4)
+
+The road tool carries an optional `roadClass` (dirt/country/paved/
+highway, default `'paved'`) from the HUD's remembered picker
+(`hud.ts selectedRoadClass`) through the drag pipeline to
+`buildRoadOrder`. The sim rejects a mixed batch whole, so `game.ts`
+splits drags with `partitionRoadCells(roads, cells, cls)` into
+`buildRoad` (fresh cells) + `upgradeRoad` (existing lower-class cells);
+cells already at-or-above the class are dropped silently. Clicks carry
+the class to `resolveBuildToolClick(tool, owner, cell, roadClass)`.

@@ -861,6 +861,27 @@ export function thinkCivilianTransport(world: World, ai: AIPlayerState): void {
 }
 
 /**
+ * Phase 4 transport: road classes need NO AI-side wiring — documented
+ * here as a deliberate no-op (same convention as thinkCivilianTransport
+ * above) rather than left silent. Reasons:
+ * - Pathfinding reads the per-class move cost directly
+ *   (`cellMoveCost` consults ROAD_CLASS_STATS), so AI units already
+ *   prefer highways over dirt without any AI code knowing about classes.
+ * - The Classic AI never lays roads at all (roads are optional since
+ *   the 2026-09-30 directive — the AI's cities develop with zero roads),
+ *   so there is no build/upgrade decision to make.
+ * - `upgradeRoad` is a player-initiated in-place upgrade (difference
+ *   pricing); the AI has no roads to upgrade and no economy reason to
+ *   want any.
+ * Exported so tests can pin the no-op (world digest unchanged across a
+ * think with mixed road classes present).
+ */
+export function thinkRoadClasses(world: World, ai: AIPlayerState): void {
+  void world;
+  void ai;
+}
+
+/**
  * Per-think logistics: depot construction, truck ratios, abstract
  * resupply, ammo-dry retreats. Called from thinkCitizen and
  * thinkCommander (general/marshal inherit); cadet never calls it —

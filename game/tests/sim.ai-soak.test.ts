@@ -56,11 +56,14 @@ import {
   cellIsWater,
   getPlayer,
   placeBuilding,
+  railSortedInsert,
   type BuildingKind,
   type BuildingRecord,
   type CityState,
   type Placement,
   type ResourceKey,
+  type RoadClass,
+  type TrackClass,
 } from '../src/sim/city';
 import { createEconomySystem, runEconomyTick, ECONOMY_TICKS } from '../src/sim/economy';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
@@ -150,6 +153,57 @@ function scriptCity(world: World, owner: number, gx: number, gz: number): void {
   }
 }
 
+/**
+ * Phase 4 transport-mixed soak: script a transport layer for `owner`
+ * south of their city — roads of every class, a standard-track rail
+ * line, two bus stops + one tram stop (completed, operational), and a
+ * completed marina. Direct state scripting (like scriptCity) so the
+ * soak exercises the LAYER, not command validation (covered in
+ * sim.transport.test.ts).
+ */
+function scriptTransport(world: World, owner: number, gx: number, gz: number): void {
+  const city = world.city;
+  // One row of each road class (the AI never builds/upgrades roads —
+  // thinkRoadClasses is a documented no-op — but units path over them,
+  // so the soak must cover every class under AI movement).
+  const classes: RoadClass[] = ['dirt', 'country', 'paved', 'highway'];
+  classes.forEach((cls, row) => {
+    for (let i = 0; i < 4; i++) {
+      city.roads.push({ cell: cellIndex(gx + i, gz + 8 + row), cls });
+    }
+  });
+  // Rail: a short standard-track line (sorted insert keeps the layer
+  // invariant the sim expects).
+  const trackCls: TrackClass = 'standard';
+  for (let i = 0; i < 5; i++) {
+    railSortedInsert(city.rails, { cell: cellIndex(gx + i, gz + 13), cls: trackCls });
+  }
+  // Transit stops: a real bus route (2 stops) + a tram stop, completed
+  // and operational — the crowd providers and ridership income see them.
+  const stops: Array<[BuildingKind, number, number]> = [
+    ['busStop', gx, gz + 15],
+    ['busStop', gx + 6, gz + 15],
+    ['tramStop', gx + 3, gz + 17],
+  ];
+  for (const [kind, cx, cz] of stops) {
+    const b = placeBuilding(city, { kind, owner, cx, cz, facing: 0 });
+    b.progress = 1;
+    b.operational = true;
+  }
+  // Marina: the waterfront amenity feeds desirability + land value.
+  const marina = placeBuilding(city, { kind: 'marina', owner, cx: gx + 10, cz: gz + 15, facing: 0 });
+  marina.progress = 1;
+  marina.operational = true;
+}
+
+/** Two-AI skirmish with the Phase 4 transport layer scripted in. */
+function setupTransportSoak(seed: number): Ctx {
+  const ctx = setupSoak(seed);
+  scriptTransport(ctx.world, 0, 40, 52);
+  scriptTransport(ctx.world, 1, -40, -28);
+  return ctx;
+}
+
 function findLandNear(t: TerrainData, x: number, z: number): { x: number; z: number } {
   for (let r = 0; r < 60; r += 2) {
     for (let dz = -r; dz <= r; dz += 2) {
@@ -227,6 +281,53 @@ describe('AI-vs-AI soak (commander vs general, economy on)', () => {
   it('same seed ⇒ identical digest after the full soak', () => {
     const a = setupSoak(424242);
     const b = setupSoak(424242);
+    for (let i = 0; i < SOAK_TICKS; i++) {
+      a.driver.step(a.world, TICK_MS);
+      b.driver.step(b.world, TICK_MS);
+    }
+    expect(digestWorld(a.world)).toBe(digestWorld(b.world));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4 transport-mixed soak (item 8).
+//
+// The Classic AI is a military rival: it never lays roads or rails, and
+// civilian transport is a documented no-op (thinkCivilianTransport /
+// thinkRoadClasses). But AI units PATH over the transport layer the
+// player builds, the economy pays transit earnings + ridership income,
+// and desirability consumes the marina hook — so the soak runs the full
+// AI-vs-AI match with a scripted mixed transport layer to prove nothing
+// in it crashes, corrupts funds, or breaks seed-determinism.
+// ---------------------------------------------------------------------------
+
+describe('transport-mixed AI-vs-AI soak (Phase 4)', () => {
+  it('runs 3600 ticks with scripted road classes + rail + transit stops + marina: no crashes, sane funds', () => {
+    const ctx = setupTransportSoak(20261001);
+    expect(() => {
+      for (let i = 0; i < SOAK_TICKS; i++) ctx.driver.step(ctx.world, TICK_MS);
+    }).not.toThrow();
+    for (const p of ctx.world.city.players) {
+      for (const r of RESOURCES) {
+        const v = p[r];
+        expect(Number.isFinite(v), `${r} finite for player ${p.id}`).toBe(true);
+        expect(v, `${r} non-negative for player ${p.id}`).toBeGreaterThanOrEqual(0);
+        expect(v, `${r} bounded for player ${p.id}`).toBeLessThan(1e12);
+      }
+    }
+    // The scripted layer survived the match intact.
+    expect(ctx.world.city.roads.length).toBe(32); // 4 classes × 4 cells × 2 owners
+    expect(ctx.world.city.rails.length).toBe(10); // 5 cells × 2 owners
+    const stops = ctx.world.city.buildings.filter(
+      (b) => b.kind === 'busStop' || b.kind === 'tramStop',
+    );
+    expect(stops.length).toBe(6);
+    expect(stops.every((b) => b.operational)).toBe(true);
+  });
+
+  it('same seed ⇒ identical digest with the transport layer scripted in', () => {
+    const a = setupTransportSoak(777001);
+    const b = setupTransportSoak(777001);
     for (let i = 0; i < SOAK_TICKS; i++) {
       a.driver.step(a.world, TICK_MS);
       b.driver.step(b.world, TICK_MS);

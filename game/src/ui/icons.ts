@@ -441,7 +441,7 @@ const BUILDING_ICONS: Record<BuildingKind, string> = {
 // Build-palette tools (road / zones / demolish).
 // ---------------------------------------------------------------------------
 
-/** The build-palette tools (road / zones / demolish / Phase 2 networks). */
+/** The build-palette tools (road / zones / demolish / Phase 2 networks / Phase 4 rail). */
 export type PaletteToolIcon =
   | 'road'
   | 'zoneR'
@@ -450,10 +450,16 @@ export type PaletteToolIcon =
   | 'demolish'
   // Phase 2 (utilities): drag-paint network tools.
   | 'powerLine'
-  | 'waterPipe';
+  | 'waterPipe'
+  // Phase 4 (transport): the rail drag-paint tool.
+  | 'rail';
 
 const TOOL_ICONS: Record<PaletteToolIcon, string> = {
   road: '<path d="M9 2.5v19M15 2.5v19"/><path d="M12 5.5v3M12 10.5v3M12 15.5v3"/>',
+  // Rail: two rails with sleepers (ties) — reads as a track at 24px.
+  rail:
+    '<path d="M8 3v18M16 3v18"/>' +
+    '<path d="M8 6h8M8 10h8M8 14h8M8 18h8"/>',
   zoneR:
     '<rect x="3.5" y="3.5" width="17" height="17" rx="2" stroke-dasharray="3.5 2.5"/>' +
     '<path d="M8.5 13 12 10l3.5 3"/><path d="M9.8 12.3v3.2h4.4v-3.2"/>',

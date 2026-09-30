@@ -392,3 +392,46 @@ describe('AD11 digest contract', () => {
     expect(stale, `stale HUD_PANEL_BRANCHES.domClasses entries: ${stale.join(', ')}`).toEqual([]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Phase 4 (transport): item 5 — occupancy line + road-class selector digests
+// ---------------------------------------------------------------------------
+
+describe('selectionDigest (Phase 4: occupancy + road class)', () => {
+  it('rc: moves on road-class change (the tools-row highlight repaints)', () => {
+    const session = createSession({ seed: 4242 });
+    const base = selectionDigest(session.world, NO_SEL, 'infantry', 'housing', undefined, 'civilian', 'paved');
+    expect(base).toContain('rc:paved');
+    const changed = selectionDigest(session.world, NO_SEL, 'infantry', 'housing', undefined, 'civilian', 'highway');
+    expect(changed).not.toBe(base);
+    expect(changed).toContain('rc:highway');
+  });
+
+  it('rc: is absent on non-civilian tabs (no tools row renders there)', () => {
+    const session = createSession({ seed: 4242 });
+    const digest = selectionDigest(session.world, NO_SEL, 'infantry', 'housing', undefined, 'military');
+    expect(digest).not.toContain('rc:');
+  });
+
+  it('bo: carries the sim buildingOccupancy() through the digest', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const lab = giveCompletedLab(session);
+    const sel = { unitIds: [], buildingId: lab.id };
+    const base = selectionDigest(world, sel, 'infantry', 'housing');
+    // Lab: 0 resident cap, 20 worker cap — always emitted, even 0/0.
+    expect(base).toContain('bo:0/0:0/20');
+    lab.workers = 8;
+    const changed = selectionDigest(world, sel, 'infantry', 'housing');
+    expect(changed).not.toBe(base);
+    expect(changed).toContain('bo:0/0:8/20');
+  });
+
+  it('bo: is absent for unit selections (occupancy is a building value)', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const unit = world.units.find((u) => u.owner === HUMAN_PLAYER_ID)!;
+    const digest = selectionDigest(world, selectUnits([unit.id]), 'infantry', 'housing');
+    expect(digest).not.toContain('bo:');
+  });
+});

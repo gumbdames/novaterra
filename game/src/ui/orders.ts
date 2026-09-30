@@ -34,6 +34,13 @@
 
 import type { NewCommand } from '../sim/commands';
 import type { NationalProgram } from '../sim/ages';
+import {
+  ROAD_CLASS_ORDER,
+  roadClassAt,
+  type RoadCell,
+  type RoadClass,
+  type TrackClass,
+} from '../sim/city';
 
 /**
  * A player intent without the issuer attached. The game controller adds
@@ -95,11 +102,62 @@ export function buildTrainOrder(
 }
 
 /** Road tool: pave a list of city cell indices (drag path). */
-export function buildRoadOrder(owner: number, cells: number[]): OrderIntent {
+export function buildRoadOrder(
+  owner: number,
+  cells: number[],
+  cls: RoadClass = 'paved',
+): OrderIntent {
   return {
     kind: 'buildRoad',
-    payload: { owner, cells: [...cells] },
+    payload: { owner, cells: [...cells], cls },
   };
+}
+
+/**
+ * Phase 4 (transport): upgrade existing road cells to a better class in
+ * place. The sim charges the per-cell cost difference and rejects any
+ * cell that is not a strict upgrade — callers must partition drag cells
+ * (see `partitionRoadCells` below) before emitting.
+ */
+export function buildUpgradeRoadOrder(
+  owner: number,
+  cells: number[],
+  cls: RoadClass,
+): OrderIntent {
+  return {
+    kind: 'upgradeRoad',
+    payload: { owner, cells: [...cells], cls },
+  };
+}
+
+/**
+ * Split a road tool's drag cells into fresh builds, in-place upgrades,
+ * and skips, so the gesture never emits a command the sim would reject
+ * whole (`buildRoad` rejects cells that already have roads;
+ * `upgradeRoad` rejects anything but strict upgrades). Pure — the
+ * controller (game.ts) calls this at pointerup where the world is
+ * visible; the drag pipeline itself stays world-blind.
+ */
+export function partitionRoadCells(
+  roads: RoadCell[],
+  cells: number[],
+  cls: RoadClass,
+): { build: number[]; upgrade: number[]; skipped: number } {
+  const build: number[] = [];
+  const upgrade: number[] = [];
+  let skipped = 0;
+  const newIdx = ROAD_CLASS_ORDER.indexOf(cls);
+  for (const cell of cells) {
+    const old = roadClassAt(roads, cell);
+    if (old === undefined) {
+      build.push(cell);
+    } else if (ROAD_CLASS_ORDER.indexOf(old) < newIdx) {
+      upgrade.push(cell);
+    } else {
+      skipped += 1;
+    }
+  }
+  return { build, upgrade, skipped };
 }
 
 /**
@@ -162,6 +220,24 @@ export function buildWaterPipeOrder(owner: number, cells: readonly number[]): Or
   return {
     kind: 'buildPipe',
     payload: { owner, cells: [...cells] },
+  };
+}
+
+/**
+ * Phase 4 (transport): paint a rail run. The sim's `buildRail` command
+ * takes a track-class payload (`cls`, one of standard | electric |
+ * high-speed — see TRACK_CLASS_STATS in sim/city.ts); omitted cls
+ * defaults to 'standard'. Track class is a train SPEED factor (higher
+ * class = faster trains), unlike road class which is a move COST.
+ */
+export function buildRailOrder(
+  owner: number,
+  cells: readonly number[],
+  cls: TrackClass = 'standard',
+): OrderIntent {
+  return {
+    kind: 'buildRail',
+    payload: { owner, cells: [...cells], cls },
   };
 }
 

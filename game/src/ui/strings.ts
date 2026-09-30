@@ -152,6 +152,9 @@ export const STRINGS = {
     build: 'Build',
     /** Selected building's crew training level (economy.ts levels 1→3). */
     levelLine: { en: 'Level {level}/3' },
+    // Phase 4 (transport): occupancy line for the selection panel, from
+    // the sim's buildingOccupancy() (city.ts).
+    occupancyLine: { en: 'Residents {residents}/{residentCap} · Workers {workers}/{workerCap}' },
   },
   /** Veterancy display (grand-expansion Phase 1). English-only. */
   veterancy: {
@@ -616,6 +619,15 @@ export const STRINGS = {
     researchTitle: { en: 'Research' },
     researchVerb: { en: 'Research' },
     toolRoad: { en: 'Road' },
+    // Phase 4 (transport): the road tool paints the selected class; the
+    // picker sits next to the road button in the Civilian tools row.
+    roadClassDirt: { en: 'Dirt' },
+    roadClassCountry: { en: 'Country' },
+    roadClassPaved: { en: 'Paved' },
+    roadClassHighway: { en: 'Highway' },
+    roadClassCost: { en: '{funds} funds + {materials} materials per cell' },
+    // Phase 4 (transport): the rail drag-paint tool.
+    toolRail: { en: 'Rail' },
     // Phase 2 (utilities): drag-paint network tools.
     toolPowerLine: { en: 'Power line' },
     toolWaterPipe: { en: 'Water pipe' },

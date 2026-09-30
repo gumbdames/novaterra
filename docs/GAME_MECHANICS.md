@@ -122,7 +122,8 @@ fastest, and the tax rate each home effectively pays.
   parking counts too, as a convenience: a **Parking Lot** adds +3
   within 8 cells, a **Parking Garage** +4 within 10 — toward the same
   +20 cap. Parking is convenient, not beloved: it scores below the
-  cultural buildings.
+  cultural buildings. A **Marina** on the coast is the biggest draw of
+  all: +10 within 15 cells, toward the same +20 cap.
 
 **Land value tiers.** The score maps to a land-value tier, and homes pay
 tax on their land value: Low (×0.8), Modest (×1.0), Nice (×1.3),
@@ -163,9 +164,13 @@ things happen automatically, purely as decoration:
 - **Civic parking.** The **Civic** tab also holds the **Parking Lot**
   (180 Funds, 60 Materials) and **Parking Garage** (450 Funds, 180
   Materials): 3×3 buildings that add a little desirability nearby
-  (see above). Ambient buses, trams, ferries, and airliners join the
-  bustle in later expansions — their hooks are already in the code,
-  sized by population.
+  (see above). **Public transit** works the same hands-off way: place
+  bus stops, tram stops, and ferry piers (Civilian tab) and completed,
+  operational stops start running amber buses, red trams, and white
+  ferries through the streets and water — more of them as your
+  population grows. No routes to draw, no schedules to set: two stops
+  make a route, and the vehicles loop it. Airliners stay decorative
+  for now.
 
 ## Education
 
@@ -485,3 +490,38 @@ orders needed. Units on a resupply run are served first.
 
 **Advanced Logistics** (research, needs a Munitions Factory): +50% ammo
 production and +50% storage on every producer and depot.
+
+## Phase 4: Transport
+
+**Road classes.** Roads come in four classes — **Dirt** (cheapest),
+**Country**, **Paved** (the default), and **Highway** (fastest, most
+expensive). Pick the class in the road tool's picker before you drag;
+the picker shows the per-cell price and remembers your choice across
+tabs. Dragging over an existing lower-class road **upgrades it in
+place** (you pay only the difference), and dragging over a road already
+at or above your class leaves it alone — a drag never fails because it
+crossed an old road. Faster roads move your units faster; the
+pathfinder prefers them on its own.
+
+**Rail.** The **Rail** tool (Civilian tab, Networks group) drag-paints
+standard track the same way you drag roads — click for one cell, drag
+for a line. Track cells carry passengers and freight for the trains of
+later expansions; laying the network early is the investment.
+
+**Transit stops.** Place **bus stops**, **taxi stands**, **tram
+stops**, and **ferry piers** (Civilian tab) wherever people live and
+work. Two completed, operational stops of a mode start a route, and
+ambient buses, trams, and ferries begin running it — pausing at each
+stop, looping forever, purely decorative. Bigger stations (the
+neighborhood station, the central station, the airport interchange)
+also raise nearby land value, like parks and schools do.
+
+**Marinas.** The **Marina** (300 Funds, 100 Materials) and **Grand
+Marina** (900/350) go on the coast and make the whole neighborhood
+more desirable (+10 desirability within 15 cells), which pushes nearby
+land value — and your tax income — up.
+
+**Occupancy.** Select any building and the panel now shows who lives
+and works there: "Residents 12/50 · Workers 8/20" (hidden for buildings
+with no housing or jobs). Watch your houses fill as people migrate
+toward the nice streets.

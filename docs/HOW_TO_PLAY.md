@@ -182,13 +182,33 @@ Press **\`** (backtick) to open the cheat console. Commands:
 
 Using any cheat marks the save as **cheated** (shown in the load list).
 
+## Roads, rail, and transit (Phase 4)
+
+**Road classes.** Pick the **Road** tool, then pick a class above it —
+**Dirt**, **Country**, **Paved** (default), or **Highway**. Each button
+shows its per-cell price; the game remembers your class when you switch
+tabs. Drag to paint (click paints one cell). Dragging over an existing
+lower-class road upgrades it in place for the price difference; roads
+already at your class are left alone. Faster classes move units faster.
+
+**Rail.** The **Rail** tool (Civilian tab, Networks group) works like
+the road tool: click for one cell of track, drag for a line. Track is
+standard gauge in 0.1 Alpha.
+
+**Transit stops.** Bus stops, taxi stands, tram stops, and ferry piers
+sit in the Civilian build tabs. Two completed, operational stops of the
+same mode start a route — buses, trams, and ferries then run it on
+their own, pausing at each stop. No routes to draw, no schedules to
+set, nothing to manage.
+
 ## Phase 3 controls
 
 The bottom-left menu has three tabs:
 
-- **Civilian** — road / power-line / water-pipe / zoning / demolish
-  tools plus the Housing, Civic, Commerce, Industry, Utilities, Power
-  and Water build tabs (all peaceful city building lives here).
+- **Civilian** — road / rail / power-line / water-pipe / zoning /
+  demolish tools plus the Housing, Civic, Commerce, Industry,
+  Utilities, Power and Water build tabs (all peaceful city building
+  lives here).
 - **Military** — unit **orders** (right-click to attack/move, **S** to
   stop), the **train** palette, the Logistics / Naval-Air / Special
   build tabs, and the **superweapons**: fire **Aegis**, enter **Storm

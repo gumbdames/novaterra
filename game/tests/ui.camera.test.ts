@@ -31,10 +31,12 @@ import {
   CAMERA_MAX_PITCH,
   CAMERA_MIN_DISTANCE,
   CAMERA_MIN_PITCH,
+  checkCameraState,
   clampCameraState,
   createCameraState,
   EDGE_PAN_PX,
   edgePanVector,
+  guardCameraState,
   ORBIT_PITCH_PER_PX,
   ORBIT_YAW_PER_PX,
   orbitDrag,
@@ -262,5 +264,56 @@ describe('press-time drag disambiguation (workstream V)', () => {
     expect(pressDragKind(1, true)).toBe('ignore');
     expect(pressDragKind(2, false)).toBe('ignore');
     expect(pressDragKind(2, true)).toBe('ignore');
+  });
+});
+
+describe('NaN camera-state guard (Phase 4 item 7)', () => {
+  it('a healthy state passes through unchanged and is not a restore', () => {
+    const good = createCameraState();
+    const lastGood = { ...good, targetX: 10 };
+    const res = guardCameraState(good, lastGood);
+    expect(res.restored).toBe(false);
+    expect(res.bad).toEqual([]);
+    expect(res.state).toBe(good);
+  });
+
+  it('a NaN component is restored to the last known good', () => {
+    const lastGood = createCameraState();
+    const poisoned = { ...lastGood, targetX: NaN };
+    const res = guardCameraState(poisoned, lastGood);
+    expect(res.restored).toBe(true);
+    expect(res.state).toBe(lastGood);
+    expect(res.bad).toEqual(['targetX']);
+  });
+
+  it('Infinity is caught too, and every bad component is named', () => {
+    const lastGood = createCameraState();
+    const poisoned = { ...lastGood, distance: Infinity, yaw: NaN, pitch: -Infinity };
+    const res = guardCameraState(poisoned, lastGood);
+    expect(res.restored).toBe(true);
+    expect(res.bad).toEqual(['distance', 'yaw', 'pitch']);
+  });
+
+  it('checkCameraState names exactly the non-finite components', () => {
+    const s = createCameraState();
+    expect(checkCameraState(s)).toEqual({ ok: true, bad: [] });
+    expect(checkCameraState({ ...s, targetZ: NaN, pitch: Infinity })).toEqual({
+      ok: false,
+      bad: ['targetZ', 'pitch'],
+    });
+  });
+
+  it('the guard never returns a poisoned state (the camera cannot wedge)', () => {
+    const lastGood = createCameraState();
+    for (const bad of [
+      { ...lastGood, targetX: NaN },
+      { ...lastGood, targetZ: NaN },
+      { ...lastGood, distance: NaN },
+      { ...lastGood, yaw: NaN },
+      { ...lastGood, pitch: NaN },
+    ]) {
+      const res = guardCameraState(bad, lastGood);
+      expect(checkCameraState(res.state).ok).toBe(true);
+    }
   });
 });

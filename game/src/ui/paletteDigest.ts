@@ -49,7 +49,7 @@
 import type { World } from '../sim/world';
 import type { TerrainData } from '../sim/terrain';
 import { UNIT_DEFS, type UnitKind } from '../sim/units';
-import { BUILDING_DEFS, ZoneType, getPlayer } from '../sim/city';
+import { BUILDING_DEFS, ZoneType, getPlayer, buildingOccupancy } from '../sim/city';
 import {
   buildingLandValue,
   buildingTaxMultiplier,
@@ -74,7 +74,7 @@ import {
   isUtilityBuildingKind,
   utilityBuildingAvailability,
 } from './utilities';
-import type { BuildingKind } from '../sim/city';
+import type { BuildingKind, RoadClass } from '../sim/city';
 import {
   ammoStockOf,
   fuelStockOf,
@@ -106,6 +106,11 @@ export function selectionDigest(
   // a branch that renders a value must digest it). Optional so existing
   // callers/tests keep compiling; defaults to the pre-restructure menu.
   menuTab: MenuTabId = 'civilian',
+  // Phase 4 (transport): the road tool's selected class — the tools-row
+  // branch highlights the active class button, so the digest must move
+  // on a class switch. Optional so existing callers/tests keep
+  // compiling; defaults to the sim's buildRoad default.
+  roadClass: RoadClass = 'paved',
 ): string {
   const parts: string[] = [
     `u:${selection.unitIds.join(',')}`,
@@ -188,12 +193,27 @@ export function selectionDigest(
     } else {
       parts.push('bv:x');
     }
+    // Phase 4 (transport): the panel renders the occupancy line
+    // ("Residents 12/50 · Workers 8/20") for buildings with resident or
+    // worker caps. The sim's buildingOccupancy() reads residents/workers;
+    // always emitted (0/0 caps for buildings without them) so the
+    // representative state covers it.
+    const occ = buildingOccupancy(world, b.id);
+    parts.push(
+      `bo:${occ?.residents ?? 0}/${occ?.residentCap ?? 0}:${occ?.workers ?? 0}/${occ?.workerCap ?? 0}`,
+    );
   } else {
     // No selection: the train/build palettes render the active tab's
     // buttons; only each button's availability can move per tick.
     const trainTabDef = TRAIN_TABS.find((t) => t.id === trainTab) ?? TRAIN_TABS[0]!;
     for (const kind of trainTabDef.kinds) {
       parts.push(`ta:${kind}:${unitAvailability(world, HUMAN_PLAYER_ID, kind).ok ? 1 : 0}`);
+    }
+    // Phase 4 (transport): the road-class selector sits in the Civilian
+    // tools row (no selection, civilian tab) — the digest carries the
+    // selected class so the active-button highlight repaints on change.
+    if (menuTab === 'civilian') {
+      parts.push(`rc:${roadClass}`);
     }
     const buildTabDef = allBuildTabs().find((t) => t.id === buildTab) ?? allBuildTabs()[0]!;
     for (const kind of buildTabDef.kinds) {
@@ -366,7 +386,9 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // bq: depot stock line (Phase 3 logistics; "Ammo 42/150 · Fuel 200/250").
     // bv: land-value line (workstream W; "Land: Nice (64) · tax ×1.3",
     // residential buildings only — 'bv:x' otherwise).
-    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:', 'bv:'],
+    // bo: occupancy line (Phase 4 transport; "Residents 12/50 ·
+    // Workers 8/20", from the sim's buildingOccupancy()).
+    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:', 'bv:', 'bo:'],
   },
   {
     id: 'train-palette',
@@ -410,11 +432,14 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'palette-section-title',
       'palette-label',
       'build-btn',
+      // Phase 4 (transport): the road-class picker next to the road
+      // button, and the rail button in the networks group.
+      'palette-class-row',
+      'class-btn',
     ],
-    digestLabels: [],
-    noDigestReason:
-      'Static tool buttons (road/networks/zones/demolish) and the static ' +
-      'section headers: labels and icons never change at runtime.',
+    // Phase 4 (transport): the class picker highlights the selected
+    // road class — the only dynamic value in the tools row.
+    digestLabels: ['rc:'],
   },
   {
     id: 'menu-tabs',

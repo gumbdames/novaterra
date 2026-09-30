@@ -38,8 +38,8 @@ import {
   resolveNetworkToolClick,
   type LinearNetworkDragOptions,
 } from '../src/ui/linearNetworkDrag';
-import { buildRoadOrder, buildPowerLineOrder, buildWaterPipeOrder } from '../src/ui/orders';
-import { CITY_GRID_CELLS } from '../src/sim/city';
+import { buildRailOrder, buildRoadOrder, buildPowerLineOrder, buildWaterPipeOrder, partitionRoadCells } from '../src/ui/orders';
+import { CITY_GRID_CELLS, type RoadCell } from '../src/sim/city';
 import type { CellRef } from '../src/ui/placement';
 
 const OWNER = 1;
@@ -100,9 +100,9 @@ describe('utility network drags emit the right orders', () => {
 
   it('utility clicks fall through to click handling with the right kind', () => {
     const d = drag({ kind: 'powerLine' });
-    expect(d.finish('click')).toEqual({ action: 'click', kind: 'powerLine', owner: OWNER });
+    expect(d.finish('click')).toEqual({ action: 'click', kind: 'powerLine', owner: OWNER, roadClass: 'paved' });
     const e = drag({ kind: 'waterPipe' });
-    expect(e.finish('click')).toEqual({ action: 'click', kind: 'waterPipe', owner: OWNER });
+    expect(e.finish('click')).toEqual({ action: 'click', kind: 'waterPipe', owner: OWNER, roadClass: 'paved' });
   });
 
   it('resolves single-cell clicks into the right single-cell orders', () => {
@@ -291,7 +291,7 @@ describe('LinearNetworkDrag finish (single-outcome emission)', () => {
   it('a click with zero cells falls through to click handling (no order)', () => {
     const d = drag();
     const outcome = d.finish('click');
-    expect(outcome).toEqual({ action: 'click', kind: 'road', owner: OWNER });
+    expect(outcome).toEqual({ action: 'click', kind: 'road', owner: OWNER, roadClass: 'paved' });
   });
 
   it('a drag with zero cells (e.g. over sky/off-grid) is swallowed, not clicked', () => {
@@ -324,6 +324,7 @@ describe('LinearNetworkDrag finish (single-outcome emission)', () => {
       action: 'click',
       kind: 'road',
       owner: OWNER,
+      roadClass: 'paved',
     });
   });
 
@@ -353,5 +354,86 @@ describe('resolveNetworkToolClick', () => {
     expect(res.kind).toBe('hint');
     if (res.kind !== 'hint') return;
     expect(res.message.length).toBeGreaterThan(0);
+  });
+});
+
+describe('Phase 4: rail drag (item 1)', () => {
+  it("networkKindForTool maps the 'rail' tool to the rail kind", () => {
+    expect(networkKindForTool('rail')).toBe('rail');
+  });
+
+  it('a rail drag emits a single buildRail order on pointerup', () => {
+    const d = drag({ kind: 'rail' });
+    d.addCell(cell(0, 0));
+    d.addCell(cell(1, 0));
+    d.addCell(cell(2, 0));
+    const outcome = d.finish('drag');
+    expect(outcome.action).toBe('order');
+    if (outcome.action !== 'order') return;
+    const expected = buildRailOrder(OWNER, [
+      0 * GRID + 0,
+      0 * GRID + 1,
+      0 * GRID + 2,
+    ]);
+    expect(outcome.intent).toEqual(expected);
+  });
+
+  it('a rail click resolves to a single-cell buildRail order', () => {
+    const res = resolveNetworkToolClick('rail', OWNER, cell(3, 3));
+    expect(res).toEqual({
+      kind: 'order',
+      intent: buildRailOrder(OWNER, [3 * CITY_GRID_CELLS + 3]),
+    });
+  });
+
+  it('a rail click with no road class still resolves (rail has no class selector)', () => {
+    const res = resolveNetworkToolClick('rail', OWNER, cell(1, 1), 'paved');
+    expect(res).toEqual({
+      kind: 'order',
+      intent: buildRailOrder(OWNER, [1 * CITY_GRID_CELLS + 1]),
+    });
+  });
+});
+
+describe('Phase 4: road-class partition (item 2)', () => {
+  // The sim rejects a whole buildRoad batch when ANY cell already has a
+  // road, so the controller splits a mixed drag into build + upgrade
+  // orders (and drops cells already at-or-above the target class).
+  function roadsOf(entries: Array<[number, RoadCell['cls']]>): RoadCell[] {
+    return entries.map(([cell, cls]) => ({ cell, cls }));
+  }
+
+  it('fresh cells go to build, existing lower-class cells go to upgrade', () => {
+    const roads = roadsOf([
+      [2, 'dirt'],
+      [3, 'country'],
+    ]);
+    const res = partitionRoadCells(roads, [1, 2, 3, 4], 'paved');
+    expect(res.build).toEqual([1, 4]);
+    expect(res.upgrade).toEqual([2, 3]);
+    expect(res.skipped).toBe(0);
+  });
+
+  it('cells already at or above the target class are skipped, never re-sent', () => {
+    const roads = roadsOf([
+      [1, 'paved'],
+      [2, 'highway'],
+    ]);
+    const res = partitionRoadCells(roads, [1, 2, 3], 'paved');
+    expect(res.build).toEqual([3]);
+    expect(res.upgrade).toEqual([]);
+    expect(res.skipped).toBe(2);
+  });
+
+  it('an empty drag partitions to empty lists (no orders)', () => {
+    const res = partitionRoadCells([], [], 'dirt');
+    expect(res).toEqual({ build: [], upgrade: [], skipped: 0 });
+  });
+
+  it('a drag over only fresh cells is a pure build with no upgrade order', () => {
+    const res = partitionRoadCells([], [5, 6, 7], 'country');
+    expect(res.build).toEqual([5, 6, 7]);
+    expect(res.upgrade).toEqual([]);
+    expect(res.skipped).toBe(0);
   });
 });

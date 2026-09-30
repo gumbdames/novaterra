@@ -84,6 +84,7 @@ import {
   migrationPull,
   pollutionPenaltyForDistance,
   waterBonusForDistance,
+  WATERFRONT_BONUS,
 } from '../src/sim/desirability';
 
 interface Ctx {
@@ -670,5 +671,58 @@ describe('library/park defs', () => {
     expect(park.minAge).toBe('foundation');
     expect(lib.footprintW).toBe(2);
     expect(park.footprintW).toBe(3);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 4: marina waterfront amenity (item 6)
+// ---------------------------------------------------------------------------
+
+describe('marina waterfront amenity (Phase 4)', () => {
+  it('a completed marina raises nearby residential desirability by the waterfront bonus, through the hook, with zero desirability-code changes', () => {
+    const ctx = setup(41);
+    const { cx, cz } = findLandRect(ctx.terrain, 30, 10);
+    paintResidential(ctx.world.city, cx, cz, cx + 19, cz + 7);
+    const target = cellIndex(cx + 10, cz + 3);
+    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target);
+    // Marina 2×2 just east of the zone, completed, within the 15-cell
+    // waterfront radius of the target (distance 11, Chebyshev).
+    completed(ctx.world.city, { kind: 'marina', owner: 0, cx: cx + 21, cz: cz + 2, facing: 0 });
+    const after = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target);
+    expect(after - base).toBe(WATERFRONT_BONUS);
+  });
+
+  it('a half-built marina adds nothing (the hook needs a completed building)', () => {
+    const ctx = setup(42);
+    const { cx, cz } = findLandRect(ctx.terrain, 30, 10);
+    paintResidential(ctx.world.city, cx, cz, cx + 19, cz + 7);
+    const target = cellIndex(cx + 10, cz + 3);
+    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target);
+    const marina = placeBuilding(ctx.world.city, { kind: 'marina', owner: 0, cx: cx + 21, cz: cz + 2, facing: 0 });
+    marina.progress = 0.5;
+    expect(cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target)).toBe(base);
+  });
+
+  it('a house near the marina gains land value while an identical far house does not', () => {
+    const ctx = setup(43);
+    const { cx, cz } = findLandRect(ctx.terrain, 44, 12);
+    paintResidential(ctx.world.city, cx, cz, cx + 33, cz + 9);
+    // Two identical completed houses: one close to the marina site, one
+    // well outside the 15-cell waterfront radius.
+    const near = completed(ctx.world.city, { kind: 'house', owner: 0, cx: cx + 2, cz: cz + 2, facing: 0 });
+    const far = completed(ctx.world.city, { kind: 'house', owner: 0, cx: cx + 29, cz: cz + 2, facing: 0 });
+    const before = getDesirabilityModel(ctx.terrain, ctx.world);
+    const nearBase = buildingLandValue(before, near);
+    const farBase = buildingLandValue(before, far);
+    // Marina 2×2 next to the near house (anchor distance 4); the far
+    // house is 25 cells away — outside the radius.
+    completed(ctx.world.city, { kind: 'marina', owner: 0, cx: cx + 6, cz: cz + 2, facing: 0 });
+    const after = getDesirabilityModel(ctx.terrain, ctx.world);
+    const nearAfter = buildingLandValue(after, near);
+    const farAfter = buildingLandValue(after, far);
+    expect(nearAfter).toBeGreaterThan(nearBase);
+    expect(farAfter).toBe(farBase);
+    // The full waterfront bonus lands on the near house's footprint.
+    expect(nearAfter - nearBase).toBe(WATERFRONT_BONUS);
   });
 });

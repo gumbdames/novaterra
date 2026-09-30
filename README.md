@@ -9,15 +9,16 @@ land, sea and air — or play a fully peaceful game with war disabled.
 **Version:** 0.1 Alpha (this name stays until announced otherwise).
 
 - **Play:** https://gumbdames.github.io/novaterra/ (deploys from `main`)
-- **Status:** the grand expansion is underway. Phases 0–3 complete and live,
+- **Status:** the grand expansion is underway. Phases 0–4 complete and live,
   plus the desirability/migration workstream (land value, migration,
   library + park), the 3-tab menu restructure (Civilian / Military /
   Management bottom-left menu), and the living menu demo (a seeded world
   plays itself behind the main menu through the real command queue);
-  follow-ups queued (ambient city life, menu polish, camera). Phase 4
-  (transport) is in progress — its render-polish workstream delivered the
-  underground x-ray view, per-building power/water indicators, proper
-  pedestrian models, and a terrain survey grid. See the live plan:
+  follow-ups queued (menu polish). Phase 4 (transport) delivered road
+  classes with in-place upgrades, the rail drag tool, ambient buses/
+  trams/ferries over player-placed stops, building variants + size
+  tiers, the occupancy line in the selection panel, marinas raising
+  nearby land value, and the NaN camera guard. See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
 ## What the game has today (0.1 Alpha)
@@ -27,12 +28,17 @@ land, sea and air — or play a fully peaceful game with war disabled.
 - 55 buildings and 30 units across land, sea, and air, with tech ages
 - Unit veterancy (Recruit → Elite), a Military Academy, education and civic
   systems, land value and desirability (elevation, shoreline, clean air,
-  and nearby libraries/parks/schools/parking set each block's 0–100
-  score; homes pay tax on their land value, people migrate toward
+  and nearby libraries/parks/schools/parking/marinas set each block's
+  0–100 score; homes pay tax on their land value, people migrate toward
   nicer areas)
 - Ambient city life: painted zones auto-pave, and completed homes fill
   the streets with pedestrians and cars — pure decoration, nothing to
   manage
+- Transport (Phase 4): four road classes (dirt → highway) with in-place
+  upgrades, drag-painted rail, placeable bus/tram/ferry stops with
+  ambient vehicles running your routes, building variants + size tiers,
+  marinas that raise nearby land value, and the occupancy line
+  (residents/workers) in the selection panel
 - Missile/fuel logistics: fuel burn, ammo magazines, depots, supply trucks,
   resupply orders, reload-point aura
 - 5 Classic AI rivals with per-match personalities, 5 difficulties, skirmish

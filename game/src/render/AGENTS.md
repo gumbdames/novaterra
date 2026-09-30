@@ -272,6 +272,26 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   `AmbientTransitProvider` per type (provider-owned geometry/material,
   pure `poseAt(index, tick)`) — the crowd renders one instanced layer
   per registered type.
+- **Phase 4 ambient transit providers** (`render/transitProviders.ts`,
+  0.1 Alpha): the player's placeable transit stops become real
+  decorative vehicles. `transitRoutePoints(world, owner, mode)` turns
+  completed, operational stops (`transitStopsForMode`) into a closed
+  route; `createBusProvider` / `createTramProvider` /
+  `createFerryProvider` build an `AmbientVehicleProvider` (immutable
+  route snapshot, mutable `count`, provider-owned vertex-colored
+  procedural geometry — bus amber, tram red + pantograph, ferry white
+  hull) with `poseAt` looping the route with dwell pauses at stops
+  (30/30/60 ticks), pure in (index, tick); ferries add a tiny
+  deterministic swell (`0.25·sin(tick·0.05 + index·1.7)`, no wall
+  clock). `transitVehicleCount` gates on ≥2 stops and the same
+  150/400/600 population divisors as the crowd density, capped by
+  `MAX_AMBIENT_*`. `transitRouteKey(world, owner)` (stop ids+cells per
+  bus/tram/boat mode) drives rebuilds: `game.ts` rebuilds providers
+  only on key change (player actions), refreshes `count` every frame
+  from population (no geometry churn), and owns the full lifecycle
+  (`unregisterAmbientTransitProvider` + `dispose()` — the crowd never
+  disposes provider assets). Tested in
+  `tests/render.transitProviders.test.ts` (12 tests).
 - Tested in `tests/render.cityLife.test.ts` (29 tests): paving
   geometry/digest/rebuild contract, density scaling (0 pop ⇒ 0
   agents), zone-weighted homes, direction-biased targets, road-bound
@@ -526,6 +546,27 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   art. Pinned by `tests/render.entities.test.ts` (10 tests).
 - Roads: ribbon + dash meshes rebuilt when the road digest changes (FNV
   over cell indices, not just the count).
+- **Building variants + size tiers (Phase 4, `render/buildingVariants.ts`,
+  0.1 Alpha):** every building gets silhouette variety (variants 0..3)
+  and readable size (tiers 1..3) through the existing lazy-model
+  pipeline — no new download at boot. `variantModelKey(kind, variant)`:
+  variant 0 → the kind itself (the boot-set key); variants 1..3 →
+  suffixed keys that travel the lazy pipeline. `isVariantModelKey`
+  recognizes the suffixed keys; the boot gate (`bootModelKeys()`) never
+  contains one (pinned by `tests/render.buildingVariants.test.ts`).
+  `sizeTierScale`: 1 → 0.88, 2 → 1.0, 3 → 1.14; out-of-range input
+  falls back to tier 2 (never 0/NaN). The variant's personality is one
+  cached procedural rooftop prop (`variantExtraFor`: 1 = chimney,
+  2 = water tank, 3 = solar array) placed at the base model's measured
+  top — the top cache is measured BEFORE the extra is pushed, so the
+  cache stays variant-free. `ResolvedVisual` carries the tier `scale`;
+  `addBuildingInstance` composes it into each piece's offset matrix
+  (the instancer has no per-entity scale channel) and scales the
+  reported model top. `BuildingView` carries `variant`/`sizeTier` from
+  the sim's `buildingVariantSeed` / def sizeTier (defaults 0/2).
+  `isDegradedResolution` excludes `variantExtra:` pools (procedural, not
+  GLB). The pennant anchor rides `view.modelTop`, so it sits above the
+  rooftop prop.
 - Utility overlays (grand-expansion Phase 2): `EntityRenderer` owns a
   `NetworkOverlay` (always-on power-line / water-pipe meshes, rebuilt on
   digest change) and a `UtilityOverlay` (toggle-able diagnosis tints +

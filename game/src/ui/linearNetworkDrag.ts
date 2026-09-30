@@ -52,14 +52,17 @@
  * otherwise unchanged, so player-visible behavior is identical except that
  * holes disappear.
  *
- * Adding a network kind (Phase 2/4):
+ * Adding a network kind (Phase 2/4 — rail done 2026-09-30):
  *   1. Extend `LinearNetworkKind` ('powerLine' | 'waterPipe' | 'rail').
  *   2. Add the order builder in ui/orders.ts and wire it into the
  *      `buildNetworkOrder` switch below.
  *   3. Map the kind to its build tool in the `toolForKind` switch below
  *      (used for the click resolver).
  *   4. Extend `networkKindForTool` with the new build-tool string.
- *   5. Add unit tests here (accumulation, gap-fill, order payload, click).
+ *   5. Add the build-tool string to `BuildTool` in ui/hud.ts, an icon
+ *      in ui/icons.ts (`PaletteToolIcon`), a label in ui/strings.ts,
+ *      and the click case in ui/placement.ts `resolveBuildToolClick`.
+ *   6. Add unit tests here (accumulation, gap-fill, order payload, click).
  * The two switches are exhaustive over `LinearNetworkKind` with no default
  * arm — compiling after step 1 fails until steps 2–3 are done, so a new kind
  * can never silently fall through.
@@ -67,7 +70,14 @@
  * Headless-safe: no DOM, no three.js. Fully unit-tested.
  */
 
-import { buildRoadOrder, buildPowerLineOrder, buildWaterPipeOrder, type OrderIntent } from './orders';
+import {
+  buildRoadOrder,
+  buildPowerLineOrder,
+  buildWaterPipeOrder,
+  buildRailOrder,
+  type OrderIntent,
+} from './orders';
+import type { RoadClass } from '../sim/city';
 import {
   resolveBuildToolClick,
   type CellRef,
@@ -78,9 +88,9 @@ import type { BuildTool } from './hud';
 
 /**
  * Linear network kinds that share the drag-paint gesture. Phase 2 adds
- * 'powerLine' | 'waterPipe'; Phase 4 adds 'rail'.
+ * 'powerLine' | 'waterPipe'; Phase 4 adds 'rail' (done 2026-09-30).
  */
-export type LinearNetworkKind = 'road' | 'powerLine' | 'waterPipe';
+export type LinearNetworkKind = 'road' | 'powerLine' | 'waterPipe' | 'rail';
 
 export interface LinearNetworkDragOptions {
   /** Which network is being painted. */
@@ -93,6 +103,13 @@ export interface LinearNetworkDragOptions {
    * small grid.
    */
   gridWidth: number;
+  /**
+   * Phase 4 (transport): the road class the road tool paints. The
+   * controller reads it from the HUD's class selector at press time.
+   * Defaults to 'paved' (the sim's buildRoad default) so every
+   * pre-Phase-4 caller keeps its behavior.
+   */
+  roadClass?: RoadClass;
 }
 
 /**
@@ -104,9 +121,10 @@ export type LinearNetworkDragOutcome =
   | { action: 'order'; intent: OrderIntent }
   /**
    * Nothing painted, gesture was a click: resolve the release cell with
-   * `resolveNetworkToolClick` (order or hint — never silent).
+   * `resolveNetworkToolClick` (order or hint — never silent). Carries
+   * the road class so a click-pave matches the selector.
    */
-  | { action: 'click'; kind: LinearNetworkKind; owner: number }
+  | { action: 'click'; kind: LinearNetworkKind; owner: number; roadClass: RoadClass }
   /** Nothing painted, not a click: swallow the gesture. */
   | { action: 'none' };
 
@@ -119,6 +137,7 @@ export function networkKindForTool(tool: string): LinearNetworkKind | null {
   if (tool === 'road') return 'road';
   if (tool === 'powerLine') return 'powerLine';
   if (tool === 'waterPipe') return 'waterPipe';
+  if (tool === 'rail') return 'rail';
   return null;
 }
 
@@ -131,6 +150,8 @@ function toolForKind(kind: LinearNetworkKind): BuildTool {
       return 'powerLine';
     case 'waterPipe':
       return 'waterPipe';
+    case 'rail':
+      return 'rail';
     default: {
       // Exhaustive: adding a LinearNetworkKind forces a mapping here.
       const _exhaustive: never = kind;
@@ -146,14 +167,17 @@ function buildNetworkOrder(
   kind: LinearNetworkKind,
   owner: number,
   cells: number[],
+  roadClass: RoadClass = 'paved',
 ): OrderIntent {
   switch (kind) {
     case 'road':
-      return buildRoadOrder(owner, cells);
+      return buildRoadOrder(owner, cells, roadClass);
     case 'powerLine':
       return buildPowerLineOrder(owner, cells);
     case 'waterPipe':
       return buildWaterPipeOrder(owner, cells);
+    case 'rail':
+      return buildRailOrder(owner, cells);
     default: {
       // Exhaustive: adding a LinearNetworkKind forces an order builder here.
       const _exhaustive: never = kind;
@@ -174,8 +198,9 @@ export function resolveNetworkToolClick(
   kind: LinearNetworkKind,
   owner: number,
   cell: CellRef | null,
+  roadClass: RoadClass = 'paved',
 ): PlacementResolution {
-  return resolveBuildToolClick(toolForKind(kind), owner, cell);
+  return resolveBuildToolClick(toolForKind(kind), owner, cell, roadClass);
 }
 
 /**
@@ -207,6 +232,7 @@ export class LinearNetworkDrag {
   private readonly kind: LinearNetworkKind;
   private readonly owner: number;
   private readonly gridWidth: number;
+  private readonly roadClass: RoadClass;
   /** Accumulated cell indices, insertion-ordered, deduplicated. */
   private cells: number[] = [];
   private readonly seen = new Set<number>();
@@ -217,6 +243,7 @@ export class LinearNetworkDrag {
     this.kind = opts.kind;
     this.owner = opts.owner;
     this.gridWidth = opts.gridWidth;
+    this.roadClass = opts.roadClass ?? 'paved';
   }
 
   /** True between construction and `finish`. */
@@ -253,16 +280,19 @@ export class LinearNetworkDrag {
    */
   finish(gesture: PointerUpClass): LinearNetworkDragOutcome {
     const cells = this.cells;
-    const { kind, owner } = this;
+    const { kind, owner, roadClass } = this;
     this.cells = [];
     this.seen.clear();
     this.lastCell = null;
     this.active = false;
     if (cells.length > 0) {
-      return { action: 'order', intent: buildNetworkOrder(kind, owner, cells) };
+      return {
+        action: 'order',
+        intent: buildNetworkOrder(kind, owner, cells, roadClass),
+      };
     }
     if (gesture === 'click') {
-      return { action: 'click', kind, owner };
+      return { action: 'click', kind, owner, roadClass };
     }
     return { action: 'none' };
   }

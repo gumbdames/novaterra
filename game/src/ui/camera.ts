@@ -259,6 +259,49 @@ export function clampCameraState(state: CameraState): CameraState {
 }
 
 /**
+ * Phase 4 hardening (2026-09-30): which camera components are non-finite.
+ * A poisoned component (NaN from a bad pointer delta, Infinity from a
+ * corrupt save) would otherwise wedge the camera permanently — NaN
+ * propagates through every later pan/zoom and the clamp can't fix it.
+ */
+export interface CameraStateHealth {
+  ok: boolean;
+  /** Names of the non-finite components (empty when ok). */
+  bad: string[];
+}
+
+/** Check every numeric camera component for NaN/Infinity. Pure. */
+export function checkCameraState(state: CameraState): CameraStateHealth {
+  const bad: string[] = [];
+  const comps: Array<[string, number]> = [
+    ['targetX', state.targetX],
+    ['targetZ', state.targetZ],
+    ['distance', state.distance],
+    ['yaw', state.yaw],
+    ['pitch', state.pitch],
+  ];
+  for (const [name, value] of comps) {
+    if (!Number.isFinite(value)) bad.push(name);
+  }
+  return { ok: bad.length === 0, bad };
+}
+
+/**
+ * Guard a camera state before it is applied: a healthy state passes
+ * through unchanged; a poisoned one is replaced by the last known good.
+ * Pure — the game controller logs loudly (tick + armed tool + bad
+ * components) around the restore and remembers the new good state.
+ */
+export function guardCameraState(
+  state: CameraState,
+  lastGood: CameraState,
+): { state: CameraState; restored: boolean; bad: string[] } {
+  const health = checkCameraState(state);
+  if (health.ok) return { state, restored: false, bad: [] };
+  return { state: lastGood, restored: true, bad: health.bad };
+}
+
+/**
  * Point a three.js camera at the state. The camera sits `distance` away
  * from the target along the yaw/pitch orbit and looks at the target.
  * Render-side only — never touches the sim.

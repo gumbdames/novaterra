@@ -171,6 +171,10 @@ function makeDeps(world: World, entities: EntityRenderer): {
     refreshAdvisor: () => {},
     pruneSelection: () => {},
     syncEntities: (w) => entities.sync(w),
+    // Phase 4 (transport): the frame loop refreshes the ambient transit
+    // providers before the entity sync (stubbed here — the real
+    // controller owns the providers).
+    syncTransitProviders: () => {},
     setSelectedEntities: (ids) => entities.setSelected(ids),
     updateEntitySelectionRings: (w) =>
       entities.updateSelectionRings(EntityRenderer.unitMap(w)),

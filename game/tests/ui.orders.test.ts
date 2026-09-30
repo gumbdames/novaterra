@@ -82,13 +82,18 @@ describe('order builders', () => {
     });
   });
 
-  it('road → buildRoad with copied cells', () => {
+  it('road → buildRoad with copied cells (default class paved)', () => {
     const cells = [1, 2, 3];
     const cmd = buildRoadOrder(0, cells);
     expect(cmd.kind).toBe('buildRoad');
-    expect(cmd.payload).toEqual({ owner: 0, cells: [1, 2, 3] });
+    expect(cmd.payload).toEqual({ owner: 0, cells: [1, 2, 3], cls: 'paved' });
     cells.push(4);
     expect((cmd.payload as { cells: number[] }).cells).toEqual([1, 2, 3]);
+  });
+
+  it('road → buildRoad carries an explicit class', () => {
+    const cmd = buildRoadOrder(0, [1, 2], 'highway');
+    expect(cmd.payload).toMatchObject({ owner: 0, cells: [1, 2], cls: 'highway' });
   });
 
   // Grand-expansion Phase 2: the two utility network order builders.

@@ -103,6 +103,13 @@ import { XrayView } from './xrayView';
 import { BirdFlocks } from './birds';
 import { ambientSecondsForTick, setAmbientTimeSeconds } from './ambientTime';
 import { waterBobY } from './terrain';
+import {
+  BUILDING_VARIANT_BASE,
+  sizeTierScale,
+  variantExtraFor,
+  variantExtraPoolKey,
+  variantExtraTop,
+} from './buildingVariants';
 import { GridView } from './gridView';
 // Phase 2 (utilities): the always-on network runs + the toggleable
 // diagnostic overlay. ui/utilities.ts is a pure contract module (no DOM,
@@ -351,6 +358,12 @@ export interface ResolvedVisual {
     dz: number;
   }>;
   top: number;
+  /**
+   * Phase 4 (transport): uniform building size-tier scale (0.88/1.0/
+   * 1.14). The legacy path sets group.scale; the instanced path composes
+   * it into each piece's offset matrix. 1 for units (no size tiers).
+   */
+  scale: number;
 }
 
 /**
@@ -369,7 +382,9 @@ export function isDegradedResolution(kind: string, resolved: ResolvedVisual | nu
   if (resolved === null) return true;
   let glbPieces = 0;
   for (const p of resolved.pieces) {
-    if (!p.pool.startsWith('procedural:') && !p.pool.startsWith('prop:')) glbPieces++;
+    // Phase 4 (transport): the generic variant-extra props are not GLB
+    // pieces (they are procedural, like prop: pieces).
+    if (!p.pool.startsWith('procedural:') && !p.pool.startsWith('prop:') && !p.pool.startsWith('variantExtra:')) glbPieces++;
   }
   return glbPieces < source.pieces.length;
 }
@@ -759,6 +774,14 @@ interface BuildingView {
   id: number;
   kind: BuildingKind;
   owner: number;
+  /**
+   * Phase 4 (transport): the sim's per-building visual variant (0..3)
+   * and size tier (1..3), threaded from the BuildingRecord at creation.
+   * Re-resolution (lazy-load upgrades, construction conversion) reuses
+   * these so the view never changes its look mid-life.
+   */
+  variant: number;
+  sizeTier: 1 | 2 | 3;
   /** Meshes whose materials swap between shared and construction clones. */
   modelMeshes: THREE.Mesh[];
   /** Shared materials parallel to modelMeshes (restored on completion). */
@@ -1667,7 +1690,13 @@ export class EntityRenderer {
    * legacy path (`createModelGroup`) and the instanced path share this
    * resolution, so both place pieces identically.
    */
-  private resolveVisualPieces(kind: string): ResolvedVisual | null {
+  private resolveVisualPieces(
+    kind: string,
+    // Phase 4 (transport): the sim's per-building visual variant (0..3)
+    // and size tier (1..3). Units always resolve the defaults.
+    variant: number = BUILDING_VARIANT_BASE,
+    sizeTier: 1 | 2 | 3 = 2,
+  ): ResolvedVisual | null {
     const source = modelSourceFor(kind);
     const pieces: Array<{
       pool: string;
@@ -1722,7 +1751,26 @@ export class EntityRenderer {
         dz: e.dz,
       });
     }
-    return { pieces, top: this.modelTopForPieces(kind, pieces) };
+    // Phase 4 (transport): variant 1..3 gets a generic rooftop prop at
+    // the base model's top — distinct silhouettes through the lazy
+    // pipeline (the variantExtra pools are never boot keys). Variant 0
+    // is the base look. The base top is measured (and cached per kind)
+    // BEFORE the extra is pushed, so `modelTops` stays variant-free.
+    const scale = sizeTierScale(sizeTier);
+    const baseTop = this.modelTopForPieces(kind, pieces);
+    let top = baseTop;
+    const extra = variantExtraFor(variant);
+    if (extra !== undefined) {
+      pieces.push({
+        pool: variantExtraPoolKey(variant),
+        model: extra,
+        dx: 0,
+        dy: baseTop,
+        dz: 0,
+      });
+      top = baseTop + variantExtraTop(variant);
+    }
+    return { pieces, top, scale };
   }
 
   /**
@@ -1731,8 +1779,12 @@ export class EntityRenderer {
    * placeholder template). The group's base sits at y=0 and it faces
    * +z; geometry and materials are shared across all views of the kind.
    */
-  private createModelGroup(kind: string): { group: THREE.Group; top: number } | null {
-    const resolved = this.resolveVisualPieces(kind);
+  private createModelGroup(
+    kind: string,
+    variant: number = BUILDING_VARIANT_BASE,
+    sizeTier: 1 | 2 | 3 = 2,
+  ): { group: THREE.Group; top: number; scale: number } | null {
+    const resolved = this.resolveVisualPieces(kind, variant, sizeTier);
     if (resolved === null) return null;
     const group = new THREE.Group();
     for (const p of resolved.pieces) {
@@ -1741,7 +1793,10 @@ export class EntityRenderer {
       pieceGroup.position.set(p.dx, p.dy, p.dz);
       group.add(pieceGroup);
     }
-    return { group, top: resolved.top };
+    // Phase 4 (transport): the size-tier scale applies to the whole
+    // group (footprint included — a size-3 building reads bigger).
+    group.scale.setScalar(resolved.scale);
+    return { group, top: resolved.top * resolved.scale, scale: resolved.scale };
   }
 
   /**
@@ -2167,7 +2222,12 @@ export class EntityRenderer {
 
     // The resolution is shared by both view paths (and the degraded
     // flag below), so legacy and instanced views place pieces identically.
-    const resolved = this.resolveVisualPieces(kind);
+    // Phase 4 (transport): the sim's per-building variant/sizeTier
+    // (pure hash at placement — no RNG draws) thread through every
+    // re-resolution below via the view fields.
+    const variant = b.variant ?? BUILDING_VARIANT_BASE;
+    const sizeTier = b.sizeTier ?? 2;
+    const resolved = this.resolveVisualPieces(kind, variant, sizeTier);
     const degraded = isDegradedResolution(kind, resolved);
 
     // Instanced path: completed buildings render from per-kind pools.
@@ -2182,6 +2242,8 @@ export class EntityRenderer {
         id: b.id,
         kind,
         owner: b.owner,
+        variant,
+        sizeTier,
         modelMeshes: [],
         sharedMaterials: [],
         constructing: false,
@@ -2194,15 +2256,19 @@ export class EntityRenderer {
       return view;
     }
 
-    const built = this.createModelGroup(kind);
+    const built = this.createModelGroup(kind, variant, sizeTier);
     let modelTop: number;
     if (built !== null) {
       group.add(built.group);
       modelTop = built.top;
     } else {
+      // Phase 4 (transport): the placeholder still honors the size tier
+      // so an unmapped kind reads at the right scale.
+      const tierScale = sizeTierScale(sizeTier);
       const clone = this.placeholderBuildingTemplate(kind).clone();
+      clone.scale.setScalar(tierScale);
       group.add(clone);
-      modelTop = buildingHeightFor(kind);
+      modelTop = buildingHeightFor(kind) * tierScale;
     }
     // Meshes whose materials participate in the construction fade.
     group.traverse((o) => {
@@ -2227,6 +2293,8 @@ export class EntityRenderer {
       id: b.id,
       kind,
       owner: b.owner,
+      variant,
+      sizeTier,
       modelMeshes,
       sharedMaterials,
       constructing: false,
@@ -2250,11 +2318,21 @@ export class EntityRenderer {
   private addBuildingInstance(view: BuildingView, resolved: ResolvedVisual): void {
     const instancer = this.instancer as EntityInstancer;
     const team = teamColors()[view.owner] ?? '#aaaaaa';
+    // Phase 4 (transport): the size-tier scale composes into each
+    // piece's offset (translation + uniform scale about the entity
+    // origin) — the instancer has no per-entity scale channel.
+    const s = resolved.scale;
+    const identQ = new THREE.Quaternion();
+    const unitS = new THREE.Vector3(s, s, s);
     const pieces: InstancedPiece[] = resolved.pieces.map((p) => {
       instancer.definePool(p.pool, p.model);
       return {
         pool: p.pool,
-        offset: new THREE.Matrix4().makeTranslation(p.dx, p.dy, p.dz),
+        offset: new THREE.Matrix4().compose(
+          new THREE.Vector3(p.dx * s, p.dy * s, p.dz * s),
+          identQ,
+          unitS,
+        ),
       };
     });
     instancer.addEntity(view.id, pieces, {
@@ -2262,19 +2340,20 @@ export class EntityRenderer {
       stripeScale: 0,
       team,
     });
+    const scaledTop = resolved.top * s;
     instancer.writeTransform(view.id, {
       x: view.group.position.x,
       y: view.group.position.y,
       z: view.group.position.z,
       yaw: 0,
       baseY: 0,
-      modelTop: resolved.top,
+      modelTop: scaledTop,
       hpFrac: 1,
       showBar: false,
     });
     view.modelMeshes.length = 0;
     view.sharedMaterials.length = 0;
-    view.modelTop = resolved.top;
+    view.modelTop = scaledTop;
     view.constructing = false;
     view.instanced = true;
   }
@@ -2300,13 +2379,18 @@ export class EntityRenderer {
    */
   private rebuildLegacyBuildingModel(view: BuildingView, b: BuildingRecord): void {
     this.clearLegacyBuildingModel(view);
-    const built = this.createModelGroup(view.kind);
+    // Phase 4 (transport): re-resolution reuses the view's variant/
+    // sizeTier so the look never changes mid-life.
+    const built = this.createModelGroup(view.kind, view.variant, view.sizeTier);
     if (built !== null) {
       view.group.add(built.group);
       view.modelTop = built.top;
     } else {
-      view.group.add(this.placeholderBuildingTemplate(view.kind).clone());
-      view.modelTop = buildingHeightFor(view.kind);
+      const clone = this.placeholderBuildingTemplate(view.kind).clone();
+      const tierScale = sizeTierScale(view.sizeTier);
+      clone.scale.setScalar(tierScale);
+      view.group.add(clone);
+      view.modelTop = buildingHeightFor(view.kind) * tierScale;
     }
     view.group.traverse((o) => {
       const mesh = o as THREE.Mesh;
@@ -2337,7 +2421,8 @@ export class EntityRenderer {
     // The model top is cached per kind: drop it so the fresh resolution
     // measures the real pieces, not the fallback art.
     this.modelTops.delete(view.kind);
-    const resolved = this.resolveVisualPieces(view.kind);
+    // Phase 4 (transport): the view keeps its variant/sizeTier.
+    const resolved = this.resolveVisualPieces(view.kind, view.variant, view.sizeTier);
     if (isDegradedResolution(view.kind, resolved) || resolved === null) return;
     if (this.instancer !== null && b.progress >= 1) {
       if (view.instanced) this.instancer.removeEntity(view.id);
@@ -2407,7 +2492,8 @@ export class EntityRenderer {
   private convertBuildingToInstanced(view: BuildingView): void {
     const instancer = this.instancer;
     if (instancer === null || view.instanced) return;
-    const resolved = this.resolveVisualPieces(view.kind);
+    // Phase 4 (transport): the view keeps its variant/sizeTier.
+    const resolved = this.resolveVisualPieces(view.kind, view.variant, view.sizeTier);
     if (resolved === null) return;
     this.clearLegacyBuildingModel(view);
     this.addBuildingInstance(view, resolved);

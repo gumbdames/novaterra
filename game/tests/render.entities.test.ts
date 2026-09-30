@@ -478,6 +478,8 @@ function resolvedWith(pools: string[]): ResolvedVisual {
       dz: 0,
     })),
     top: 1,
+    // Phase 4 (transport): the size-tier scale (1 = authored size).
+    scale: 1,
   };
 }
 

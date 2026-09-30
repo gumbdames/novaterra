@@ -154,6 +154,12 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   snapshotted (v6, no bump: missing personalities decode to the neutral
   personality, the step-7 precedent) and digested (personality included).
   `getVisibleEnemies` adds the Signals Grid sight bonus.
+  Transport (grand-expansion Phase 4): `thinkCivilianTransport` is a
+  documented no-op (civilian buses/trams/trains/ferries have no combat
+  role; the civilian trader rival is deferred) and `thinkRoadClasses`
+  is a documented no-op (pathfinding reads the per-class move cost
+  directly, and the AI never lays or upgrades roads — both pinned by
+  digest-unchanged tests).
   Utility networks (grand-expansion Phase 2, §AD2): `thinkConstruction`
   runs the `thinkUtilityConnections` sub-phase, a documented no-op in
   0.1 Alpha — the AI owns no physical buildings (all virtual, no

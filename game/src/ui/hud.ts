@@ -57,6 +57,12 @@
 
 import type { World } from '../sim/world';
 import { getPlayer } from '../sim/city';
+import {
+  ROAD_CLASS_ORDER,
+  ROAD_CLASS_STATS,
+  buildingOccupancy,
+  type RoadClass,
+} from '../sim/city';
 import { UNIT_DEFS, type UnitKind } from '../sim/units';
 import { type BuildingKind } from '../sim/city';
 import type { TerrainData } from '../sim/terrain';
@@ -134,6 +140,8 @@ export type BuildTool =
   // Phase 2 (utilities): drag-paint network tools.
   | 'powerLine'
   | 'waterPipe'
+  // Phase 4 (transport): the rail drag-paint tool (linearNetworkDrag).
+  | 'rail'
   | 'zoneR'
   | 'zoneC'
   | 'zoneI'
@@ -287,6 +295,13 @@ export class HUD {
   }
   /** Active palette tabs (persist across the per-tick panel rebuilds). */
   private trainTab: TrainTabId = 'infantry';
+  /**
+   * Phase 4 (transport): the road tool's selected class (dirt/country/
+   * paved/highway). Read by the controller (game.ts) when a road drag
+   * starts so the emitted buildRoad order carries the class; digest-
+   * covered (rc:) so the selector highlights repaint on change.
+   */
+  selectedRoadClass: RoadClass = 'paved';
   /**
    * Set by tab switches / research clicks so the selection panel rebuilds
    * even when the sim tick hasn't advanced (e.g. while paused).
@@ -521,13 +536,45 @@ export class HUD {
       return b;
     };
     toolsRow.append(makeToolButton('road', loc(p.toolRoad), 'road'));
+    // Phase 4 (transport): the road tool paints the selected class — the
+    // small class picker sits next to the road button (dirt/country/
+    // paved/highway, per-cell cost in the title). Dragging over existing
+    // lower-class roads upgrades them in place (difference pricing via
+    // the sim's upgradeRoad). Registered in HUD_PANEL_BRANCHES as
+    // 'tools-row' (digestLabels: rc:).
+    const classRow = el('div', 'palette-class-row');
+    const classNames: Record<RoadClass, LocalizedString> = {
+      dirt: p.roadClassDirt,
+      country: p.roadClassCountry,
+      paved: p.roadClassPaved,
+      highway: p.roadClassHighway,
+    };
+    for (const cls of ROAD_CLASS_ORDER) {
+      const stats = ROAD_CLASS_STATS[cls];
+      const cb = document.createElement('button');
+      cb.className = `class-btn${this.selectedRoadClass === cls ? ' active' : ''}`;
+      cb.textContent = loc(classNames[cls]);
+      cb.title = fillLoc(p.roadClassCost, {
+        funds: stats.costFunds,
+        materials: stats.costMaterials,
+      });
+      cb.setAttribute('aria-pressed', this.selectedRoadClass === cls ? 'true' : 'false');
+      cb.addEventListener('click', () => {
+        this.selectedRoadClass = cls;
+        this.paletteDirty = true;
+      });
+      classRow.append(cb);
+    }
+    toolsRow.append(classRow);
     // Phase 2 (utilities): the drag-paint network tools sit together in a
     // "Networks" group, next to the road tool they share a gesture with.
+    // Phase 4 (transport): the rail tool joins them.
     const netGroup = el('div', 'palette-zones');
     netGroup.append(el('div', 'palette-section-title', loc(p.toolSectionNetworks)));
     const netTools = [
       { tool: 'powerLine', label: loc(p.toolPowerLine), icon: 'powerLine' },
       { tool: 'waterPipe', label: loc(p.toolWaterPipe), icon: 'waterPipe' },
+      { tool: 'rail', label: loc(p.toolRail), icon: 'rail' },
     ] as const;
     for (const { tool, label, icon } of netTools) {
       netGroup.append(makeToolButton(tool, label, icon));
@@ -941,7 +988,19 @@ export class HUD {
    * costs/availability still refresh the moment they actually change.
    */
   private selectionDigest(world: World, selection: Selection, terrain?: TerrainData): string {
-    return paletteDigest(world, selection, this.trainTab, this.buildTab, terrain, this.menuTab);
+    return paletteDigest(
+      world,
+      selection,
+      this.trainTab,
+      this.buildTab,
+      terrain,
+      this.menuTab,
+      // Phase 4 (transport): the road-class picker highlight is a rendered
+      // value, so the rebuild key covers it (paletteDirty also forces a
+      // rebuild, but the digest is the key — the 2026-09-30 click bug
+      // rule).
+      this.selectedRoadClass,
+    );
   }
 
   private updateSelection(world: World, selection: Selection, terrain?: TerrainData): void {
@@ -1085,6 +1144,26 @@ export class HUD {
         terrain !== undefined ? getDesirabilityModel(terrain, world) : undefined;
       const landLine = landValueLine(desirModel, b);
       if (landLine !== null) panel.append(el('div', 'sel-unit', landLine));
+      // Phase 4 (transport): the occupancy line ("Residents 12/50 ·
+      // Workers 8/20") from the sim's buildingOccupancy() — reuses the
+      // 'sel-unit' class so no new DOM class is introduced;
+      // digest-covered by the bo: segment (AD11). Hidden for buildings
+      // with neither residents nor workers (military/utility).
+      const occ = buildingOccupancy(world, b.id);
+      if (occ !== null && (occ.residentCap > 0 || occ.workerCap > 0)) {
+        panel.append(
+          el(
+            'div',
+            'sel-unit',
+            fillLoc(sel.occupancyLine, {
+              residents: occ.residents,
+              residentCap: occ.residentCap,
+              workers: occ.workers,
+              workerCap: occ.workerCap,
+            }),
+          ),
+        );
+      }
       // A completed Research Lab opens the research panel (spec §8).
       if (b.kind === 'lab' && b.owner === HUMAN_PLAYER_ID && b.progress >= 1) {
         this.appendResearchPanel(panel, world);

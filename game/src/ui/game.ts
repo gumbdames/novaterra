@@ -49,15 +49,34 @@ import {
   cellCoords,
   CELL_WORLD_SIZE,
   CITY_GRID_CELLS,
+  getPlayer,
   inBounds,
   MAP_HALF_SIZE,
   type BuildingKind,
+  type RoadClass,
+  type TransitMode,
 } from '../sim/city';
 import type { AIDifficulty } from '../sim/ai';
 import { CommandRejectedError } from '../sim/commands';
 import type { TerrainData } from '../sim/terrain';
 import { buildTerrainView, type TerrainView } from '../render/terrain';
 import { EntityRenderer } from '../render/entities';
+import {
+  registerAmbientTransitProvider,
+  unregisterAmbientTransitProvider,
+} from '../render/cityLife';
+import {
+  createBusProvider,
+  createFerryProvider,
+  createTramProvider,
+  transitRouteKey,
+  transitRoutePoints,
+  transitVehicleCount,
+  type AmbientVehicleProvider,
+  type TransitProviderOptions,
+  type TransitProviderType,
+  type TransitRouteStop,
+} from '../render/transitProviders';
 import { createRenderer, applyEnvironmentLighting } from '../render/renderer';
 import { buildNatureView, type NatureView } from '../render/nature';
 import { loadNatureTreeModels } from '../render/natureTrees';
@@ -76,6 +95,7 @@ import {
   applyCameraState,
   createCameraState,
   edgePanVector,
+  guardCameraState,
   orbitDrag,
   panCamera,
   panDragTarget,
@@ -118,6 +138,8 @@ import {
   buildResearchUpgradeOrder,
   buildResupplyOrder,
   buildSupplyTogglesOrder,
+  buildUpgradeRoadOrder,
+  partitionRoadCells,
   type OrderIntent,
 } from './orders';
 import { evaluateAdvisor, type AdvisorItem } from './advisor';
@@ -243,6 +265,12 @@ export interface GameFrameDeps {
   refreshAdvisor(world: World): void;
   pruneSelection(): void;
   syncEntities(world: World): void;
+  /**
+   * Phase 4 (transport): keep the ambient transit providers (bus/tram/
+   * ferry) in sync with the player's transit networks. Runs before
+   * syncEntities so the crowd sees the current providers.
+   */
+  syncTransitProviders(world: World): void;
   setSelectedEntities(unitIds: number[]): void;
   updateEntitySelectionRings(world: World): void;
   updateHud(
@@ -280,6 +308,9 @@ export function runGameFrame(deps: GameFrameDeps, nowMs: number, frameMs: number
     deps.refreshAdvisor(world);
   }
   deps.pruneSelection();
+  // Phase 4 (transport): refresh ambient transit providers before the
+  // entity sync so the crowd renders this frame's registrations.
+  deps.syncTransitProviders(world);
   deps.syncEntities(world);
   deps.setSelectedEntities(deps.selection.unitIds);
   deps.updateEntitySelectionRings(world);
@@ -575,6 +606,12 @@ class GameController {
   private readonly audio: AudioEngine;
   private unbindUiClicks: (() => void) | null = null;
   private cameraState: CameraState = createCameraState();
+  /**
+   * Phase 4 hardening (item 7): the last camera state that passed the
+   * NaN guard. A poisoned state is never applied and never remembered —
+   * the camera restores this instead of wedging permanently.
+   */
+  private lastGoodCameraState: CameraState = createCameraState();
   private selection: Selection = clearSelection();
   private placement: PlacementMode = null;
   private paused = false;
@@ -622,6 +659,14 @@ class GameController {
   private mouseClient: { x: number; y: number } | null = null;
   /** In-progress linear-network drag (road tool today; power lines/pipes/rail later). */
   private networkDrag: LinearNetworkDrag | null = null;
+  /**
+   * Phase 4 (transport): the registered ambient transit providers, one
+   * per type. Created once per route change (player actions) — never
+   * per frame — and disposed on replace/teardown. The mutable `count`
+   * follows population every frame (cheap; no geometry churn).
+   */
+  private transitProviders = new Map<TransitProviderType, AmbientVehicleProvider>();
+  private lastTransitRouteKey = '';
   private zoneDragStart: { cx: number; cz: number } | null = null;
   private disposed = false;
   /** `?inputdebug=1` — verbose pointer-event console logging for diagnosis. */
@@ -917,6 +962,7 @@ class GameController {
       refreshAdvisor: (world) => this.refreshAdvisor(world),
       pruneSelection: () => this.pruneSelection(),
       syncEntities: (world) => this.entities.sync(world),
+      syncTransitProviders: (world) => this.syncTransitProviders(world),
       setSelectedEntities: (unitIds) => this.entities.setSelected(unitIds),
       updateEntitySelectionRings: (world) =>
         this.entities.updateSelectionRings(EntityRenderer.unitMap(world)),
@@ -930,6 +976,57 @@ class GameController {
         this.lastAdvisorRefresh = nowMs;
       },
     };
+  }
+
+  /**
+   * Phase 4 (transport): keep the ambient transit providers in sync with
+   * the player's transit networks. The route key moves only on player
+   * actions (build/demolish/disconnect a stop) — then the providers are
+   * rebuilt and the old geometry disposed; population flows through the
+   * mutable `count` every frame instead, so geometry is never churned by
+   * ordinary growth. Called from the frame loop before `syncEntities`
+   * so the crowd renders this frame's registrations.
+   */
+  private syncTransitProviders(world: World): void {
+    const owner = HUMAN_PLAYER_ID;
+    const key = transitRouteKey(world, owner);
+    if (key !== this.lastTransitRouteKey) {
+      this.lastTransitRouteKey = key;
+      this.rebuildTransitProvider('bus', 'bus', createBusProvider, world, owner);
+      this.rebuildTransitProvider('tram', 'tram', createTramProvider, world, owner);
+      this.rebuildTransitProvider('ferry', 'boat', createFerryProvider, world, owner);
+    }
+    const pop = getPlayer(world.city, owner)?.population ?? 0;
+    for (const [type, provider] of this.transitProviders) {
+      provider.count = transitVehicleCount(type, provider.stops.length, pop);
+    }
+  }
+
+  private rebuildTransitProvider(
+    type: TransitProviderType,
+    mode: TransitMode,
+    create: (
+      stops: readonly TransitRouteStop[],
+      opts?: TransitProviderOptions,
+    ) => AmbientVehicleProvider,
+    world: World,
+    owner: number,
+  ): void {
+    const old = this.transitProviders.get(type);
+    if (old !== undefined) {
+      unregisterAmbientTransitProvider(type);
+      old.dispose();
+      this.transitProviders.delete(type);
+    }
+    const stops = transitRoutePoints(world, owner, mode);
+    // Fewer than two operational stops is not a route — the crowd
+    // renders nothing until the player builds a real network.
+    if (stops.length < 2) return;
+    const provider = create(stops, {
+      population: getPlayer(world.city, owner)?.population ?? 0,
+    });
+    this.transitProviders.set(type, provider);
+    registerAmbientTransitProvider(type, provider);
   }
 
   /**
@@ -1111,6 +1208,14 @@ class GameController {
     this.unbindUiClicks = null;
     this.audio.dispose();
     this.entities.dispose();
+    // Phase 4 (transport): release the ambient transit providers (their
+    // geometry/material are provider-owned — the crowd never disposes
+    // them — so the game does it here, once per session).
+    for (const [type, provider] of this.transitProviders) {
+      unregisterAmbientTransitProvider(type);
+      provider.dispose();
+    }
+    this.transitProviders.clear();
     // Shared model assets (caller-owned): released once here, never
     // per view. The renderer only borrowed them.
     disposeModels(this.modelMap);
@@ -1590,6 +1695,9 @@ class GameController {
                 kind: netKind,
                 owner: HUMAN_PLAYER_ID,
                 gridWidth: CITY_GRID_CELLS,
+                // Phase 4 (transport): the road tool paints the HUD's
+                // selected class (the drag stamps it at press time).
+                roadClass: this.hud.selectedRoadClass,
               });
       } else if (e.button === 1) {
         // Middle-drag orbits the camera (yaw + pitch); preventDefault here
@@ -1622,7 +1730,7 @@ class GameController {
         this.orbitLast = { x: e.clientX, y: e.clientY };
         if (dx !== 0 || dy !== 0) {
           this.cameraState = orbitDrag(this.cameraState, dx, dy);
-          applyCameraState(this.camera, this.cameraState);
+          this.applyCameraStateGuarded();
         }
       }
       if (this.dragStart && e.buttons & 1) {
@@ -1641,7 +1749,7 @@ class GameController {
               this.canvas.clientHeight || window.innerHeight,
             );
             this.cameraState = panDragTarget(this.cameraState, dx, dy, wpp);
-            applyCameraState(this.camera, this.cameraState);
+            this.applyCameraStateGuarded();
           }
         } else if (this.leftDragKind === 'place') {
           const dx = e.clientX - this.dragStart.x;
@@ -1755,8 +1863,32 @@ class GameController {
         this.dragRect?.remove();
         this.dragRect = null;
         if (outcome.action === 'order') {
-          this.enqueue(outcome.intent);
-          this.audio.playSfx('place');
+          // Phase 4 (transport): a road drag may cover both fresh cells
+          // (buildRoad) and existing lower-class road cells (upgradeRoad —
+          // in-place, difference pricing). The sim rejects a mixed batch
+          // whole, so partition first; skipped cells (already at or
+          // above the selected class) are silently dropped.
+          const intent = outcome.intent;
+          if (intent.kind === 'buildRoad' && intent.payload !== undefined) {
+            const cells = intent.payload['cells'] as number[];
+            const cls = intent.payload['cls'] as RoadClass;
+            const owner = intent.payload['owner'] as number;
+            const { build, upgrade } = partitionRoadCells(
+              this.session.world.city.roads,
+              cells,
+              cls,
+            );
+            if (build.length > 0) {
+              this.enqueue({ kind: 'buildRoad', payload: { owner, cells: build, cls } });
+            }
+            if (upgrade.length > 0) {
+              this.enqueue(buildUpgradeRoadOrder(owner, upgrade, cls));
+            }
+            if (build.length + upgrade.length > 0) this.audio.playSfx('place');
+          } else {
+            this.enqueue(intent);
+            this.audio.playSfx('place');
+          }
         } else if (outcome.action === 'click') {
           // Plain click with the network tool: resolve the single clicked
           // cell (or explain why nothing was placed).
@@ -1764,7 +1896,7 @@ class GameController {
           const p = this.groundPoint(ndc.x, ndc.y);
           const cell = p ? this.worldToCell(p.x, p.z) : null;
           this.placeResolution(
-            resolveNetworkToolClick(outcome.kind, outcome.owner, cell),
+            resolveNetworkToolClick(outcome.kind, outcome.owner, cell, outcome.roadClass),
           );
         }
         return;
@@ -1787,7 +1919,7 @@ class GameController {
       e.preventDefault();
       const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
       this.cameraState = zoomCamera(this.cameraState, factor);
-      applyCameraState(this.camera, this.cameraState);
+      this.applyCameraStateGuarded();
     }, { passive: false });
 
     // --- keyboard ---
@@ -1882,6 +2014,39 @@ class GameController {
   }
 
   /** Per-frame camera update: keys, edge pan, then apply. */
+  /**
+   * Phase 4 hardening (item 7): the ONLY way the controller applies the
+   * camera state. Every component is checked for NaN/Infinity before the
+   * three.js camera moves: a poisoned state logs loudly (tick + armed
+   * tool + bad components — the same repro context as guardGameFrame)
+   * and the last known good is applied instead. A healthy state becomes
+   * the new last-known-good. Call sites must never call
+   * `applyCameraState` directly.
+   */
+  private applyCameraStateGuarded(): void {
+    const { state, restored, bad } = guardCameraState(
+      this.cameraState,
+      this.lastGoodCameraState,
+    );
+    if (restored) {
+      console.error(
+        `[novaterra] camera state poisoned at tick ${this.session.world.tick} ` +
+          `(armedTool=${this.armedToolName() ?? 'none'}): non-finite ` +
+          `components [${bad.join(', ')}] — restored last known good`,
+      );
+      this.cameraState = state;
+    } else {
+      this.lastGoodCameraState = state;
+    }
+    applyCameraState(this.camera, this.cameraState);
+  }
+
+  /** What the player has armed (tool id, 'train', or null) — repro context. */
+  private armedToolName(): string | null {
+    const placement = this.placement;
+    return placement?.kind === 'build' ? placement.tool : (placement?.kind ?? null);
+  }
+
   private updateCamera(dtSec: number): void {
     let dx = 0;
     let dz = 0;
@@ -1922,7 +2087,7 @@ class GameController {
       dz += (fz / len) * KEY_PAN_SPEED * dtSec * (this.cameraState.distance / 150);
     }
     if (dx !== 0 || dz !== 0) this.cameraState = panCamera(this.cameraState, dx, dz);
-    applyCameraState(this.camera, this.cameraState);
+    this.applyCameraStateGuarded();
   }
 
   private refreshAdvisor(world: World): void {

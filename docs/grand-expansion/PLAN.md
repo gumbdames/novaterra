@@ -790,13 +790,23 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   until the player's network exists (no routes ⇒ no vehicles, never a
   crash). Provider geometry should be instancing-friendly; the crowd
   never disposes provider-owned assets.
-- **Status: IN PROGRESS (2026-09-30, 0.1 Alpha).** Transport sim
-  workstream underway. RENDER workstream A delivered: underground/x-ray
-  view (ghosts terrain + water for buried pipes, auto-on with the
-  water-pipe tool), per-building power/water indicators (bolt/drop
-  billboards), proper Quaternius pedestrian models (4 lazy-loaded
-  variants replacing the capsules), and a terrain survey grid (topbar
-  "Grid" toggle / G key).
+- **Status: COMPLETE (2026-09-30, 0.1 Alpha).** All nine Phase 4 finish
+  items delivered: the rail drag tool (linearNetworkDrag `rail` kind,
+  `buildRailOrder`, HUD button + icon, click resolution), the road-class
+  selector (dirt/country/paved/highway picker with per-cell cost, the
+  class remembered across tabs, `partitionRoadCells` splitting drags
+  into build + in-place upgrade orders), ambient transit providers
+  (buses/trams/ferries as `AmbientVehicleProvider`s over the player's
+  placeable stops — closed-loop routes, dwell pauses, population-scaled
+  counts, `count: 0` with no route), building variants + size tiers
+  (variants 0..3 with procedural rooftop props, tiers 1..3 scale, through
+  the lazy pipeline — no variant key in the boot set), the occupancy
+  line in the selection panel (`buildingOccupancy()` via the AD11
+  digest), the marina desirability test (+10 waterfront amenity through
+  the Phase 3 hook, zero desirability-code changes), the NaN camera
+  guard (pure `guardCameraState` + loud restore in the controller), the
+  AI/soak (civilian transport and road classes pinned as documented
+  no-ops, transport-mixed AI-vs-AI soak green), and this docs sweep.
 
 ### Phase 5 — Airports + airline (M–L)
 - **Goal:** airport zones, capability-gated tiers, hangars, civilian
