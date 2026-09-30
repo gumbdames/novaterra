@@ -415,6 +415,12 @@ function allocateUtilities(world: World, city: CityState): UtilityAllocation {
         continue;
       }
       // Plants: diag on the supply utility reflects network state.
+      // Demand-zero flags: the allocation branches only visit network
+      // members and unreached demanders, so a funded demand-zero building
+      // (e.g. a plant on the power side) would otherwise keep a stale
+      // flag. Legacy semantics: demand-zero ⇒ served when funded.
+      if (def.powerDemand === 0) b.powered = true;
+      if (def.waterDemand === 0) b.watered = true;
       const isPowerPlant = def.powerSupply > 0;
       const isWaterPlant = def.waterSupply > 0;
       if (isPowerPlant) {

@@ -415,7 +415,10 @@ describe('roster definitions (§2)', () => {
 
 describe('building definitions (§3 + Phase 1 + Workstream Z)', () => {
   it('has all 16 new buildings with exact spec costs, plus the Phase 1 Military Academy and the Workstream Z education pair', () => {
-    expect(Object.keys(BUILDING_DEFS)).toHaveLength(31);
+    // Phase 2 (2026-09-30): +13 utility kinds (6 power plants, waterWell/
+    // waterTower/waterTreatment/reservoir, powerSubstation/pumpingStation/
+    // batteryStation) → 44.
+    expect(Object.keys(BUILDING_DEFS)).toHaveLength(44);
     expect(BUILDING_DEFS.barracks).toMatchObject({
       costFunds: 700, costMaterials: 250, buildSeconds: 40, minAge: 'foundation',
     });
@@ -825,7 +828,10 @@ describe('upgrade research command — mechanic 7 (§4)', () => {
 
 describe('upgrade effects (§4)', () => {
   it('defines all 12 upgrades with spec costs, ages, and prerequisites', () => {
-    expect(UPGRADE_IDS).toHaveLength(12);
+    // Phase 2 (2026-09-30): +6 infrastructure upgrades (combustionTech,
+    // advancedNuclear, fusionResearch, groundwaterSurvey, desalinationTech,
+    // gridStorage) → 18.
+    expect(UPGRADE_IDS).toHaveLength(18);
     expect(UPGRADE_DEFS.apRounds).toMatchObject({
       costFunds: 800, costResearch: 60, minAge: 'industry',
       requiredBuildings: ['warFactory'],

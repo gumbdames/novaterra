@@ -602,8 +602,10 @@ delta → AI work.** Step gate (§0) applies to every step inside.
     `game/tests/sim.ai-utilities.test.ts` (pool-fallback regression,
     owner-blind allocation, no-RNG sub-phase, determinism, save/load)
     and `game/tests/sim.ai-soak.test.ts` (AI-vs-AI long-run soak;
-    network-mixed scenarios specified as skipped tests pending the
-    flood-fill API). The sim workstream's network model
+    network-mixed scenarios as real tests since 2026-09-30: stranded
+    line-connection, disconnected-vs-shortage diagnosis, bounded
+    map-edge export, storage-stock save/load reset). The sim
+    workstream's network model
     (`utilityNetworks.ts`, uncommitted 2026-09-30) confirms the design:
     `UtilitySideModel.unreached` buildings are served by the legacy
     pool allocator verbatim; the extension hook names
@@ -623,6 +625,41 @@ delta → AI work.** Step gate (§0) applies to every step inside.
     buildings start `powered`/`watered` = true (1-tick bootstrap) so
     the cross-utility hooks (nuclear needs water, desalination needs
     power) can prime on a fresh grid.
+  - **Render/UI verdict (2026-09-30, 0.1 Alpha):** shipped and verified
+    against the landed sim contract — 13 procedural building models
+    (`render/proceduralModels.ts`), Power/Water build tabs
+    (`BUILD_TABS`, 9 tabs / 44 buildings), drag-paint power-line /
+    water-pipe tools (`linearNetworkDrag.ts`, `orders.ts`
+    `buildPowerLineOrder`/`buildWaterPipeOrder`), palette entries with
+    icons (`icons.ts` `buildingIcon`), selection-panel power/water
+    diagnosis lines (`bu:` digest segment), always-on line/pipe meshes
+    (`render/networks.ts`), and the toggle-able diagnosis overlay
+    (served/fouled tints + disconnected/shortage/stranded/fouled
+    markers, `render/utilityOverlay.ts`). The 6 research upgrades sit
+    in a new Infrastructure research group. Verified in-game in real
+    Chromium (menu → skirmish → Power/Water tabs render with costs,
+    tools row + Utilities toggle present, 0 JS errors). Deferred:
+    per-building fouled-source flags (the sim tracks fouled sources
+    per tick in the transient `UtilityModel.fouledSources` but exposes
+    no per-building flag — purple markers stay dark until the sim
+    exposes one; recommended sim follow-up) and night lamps (no
+    day/night cycle in the game — wiring `daylightFactor(tick)` needs
+    a full lighting-rig change).
+  - **Coordinator verification (2026-09-30, 0.1 Alpha):** Phase 2
+    complete. Full suite **1148/1148 green** (79 files), `tsc`
+    clean, `npm run build` clean with license stamps. Coordinator
+    fixes on top of the three workstreams: (1) `sim.roster-expansion`
+    count pins updated for the deliberate roster growth (31 → 44
+    buildings, 12 → 18 upgrades); (2) a demand-zero flag gap in the
+    rewritten allocator (funded demand-zero buildings in no network
+    never had `powered`/`watered` set — previously only the 1-tick
+    bootstrap made it true; now set explicitly per the legacy
+    semantics); (3) the 4 skipped network-mixed AI-soak scenarios
+    implemented as real tests against the landed sim API. Perf:
+    flood fill 8.5 ms/economy-tick at 600 buildings (sim workstream),
+    pool baseline 3.17 ms. Commits: `75e9c28` (AI), `355fd0c`
+    (sim), `4c266d7` (render/UI) + coordinator verification —
+    all local, not pushed.
 
 ### Phase 3 — Logistics chains (L; XL only if physical road/rail freight)
 - **Goal:** ammo/fuel as a tempo constraint; supply trucks, depots,

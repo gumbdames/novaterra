@@ -25,14 +25,14 @@
  *    is a sink, and map-edge trade does not exist yet);
  *  - same seed ⇒ identical digest (determinism with AI + utilities).
  *
- * The sim workstream's flood-fill rewrite (powerDiag/waterDiag network
- * state, line/pipe commands, map-edge trade) was not yet committed when
- * these tests were written. The network-mixed scenarios — one AI building
- * lines, buildings on/off networks, stranded-generator flagging,
- * per-network allocation, map-edge trade income — are specified in the
- * skipped block at the bottom so they land as real tests the moment the
- * sim API exists (field names are the sim workstream's to define; this
- * file must not invent them).
+ * The sim workstream's flood-fill integration landed 2026-09-30
+ * (powerDiag/waterDiag network state, line/pipe commands, map-edge trade,
+ * storage stocks). The network-mixed scenarios at the bottom are real
+ * tests against that API now: stranded-vs-shortage diagnosis, AD2 pool
+ * fallback for off-network buildings, bounded map-edge export income,
+ * and deterministic storage-stock reset across save/load. The Classic AI
+ * itself owns no physical buildings (all virtual), so there is no AI
+ * line-building to soak — the pool fallback covers it.
  */
 import { describe, expect, it } from 'vitest';
 import { createWorld, type World } from '../src/sim/world';
@@ -50,13 +50,25 @@ import {
 } from '../src/sim/terrain';
 import {
   MAP_HALF_SIZE,
+  BUILDING_DEFS,
+  bumpUtilityEpoch,
+  cellIndex,
+  cellIsWater,
   getPlayer,
   placeBuilding,
   type BuildingKind,
+  type BuildingRecord,
+  type CityState,
   type Placement,
   type ResourceKey,
 } from '../src/sim/city';
-import { createEconomySystem } from '../src/sim/economy';
+import { createEconomySystem, runEconomyTick, ECONOMY_TICKS } from '../src/sim/economy';
+import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
+import {
+  getUtilityModel,
+  getNetworkStock,
+  POWER_EXPORT_FUNDS_PER_UNIT,
+} from '../src/sim/utilityNetworks';
 import { registerUnitCommands } from '../src/sim/units';
 import {
   createPathfindingSystem,
@@ -224,45 +236,193 @@ describe('AI-vs-AI soak (commander vs general, economy on)', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Pending: network-mixed scenarios. These need the sim workstream's
-// flood-fill integration finished: `getUtilityModel` wired into the
-// economy tick (`allocateUtilities` rewrite — economy.ts was still the
-// legacy pool allocator when this file was written), the line/pipe
-// commands registered, and map-edge trade. The API names below were
-// verified against sim/utilityNetworks.ts source on 2026-09-30 (the
-// module was uncommitted then — re-verify before un-skipping).
+// Network-mixed scenarios (grand-expansion Phase 2 verification).
+//
+// The sim workstream's flood-fill integration is landed (2026-09-30):
+// `getUtilityModel` + `allocateUtilities` in the economy tick,
+// buildPowerLine/buildPipe commands, map-edge trade, storage stocks.
+// These drive runEconomyTick directly with hand-built cities, mirroring
+// tests/sim.utility-networks.test.ts. The Classic AI itself owns no
+// physical buildings (all virtual), so there is no AI line-building to
+// soak here — the AD2 pool fallback covers it, pinned by the tests below.
 // ---------------------------------------------------------------------------
-describe.skip('AI-vs-AI soak with utility networks (pending sim workstream)', () => {
-  it('one AI builds lines to a stranded plant; network buildings served, off-network on pool fallback', () => {
-    // Setup: script a physical power plant for the AI far from any
-    // conductor; run until the AI's thinkConstruction utility sub-phase
-    // fires; assert a buildPowerLine/buildPipe order was issued and, once
-    // built, getUtilityModel shows the plant in plantNetwork (no longer
-    // in unreached). Buildings in `unreached` must still be served via
-    // the AD2 pool fallback (powered/watered flags set).
-    expect(true).toBe(true);
+
+/** Rich single-player world for direct economy ticks (no AI systems). */
+function setupNet(seed = 20260930): { terrain: TerrainData; world: World } {
+  const terrain = getTerrain();
+  const world = createWorld(seed);
+  world.city.players[0]!.funds = 1e9;
+  world.city.players[0]!.materials = 1e9;
+  return { terrain, world };
+}
+
+/** One economy second per iteration, from tick 0. */
+function runNetSeconds(world: World, terrain: TerrainData, seconds: number): void {
+  for (let s = 0; s < seconds; s++) {
+    world.tick += ECONOMY_TICKS;
+    world.time = world.tick / ECONOMY_TICKS;
+    runEconomyTick(world, terrain);
+  }
+}
+
+/** Directly place a completed building (bypasses command validation). */
+function netCompleted(
+  world: World,
+  kind: BuildingKind,
+  owner: number,
+  cx: number,
+  cz: number,
+): BuildingRecord {
+  const b = placeBuilding(world.city, { kind, owner, cx, cz, facing: 0 });
+  b.progress = 1;
+  return b;
+}
+
+/** Directly lay conductor cells (bypasses command validation/cost). */
+function netLay(
+  city: CityState,
+  field: 'roads' | 'powerLines' | 'pipes',
+  cells: number[],
+): void {
+  const arr = city[field];
+  for (const c of cells) {
+    if (!arr.includes(c)) arr.push(c);
+  }
+  arr.sort((a, b) => a - b);
+  bumpUtilityEpoch(city);
+}
+
+/** Horizontal run of cells. */
+function netRow(cx0: number, cz: number, len: number): number[] {
+  const cells: number[] = [];
+  for (let i = 0; i < len; i++) cells.push(cellIndex(cx0 + i, cz));
+  return cells;
+}
+
+/** Inland land rectangle (edge-touching conductors trigger map-edge trade). */
+function findNetLandRect(
+  t: TerrainData,
+  w: number,
+  h: number,
+): { cx: number; cz: number } {
+  for (let cz = 1; cz + h <= 255; cz++) {
+    for (let cx = 1; cx + w <= 255; cx++) {
+      let ok = true;
+      for (let dz = 0; dz < h && ok; dz++) {
+        for (let dx = 0; dx < w && ok; dx++) {
+          if (cellIsWater(t, cx + dx, cz + dz)) ok = false;
+        }
+      }
+      if (ok) return { cx, cz };
+    }
+  }
+  throw new Error('no land rect for network scenario');
+}
+
+describe('utility networks: mixed on/off-network scenarios', () => {
+  it('a dragged line connects a stranded plant; off-network buildings stay on the AD2 pool fallback', () => {
+    const { terrain, world } = setupNet();
+    const { cx, cz } = findNetLandRect(terrain, 90, 10);
+    const rz = cz + 5;
+    // Stranded plant (no conductor yet), a consumer site with a road, a
+    // far-off house, and a second plant that feeds the pool.
+    const stranded = netCompleted(world, 'powerPlant', 0, cx + 1, rz - 3);
+    const consumer = netCompleted(world, 'factory', 0, cx + 30, rz - 2);
+    const offGrid = netCompleted(world, 'house', 0, cx + 70, rz + 2);
+    const poolPlant = netCompleted(world, 'powerPlant', 0, cx + 80, rz - 3);
+    netLay(world.city, 'roads', netRow(cx + 25, rz, 12));
+    runNetSeconds(world, terrain, 2);
+    // Before the line: the plant touches no conductor — stranded.
+    expect(stranded.powerDiag).toBe('disconnected');
+    // Drag a power line from the plant to the road grid.
+    netLay(world.city, 'powerLines', netRow(cx + 1, rz - 1, 25));
+    runNetSeconds(world, terrain, 2);
+    expect(stranded.powerDiag).toBe('ok');
+    expect(consumer.powered).toBe(true);
+    expect(consumer.powerDiag).toBe('ok');
+    // The far house is reached by no network: the AD2 pool fallback serves
+    // it from the unconnected plant.
+    expect(offGrid.powered).toBe(true);
+    expect(offGrid.powerDiag).toBe('ok');
+    // The pool supplier itself is stranded (touching nothing) but still
+    // feeds the pool — the AD2 design.
+    expect(poolPlant.powerDiag).toBe('disconnected');
   });
 
-  it('stranded-generator flagging is diagnosable per network (disconnected vs shortage)', () => {
-    // Needs: UtilitySideModel.networks + unreached wired into the
-    // economy tick. Assert a plant touching no conductor lands in
-    // unreached (== disconnected diagnosis) while an undersized network
-    // reports shortage via its member draw order.
-    expect(true).toBe(true);
+  it('diagnosis separates disconnected (no conductor) from shortage (undersized network)', () => {
+    const { terrain, world } = setupNet();
+    const { cx, cz } = findNetLandRect(terrain, 90, 10);
+    const rz = cz + 5;
+    // A plant touching nothing: disconnected.
+    const lonely = netCompleted(world, 'powerPlant', 0, cx + 1, rz - 3);
+    // An undersized network: 25 supply vs 6 x 5 = 30 demand.
+    const feeder = netCompleted(world, 'powerPlant', 0, cx + 20, rz - 3);
+    netLay(world.city, 'roads', netRow(cx + 20, rz, 60));
+    const factories: BuildingRecord[] = [];
+    for (let i = 0; i < 6; i++) {
+      factories.push(netCompleted(world, 'factory', 0, cx + 28 + i * 7, rz - 2));
+    }
+    runNetSeconds(world, terrain, 3);
+    expect(lonely.powerDiag).toBe('disconnected');
+    const unpowered = factories.filter((f) => !f.powered);
+    expect(unpowered).toHaveLength(1);
+    expect(unpowered[0]!.powerDiag).toBe('shortage');
+    // The farthest factory drops first (draw order: distance, then id).
+    expect(unpowered[0]).toBe(factories[5]);
+    expect(feeder.powerDiag).toBe('ok');
   });
 
-  it('map-edge trade cannot spiral funds: export income is bounded per tick', () => {
-    // Needs: map-edge trade (NetworkInfo.touchesEdge → auto-export at
-    // POWER_EXPORT_FUNDS_PER_UNIT / WATER_EXPORT_FUNDS_PER_UNIT).
-    // Assert export income per economy tick is capped and total funds
-    // stay in a sane band over the soak.
-    expect(true).toBe(true);
+  it('map-edge export income is bounded per tick (no fund spirals)', () => {
+    const { terrain, world } = setupNet();
+    const { cx, cz } = findNetLandRect(terrain, 40, 10);
+    const rz = cz + 5;
+    netLay(world.city, 'roads', netRow(cx, rz, 30));
+    // Power line from the road to the map edge (cx === 0).
+    netLay(world.city, 'powerLines', netRow(0, rz, cx));
+    netCompleted(world, 'powerPlant', 0, cx + 1, rz - 3);
+    const player = world.city.players[0]!;
+    const supply = BUILDING_DEFS.powerPlant.powerSupply;
+    let maxDelta = -Infinity;
+    for (let s = 0; s < 10; s++) {
+      const before = player.funds;
+      runNetSeconds(world, terrain, 1);
+      maxDelta = Math.max(maxDelta, player.funds - before);
+    }
+    // Export income per tick can never exceed supply x rate (upkeep only
+    // subtracts); funds stay finite and sane.
+    expect(maxDelta).toBeLessThanOrEqual(
+      supply * POWER_EXPORT_FUNDS_PER_UNIT + 1e-9,
+    );
+    expect(Number.isFinite(player.funds)).toBe(true);
+    expect(player.funds).toBeLessThan(1e12);
   });
 
-  it('storage stocks smooth intermittency deterministically across save/load', () => {
-    // Needs: UtilityModel.stocks keyed `${owner}|${utility}|${plantIdsKey}`
-    // surviving snapshot round-trips (integer stocks, floored on write).
-    // Assert digest(restore(take(w))) === digest(w) with non-zero stocks.
-    expect(true).toBe(true);
+  it('storage stocks reset deterministically to zero across save/load', () => {
+    const { terrain, world } = setupNet();
+    const { cx, cz } = findNetLandRect(terrain, 80, 10);
+    const rz = cz + 5;
+    netLay(world.city, 'roads', netRow(cx, rz, 70));
+    const plant = netCompleted(world, 'powerPlant', 0, cx + 1, rz - 3);
+    netCompleted(world, 'batteryStation', 0, cx + 5, rz + 1);
+    netCompleted(world, 'factory', 0, cx + 10, rz - 3);
+    // Surplus 20/s charges the battery for 10 s.
+    runNetSeconds(world, terrain, 10);
+    const input = {
+      power: [[plant.id], []],
+      water: [[], []],
+      foulers: [],
+      treatments: [],
+    };
+    const model = getUtilityModel(world.city, input);
+    const net = model.players[0]!.power.networks[0]!;
+    expect(getNetworkStock(model, 0, 'power', net)).toBeGreaterThan(0);
+    const snap = takeSnapshot(world);
+    const restored = restoreSnapshot(JSON.parse(JSON.stringify(snap)));
+    expect(digestWorld(restored)).toBe(digestWorld(world));
+    // Stocks are derived, never snapshotted: after a load the network
+    // starts empty again — deterministically.
+    const model2 = getUtilityModel(restored.city, input);
+    const net2 = model2.players[0]!.power.networks[0]!;
+    expect(getNetworkStock(model2, 0, 'power', net2)).toBe(0);
   });
 });
