@@ -620,6 +620,23 @@ buildings first, the **defeat** screen ends your run. (If both sides fall
 on the same tick, defeat takes precedence: you must survive your victory
 to claim it.)
 
+## Peaceful mode
+
+Prefer building to fighting? A **peaceful** skirmish disables war
+entirely: every military unit, building, and upgrade — plus spies,
+sabotage, and the superweapons — is locked out (orders for them are
+rejected with a clear message, never silently), while the full civilian
+roster stays open: housing, the economy, utilities, power and water,
+transport, civilian airlines and shipping, research, and city life.
+
+Your rival still plays — peacefully. The Classic AI builds its own city
+beside yours but fields no army and launches no attacks; there is no way
+for either side to conquer the other, so the conquest and defeat screens
+never appear. A peaceful game can only be **won**, never lost: reach
+**8,000 housed residents** with a non-negative treasury and you claim the
+peaceful victory. Grow a genuinely great city — roughly 270 apartment
+blocks' worth of people on under 4% of the map — and the win is yours.
+
 ## The campaign: "The First Term"
 
 From the main menu, **Missions** starts the 8-mission story campaign.

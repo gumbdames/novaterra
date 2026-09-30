@@ -267,11 +267,26 @@ snapshotted/digested). New Intel panel UI (digested per §AD11).
 
 ### 3.9 Peaceful mode + tech levels
 
+**Status (workstream A — sim core, 2026-09-30):** DONE and merged —
+`world.peaceful` (tick 0, never toggled; snapshotted, digested, defaults
+false) + `SessionOptions.peaceful`; the def-level `military?: boolean`
+predicate on all 68 units / 89 buildings / 21 upgrades (classification
+pinned in `tests/sim.peaceful.test.ts`); loud lockout in `spawnUnit` /
+`placeBuilding` / `researchUpgrade` / the three covert-op validates /
+`constructSuperweaponFacility` / `fireStorm` / `fireAegis`; conquest
+checks bypassed; `checkPeacefulVictory` / `peacefulObjectiveProgress`
+(8,000 population + non-negative treasury). The AI rival KEEPS PLAYING
+in peaceful games (rejected military orders are swallowed) — this
+overrides the old "no AI rival" line. 1976/1976 tests green, tsc clean.
+Remaining for other workstreams: the peaceful victory UI panel + end
+screen, peaceful AI behavior, tech levels (Mk II/III).
+
 Peaceful: `world.peaceful` flag (tick 0, never toggled mid-game;
 snapshotted, digested, defaults false) + `SessionOptions.peaceful`;
 military lockout in `registerUnitCommands`/`placeBuilding`/
 `researchUpgrade` via a def-level `military: boolean` predicate;
-no AI rival (`hasAIRival = false`, the `'none'` precedent); victory
+the AI rival stays and plays peacefully (its military orders are
+rejected at the command layer and swallowed); victory
 checks bypassed; peaceful objectives = population / influence /
 scenario goals (UI/campaign work, not sim).
 Tech levels: Mk II/III variants as distinct `UnitKind`s sharing art
@@ -984,6 +999,10 @@ delta → AI work.** Step gate (§0) applies to every step inside.
 - **Status: COMPLETE (2026-09-30, 0.1 Alpha).**
 
 ### Phase 8 — Tech-level roster pass + peaceful mode (M + S)
+**Status:** workstream A (peaceful-mode sim core) complete 2026-09-30 —
+def flags, command lockout, `world.peaceful`, snapshot/digest, victory
+helpers, 28 new tests (1976/1976 green). Remaining: peaceful UI panel +
+end screen, peaceful AI behavior, Mk II/III tech levels.
 - **Goal:** Mk II/III variants across the roster (art-shared,
   §AD12); peaceful skirmish mode.
 - **Contents:** §3.9; variant defs gated by age/building; peaceful
@@ -995,7 +1014,8 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   lockout rejections, peaceful save/load (`world.peaceful`
   round-trip), victory-check bypass.
 - **Budget delta:** ~0 keys (art-shared by design).
-- **AI work:** none (no rival in peaceful mode).
+- **AI work:** peaceful-play behavior (the rival stays; its military
+  orders are rejected and swallowed — the sim core is done).
 
 ### Phase 9 — Soak, balance, polish (ongoing)
 AI-vs-AI headline-system usage metrics per phase (§6); balance pass

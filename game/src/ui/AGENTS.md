@@ -26,6 +26,21 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   training costs. `sandbox: true` builds a peaceful world with no AI
   rival and no victory condition — the living menu demo uses it (the
   director is the sole author); default false, existing callers unchanged.
+  `peaceful: true` (grand-expansion Phase 8, workstream A, 2026-09-30)
+  builds a PEACEFUL skirmish: `world.peaceful` is set at tick 0 (never
+  toggled mid-game; restored sessions carry the snapshot's flag) and the
+  AI rival KEEPS PLAYING — it just plays peacefully (its military orders
+  are rejected at the command layer and swallowed by `issue`, never
+  crashing the tick). Starting forces swap the 4 rifles for 4 haulers
+  (same count — the AI's cap headroom math is unchanged). Conquest is
+  bypassed: `checkSkirmishVictory` / `checkSkirmishDefeat` return false
+  and `getSkirmishOutcome` returns null for peaceful worlds (the
+  peaceful victory `checkPeacefulVictory` in sim/peaceful.ts owns the
+  outcome; `game.ts`'s `maybeShowConquestOutcome` early-returns). NOT
+  the same as `sandbox`: sandbox skips the rival entirely; peaceful
+  keeps the rival and has a builder's victory condition (8,000 housed
+  residents, non-negative treasury). The peaceful victory UI panel is
+  the sibling workstream's.
 - `demoDirector.ts` — the living menu demo (workstream X, 2026-09-30).
   `createDemoSession()` = canonical `createSession()` (sandbox, fixed
   `DEMO_SEED`) + a designed opening stockpile (campaign

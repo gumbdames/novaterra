@@ -9,7 +9,20 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 
 - `rng.ts` — mulberry32 + named streams via `createRngBank` / `rngBank`.
 - `world.ts` — the `World` store; owns `city: CityState` (imports
-  `initCity` from `city.ts`).
+  `initCity` from `city.ts`). Grand-expansion Phase 8 (peaceful mode,
+  workstream A, 2026-09-30): `World.peaceful: boolean` — tick-0,
+  never toggled mid-game, defaults false; snapshotted and digested.
+- `peaceful.ts` — (grand-expansion Phase 8, workstream A, 2026-09-30)
+  the peaceful victory as sim-side pure checks: `checkPeacefulVictory
+  (world, owner)` (win = 8,000 housed residents with a non-negative
+  treasury — `PEACEFUL_VICTORY_POPULATION = 8000`,
+  `PEACEFUL_VICTORY_MIN_TREASURY = 0`; rationale in
+  docs/research/phase8-civilian-peaceful.md §3) and
+  `peacefulObjectiveProgress(world, owner)` (the UI panel's progress
+  view). Pure module: no DOM, no three.js, no wall clock, no RNG;
+  value-imports only city.ts (`getPlayer`). A peaceful game can only be
+  won, never lost — conquest is unreachable when every military def is
+  locked out (the conquest checks are bypassed in ui/session.ts).
 - `tick.ts` — 30 Hz accumulator driver, fixed system registration order.
 - `commands.ts` — tick-aligned queue, `{ validate, apply }` specs,
   validate-at-enqueue-AND-apply, loud rejections. Value-imports `city.ts`
@@ -17,7 +30,16 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   only); the reverse edge is forbidden, see `city.ts` below.
 - `city.ts` — city grid, roads, zones, buildings, players, placement
   validation, growth. Registers `buildRoad`, `paintZone`,
-  `placeBuilding`, `demolish`, `setTaxRate`. Imports `World` type-only —
+  `placeBuilding`, `demolish`, `setTaxRate`. Grand-expansion Phase 8
+  (peaceful mode, workstream A, 2026-09-30): `BuildingDef.military?:
+  boolean` — true on the 21 war-apparatus buildings (the full 89-kind
+  classification is pinned in tests/sim.peaceful.test.ts);
+  `placeBuilding` validate rejects military defs loudly in peaceful
+  worlds. Judgment calls in docs/research/phase8-civilian-peaceful.md:
+  shipyard is military (it gates only military sea units) while
+  mixedAirport is military (hosts combat aircraft); the civilian
+  airport pieces and civilian ports stay buildable. Imports `World`
+  type-only —
   this is what breaks the `world.ts` ⇄ `city.ts` cycle (`city.ts` takes
   `createRngBank` directly from `rng.ts` instead of `rngBank` from
   `world.ts`). Additionally `city.ts` must NEVER take a static value
@@ -27,6 +49,15 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   by sim.ai-soak). Demolish's resupply-reservation release is inlined in
   city.ts for exactly this reason — it mirrors `releaseDepotReservations`
   in commands.ts, keep the two in sync.
+- `superweapons.ts` — the Storm Engine strike and the Aegis shield:
+  `constructSuperweaponFacility` (Marshal-AI virtual construction),
+  `fireStorm`, `fireAegis`. Grand-expansion Phase 8 (peaceful mode,
+  workstream A, 2026-09-30): all three validates reject loudly in
+  peaceful worlds — the fire gates are defense in depth on top of the
+  `placeBuilding` lockout (the Marshal's virtual path never touches
+  `placeBuilding`), and the `fireStorm` gate is what keeps "meltdowns
+  are impossible in peaceful mode" true (the storm strike is the only
+  attack path and the only meltdown trigger).
 - `economy.ts` — the 1 Hz economy system (`createEconomySystem`),
   fixed-rate market (`marketTrade`), tax collection. Pure w.r.t.
   rendering. Phase 4: `runTransportEarnings` (on-network civilian
@@ -68,14 +99,30 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   city→commands→movement→pathfinding (the NaN-GRID_CELLS SSR trap,
   2026-09-30); do not add new city→commands edges.
 - `digest.ts` — FNV-1a canonical encoding, including full city state.
+  Grand-expansion Phase 8 (peaceful mode, workstream A, 2026-09-30):
+  the world prefix encodes `|peaceful=0/1|` (behavior-affecting ⇒
+  digest-covered); `?? false` keeps pre-flag fixture worlds digesting
+  identically.
 - `snapshot.ts` — versioned snapshots (v8: hangar slots on buildings
   + `hangarBuildingId`/`embarkedOn` on units; v7: road classes as
   `RoadCell[]` (v6 `number[]` migrates to `paved`), the rail layer,
   ferry routes on units; v6/v7 still load, v5 with empty upgrades).
+  Grand-expansion Phase 8 (peaceful mode, workstream A, 2026-09-30):
+  `peaceful` is PURELY ADDITIVE — stays v8, no bump; legacy snapshots
+  decode to `false` (the AD9 neutral-default precedent).
 - `terrain.ts` — seeded mapgen (not snapshotted); `spatial.ts` — hash grid.
 - `units.ts` — `UnitRecord` store (stable ids, owner/kind/speed/state),
-  `spawnUnit` command. The 68-unit roster (21 land: engineer, rifles,
-  tank, artillery, aa, hauler, supplyTruck, fuelTruck, spectre, hq,
+  `spawnUnit` command. Grand-expansion Phase 8 (peaceful mode,
+  workstream A, 2026-09-30): `UnitDef.military?: boolean` — true on the
+  47 war-apparatus kinds (the full 68-kind classification is pinned in
+  tests/sim.peaceful.test.ts); `spawnUnit` and `deployMine` validates
+  reject military defs loudly in peaceful worlds. Judgment calls are
+  recorded in docs/research/phase8-civilian-peaceful.md: engineer,
+  hauler, transport/transportShip, cargoFreighter, reconUAV/reconPlane
+  (damage 0, the recon exception) are civilian; supplyTruck/fuelTruck/
+  fuelTanker, the armed scout `drone` (damage 9, targets both), and the
+  whole intel roster are military. The 68-unit roster (21 land: engineer,
+  rifles, tank, artillery, aa, hauler, supplyTruck, fuelTruck, spectre, hq,
   sniperTeam, combatMedic, apc, tankDestroyer, mlrs, passengerTrain,
   freightTrain, bus, tram, spy, reconTeam; 22 air: fighter, transport, drone,
   fighterBomber, attackHeli, awacs, strategicBomber, maritimePatrol,
@@ -243,7 +290,12 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   validation).
 - `upgrades.ts` — the 21 researchable upgrades (roster expansion's 12 +
   Phase 2's utility ladder 6 + Phase 3's advancedLogistics + the intel
-  roster's signalsIntel/counterIntel).
+  roster's signalsIntel/counterIntel). Grand-expansion Phase 8 (peaceful
+  mode, workstream A, 2026-09-30): `UpgradeDef.military?: boolean` —
+  true on the 11 war upgrades (combat lines, fieldMedicine,
+  advancedLogistics, signalsIntel/counterIntel; the full classification
+  is pinned in tests/sim.peaceful.test.ts); `researchUpgrade` validate
+  rejects military defs loudly in peaceful worlds.
   `UpgradeDef`: cost (funds + research), `minAge`, building prerequisites
   (Advanced Avionics needs airfield AND radarStation). `researchUpgrade`
   command: completed lab required; age/prereq/affordability/duplicates
@@ -281,7 +333,9 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `infiltrateBuilding` / `sabotage` / `stealTech` commands
   (`registerIntelCommands` — adjacency-validated, asset costs,
   deterministic tech pick, research grant via the `addStock`
-  precedent), and the stochastic action rolls (steal success on the
+  precedent; grand-expansion Phase 8, workstream A, 2026-09-30: all
+  three validates reject loudly in peaceful worlds — covert ops are
+  hostile acts), and the stochastic action rolls (steal success on the
   thief's `intel-<owner>` stream, sabotage spot checks on the victim's;
   failures/spot-checks burn the spy). Consumed by: `acquireTarget`
   (combat.ts skips undetected stealth), `getVisibleEnemies` (ai.ts —

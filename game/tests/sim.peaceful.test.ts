@@ -1,0 +1,597 @@
+/*!
+ * NOVATERRA — Copyright (C) 2026 Gumb Dames
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, version 3 of the License.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
+/**
+ * NOVATERRA — peaceful-mode sim-foundation tests (grand-expansion Phase 8,
+ * workstream A, 2026-09-30).
+ *
+ * Covers the sibling contracts:
+ *  - `world.peaceful` exists, defaults to false, and round-trips through
+ *    snapshots (a legacy snapshot that predates the field decodes to
+ *    false — the AD9 neutral-default precedent, no version bump).
+ *  - The command lockout: military defs are LOUDLY rejected in peaceful
+ *    worlds on all four paths (spawnUnit, placeBuilding,
+ *    researchUpgrade, the three covert ops) plus the superweapon path
+ *    (constructSuperweaponFacility / fireStorm / fireAegis); civilian
+ *    defs still enqueue cleanly.
+ *  - Roster pinning: every unit/building/upgrade kind is classified by
+ *    its `military` def flag, matching the pinned sets (a def rebalance
+ *    that moves a kind breaks the suite loudly instead of silently
+ *    re-tuning the lockout).
+ *  - Conquest is bypassed in peaceful worlds (checkSkirmishVictory /
+ *    checkSkirmishDefeat / getSkirmishOutcome), so the peaceful victory
+ *    (`checkPeacefulVictory`) owns the outcome.
+ *  - The peaceful victory fires at exactly the population target with a
+ *    non-negative treasury — and not before, and not with a negative
+ *    treasury.
+ *  - Determinism: same seed + peaceful ⇒ identical digest across runs,
+ *    and the flag itself is digest-covered.
+ *
+ * Headless (no DOM/three.js). Deterministic: no wall clock, no Math.random.
+ */
+import { describe, expect, it } from 'vitest';
+import { createWorld, type World } from '../src/sim/world';
+import {
+  CommandRejectedError,
+  createCommandQueue,
+  type CommandQueue,
+  type NewCommand,
+} from '../src/sim/commands';
+import { registerUnitCommands, UNIT_DEFS, spawnUnit } from '../src/sim/units';
+import {
+  BUILDING_DEFS,
+  getPlayer,
+  ZoneType,
+  cellIsWater,
+  cellCenterWorld,
+  cellIndex,
+  CITY_GRID_CELLS,
+} from '../src/sim/city';
+import { registerCityCommands } from '../src/sim/city';
+import { registerUpgradeCommands, UPGRADE_DEFS } from '../src/sim/upgrades';
+import { registerIntelCommands } from '../src/sim/intel';
+import { registerSuperweaponCommands } from '../src/sim/superweapons';
+import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
+import { digestWorld } from '../src/sim/digest';
+import {
+  checkPeacefulVictory,
+  peacefulObjectiveProgress,
+  PEACEFUL_VICTORY_POPULATION,
+} from '../src/sim/peaceful';
+import {
+  generateTerrain,
+  MERIDIAN_PLAINS,
+  type TerrainData,
+} from '../src/sim/terrain';
+import {
+  createSession,
+  checkSkirmishVictory,
+  checkSkirmishDefeat,
+  getSkirmishOutcome,
+  CONQUEST_GRACE_TICKS,
+  HUMAN_PLAYER_ID,
+  AI_PLAYER_ID,
+} from '../src/ui/session';
+import {
+  grantAllTrainingResources,
+  completeBuilding,
+} from './sim.roster-fixtures';
+
+// ---------------------------------------------------------------------------
+// Fixtures
+// ---------------------------------------------------------------------------
+
+let cachedTerrain: TerrainData | null = null;
+function getTerrain(): TerrainData {
+  if (!cachedTerrain) cachedTerrain = generateTerrain(MERIDIAN_PLAINS.seed);
+  return cachedTerrain;
+}
+
+interface Ctx {
+  terrain: TerrainData;
+  world: World;
+  queue: CommandQueue;
+}
+
+/** A peaceful world with all command families registered. */
+function peacefulSetup(seed = 20260930): Ctx {
+  const terrain = getTerrain();
+  const world = createWorld(seed);
+  // The session sets this at tick 0 from SessionOptions.peaceful; tests
+  // set it before any command, exactly like the session does.
+  world.peaceful = true;
+  const queue = createCommandQueue();
+  registerUnitCommands(queue, terrain);
+  registerCityCommands(queue, terrain);
+  registerUpgradeCommands(queue);
+  registerIntelCommands(queue);
+  registerSuperweaponCommands(queue);
+  grantAllTrainingResources(world);
+  return { terrain, world, queue };
+}
+
+/** The same fixture with the flag left at its createWorld default. */
+function warSetup(seed = 20260930): Ctx {
+  const ctx = peacefulSetup(seed);
+  ctx.world.peaceful = false;
+  return ctx;
+}
+
+function enq(ctx: Ctx, kind: string, payload: Record<string, unknown>): void {
+  const cmd: NewCommand = { kind, payload, issuer: 'player' };
+  ctx.queue.enqueue(ctx.world, cmd);
+}
+
+/** The rejection message for a command, or null when it enqueues cleanly. */
+function rejectionReason(
+  ctx: Ctx,
+  kind: string,
+  payload: Record<string, unknown>,
+): string | null {
+  try {
+    enq(ctx, kind, payload);
+    return null;
+  } catch (e) {
+    expect(e).toBeInstanceOf(CommandRejectedError);
+    return (e as CommandRejectedError).message;
+  }
+}
+
+/** Find an all-land rect (for zoning / footprints / spawn points). */
+function findLandRect(t: TerrainData, w: number, h: number): { cx: number; cz: number } {
+  for (let cz = 0; cz + h <= CITY_GRID_CELLS; cz++) {
+    for (let cx = 0; cx + w <= CITY_GRID_CELLS; cx++) {
+      let ok = true;
+      for (let dz = 0; dz < h && ok; dz++) {
+        for (let dx = 0; dx < w && ok; dx++) {
+          if (cellIsWater(t, cx + dx, cz + dz)) ok = false;
+        }
+      }
+      if (ok) return { cx, cz };
+    }
+  }
+  throw new Error(`no ${w}x${h} land rect`);
+}
+
+/** A peaceful-session world (the UI assembly path), tick 1. */
+function peacefulSessionWorld(): World {
+  return createSession({ seed: 4242, peaceful: true }).world;
+}
+
+// ---------------------------------------------------------------------------
+// Pinned rosters — the full classification of every def.
+// A def rebalance that moves a kind across the line must update these
+// sets deliberately; that is the point of pinning them here.
+// ---------------------------------------------------------------------------
+
+/** The 47 military unit kinds (every other unit def is civilian). */
+const MILITARY_UNITS = new Set([
+  'aa',
+  'ammoShip',
+  'apc',
+  'armedUAV',
+  'artillery',
+  'attackHeli',
+  'awacs',
+  'battleship',
+  'carrier',
+  'coastGuardCutter',
+  'coastalSub',
+  'combatMedic',
+  'commandShip',
+  'corvette',
+  'cruiser',
+  'destroyer',
+  'drone', // armed scout drone (damage 9) — not the unarmed reconUAV/reconPlane
+  'fighter',
+  'fighterBomber',
+  'frigate',
+  'fuelTanker',
+  'fuelTruck',
+  'gunship',
+  'heavyDestroyer',
+  'hq',
+  'maritimePatrol',
+  'militaryCargo',
+  'minelayer',
+  'missileBoat',
+  'missileSub',
+  'mlrs',
+  'navalFighter',
+  'navalMine',
+  'patrolBoat',
+  'reconTeam',
+  'repairShip',
+  'rifles',
+  'sniperTeam',
+  'spectre',
+  'spy',
+  'strategicBomber',
+  'submarine',
+  'supplyTruck',
+  'tank',
+  'tankDestroyer',
+  'tanker',
+  'trainer',
+]);
+
+/** The 21 military building kinds (every other building def is civilian). */
+const MILITARY_BUILDINGS = new Set([
+  'aegisControl',
+  'stormArray',
+  'barracks',
+  'warFactory',
+  'militaryAcademy',
+  'airfield',
+  'navalYard',
+  'shipyard',
+  'radarStation',
+  'munitionsFactory',
+  'missilePlant',
+  'missileSilo',
+  'ordnanceDepot',
+  'fuelDepot',
+  'intelHQ',
+  'listeningPost',
+  'satelliteUplink',
+  'signalsStation',
+  'militaryAirbase',
+  'mixedAirport',
+  'navalBase',
+]);
+
+/** The 11 military upgrade kinds (every other upgrade is civilian). */
+const MILITARY_UPGRADES = new Set([
+  'apRounds',
+  'compositeArmor',
+  'engineTuning',
+  'advancedAvionics',
+  'sonarSuite',
+  'cruiseMissiles',
+  'droneOptics',
+  'fieldMedicine',
+  'advancedLogistics',
+  'signalsIntel',
+  'counterIntel',
+]);
+
+// ---------------------------------------------------------------------------
+// world.peaceful flag
+// ---------------------------------------------------------------------------
+
+describe('world.peaceful flag', () => {
+  it('defaults to false in createWorld', () => {
+    expect(createWorld(1).peaceful).toBe(false);
+  });
+
+  it('round-trips true through snapshot/restore', () => {
+    const world = createWorld(7);
+    world.peaceful = true;
+    const restored = restoreSnapshot(takeSnapshot(world));
+    expect(restored.peaceful).toBe(true);
+  });
+
+  it('round-trips false through snapshot/restore', () => {
+    const restored = restoreSnapshot(takeSnapshot(createWorld(7)));
+    expect(restored.peaceful).toBe(false);
+  });
+
+  it('a legacy snapshot that predates the field decodes to false (no version bump)', () => {
+    const snap = takeSnapshot(createWorld(7)) as unknown as Record<string, unknown>;
+    delete snap.peaceful;
+    expect(restoreSnapshot(snap as never).peaceful).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Command lockout
+// ---------------------------------------------------------------------------
+
+describe('peaceful command lockout', () => {
+  it('spawnUnit rejects military units loudly and accepts civilian ones', () => {
+    const ctx = peacefulSetup();
+    const { cx, cz } = findLandRect(ctx.terrain, 4, 4);
+    const x = cellCenterWorld(cx);
+    const z = cellCenterWorld(cz);
+    const reason = rejectionReason(ctx, 'spawnUnit', { kind: 'rifles', owner: 0, x, z });
+    expect(reason).toMatch(/peaceful mode/);
+    expect(reason).toContain('Rifles');
+    // Civilian: the engineer trains fine.
+    expect(rejectionReason(ctx, 'spawnUnit', { kind: 'engineer', owner: 0, x, z })).toBeNull();
+  });
+
+  it('spawnUnit still accepts military units when the world is not peaceful', () => {
+    const ctx = warSetup();
+    const { cx, cz } = findLandRect(ctx.terrain, 4, 4);
+    const x = cellCenterWorld(cx);
+    const z = cellCenterWorld(cz);
+    // The barracks gate is the only blocker — the peaceful gate is off.
+    completeBuilding(ctx.world, 'barracks', 0, cx, cz);
+    expect(
+      rejectionReason(ctx, 'spawnUnit', { kind: 'rifles', owner: 0, x, z }),
+    ).toBeNull();
+  });
+
+  it('placeBuilding rejects military buildings loudly and accepts civilian ones', () => {
+    const ctx = peacefulSetup();
+    const reason = rejectionReason(ctx, 'placeBuilding', {
+      kind: 'barracks',
+      owner: 0,
+      cx: 10,
+      cz: 10,
+      facing: 0,
+    });
+    expect(reason).toMatch(/peaceful mode/);
+    expect(reason).toContain('Barracks');
+    // Civilian: a house on zoned residential land places fine.
+    const { cx, cz } = findLandRect(ctx.terrain, 8, 8);
+    enq(ctx, 'buildRoad', {
+      owner: 0,
+      cells: [
+        cellIndex(cx, cz),
+        cellIndex(cx + 1, cz),
+        cellIndex(cx + 2, cz),
+        cellIndex(cx + 3, cz),
+      ],
+    });
+    enq(ctx, 'paintZone', {
+      owner: 0,
+      zone: ZoneType.RESIDENTIAL,
+      x0: cx,
+      z0: cz + 1,
+      x1: cx + 3,
+      z1: cz + 2,
+    });
+    ctx.queue.applyDue(ctx.world, ctx.world.tick);
+    expect(
+      rejectionReason(ctx, 'placeBuilding', { kind: 'house', owner: 0, cx, cz: cz + 1, facing: 0 }),
+    ).toBeNull();
+  });
+
+  it('researchUpgrade rejects military upgrades loudly and accepts civilian ones', () => {
+    const ctx = peacefulSetup();
+    completeBuilding(ctx.world, 'lab', 0, 10, 10);
+    const player = getPlayer(ctx.world.city, 0);
+    if (!player) throw new Error('no player 0');
+    player.research = 1_000_000;
+    const reason = rejectionReason(ctx, 'researchUpgrade', { owner: 0, upgrade: 'apRounds' });
+    expect(reason).toMatch(/peaceful mode/);
+    // Civilian: the utility ladder researches fine (foundation age, no
+    // building gate — the honest civilian counterpart).
+    expect(
+      rejectionReason(ctx, 'researchUpgrade', { owner: 0, upgrade: 'groundwaterSurvey' }),
+    ).toBeNull();
+  });
+
+  it('covert ops are locked out in peaceful worlds', () => {
+    const ctx = warSetup();
+    // Spy training is military-locked, so the spy is trained before the
+    // world goes peaceful — the only honest way to test the op gate.
+    const spy = spawnUnit(ctx.world, 'spy', 0, 100, 100);
+    completeBuilding(ctx.world, 'house', 1, 20, 20);
+    const target = ctx.world.city.buildings[ctx.world.city.buildings.length - 1];
+    if (!target) throw new Error('no target building');
+    ctx.world.peaceful = true;
+    for (const kind of ['infiltrateBuilding', 'sabotage', 'stealTech'] as const) {
+      const reason = rejectionReason(ctx, kind, {
+        unitId: spy.id,
+        buildingId: target.id,
+        owner: 0,
+      });
+      expect(reason).toMatch(/peaceful mode/);
+    }
+  });
+
+  it('the superweapon path is locked out in peaceful worlds', () => {
+    const ctx = peacefulSetup();
+    // Marshal-only construction (the AI path that bypasses placeBuilding).
+    expect(
+      rejectionReason(ctx, 'constructSuperweaponFacility', { owner: 0, kind: 'storm' }),
+    ).toMatch(/peaceful mode/);
+    // Firing gates too — defense in depth on top of the build lockout.
+    expect(rejectionReason(ctx, 'fireStorm', { owner: 0, x: 100, z: 100 })).toMatch(
+      /peaceful mode/,
+    );
+    expect(rejectionReason(ctx, 'fireAegis', { owner: 0 })).toMatch(/peaceful mode/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Roster pinning
+// ---------------------------------------------------------------------------
+
+describe('military def classification (roster pinning)', () => {
+  it('classifies every one of the 68 unit defs', () => {
+    const kinds = Object.keys(UNIT_DEFS);
+    expect(kinds).toHaveLength(68);
+    const military = kinds.filter((k) => UNIT_DEFS[k as keyof typeof UNIT_DEFS].military === true);
+    expect(military).toHaveLength(47);
+    expect(new Set(military)).toEqual(MILITARY_UNITS);
+    // The complement is civilian: the flag is absent or explicitly false.
+    for (const k of kinds) {
+      const def = UNIT_DEFS[k as keyof typeof UNIT_DEFS];
+      expect(def.military === true).toBe(MILITARY_UNITS.has(k));
+    }
+  });
+
+  it('classifies every one of the 89 building defs', () => {
+    const kinds = Object.keys(BUILDING_DEFS);
+    expect(kinds).toHaveLength(89);
+    const military = kinds.filter(
+      (k) => BUILDING_DEFS[k as keyof typeof BUILDING_DEFS].military === true,
+    );
+    expect(military).toHaveLength(21);
+    expect(new Set(military)).toEqual(MILITARY_BUILDINGS);
+    for (const k of kinds) {
+      const def = BUILDING_DEFS[k as keyof typeof BUILDING_DEFS];
+      expect(def.military === true).toBe(MILITARY_BUILDINGS.has(k));
+    }
+  });
+
+  it('classifies every one of the 21 upgrade defs', () => {
+    const kinds = Object.keys(UPGRADE_DEFS);
+    expect(kinds).toHaveLength(21);
+    const military = kinds.filter(
+      (k) => UPGRADE_DEFS[k as keyof typeof UPGRADE_DEFS].military === true,
+    );
+    expect(military).toHaveLength(11);
+    expect(new Set(military)).toEqual(MILITARY_UPGRADES);
+    for (const k of kinds) {
+      const def = UPGRADE_DEFS[k as keyof typeof UPGRADE_DEFS];
+      expect(def.military === true).toBe(MILITARY_UPGRADES.has(k));
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Conquest bypass
+// ---------------------------------------------------------------------------
+
+/** Remove every unit and building belonging to `owner`. */
+function eliminate(world: World, owner: number): void {
+  world.units = world.units.filter((u) => u.owner !== owner);
+  world.city.buildings = world.city.buildings.filter((b) => b.owner !== owner);
+}
+
+describe('conquest bypass in peaceful worlds', () => {
+  it('a peaceful session still has a rival and civilian starting forces', () => {
+    const world = peacefulSessionWorld();
+    expect(world.peaceful).toBe(true);
+    expect(world.units.some((u) => u.owner === AI_PLAYER_ID)).toBe(true);
+    // No rifles: the opening force swapped them for haulers.
+    expect(world.units.some((u) => u.kind === 'rifles')).toBe(false);
+    expect(world.units.some((u) => u.owner === HUMAN_PLAYER_ID && u.kind === 'hauler')).toBe(
+      true,
+    );
+  });
+
+  it('checkSkirmishVictory is false even with the rival eliminated', () => {
+    const world = peacefulSessionWorld();
+    eliminate(world, AI_PLAYER_ID);
+    expect(checkSkirmishVictory(world)).toBe(false);
+  });
+
+  it('checkSkirmishDefeat is false even with the player eliminated', () => {
+    const world = peacefulSessionWorld();
+    eliminate(world, HUMAN_PLAYER_ID);
+    expect(checkSkirmishDefeat(world)).toBe(false);
+  });
+
+  it('getSkirmishOutcome is null past the grace period with the rival eliminated', () => {
+    const world = peacefulSessionWorld();
+    world.tick = CONQUEST_GRACE_TICKS + 1;
+    eliminate(world, AI_PLAYER_ID);
+    expect(getSkirmishOutcome(world)).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Peaceful victory
+// ---------------------------------------------------------------------------
+
+/** Set the owner's housed population and treasury directly. */
+function setCensus(world: World, owner: number, population: number, funds: number): void {
+  const player = getPlayer(world.city, owner);
+  if (!player) throw new Error(`no player ${owner}`);
+  player.population = population;
+  player.funds = funds;
+}
+
+describe('checkPeacefulVictory', () => {
+  it('the target threshold is 8,000 housed residents', () => {
+    expect(PEACEFUL_VICTORY_POPULATION).toBe(8000);
+  });
+
+  it('fires at exactly the target with a non-negative treasury', () => {
+    const world = createWorld(3);
+    setCensus(world, 0, 8000, 0);
+    expect(checkPeacefulVictory(world, 0)).toBe(true);
+  });
+
+  it('does not fire below the target', () => {
+    const world = createWorld(3);
+    setCensus(world, 0, 7999, 1_000_000);
+    expect(checkPeacefulVictory(world, 0)).toBe(false);
+  });
+
+  it('does not fire with a negative treasury', () => {
+    const world = createWorld(3);
+    setCensus(world, 0, 8000, -1);
+    expect(checkPeacefulVictory(world, 0)).toBe(false);
+  });
+
+  it('does not fire for a missing player', () => {
+    const world = createWorld(3);
+    expect(checkPeacefulVictory(world, 99)).toBe(false);
+  });
+});
+
+describe('peacefulObjectiveProgress', () => {
+  it('reports the full progress shape', () => {
+    const world = createWorld(3);
+    setCensus(world, 0, 4500, 5000);
+    expect(peacefulObjectiveProgress(world, 0)).toEqual({
+      population: 4500,
+      target: PEACEFUL_VICTORY_POPULATION,
+      treasuryOk: true,
+      achieved: false,
+    });
+  });
+
+  it('reports achieved when both conditions hold', () => {
+    const world = createWorld(3);
+    setCensus(world, 0, 9000, 100);
+    const p = peacefulObjectiveProgress(world, 0);
+    expect(p.achieved).toBe(true);
+    expect(p.treasuryOk).toBe(true);
+  });
+
+  it('flags a negative treasury without throwing', () => {
+    const world = createWorld(3);
+    setCensus(world, 0, 9000, -50);
+    const p = peacefulObjectiveProgress(world, 0);
+    expect(p.treasuryOk).toBe(false);
+    expect(p.achieved).toBe(false);
+  });
+
+  it('reports zero progress for a missing player', () => {
+    const world = createWorld(3);
+    expect(peacefulObjectiveProgress(world, 99)).toEqual({
+      population: 0,
+      target: PEACEFUL_VICTORY_POPULATION,
+      treasuryOk: false,
+      achieved: false,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Determinism
+// ---------------------------------------------------------------------------
+
+describe('peaceful determinism', () => {
+  it('same seed + peaceful ⇒ identical digest across runs', () => {
+    const a = createSession({ seed: 99, peaceful: true }).world;
+    const b = createSession({ seed: 99, peaceful: true }).world;
+    expect(digestWorld(a)).toBe(digestWorld(b));
+  });
+
+  it('the flag is digest-covered: peaceful and war digests differ', () => {
+    const peaceful = createSession({ seed: 99, peaceful: true }).world;
+    const war = createSession({ seed: 99 }).world;
+    expect(digestWorld(peaceful)).not.toBe(digestWorld(war));
+  });
+});
