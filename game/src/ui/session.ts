@@ -378,8 +378,9 @@ export function createSession(options: SessionOptions): GameSession {
       // advance every tick (asset accrual rides the economy tick).
       createIntelSystem(),
       createMayorSystem(queue, terrain),
-      // AI needs the queue to issue its orders through.
-      createAISystem(queue),
+      // AI needs the queue to issue its orders through, and the terrain
+      // so the peaceful-mode AI can site physical buildings.
+      createAISystem(queue, terrain),
       // Generals issue orders like the AI does, after it.
       createGeneralSystem(queue),
     ],

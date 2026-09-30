@@ -32,9 +32,9 @@
  *               full navy on coastal maps, uses superweapons fairly.
  *
  * Production buildings (spec docs/research/roster-expansion.md §7.1):
- * the AI never paints zones or lays roads, so it *virtually* constructs
- * production buildings in priority order as funds allow: it pays the
- * full funds/materials cost upfront and the building unlocks after the
+ * in military worlds the AI never paints zones or lays roads, so it
+ * *virtually* constructs production buildings in priority order as
+ * funds allow: it pays the full funds/materials cost upfront and the building unlocks after the
  * real build time — the exact precedent of the Phase 3 superweapon
  * facilities below. Until a building unlocks, the kinds it gates are
  * skipped in composition (the same fallback pattern as the old
@@ -135,6 +135,7 @@ import type { World } from './world';
 import type { CommandQueue } from './commands';
 import type { SimSystem } from './tick';
 import { findUnit, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
+import { preferHighestVariant } from './variants';
 import { rngBank } from './world';
 import type { RngBank } from './rng';
 import { canTarget } from './combat';
@@ -164,11 +165,23 @@ import {
   defaultHangarSlots,
   BUILDING_DEFS,
   MAP_HALF_SIZE,
+  CITY_GRID_CELLS,
+  CELL_WORLD_SIZE,
+  ZoneType,
+  UTILITY_ZONE,
+  zoneAt,
+  cellIsWater,
+  cellIndex,
+  footprintCells,
+  validatePlacement,
+  FOOD_PER_POP_PER_SEC,
   type BuildingKind,
   type BuildingRecord,
   type HangarClass,
   type IntelAssets,
+  type Placement,
 } from './city';
+import type { TerrainData } from './terrain';
 import { isAegisReady, isStormReady } from './superweapons';
 import { CommandRejectedError } from './commands';
 
@@ -805,6 +818,15 @@ function moveGroupTo(
 export function canTrain(world: World, owner: number, kind: UnitKind): boolean {
   const def = UNIT_DEFS[kind];
   if (!def) return false;
+  // Grand-expansion Phase 8 (peaceful mode, workstream C): military
+  // defs are unbuildable in a peaceful world — the trainUnit command
+  // rejects them loudly (workstream A), so every composition check
+  // must skip them first. (The drone/scout wrinkle: the armed scout
+  // `drone` is military (unbuildable), and the civilian
+  // reconUAV/reconPlane need a military-locked airfield — in practice
+  // the peaceful AI has no scouts. It needs none: with no combat and
+  // no forward base, no think branch requires vision.)
+  if (world.peaceful === true && def.military === true) return false;
   if (!isUnitAvailableForAge(world, def.minAge)) return false;
   if (def.requiredBuilding && !hasProductionBuilding(world, owner, def.requiredBuilding)) return false;
   // Hangar-aware (grand-expansion Phase 5, S4): aircraft that need a
@@ -1471,7 +1493,15 @@ function thinkProduction(
   visible: UnitRecord[],
 ): void {
   if (n >= AI_MAX_UNITS[ai.difficulty]) return;
-  const kind = chooseUnitKind(world, ai, counts, visible);
+  // Grand-expansion Phase 8 (tech levels, workstream D, 2026-09-30):
+  // substitute the highest UNLOCKED + AFFORDABLE variant of the chosen
+  // kind (the AI must actually use the new content — PLAN §6 "no AI
+  // capability cliff"). The ledger is passed so affordability is judged
+  // on the same reservations `spawn` enforces below; when nothing
+  // higher qualifies the chosen kind returns unchanged (base kinds
+  // without variants included). The counter/base-mix logic above is
+  // untouched — this is a substitution, not a rewrite.
+  const kind = preferHighestVariant(world, ai.owner, chooseUnitKind(world, ai, counts, visible), thinkLedger(ai));
   const p = spawnPoint(ai, kind, n);
   spawn(world, queue, ai, kind, p.x, p.z);
   ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
@@ -2013,6 +2043,10 @@ function thinkIntel(
   ai: AIPlayerState,
   visible: UnitRecord[],
 ): void {
+  // Peaceful worlds: no spies, no covert ops, no intel construction —
+  // the AI must not even try (defense in depth; the peaceful dispatch
+  // in createAISystem never reaches this branch).
+  if (world.peaceful === true) return;
   thinkIntelConstruction(world, ai);
   thinkIntelSpies(world, queue, ai, visible);
   thinkIntelResearch(world, queue, ai);
@@ -2725,6 +2759,10 @@ function thinkSuperweapons(
   queue: CommandQueue,
   ai: AIPlayerState,
 ): void {
+  // Peaceful worlds: the AI must not even try — no storm/aegis
+  // facilities, no launches (defense in depth; the peaceful dispatch
+  // in createAISystem never reaches this branch).
+  if (world.peaceful === true) return;
   if (world.ages.age !== 'ascendance') return;
   const enqueue = (kind: string, payload: Record<string, unknown>): void => {
     issue(world, queue, kind, payload);
@@ -2801,14 +2839,617 @@ function advanceAge(world: World, queue: CommandQueue, owner: number, program: s
   issue(world, queue, 'advanceAge', { owner, program });
 }
 
+// ---------------------------------------------------------------------------
+// Grand-expansion Phase 8 (peaceful mode, workstream C): the peaceful AI.
+//
+// In a peaceful world the Classic AI plays a city-builder, not a
+// warlord. Every military think branch is gated behind `!world.peaceful`
+// (the canTrain gate above plus the dispatch in createAISystem below),
+// and the AI instead grows a real physical city toward the peaceful
+// victory (8,000 housed residents + non-negative treasury —
+// sim/peaceful.ts):
+//  - thinkPeacefulZoning paints three districts once (residential /
+//    commercial / industrial) plus a utility rect near the base, using
+//    the same validated command a human uses;
+//  - thinkPeacefulConstruction places buildings through `placeBuilding`
+//    in a fixed economic priority (utilities → commercial engine →
+//    housing), scaling power/water/food with measured demand;
+//  - thinkPeacefulResearch researches the civilian upgrades at a
+//    physical lab; thinkPeacefulAges advances ages with the civilian
+//    programs (fiberGrid / greenTech / globalMedia / prosperityProgram).
+//
+// Owning physical buildings is the one sanctioned exception to the
+// "all virtual" rule — and only in peaceful worlds: population is
+// counted from physical residential buildings (economy.ts
+// recountPopulation), so a virtual-only AI could never win the
+// peaceful victory. Sites come from a deterministic scan with
+// validatePlacement (never RNG); affordability is ledger-guarded so
+// the think's command batch never goes stale at apply. No new AI
+// state: the city itself is the record, so snapshots/digests are
+// untouched.
+//
+// The armed scout `drone` is military (unbuildable, see canTrain) and
+// the civilian reconUAV/reconPlane need a military-locked airfield —
+// in practice the peaceful AI has no scouts. It needs none: with no
+// combat and no forward base, no think branch requires vision.
+// ---------------------------------------------------------------------------
+
+/** World-coordinate → cell-coordinate (inverse of cellCenterWorld). */
+function worldToCell(x: number): number {
+  return Math.round((x + MAP_HALF_SIZE - CELL_WORLD_SIZE / 2) / CELL_WORLD_SIZE);
+}
+
+/** One peaceful district: a zone-painted rectangle near the base. */
+interface PeacefulDistrict {
+  zone: number;
+  w: number;
+  h: number;
+  /** Top-left offset (cells) from the AI's base cell. */
+  dx: number;
+  dz: number;
+}
+
+/**
+ * Residential / commercial / industrial districts, nominally disjoint.
+ *
+ * Lazily built (the pathfinding.ts `gridCells()` precedent): ai.ts sits
+ * inside the units→city→world→ai import cycle, so reading `ZoneType`
+ * (a city.ts value import) at module-eval time sees undefined when ai
+ * is first reached through city/world. The first call always lands
+ * after the module graph is fully evaluated.
+ */
+let _peacefulDistricts: PeacefulDistrict[] | undefined;
+function peacefulDistricts(): PeacefulDistrict[] {
+  if (!_peacefulDistricts) {
+    // Compact starter districts. Every painted cell is an invitation
+    // for organic growth (workstream Z) to spend the AI's funds — the
+    // AI keeps the early footprint tight and expands only once its
+    // income engine is solvent. Sizes fit the phase-B engine plus
+    // headroom: the commercial district fits the AI's markets plus
+    // organic shops (organic builds the cheapest commercial def);
+    // the industrial district fits 2 factories + farm + quarry with
+    // room for organic farms (it builds the cheapest industrial def).
+    // Smaller = less paint cost, less organic spend, more buffer.
+    _peacefulDistricts = [
+      { zone: ZoneType.RESIDENTIAL, w: 8, h: 8, dx: -12, dz: -12 },
+      { zone: ZoneType.COMMERCIAL, w: 6, h: 6, dx: 0, dz: -12 },
+      { zone: ZoneType.INDUSTRIAL, w: 8, h: 8, dx: -12, dz: 0 },
+    ];
+  }
+  return _peacefulDistricts;
+}
+
+/** Utility buildings need no zoning; they search this rect near the base. */
+const PEACEFUL_UTILITY_RECT = { w: 14, h: 14, dx: 0, dz: 0 };
+
+/** Find an all-land, in-bounds w×h rect: nominal first, then a bounded row-major scan. Deterministic. */
+function findLandRect(
+  t: TerrainData,
+  cx0: number,
+  cz0: number,
+  w: number,
+  h: number,
+  avoid?: (cx: number, cz: number) => boolean,
+): { x0: number; z0: number; x1: number; z1: number } | null {
+  const fits = (x: number, z: number): boolean => {
+    if (x < 0 || z < 0 || x + w > CITY_GRID_CELLS || z + h > CITY_GRID_CELLS) return false;
+    for (let cz = z; cz < z + h; cz++)
+      for (let cx = x; cx < x + w; cx++) {
+        if (cellIsWater(t, cx, cz)) return false;
+        if (avoid && avoid(cx, cz)) return false;
+      }
+    return true;
+  };
+  if (fits(cx0, cz0)) return { x0: cx0, z0: cz0, x1: cx0 + w - 1, z1: cz0 + h - 1 };
+  for (let dz = -10; dz <= 10; dz++)
+    for (let dx = -10; dx <= 10; dx++) {
+      if (dx === 0 && dz === 0) continue;
+      if (fits(cx0 + dx, cz0 + dz))
+        return { x0: cx0 + dx, z0: cz0 + dz, x1: cx0 + dx + w - 1, z1: cz0 + dz + h - 1 };
+    }
+  return null;
+}
+
+/** Resolve one district rect for this AI (null when no all-land rect fits). */
+function peacefulDistrictRect(
+  terrain: TerrainData,
+  ai: AIPlayerState,
+  d: PeacefulDistrict,
+  avoid?: (cx: number, cz: number) => boolean,
+): { x0: number; z0: number; x1: number; z1: number } | null {
+  const bcx = worldToCell(ai.baseX);
+  const bcz = worldToCell(ai.baseZ);
+  return findLandRect(terrain, bcx + d.dx, bcz + d.dz, d.w, d.h, avoid);
+}
+
+/**
+ * All three district rects, computed in fixed order with each avoiding
+ * the earlier ones. Terrain shifts (findLandRect's ±10 search) can push
+ * two districts onto the same cells; without this, a later paintZone
+ * overwrites the earlier zone and buildings placed on it go stale at
+ * apply (the queue's loud-rejection contract crashes the tick).
+ * Deterministic: fixed district order, pure terrain reads.
+ */
+function peacefulDistrictRects(
+  terrain: TerrainData,
+  ai: AIPlayerState,
+): Map<number, { x0: number; z0: number; x1: number; z1: number }> {
+  const rects = new Map<number, { x0: number; z0: number; x1: number; z1: number }>();
+  const avoid = (cx: number, cz: number): boolean => {
+    for (const r of rects.values()) {
+      if (cx >= r.x0 && cx <= r.x1 && cz >= r.z0 && cz <= r.z1) return true;
+    }
+    return false;
+  };
+  for (const d of peacefulDistricts()) {
+    const rect = peacefulDistrictRect(terrain, ai, d, avoid);
+    if (rect) rects.set(d.zone, rect);
+  }
+  return rects;
+}
+
+/** True when every cell of the rect already carries the district's zone. */
+function peacefulDistrictZoned(
+  world: World,
+  rect: { x0: number; z0: number; x1: number; z1: number },
+  zone: number,
+): boolean {
+  for (let cz = rect.z0; cz <= rect.z1; cz++)
+    for (let cx = rect.x0; cx <= rect.x1; cx++)
+      if (zoneAt(world.city, cellIndex(cx, cz)) !== zone) return false;
+  return true;
+}
+
+/** Paint the three districts once (skips what is already zoned). */
+function thinkPeacefulZoning(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  terrain: TerrainData,
+): void {
+  const player = getPlayer(world.city, ai.owner);
+  if (!player) return;
+  const l = thinkLedger(ai);
+  const rects = peacefulDistrictRects(terrain, ai);
+  for (const d of peacefulDistricts()) {
+    const rect = rects.get(d.zone);
+    if (!rect || peacefulDistrictZoned(world, rect, d.zone)) continue;
+    // paintZone charges 1 fund per newly-painted cell; the ledger keeps
+    // the think's batch affordable (paintZone validates affordability
+    // at apply, which would otherwise go stale on a multi-district
+    // think — the per-think ledger exists precisely for this).
+    let fresh = 0;
+    for (let cz = rect.z0; cz <= rect.z1; cz++)
+      for (let cx = rect.x0; cx <= rect.x1; cx++)
+        if (zoneAt(world.city, cellIndex(cx, cz)) !== d.zone) fresh++;
+    if (player.funds - l.funds < fresh) continue;
+    issue(world, queue, 'paintZone', {
+      owner: ai.owner,
+      zone: d.zone,
+      x0: rect.x0,
+      z0: rect.z0,
+      x1: rect.x1,
+      z1: rect.z1,
+    });
+    l.funds += fresh;
+  }
+}
+
+/**
+ * Scan a rect row-major for a legal `kind` site (deterministic), skipping
+ * cells claimed earlier this think. Affordability is ledger-checked by
+ * the caller, so a site that fails validatePlacement only on funds
+ * still counts.
+ */
+function findPeacefulSite(
+  world: World,
+  terrain: TerrainData,
+  ai: AIPlayerState,
+  kind: BuildingKind,
+  rect: { x0: number; z0: number; x1: number; z1: number },
+  claimed: Set<number>,
+): { cx: number; cz: number } | null {
+  const def = BUILDING_DEFS[kind];
+  for (let cz = rect.z0; cz <= rect.z1 - def.footprintH + 1; cz++) {
+    for (let cx = rect.x0; cx <= rect.x1 - def.footprintW + 1; cx++) {
+      const cells = footprintCells(cx, cz, def.footprintW, def.footprintH);
+      let taken = false;
+      for (const c of cells) if (claimed.has(c)) { taken = true; break; }
+      if (taken) continue;
+      const p: Placement = { kind, owner: ai.owner, cx, cz, facing: 0 };
+      const err = validatePlacement(terrain, world.city, p);
+      if (err === null || err.includes('cannot afford')) return { cx, cz };
+    }
+  }
+  return null;
+}
+
+/** Resolve the search rect for a kind: its district, or the utility rect. */
+function peacefulSearchRect(
+  world: World,
+  terrain: TerrainData,
+  ai: AIPlayerState,
+  kind: BuildingKind,
+): { x0: number; z0: number; x1: number; z1: number } | null {
+  const def = BUILDING_DEFS[kind];
+  if (def.zone === UTILITY_ZONE) {
+    const bcx = worldToCell(ai.baseX);
+    const bcz = worldToCell(ai.baseZ);
+    const r = PEACEFUL_UTILITY_RECT;
+    return findLandRect(terrain, bcx + r.dx, bcz + r.dz, r.w, r.h);
+  }
+  const d = peacefulDistricts().find((x) => x.zone === def.zone);
+  if (!d) return null;
+  // The district must actually be painted — not just planned. If the
+  // paintZone hasn't applied yet (or failed), validatePlacement would
+  // pass at think time on a stale read and go stale at apply, which
+  // crashes the tick (the queue's loud-rejection contract).
+  const rect = peacefulDistrictRects(terrain, ai).get(d.zone);
+  if (!rect || !peacefulDistrictZoned(world, rect, d.zone)) return null;
+  return rect;
+}
+
+/**
+ * Issue one `placeBuilding` for a legal site, ledger-guarding the cost.
+ * Never spends below PEACEFUL_FUNDS_RESERVE (see above). Returns true
+ * when a command was issued.
+ */
+function placePeaceful(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  kind: BuildingKind,
+  rect: { x0: number; z0: number; x1: number; z1: number },
+  claimed: Set<number>,
+  terrain: TerrainData,
+): boolean {
+  const player = getPlayer(world.city, ai.owner);
+  if (!player) return false;
+  const def = BUILDING_DEFS[kind];
+  const l = thinkLedger(ai);
+  if (player.funds - l.funds - def.costFunds < PEACEFUL_FUNDS_RESERVE) return false;
+  if (player.materials - l.materials < def.costMaterials) return false;
+  const site = findPeacefulSite(world, terrain, ai, kind, rect, claimed);
+  if (!site) return false;
+  issue(world, queue, 'placeBuilding', {
+    kind,
+    owner: ai.owner,
+    cx: site.cx,
+    cz: site.cz,
+    facing: 0,
+  });
+  l.funds += def.costFunds;
+  l.materials += def.costMaterials;
+  for (const c of footprintCells(site.cx, site.cz, def.footprintW, def.footprintH)) claimed.add(c);
+  return true;
+}
+
+/**
+ * Phase A: survival infrastructure. Utility-zone (no zoning needed),
+ * so this is all the AI can place on its first think (zones apply at
+ * the next tick start). Nothing else is wanted until this is done —
+ * otherwise the walk falls through to civic buildings and the AI
+ * spends its opening funds on a school before it has any income.
+ */
+const PEACEFUL_UTILITIES: Array<{ kind: BuildingKind; max: number }> = [
+  { kind: 'waterPump', max: 1 },
+  // The only foundation-age power plant (windFarm needs connectivity —
+  // it arrives via peacefulNeedKinds once the age advances).
+  { kind: 'powerPlant', max: 1 },
+];
+
+/**
+ * Phase B: the income engine. Needs the painted zones (think 2+).
+ * The AI builds the factories — the goods producers that organic
+ * growth cannot provide. Two factories (3.0 goods/s) support up to 6
+ * shops; organic typically builds 3-4 shops on the commercial
+ * district, so two factories guarantee the goods supply never
+ * starves the income engine. Shops themselves are built by organic
+ * growth (cheapest commercial def), with the AI as fallback if
+ * organic doesn't deliver (see peacefulNeedKinds). This keeps the
+ * AI's spend lean and leaves the treasury for organic to work with.
+ */
+const PEACEFUL_ENGINE: Array<{ kind: BuildingKind; max: number }> = [
+  { kind: 'factory', max: 2 },
+];
+
+/**
+ * Phase C: civic core. Wanted only once the engine is placed —
+ * education first (completed schools lift organic growth, workstream Z;
+ * the lab unlocks the civilian research line).
+ */
+const PEACEFUL_CIVIC: Array<{ kind: BuildingKind; max: number }> = [
+  { kind: 'school', max: 1 },
+  { kind: 'lab', max: 1 },
+];
+
+/**
+ * The commercial engine keeps scaling — funds are the binding
+ * constraint on the 8,000-resident victory, so commerce is the best
+ * investment until the treasury is rich enough to push housing.
+ */
+const PEACEFUL_COMMERCE_SCALE: Array<{ kind: BuildingKind; max: number }> = [
+  { kind: 'market', max: 6 },
+  { kind: 'shop', max: 8 },
+];
+
+/** Amenities: desirability for organic apartments and land value. */
+const PEACEFUL_AMENITIES: Array<{ kind: BuildingKind; max: number }> = [
+  { kind: 'library', max: 1 },
+  { kind: 'park', max: 2 },
+  { kind: 'kindergarten', max: 1 },
+  { kind: 'college', max: 1 },
+  { kind: 'hospital', max: 1 },
+  { kind: 'mediaCenter', max: 1 },
+];
+
+/**
+ * Funds the AI never spends below. Upkeep is automatic every economy
+ * tick — without a buffer the AI spends its last fund on a building,
+ * can't pay upkeep, and the whole city goes non-operational (no taxes,
+ * no production: the death spiral). The buffer must be low enough to
+ * let the income engine itself be built (two shops cost 440) yet high
+ * enough to survive the ~60 sim-seconds until shop income covers
+ * upkeep. 200 threads that needle: it blocks frivolous spending while
+ * the engine is incomplete, but never blocks the engine.
+ */
+const PEACEFUL_FUNDS_RESERVE = 200;
+
+/**
+ * While the treasury holds this much, housing outranks further
+ * commerce: the victory is residents, and a rich AI should convert
+ * funds into apartments instead of a seventh market.
+ */
+const PEACEFUL_HOUSING_FUNDS = 2000;
+
+/** Max placements per think — actions are cheap; funds are the limit. */
+const PEACEFUL_PLACEMENTS_PER_THINK = 4;
+
+/**
+ * Demand-driven needs, evaluated before the fixed tables every slot:
+ * power/water shortfalls first (unserved buildings pay no taxes and
+ * produce nothing), then food scaled to population. Deterministic:
+ * plain sums over the AI's buildings in stored order.
+ */
+function peacefulNeedKinds(world: World, ai: AIPlayerState, counts: Map<BuildingKind, number>): BuildingKind[] {
+  let powerDemand = 0;
+  let powerSupply = 0;
+  let waterDemand = 0;
+  let waterSupply = 0;
+  for (const b of world.city.buildings) {
+    if (b.owner !== ai.owner) continue;
+    const def = BUILDING_DEFS[b.kind];
+    powerDemand += def.powerDemand;
+    powerSupply += def.powerSupply;
+    waterDemand += def.waterDemand;
+    waterSupply += def.waterSupply;
+  }
+  // Farm count comes from the caller's map (which includes buildings
+  // placed earlier in THIS think — world.city.buildings doesn't have
+  // them yet, so a recount would re-order the same farm every slot).
+  const farms = counts.get('farm') ?? 0;
+  const needs: BuildingKind[] = [];
+  // Cheaper windFarm as the fallback when the big plant is out of reach
+  // this think — the placement loop skips unaffordable kinds.
+  if (powerSupply < powerDemand) needs.push('powerPlant', 'windFarm');
+  if (waterSupply < waterDemand) needs.push('waterPump');
+  const player = getPlayer(world.city, ai.owner);
+  const pop = player ? player.population : 0;
+  const farmsNeeded = Math.ceil((pop * FOOD_PER_POP_PER_SEC) / 3) + 1;
+  if (farms < farmsNeeded) needs.push('farm');
+  // Materials: the 1500 starting stock covers the engine; the quarry
+  // comes only when the stockpile runs low (it's upkeep without income
+  // until the AI starts building in volume).
+  if (player && player.materials < 800 && (counts.get('quarry') ?? 0) < 1) {
+    needs.push('quarry');
+  }
+  return needs;
+}
+
+/**
+ * The command layer gates placeBuilding on more than validatePlacement:
+ * age (minAge), requiredBuilding, requiredUpgrade, and the peaceful
+ * military lock. The site pre-check only runs validatePlacement, so
+ * filter candidates here — otherwise the AI issues commands the
+ * enqueue validate rejects (swallowed by issue(), but the slot and the
+ * ledger reservation are wasted). Deterministic: pure world reads.
+ */
+function peacefulKindAvailable(world: World, ai: AIPlayerState, kind: BuildingKind): boolean {
+  const def = BUILDING_DEFS[kind];
+  if (world.peaceful === true && def.military === true) return false;
+  if (!isBuildingAgeMet(world.ages.age, def.minAge)) return false;
+  if (def.requiredBuilding && !hasProductionBuilding(world, ai.owner, def.requiredBuilding)) return false;
+  if (def.requiredUpgrade && !hasUpgrade(world, ai.owner, def.requiredUpgrade)) return false;
+  return true;
+}
+
+/**
+ * The peaceful construction brain: for each placement slot, walk the
+ * priority and place the first kind that is wanted, ledger-affordable
+ * (above the funds reserve), and has a legal site. Order:
+ * demand needs (unserved buildings earn nothing) → one-time bootstrap
+ * → commerce scale while the treasury is lean → amenities → apartments.
+ * While the treasury is rich (>= PEACEFUL_HOUSING_FUNDS) commerce is
+ * skipped: the victory is residents, so a rich AI converts funds into
+ * apartments instead of a seventh market. Apartments are the infinite
+ * sink and always "wanted", so a built-out city grows housing every
+ * slot it can afford.
+ */
+function thinkPeacefulConstruction(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  terrain: TerrainData,
+): void {
+  const counts = new Map<BuildingKind, number>();
+  for (const b of world.city.buildings) {
+    if (b.owner !== ai.owner) continue;
+    counts.set(b.kind, (counts.get(b.kind) ?? 0) + 1);
+  }
+  // Counts include buildings still under construction (progress < 1):
+  // records exist from apply time, so the AI never over-orders while
+  // a kind is being built.
+  const wanted = (kind: BuildingKind, max: number): boolean =>
+    (counts.get(kind) ?? 0) < max;
+  const player = getPlayer(world.city, ai.owner);
+  const rich = player !== undefined && player.funds >= PEACEFUL_HOUSING_FUNDS;
+  const claimed = new Set<number>();
+  for (let slot = 0; slot < PEACEFUL_PLACEMENTS_PER_THINK; slot++) {
+    const candidates: BuildingKind[] = [...peacefulNeedKinds(world, ai, counts)];
+    // Phase gating: utilities → engine → everything else. The phases
+    // are checked on PLACED counts (any progress), so a phase that is
+    // mid-construction still counts — the AI doesn't stall waiting for
+    // build times. Without this, the first think (before the zones
+    // apply) falls through to civic buildings and the AI spends its
+    // opening funds on a school before it has any income.
+    const utilitiesDone =
+      (counts.get('waterPump') ?? 0) >= 1 && (counts.get('powerPlant') ?? 0) >= 1;
+    // The engine is the factories; shops are built by organic growth —
+    // but if organic hasn't built any by the time the factories are up,
+    // the AI builds them itself (fallback, not the primary plan).
+    const engineDone = (counts.get('factory') ?? 0) >= 2;
+    // Phase C (civic, commerce-scale, amenities, housing) also needs a
+    // rich treasury — not just a placed engine. The engine takes ~60
+    // sim-seconds to come online (build times); spending on non-earners
+    // before the income stabilizes tips the city into the upkeep death
+    // spiral (funds hit 0 → nothing operational → no income → permanent
+    // stall). The rich threshold (2000) is the same one that gates
+    // housing: if the AI can't afford apartments, it can't afford
+    // amenities either.
+    for (const r of PEACEFUL_UTILITIES) if (wanted(r.kind, r.max)) candidates.push(r.kind);
+    if (utilitiesDone) {
+      for (const r of PEACEFUL_ENGINE) if (wanted(r.kind, r.max)) candidates.push(r.kind);
+    }
+    // Income scaling: once the engine is placed but the treasury isn't
+    // rich yet, build more commerce (shops/markets) — not civic or
+    // housing. Commerce earns; everything else spends.
+    if (engineDone && !rich) {
+      for (const r of PEACEFUL_COMMERCE_SCALE) if (wanted(r.kind, r.max)) candidates.push(r.kind);
+    }
+    // Early housing: the AI guarantees population growth itself instead
+    // of relying on organic growth. Houses are cheap (120 funds) and
+    // ensure the city grows even if organic builds slowly. Built when
+    // the treasury has a comfortable buffer (500+) — not the full rich
+    // threshold, which takes too long to reach.
+    if (engineDone && player !== undefined && player.funds >= 500) {
+      if (wanted('house', 10)) candidates.push('house');
+    }
+    if (engineDone && rich) {
+      for (const r of PEACEFUL_CIVIC) if (wanted(r.kind, r.max)) candidates.push(r.kind);
+      for (const r of PEACEFUL_AMENITIES) if (wanted(r.kind, r.max)) candidates.push(r.kind);
+      candidates.push('apartment');
+    }
+    let placed = false;
+    for (const kind of candidates) {
+      if (!peacefulKindAvailable(world, ai, kind)) continue;
+      const rect = peacefulSearchRect(world, terrain, ai, kind);
+      if (!rect) continue;
+      if (placePeaceful(world, queue, ai, kind, rect, claimed, terrain)) {
+        counts.set(kind, (counts.get(kind) ?? 0) + 1);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) break;
+  }
+}
+/**
+ * The civilian research line, in fixed priority order (workstream A's
+ * classification: these 10 upgrades are all non-military). Needs a
+ * completed physical lab — researchForAI checks availability and
+ * affordability; military defs are filtered defensively even though
+ * the table holds none.
+ */
+const PEACEFUL_RESEARCH_PRIORITY: UpgradeId[] = [
+  'precisionManufacturing',
+  'smartGrid',
+  'verticalFarming',
+  'freeTrade',
+  'combustionTech',
+  'groundwaterSurvey',
+  'desalinationTech',
+  'gridStorage',
+  'advancedNuclear',
+  'fusionResearch',
+];
+
+function thinkPeacefulResearch(world: World, queue: CommandQueue, ai: AIPlayerState): void {
+  // researchUpgrade needs a completed physical lab (hasProductionBuilding
+  // requires progress >= 1 for real buildings).
+  if (!hasProductionBuilding(world, ai.owner, 'lab')) return;
+  const player = getPlayer(world.city, ai.owner);
+  if (!player) return;
+  const l = thinkLedger(ai);
+  for (const id of PEACEFUL_RESEARCH_PRIORITY) {
+    const def = UPGRADE_DEFS[id];
+    if (!def || def.military === true) continue;
+    if (hasUpgrade(world, ai.owner, id)) continue;
+    if (!isUnitAvailableForAge(world, def.minAge)) continue;
+    if (player.funds - l.funds < def.costFunds) continue;
+    if (player.research - l.research < def.costResearch) continue;
+    researchForAI(world, queue, ai, id);
+    return; // one upgrade per think — the lab trickles research income
+  }
+}
+
+/** Civilian age programs — the peaceful counterparts to the war paths. */
+const PEACEFUL_AGE_PROGRAMS: Record<string, string> = {
+  connectivity: 'fiberGrid',
+  industry: 'greenTech',
+  information: 'globalMedia',
+  ascendance: 'prosperityProgram',
+};
+
+function thinkPeacefulAges(world: World, queue: CommandQueue, ai: AIPlayerState): void {
+  const prog = AGE_PROGRESSION[world.ages.age];
+  if (!prog || !prog.next) return;
+  const program = PEACEFUL_AGE_PROGRAMS[prog.next];
+  if (!program) return;
+  // Ages are world-global: only one AI's advancement can land. The
+  // command validates (wrong program for the current age, unaffordable
+  // → loud rejection, swallowed by issue), so racing is harmless.
+  if (!canAffordAgeLedger(world, ai, prog.cost)) return;
+  reserveAgeCost(ai, prog.cost);
+  advanceAge(world, queue, ai.owner, program);
+}
+
+/**
+ * The peaceful think: a city-builder playing to win the peaceful
+ * victory. Runs instead of every military think branch (see the
+ * dispatch in createAISystem). Without terrain there is nothing safe
+ * to site — zoning and construction are skipped, but research and
+ * ages still run.
+ */
+function thinkPeaceful(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  terrain?: TerrainData,
+): void {
+  if (terrain) {
+    thinkPeacefulZoning(world, queue, ai, terrain);
+    thinkPeacefulConstruction(world, queue, ai, terrain);
+  }
+  thinkPeacefulResearch(world, queue, ai);
+  thinkPeacefulAges(world, queue, ai);
+}
+
 /**
  * The AI system. Runs every tick; each AI player thinks on its own
  * cadence. Issues commands through the queue — never mutates world
  * state directly (except its own `world.ai` state, which is plain data,
  * and the virtual-building economy credit, which mirrors the economy
  * system for real buildings).
+ *
+ * Grand-expansion Phase 8 (peaceful mode, workstream C): `terrain` is
+ * optional for legacy callers, but the peaceful AI needs it to site
+ * physical buildings — without it, zoning and construction are
+ * skipped (research and ages still run). In a peaceful world every AI
+ * player runs thinkPeaceful instead of the military thinks below; the
+ * military branches are never reached, so the AI cannot even attempt
+ * a rejected military order (canTrain gates the defs too).
  */
-export function createAISystem(queue: CommandQueue): SimSystem {
+export function createAISystem(queue: CommandQueue, terrain?: TerrainData): SimSystem {
   // The AI researches upgrades via `researchUpgrade`; make sure the kind
   // is registered even if session setup hasn't wired it (registering
   // twice throws, so tolerate the already-registered case — the UI may
@@ -2842,6 +3483,14 @@ export function createAISystem(queue: CommandQueue): SimSystem {
       // Reset the per-think spend ledger (see thinkLedger): the think's
       // command batch must never go stale at apply.
       thinkLedgers.set(ai, { funds: 0, materials: 0, manpower: 0, research: 0, influence: 0, operational: 0, surveillance: 0 });
+      if (world.peaceful === true) {
+        // Grand-expansion Phase 8 (peaceful mode): the AI plays a
+        // city-builder toward the peaceful victory — none of the
+        // military thinks below run, so no military order can even be
+        // formed (canTrain also gates military defs at the source).
+        thinkPeaceful(world, queue, ai, terrain);
+        continue;
+      }
       switch (ai.difficulty) {
         case 'cadet':
           thinkCadet(world, queue, ai);
