@@ -520,7 +520,7 @@ describe('land-value tax multiplier', () => {
       const { cx, cz } = findLandRect(ctx.terrain, 6, 4);
       paintResidential(ctx.world.city, cx, cz + 2, cx + 1, cz + 3);
       completed(ctx.world.city, { kind: 'house', owner: 0, cx, cz: cz + 2, facing: 0 });
-      ctx.world.city.players[0]!.taxRates = [rate, rate, rate];
+      ctx.world.city.players[0]!.taxRates = [rate, rate, rate, rate];
       return ctx;
     }
     const half = taxedWorld(0.5);
@@ -555,7 +555,7 @@ describe('land-value tax multiplier', () => {
       completed(ctx.world.city, { kind: 'park', owner: 0, cx: cx + 3, cz: cz - 1, facing: 0 });
       completed(ctx.world.city, { kind: 'library', owner: 0, cx: cx + 3, cz: cz + 3, facing: 0 });
       completed(ctx.world.city, { kind: 'school', owner: 0, cx: cx + 6, cz: cz + 1, facing: 0 });
-      ctx.world.city.players[0]!.taxRates = [rate, rate, rate];
+      ctx.world.city.players[0]!.taxRates = [rate, rate, rate, rate];
       return ctx;
     }
     const half = taxedWorld(0.5);
@@ -626,7 +626,7 @@ describe('snapshot/digest contract', () => {
     getDesirabilityModel(ctx.terrain, ctx.world);
     const after = takeSnapshot(ctx.world);
     expect(before.version).toBe(SNAPSHOT_VERSION);
-    expect(after.version).toBe(7);
+    expect(after.version).toBe(8); // v8: Phase 5/6 S4 hangar data contract
     expect(JSON.stringify(after)).toBe(JSON.stringify(before));
   });
 

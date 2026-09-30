@@ -107,9 +107,11 @@ import {
   getPlayer,
   hasProductionBuilding,
   isBuildingAgeMet,
+  defaultHangarSlots,
   BUILDING_DEFS,
   MAP_HALF_SIZE,
   type BuildingKind,
+  type HangarClass,
 } from './city';
 import { isAegisReady, isStormReady } from './superweapons';
 import { CommandRejectedError } from './commands';
@@ -547,17 +549,87 @@ function moveGroupTo(
 }
 
 /**
- * True when the AI can currently train `kind`: the age gate is met and
- * any required production building is held (real or virtually
- * constructed). Composition skips anything false here — this is what
- * keeps the AI from stalling on locked kinds (the old "stuck at 6
- * units" failure: citizen kept ordering tanks it could never receive).
+ * True when the AI can currently train `kind`: the def exists, the age
+ * gate is met, and any required production building is held (real or
+ * virtually constructed). Composition skips anything false here — this
+ * is what keeps the AI from stalling on locked kinds (the old "stuck at
+ * 6 units" failure: citizen kept ordering tanks it could never receive).
+ *
+ * Unknown kinds (the Phase 5/6 airport/naval/aircraft roster — workers
+ * A/B/C haven't landed their defs yet) are never trainable: composition
+ * skips them instead of crashing on `def.minAge`. This is what keeps
+ * the AI safe-but-inactive on the unlanded roster (PLAN §6: "canTrain
+ * auto-skips locked kinds, so new content is safe but dead until each
+ * think function learns it").
  */
 export function canTrain(world: World, owner: number, kind: UnitKind): boolean {
   const def = UNIT_DEFS[kind];
+  if (!def) return false;
   if (!isUnitAvailableForAge(world, def.minAge)) return false;
   if (def.requiredBuilding && !hasProductionBuilding(world, owner, def.requiredBuilding)) return false;
+  // Hangar-aware (grand-expansion Phase 5, S4): aircraft that need a
+  // hangar slot only train while the AI has a free one. The Classic AI
+  // owns no physical buildings in 0.1 Alpha, so the capacity is virtual
+  // (PLAN §6: "virtual airfields get virtual capacity").
+  // The gate applies only to infrastructure-based aircraft — units
+  // with a requiredBuilding (airfield-trained). Field-operated
+  // micro-UAVs like the scout drone (no requiredBuilding,
+  // hand-launched) are exempt: gating them would ground the
+  // commander's approved early-game scouting behind a 1500-fund
+  // airfield the commander never builds (caught by sim.ai.test.ts
+  // "scouts with a drone", 2026-09-30). Thematically consistent: no
+  // building to train from ⇒ no hangar needed to park in.
+  if (def.hangarClass && def.requiredBuilding &&
+      !hasVirtualHangarRoom(world, owner, def.hangarClass)) return false;
   return true;
+}
+
+/**
+ * The AI's virtual hangar capacity, in slots by class. The Classic AI
+ * owns no physical buildings in 0.1 Alpha — every production building
+ * is virtual (a kind name in `ai.virtualBuildings.completed`, no
+ * footprint) — so hangar parking is virtual too: each completed
+ * virtual building yields `defaultHangarSlots(kind)` virtual slots,
+ * exactly the legacy decode default the snapshot module gives real
+ * buildings (snapshot.ts v8). Deterministic: no RNG, fixed order.
+ */
+function virtualHangarCapacity(ai: AIPlayerState): Record<HangarClass | 'generic', number> {
+  const cap: Record<HangarClass | 'generic', number> = {
+    light: 0, medium: 0, heavy: 0, generic: 0,
+  };
+  for (const kind of ai.virtualBuildings.completed) {
+    for (const s of defaultHangarSlots(kind) ?? []) cap[s.cls]++;
+  }
+  return cap;
+}
+
+/**
+ * True when the AI has a free virtual hangar slot for one more aircraft
+ * of `hangarClass`. Aircraft already embarked on a carrier ride the
+ * carrier, not a hangar slot. Slot assignment is deterministic and
+ * greedy: class-exact slots fill first, 'generic' slots take the
+ * overflow (generic accepts any class — the pre-class-system behavior).
+ * No RNG; id-ordered iteration.
+ */
+function hasVirtualHangarRoom(world: World, owner: number, hangarClass: HangarClass): boolean {
+  const ai = world.ai.players.find((p) => p.owner === owner);
+  if (!ai) return false;
+  const cap = virtualHangarCapacity(ai);
+  // Recompute the greedy assignment from scratch: exact[hc] aircraft of
+  // each class take exact slots first, the rest take generic slots.
+  const exactUsed: Record<HangarClass, number> = { light: 0, medium: 0, heavy: 0 };
+  let genericUsed = 0;
+  for (const u of world.units) {
+    if (u.owner !== owner || u.hp <= 0) continue;
+    if ((u.embarkedOn ?? 0) !== 0) continue;
+    const uhc = UNIT_DEFS[u.kind as UnitKind]?.hangarClass;
+    if (!uhc) continue;
+    if (exactUsed[uhc] < cap[uhc]) exactUsed[uhc]++;
+    else if (genericUsed < cap.generic) genericUsed++;
+    // else: no slot for this aircraft — it still flies (the AI has no
+    // physical parking to deny it), but it blocks further training.
+  }
+  return exactUsed[hangarClass] < cap[hangarClass] || genericUsed < cap.generic;
 }
 
 // ---------------------------------------------------------------------------
@@ -569,13 +641,21 @@ export function canTrain(world: World, owner: number, kind: UnitKind): boolean {
  * already held (real or virtual), kinds whose minAge isn't met yet, and
  * shipyard/navalYard until water is found (no point without a coast).
  * Cadet builds nothing — consistent with its "no decisions" profile.
+ * Exported for tests (the marshal civilAirport entry is pinned).
  */
-const CONSTRUCTION_PRIORITY: Record<AIDifficulty, BuildingKind[]> = {
+export const CONSTRUCTION_PRIORITY: Record<AIDifficulty, BuildingKind[]> = {
   cadet: [],
   citizen: ['barracks', 'warFactory'],
   commander: ['barracks', 'warFactory', 'lab'],
   general: ['barracks', 'warFactory', 'lab'],
-  marshal: ['barracks', 'warFactory', 'lab', 'airfield', 'radarStation', 'shipyard', 'navalYard'],
+  // Phase 5 (airports + airline): marshal also builds a civil airport —
+  // the AI's static airline income then flows through
+  // creditVirtualEconomy's def.output credit (see thinkAirlineRoutes).
+  // The kind is in the BuildingKind union (airport workstream landed);
+  // thinkConstruction's unknown-def guard still skips it while
+  // BUILDING_DEFS has no entry — no crash, no stall, no behavior
+  // change until the def exists.
+  marshal: ['barracks', 'warFactory', 'lab', 'airfield', 'radarStation', 'shipyard', 'navalYard', 'civilAirport'],
 };
 
 /** Complete whatever finished building; start the next priority kind. */
@@ -595,6 +675,10 @@ function thinkConstruction(world: World, ai: AIPlayerState): void {
     if (vb.completed.includes(kind)) continue;
     if (hasProductionBuilding(world, ai.owner, kind)) continue;
     const def = BUILDING_DEFS[kind];
+    // Unknown defs (the Phase 5/6 airport roster — workers A/B/C
+    // haven't landed them yet) are skipped, not crashed on: the AI
+    // stays safe-but-inactive on unlanded buildings (PLAN §6).
+    if (!def) continue;
     // Age-gated kinds wait for the age (marshal may get there).
     if (!isBuildingAgeMet(world.ages.age, def.minAge)) continue;
     // Naval production only makes sense with a coast to use it from.
@@ -955,8 +1039,8 @@ const BASE_MIX: Record<'citizen' | 'commander', Array<{ kind: UnitKind; share: n
     { kind: 'spectre', share: 0.1 },
   ],
   commander: [
-    { kind: 'rifles', share: 0.3 },
-    { kind: 'tank', share: 0.2 },
+    { kind: 'rifles', share: 0.27 },
+    { kind: 'tank', share: 0.18 },
     { kind: 'artillery', share: 0.1 },
     { kind: 'aa', share: 0.1 },
     { kind: 'apc', share: 0.1 },
@@ -964,6 +1048,13 @@ const BASE_MIX: Record<'citizen' | 'commander', Array<{ kind: UnitKind; share: n
     { kind: 'spectre', share: 0.05 },
     { kind: 'fighter', share: 0.05 },
     { kind: 'attackHeli', share: 0.05 },
+    // Grand-expansion Phase 5 (aircraft expansion, S4): heavy CAS and
+    // long-range strike join the commander's air arm in small shares.
+    // (Deliberately NOT in MIX_JITTER_KINDS — adding kinds there would
+    // shift the per-match personality RNG stream. They default to
+    // weight 1 via the `?? 1` in the mix consumer above.)
+    { kind: 'gunship', share: 0.04 },
+    { kind: 'strategicBomber', share: 0.03 },
   ],
 };
 
@@ -989,10 +1080,12 @@ function chooseUnitKind(
 
   if (visible.length > 0) {
     const enemyAir = visible.filter((e) => DOMAIN_OF(e) === 'air');
-    const enemySubs = visible.filter((e) => KIND_OF(e) === 'submarine');
-    const enemyCapitals = visible.filter((e) =>
-      KIND_OF(e) === 'destroyer' || KIND_OF(e) === 'carrier' || KIND_OF(e) === 'commandShip',
-    );
+    // Phase 6: the sub/capital sets include the §3.6 roster kinds
+    // (coastalSub, missileSub, cruiser, battleship, heavyDestroyer) —
+    // def-guarded via SUB_KINDS/CAPITAL_KINDS, so today's behavior is
+    // unchanged until the naval workstream lands.
+    const enemySubs = visible.filter((e) => SUB_KINDS.has(e.kind));
+    const enemyCapitals = visible.filter((e) => CAPITAL_KINDS.has(e.kind));
     const enemyHeavy = visible.filter(
       (e) => DOMAIN_OF(e) === 'land' && (KIND_OF(e) === 'tank' || KIND_OF(e) === 'tankDestroyer'),
     );
@@ -1084,6 +1177,11 @@ function chooseUnitKind(
     if (get('fishingBoat') < 4 && canTrain(world, owner, 'fishingBoat')) return 'fishingBoat';
     if (get('patrolBoat') < 3 && canTrain(world, owner, 'patrolBoat')) return 'patrolBoat';
     if (get('missileBoat') < 3 && canTrain(world, owner, 'missileBoat')) return 'missileBoat';
+    // Phase 6 (PLAN §3.6): the corvette joins the coastal screen once
+    // the naval workstream lands its def — canTrain is false until
+    // then, so this line is inert today (the def-guard convention).
+    const corvette = 'corvette' as UnitKind;
+    if ((counts.get(corvette) ?? 0) < 2 && canTrain(world, owner, corvette)) return corvette;
   }
 
   // Base mix: the trainable kind furthest below its share of the cap.
@@ -1288,6 +1386,283 @@ function thinkNavalProbe(world: World, queue: CommandQueue, ai: AIPlayerState): 
 }
 
 // ---------------------------------------------------------------------------
+// Grand-expansion Phase 5/6 air + naval AI (workstream D).
+//
+// The airport (A), aircraft/hangar (B), and naval (C) workstreams land
+// in parallel; their defs (civilAirport, hangar classes,
+// carrierCapable kinds, wingCapacity, the §3.6 roster) do not exist
+// yet. Every reference below is def-guarded: with no defs present the
+// new paths are inert (documented here and pinned by tests), and they
+// activate the moment the defs land — no AI-side changes needed then.
+// New roster kinds are named as raw strings (UnitKind doesn't include
+// them yet) and always resolved through UNIT_DEFS before use.
+// ---------------------------------------------------------------------------
+
+/** Escorts kept per carrier (Phase 6 AI work: "AI builds escorts"). */
+const CARRIER_ESCORT_COUNT = 2;
+/** Idle escorts station within this range of their carrier (world units). */
+const ESCORT_STATION_RANGE = 40;
+/** Aircraft within this range of a carrier get embark orders. */
+const EMBARK_ORDER_RANGE = 60;
+
+/**
+ * Submarine kinds for the counter table (PLAN §3.6: the roster's
+ * submarine plus coastalSub + missileSub). Exported for tests; the
+ * counter table reads through UNIT_DEFS at use so unlanded names are
+ * inert.
+ */
+export const SUB_KINDS: ReadonlySet<string> = new Set(['submarine', 'coastalSub', 'missileSub']);
+
+/**
+ * Capital-ship kinds for the counter table (PLAN §3.6: destroyer,
+ * carrier, commandShip plus cruiser + battleship + heavyDestroyer).
+ * Exported for tests; same def-guard convention as SUB_KINDS.
+ */
+export const CAPITAL_KINDS: ReadonlySet<string> = new Set([
+  'destroyer',
+  'carrier',
+  'commandShip',
+  'cruiser',
+  'battleship',
+  'heavyDestroyer',
+]);
+
+/**
+ * Escort-screen kinds, cheapest first (PLAN §3.6: the corvette and
+ * heavyDestroyer join the frigate screen; 'destroyer' is the roster's
+ * existing heavy). Exported for tests; filtered through UNIT_DEFS at
+ * use — unlanded kinds simply aren't in the pool yet.
+ */
+export const ESCORT_KINDS = ['frigate', 'corvette', 'heavyDestroyer', 'destroyer'];
+
+/** Unit kinds whose defs mark them carrier-capable (PLAN §3.7). Empty until the aircraft workstream lands. Deterministic: UNIT_DEFS insertion order. */
+function carrierCapableKinds(): UnitKind[] {
+  const out: UnitKind[] = [];
+  for (const key of Object.keys(UNIT_DEFS) as UnitKind[]) {
+    if (UNIT_DEFS[key].carrierCapable) out.push(key);
+  }
+  return out;
+}
+
+/** True once the naval workstream gives carriers a wing (PLAN §4 S4). */
+function wingSystemActive(): boolean {
+  return (UNIT_DEFS.carrier.wingCapacity ?? 0) > 0;
+}
+
+/**
+ * The wing embarked on `carrierId`: the AI's living aircraft with
+ * embarkedOn === carrierId. world.units is spawn (id) order, so the
+ * wing is id-ordered. Empty until the naval workstream lands (no
+ * embarkAircraft command, no wingCapacity).
+ */
+function carrierWing(world: World, owner: number, carrierId: number): UnitRecord[] {
+  const wing: UnitRecord[] = [];
+  for (const u of world.units) {
+    if (u.owner !== owner || u.hp <= 0) continue;
+    if ((u.embarkedOn ?? 0) === carrierId) wing.push(u);
+  }
+  return wing;
+}
+
+/** Living escort-screen ships of `owner` (the ESCORT_KINDS pool, def-guarded). */
+function countEscorts(world: World, owner: number): number {
+  const pool = ESCORT_KINDS.filter((k) => UNIT_DEFS[k as UnitKind]);
+  let n = 0;
+  for (const u of world.units) {
+    if (u.owner !== owner || u.hp <= 0) continue;
+    if ((pool as string[]).includes(u.kind)) n++;
+  }
+  return n;
+}
+
+/**
+ * True when `u` is a carrier that must NOT sail yet: the wing system is
+ * active, the roster has carrier-capable kinds to fill it with, and the
+ * wing isn't full. Used by the attack loops — an empty-wing carrier
+ * never sails into combat (PLAN §6: "AI fills carrier wings before
+ * sailing (never sails empty into combat)"). Pre-B (no wingCapacity)
+ * this is always false and the attack loops are byte-identical to
+ * before; it is also false when the roster has nothing to fill the
+ * wing with (can't fill what doesn't exist — no deadlock).
+ *
+ * Exported for tests (the attack-loop skip is pinned: a fresh carrier
+ * never sails into combat until its wing fills).
+ */
+export function isEmptyWingCarrier(world: World, u: UnitRecord): boolean {
+  if (u.kind !== 'carrier') return false;
+  if (!wingSystemActive()) return false;
+  if (carrierCapableKinds().length === 0) return false;
+  const wingCapacity = UNIT_DEFS.carrier.wingCapacity as number;
+  return carrierWing(world, u.owner, u.id).length < wingCapacity;
+}
+
+/**
+ * Phase 5 airline (PLAN §6 AI work: "AI builds civil airports and runs
+ * routes (static income)"). Deliberately minimal in 0.1 Alpha —
+ * documented here rather than left silent:
+ * - Build: 'civilAirport' is on the marshal construction priority;
+ *   thinkConstruction's unknown-def guard skips it until the airport
+ *   workstream's defs land (no crash, no stall).
+ * - Income: static airline income flows through creditVirtualEconomy's
+ *   def.output credit — the S5 civilian-income pattern (civil buildings
+ *   pay output, like the fishingBoat's runHarvest precedent). No
+ *   separate route ledger exists in 0.1 Alpha.
+ * - Schedules and pricing are the "later" half of PLAN §3.5 and belong
+ *   to the future civilian trader rival (PLAN §6: "transport/airline/
+ *   peaceful: civilian AI trader rival is a later feature"), not to
+ *   the military Classic AI.
+ * So this function issues no commands and changes no state today
+ * (digest-neutral); it is the hook where per-route orders would live
+ * once the airline system exists. Exported so tests can pin the
+ * digest-neutrality (the thinkCivilianTransport precedent).
+ */
+export function thinkAirlineRoutes(world: World, ai: AIPlayerState): void {
+  void world;
+  void ai;
+}
+
+/**
+ * Fill carrier wings before sailing (PLAN §6, Phase 6 AI work).
+ * Called from thinkCommander (general/marshal inherit); cadet/citizen
+ * never field carriers.
+ *
+ * Per living own carrier, on a coastal map:
+ *  1. Acquire: if the AI has no carrier yet and can train one
+ *     (information age, navalYard held — marshal in practice), train
+ *     one — but only after the escort screen exists (the escort-first
+ *     rule): carriers sail with escorts or not at all.
+ *  2. Fill: while the wing has room, train carrier-capable aircraft
+ *     (army cap + hangar-aware canTrain) and order idle
+ *     carrier-capable aircraft to the carrier — embark when close,
+ *     moveTo when far (they converge over a few thinks).
+ *  3. Never sails empty: the attack loops skip empty-wing carriers
+ *     (isEmptyWingCarrier), so a carrier with an unfilled wing holds
+ *     at the naval base until its wing is complete. A full-wing
+ *     carrier needs no special sail order — the normal attack loop
+ *     sends it after visible enemies via chasing.
+ *
+ * Pre-B (no wingCapacity on the carrier def) the whole function is a
+ * documented no-op — including no carrier acquisition, because an
+ * embark-less carrier is a gun platform the composition never asked
+ * for and the user's design says carriers come empty with
+ * carrier-capable wings only.
+ */
+export function thinkCarrierWings(world: World, queue: CommandQueue, ai: AIPlayerState): void {
+  if (!wingSystemActive()) return;
+  if (ai.navalStatus !== 'coastal' || !ai.navalWater) return;
+  const capKinds = carrierCapableKinds();
+  if (capKinds.length === 0) return;
+  const carriers = world.units.filter(
+    (u) => u.owner === ai.owner && u.hp > 0 && u.kind === 'carrier',
+  );
+  // 1. Acquire one carrier once the escort screen exists.
+  if (carriers.length === 0) {
+    const n = totalUnits(world, ai.owner);
+    if (
+      countEscorts(world, ai.owner) >= CARRIER_ESCORT_COUNT &&
+      n < AI_MAX_UNITS[ai.difficulty] &&
+      canTrain(world, ai.owner, 'carrier')
+    ) {
+      spawn(world, queue, ai.owner, 'carrier', ai.navalWater.x, ai.navalWater.z);
+      ai.builtCounts['carrier'] = (ai.builtCounts['carrier'] ?? 0) + 1;
+    }
+    return;
+  }
+  const wingCapacity = UNIT_DEFS.carrier.wingCapacity as number;
+  for (const c of carriers) {
+    const wing = carrierWing(world, ai.owner, c.id);
+    if (wingCapacity - wing.length <= 0) continue;
+    // 2a. Train wing aircraft (army cap + hangar-aware canTrain).
+    const n = totalUnits(world, ai.owner);
+    const kind = capKinds[0]!;
+    if (n < AI_MAX_UNITS[ai.difficulty] && canTrain(world, ai.owner, kind)) {
+      const p = spawnPoint(ai, kind, n);
+      spawn(world, queue, ai.owner, kind, p.x, p.z);
+      ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
+    }
+    // 2b. Idle carrier-capable aircraft converge on the carrier:
+    // embark when close (the range gate itself lives in the command's
+    // validate; rejections are swallowed), moveTo when far.
+    for (const u of world.units) {
+      if (u.owner !== ai.owner || u.hp <= 0) continue;
+      if (!UNIT_DEFS[u.kind as UnitKind]?.carrierCapable) continue;
+      if ((u.embarkedOn ?? 0) !== 0) continue;
+      if (u.state !== 'idle' || u.targetId !== 0) continue;
+      const dx = u.x - c.x;
+      const dz = u.z - c.z;
+      if (dx * dx + dz * dz <= EMBARK_ORDER_RANGE * EMBARK_ORDER_RANGE) {
+        issue(world, queue, 'embarkAircraft', { unitId: u.id, carrierId: c.id, owner: ai.owner });
+      } else {
+        moveTo(world, queue, ai.owner, u.id, c.x, c.z);
+      }
+    }
+  }
+}
+
+/**
+ * Build escorts for carriers (PLAN §6, Phase 6 AI work). For every
+ * living own carrier, keep CARRIER_ESCORT_COUNT escorts in the screen
+ * and order idle escorts to station near their carrier (the fleet
+ * sails together). Escorts already fighting are never pulled off.
+ *
+ * The escort screen is live TODAY (frigates are in the roster): the
+ * moment the naval workstream lets the AI field a carrier,
+ * thinkCarrierWings' escort-first rule trains the screen before the
+ * carrier, and this function keeps it topped up and stationed.
+ */
+export function thinkCarrierEscorts(world: World, queue: CommandQueue, ai: AIPlayerState): void {
+  const carriers = world.units.filter(
+    (u) => u.owner === ai.owner && u.hp > 0 && u.kind === 'carrier',
+  );
+  if (carriers.length === 0) return;
+  const pool = ESCORT_KINDS.filter((k) => UNIT_DEFS[k as UnitKind]) as UnitKind[];
+  if (pool.length === 0) return;
+  for (const c of carriers) {
+    const screen = world.units.filter(
+      (u) =>
+        u.owner === ai.owner &&
+        u.hp > 0 &&
+        (pool as string[]).includes(u.kind),
+    );
+    // Top up the screen (army cap respected).
+    const n = totalUnits(world, ai.owner);
+    if (
+      screen.length < CARRIER_ESCORT_COUNT &&
+      n < AI_MAX_UNITS[ai.difficulty] &&
+      canTrain(world, ai.owner, pool[0]!)
+    ) {
+      const p = spawnPoint(ai, pool[0]!, n);
+      spawn(world, queue, ai.owner, pool[0]!, p.x, p.z);
+      ai.builtCounts[pool[0]!] = (ai.builtCounts[pool[0]!] ?? 0) + 1;
+    }
+    // Idle escorts station near the carrier.
+    for (const e of screen) {
+      if (e.state !== 'idle' || e.targetId !== 0) continue;
+      const dx = e.x - c.x;
+      const dz = e.z - c.z;
+      if (dx * dx + dz * dz > ESCORT_STATION_RANGE * ESCORT_STATION_RANGE) {
+        moveTo(world, queue, ai.owner, e.id, c.x + 12, c.z);
+      }
+    }
+  }
+}
+
+/**
+ * Phase 6 naval mines: a DOCUMENTED no-op in 0.1 Alpha (PLAN Phase 6
+ * AI work: "minesweeping (later)"). The AI neither deploys naval
+ * mines nor sweeps them: the minelayer/navalMine defs haven't landed,
+ * and mine counter-play is explicitly deferred behind carrier wings
+ * and escorts. This function is the hook where mine-laying
+ * (minelayers seeding straits) and minesweeping (a sweeper escort
+ * ahead of the fleet) will live. Exported so tests can pin the
+ * no-op (the thinkCivilianTransport precedent).
+ */
+export function thinkNavalMines(world: World, ai: AIPlayerState): void {
+  void world;
+  void ai;
+}
+
+// ---------------------------------------------------------------------------
 // Per-level think functions
 // ---------------------------------------------------------------------------
 
@@ -1325,7 +1700,9 @@ function thinkCadet(
 /** Shared per-think bookkeeping: construction, sub sightings. */
 function thinkUpkeep(world: World, ai: AIPlayerState, visible: UnitRecord[]): void {
   thinkConstruction(world, ai);
-  if (!ai.seenSubmarine && visible.some((e) => KIND_OF(e) === 'submarine')) {
+  // Phase 6: any submarine kind (SUB_KINDS) trips the Sonar Suite
+  // priority — same behavior as before until the new defs land.
+  if (!ai.seenSubmarine && visible.some((e) => SUB_KINDS.has(e.kind))) {
     ai.seenSubmarine = true;
   }
 }
@@ -1377,6 +1754,10 @@ function thinkCitizen(
       // Skip units whose weapons can't engage this target's domain
       // (e.g. tanks can't target air) — the attackUnit command would reject.
       if (!canTarget(def, nearest)) continue;
+      // Phase 6: carriers with unfilled wings never sail into combat
+      // (their wings are filled by thinkCarrierWings first). Pre-B this
+      // is always false — the loop is byte-identical to before.
+      if (isEmptyWingCarrier(world, u)) continue;
       // Only re-issue if not already attacking this target.
       if (u.targetId === nearest.id && u.chasing) continue;
       attack(world, queue, ai.owner, u.id, nearest.id);
@@ -1458,6 +1839,18 @@ function thinkCommander(
   //     table (frigates vs subs, ...) function; the economic navy
   //     (fishing fleet, patrol boats) stays general+ (see chooseUnitKind).
   thinkNavalProbe(world, queue, ai);
+
+  // --- Grand-expansion Phase 5/6 air + naval (workstream D): the
+  //     airline hook (static income via def.output — documented
+  //     minimal), carrier wings (fill before sailing, escort-first
+  //     acquisition), carrier escorts (screen top-up + stationing),
+  //     and naval mines (documented no-op — minesweeping deferred
+  //     per PLAN Phase 6). All def-guarded: inert until workers A/B/C
+  //     land, then active with no AI-side changes.
+  thinkAirlineRoutes(world, ai);
+  thinkCarrierWings(world, queue, ai);
+  thinkCarrierEscorts(world, queue, ai);
+  thinkNavalMines(world, ai);
 
   // --- Production: one unit per think, counters then base mix.
   thinkProduction(world, queue, ai, counts, n, visible);
@@ -1564,6 +1957,10 @@ function thinkCommander(
       }
       // Skip units whose weapons can't engage this target's domain.
       if (!canTarget(def, nearest)) continue;
+      // Phase 6: carriers with unfilled wings never sail into combat
+      // (their wings are filled by thinkCarrierWings first). Pre-B this
+      // is always false — the loop is byte-identical to before.
+      if (isEmptyWingCarrier(world, u)) continue;
       attack(world, queue, ai.owner, u.id, nearest.id);
     }
   }

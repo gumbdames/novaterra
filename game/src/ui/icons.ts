@@ -70,7 +70,7 @@ function svg(body: string, strokeWidth = 2): string {
 }
 
 // ---------------------------------------------------------------------------
-// Units — 28 glyphs, one per UnitKind (silhouette reads the domain at a
+// Units — 66 glyphs, one per UnitKind (silhouette reads the domain at a
 // glance: person / tracked hull / aircraft / ship hull).
 // ---------------------------------------------------------------------------
 
@@ -139,6 +139,60 @@ const UNIT_ICONS: Record<UnitKind, string> = {
     '<path d="M19 16l1.5-4"/>',
   transport:
     '<path d="M12 3v18"/><path d="M3.5 11.5h17"/><path d="M8.5 21l3.5-2.5L15.5 21"/>',
+  // Grand-expansion Phase 5 — aircraft expansion (workstream B,
+  // 2026-09-30): 16 aircraft glyphs. Silhouette reads the role at a
+  // glance: bomb dots = strike, radar arcs = patrol/recon, drop =
+  // tanker, boxes = cargo, window rows = airliners.
+  strategicBomber:
+    '<path d="M12 2.5c.8 5 .8 12 0 19"/><path d="M12 9 2.5 16l5-.5"/>' +
+    '<path d="M12 9l9.5 7-5-.5"/><circle cx="7" cy="19" r="1.4" fill="currentColor" stroke="none"/>' +
+    '<circle cx="17" cy="19" r="1.4" fill="currentColor" stroke="none"/>',
+  maritimePatrol:
+    '<path d="M12 2.5c.8 5 .8 12 0 19"/><path d="M12 8.5 3.5 15l4-.5"/>' +
+    '<path d="M12 8.5l8.5 6.5-4-.5"/><path d="M5 19.5a8 8 0 0 0 14 0"/>',
+  reconUAV:
+    '<path d="M12 4v16"/><path d="M12 9l-7 5 3.5-.5"/><path d="M12 9l7 5-3.5-.5"/>' +
+    '<circle cx="12" cy="12" r="1.4" fill="currentColor" stroke="none"/>',
+  armedUAV:
+    '<path d="M12 4v16"/><path d="M12 9l-7 5 3.5-.5"/><path d="M12 9l7 5-3.5-.5"/>' +
+    '<circle cx="17.5" cy="17" r="1.6" fill="currentColor" stroke="none"/>',
+  reconPlane:
+    '<path d="M12 2.5c.8 5 .8 12 0 19"/><path d="M12 8.5 3.5 15l4-.5"/>' +
+    '<path d="M12 8.5l8.5 6.5-4-.5"/><path d="M2 5h4M2 8.5h4M18 5h4M18 8.5h4"/>',
+  gunship:
+    '<path d="M12 2.5c.8 5 .8 12 0 19"/><path d="M12 8.5 3.5 15l4-.5"/>' +
+    '<path d="M12 8.5l8.5 6.5-4-.5"/><path d="M9 17v4M12 17v4M15 17v4"/>',
+  tanker:
+    '<path d="M12 2.5c.8 5 .8 12 0 17"/><path d="M12 8.5 3.5 15l4-.5"/>' +
+    '<path d="M12 8.5l8.5 6.5-4-.5"/><path d="M12 19.5c-1.6 1.2-1.6 2.5 0 2.5s1.6-1.3 0-2.5Z"/>',
+  militaryCargo:
+    '<path d="M12 3v18"/><path d="M6 10h12v7H6Z"/><path d="M6 10 3.5 13M18 10l2.5 3"/>',
+  trainer:
+    '<path d="M12 4v16"/><path d="M12 10l-6 4.5L9.5 14"/><path d="M12 10l6 4.5-3.5-.5"/>',
+  navalFighter:
+    '<path d="M12 2.5c.8 5 .8 12 0 19"/><path d="M12 8.5 3.5 15l4-.5"/>' +
+    '<path d="M12 8.5l8.5 6.5-4-.5"/><path d="M3 21.5h18"/>',
+  airliner:
+    '<path d="M12 2.5c.8 5 .8 12 0 19"/><path d="M12 9 3.5 15.5l4-.5"/>' +
+    '<path d="M12 9l8.5 6.5-4-.5"/><circle cx="12" cy="7" r="1" fill="currentColor" stroke="none"/>' +
+    '<circle cx="12" cy="10" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="13" r="1" fill="currentColor" stroke="none"/>',
+  jumboAirliner:
+    '<path d="M12 2.5c.8 5 .8 12 0 19"/><path d="M12 9 2.5 16l5-.5"/>' +
+    '<path d="M12 9l9.5 7-5-.5"/><circle cx="10.5" cy="8" r="1" fill="currentColor" stroke="none"/>' +
+    '<circle cx="13.5" cy="8" r="1" fill="currentColor" stroke="none"/>' +
+    '<circle cx="10.5" cy="11.5" r="1" fill="currentColor" stroke="none"/>' +
+    '<circle cx="13.5" cy="11.5" r="1" fill="currentColor" stroke="none"/>',
+  regionalJet:
+    '<path d="M12 3v18"/><path d="M12 9l-7.5 5.5 4-.5"/><path d="M12 9l7.5 5.5-4-.5"/>' +
+    '<path d="M2.5 4.5h3M18.5 4.5h3"/>',
+  cargoPlane:
+    '<path d="M12 3v18"/><path d="M6 10h12v7H6Z"/><rect x="9.5" y="12" width="5" height="3"/>',
+  passengerHeli:
+    '<ellipse cx="12" cy="14.5" rx="4" ry="2.8"/><path d="M3 8.5h18"/><path d="M12 8.5v3.5"/>' +
+    '<circle cx="12" cy="14.5" r="1.2" fill="currentColor" stroke="none"/>',
+  seaplane:
+    '<path d="M12 3v15"/><path d="M12 8.5 4 14l4-.5"/><path d="M12 8.5l8 5.5-4-.5"/>' +
+    '<path d="M7 20.5h10"/>',
   patrolBoat:
     '<path d="M3 13.5h18l-2.5 5h-13Z"/><rect x="10" y="9.5" width="5" height="4"/>' +
     '<path d="M12.5 9.5V5.5"/>',
@@ -185,11 +239,69 @@ const UNIT_ICONS: Record<UnitKind, string> = {
   ferry:
     '<path d="M3 15h18l-2.5 5h-13Z"/><rect x="7" y="10" width="10" height="5"/>' +
     '<path d="M9 10V7h6v3"/>',
+  // Grand-expansion Phase 6 — naval expansion (workstream C,
+  // 2026-09-30): glyphs for the 15 new sea kinds, in the established
+  // hand-drawn stroke style.
+  coastalSub:
+    '<path d="M3 14.5c0-2.6 3.8-4.4 9-4.4s9 1.8 9 4.4-3.8 4.4-9 4.4-9-1.8-9-4.4Z"/>' +
+    '<rect x="10.5" y="6.5" width="3" height="3.6"/>',
+  missileSub:
+    '<path d="M2.5 14.5c0-3 4.2-5 9.5-5s9.5 2 9.5 5-4.2 5-9.5 5-9.5-2-9.5-5Z"/>' +
+    '<rect x="9" y="5.5" width="6" height="4"/>' +
+    '<path d="M9 5.5V3.5M12 5.5V3.5M15 5.5V3.5"/>',
+  corvette:
+    '<path d="M3.5 14.5h17l-2 4.5h-13Z"/><rect x="10" y="10.5" width="4" height="4"/>' +
+    '<path d="M17.5 14.5 20 12"/>',
+  cruiser:
+    '<path d="M2.5 14.5h19l-2.5 5h-14Z"/><rect x="5" y="11" width="3.5" height="3.5"/>' +
+    '<path d="M5 12.8H2.5"/><rect x="15.5" y="11" width="3.5" height="3.5"/>' +
+    '<path d="M19 12.8h2.5"/><path d="M12 14.5V6"/>',
+  battleship:
+    '<path d="M2 15h20l-2.5 5H4.5Z"/><rect x="4.5" y="11.5" width="3.5" height="3.5"/>' +
+    '<path d="M4.5 13.2H2"/><rect x="16" y="11.5" width="3.5" height="3.5"/>' +
+    '<path d="M19.5 13.2H22"/><rect x="10.5" y="10.5" width="3" height="4.5"/>' +
+    '<path d="M12 10.5V5"/>',
+  heavyDestroyer:
+    '<path d="M2.5 14.5h19l-2.5 5h-14Z"/><rect x="4.5" y="11" width="4" height="3.5"/>' +
+    '<path d="M4.5 12.8H2"/><rect x="15.5" y="11" width="4" height="3.5"/>' +
+    '<path d="M19.5 12.8H22"/><path d="M12 14.5V7"/>',
+  cargoFreighter:
+    '<path d="M2.5 15.5h19l-2.5 5h-14Z"/><rect x="5" y="11.5" width="4" height="4"/>' +
+    '<rect x="9.5" y="11.5" width="4" height="4"/><rect x="14" y="11.5" width="4" height="4"/>',
+  fuelTanker:
+    '<path d="M2.5 15h19l-2.5 5h-14Z"/>' +
+    '<ellipse cx="12" cy="11.5" rx="6" ry="3"/>' +
+    '<path d="M17 8.8V6h2v2.8"/>',
+  ammoShip:
+    '<path d="M2.5 15h19l-2.5 5h-14Z"/><rect x="6" y="11" width="3.5" height="4"/>' +
+    '<rect x="10" y="8.5" width="3.5" height="6.5"/><rect x="14" y="11" width="3.5" height="4"/>',
+  repairShip:
+    '<path d="M2.5 15h19l-2.5 5h-14Z"/><rect x="6" y="11" width="5" height="4"/>' +
+    '<path d="M15 15V8l5-4"/><path d="M20 4v3"/>',
+  minelayer:
+    '<circle cx="12" cy="11" r="2.4"/>' +
+    '<path d="M12 5.8v2.8M6.8 11h2.8M14.4 11h2.8M8.3 7.3l2 2M15.7 7.3l-2 2"/>' +
+    '<path d="M3 17h18l-2.5 4h-13Z"/>',
+  navalMine:
+    '<circle cx="12" cy="13" r="3.4"/>' +
+    '<path d="M12 6.4V9.6M5.4 13h3.2M15.4 13h3.2M7.3 8.3l2.3 2.3M16.7 8.3l-2.3 2.3"/>' +
+    '<path d="M7.3 17.7l2.3-2.3M16.7 17.7l-2.3-2.3"/>',
+  coastGuardCutter:
+    '<path d="M4 14.5h16l-2 4.5h-12Z"/><path d="M4.5 16.5h15"/>' +
+    '<rect x="10.5" y="10" width="3.5" height="4.5"/><path d="M12.2 10V6"/>',
+  cruiseLiner:
+    '<path d="M2 15h20l-2 5H4Z"/><rect x="5" y="11.5" width="14" height="3.5"/>' +
+    '<rect x="7" y="8" width="10" height="3.5"/><path d="M9 8V5h6v3"/>',
+  yacht:
+    '<path d="M3.5 15.5h17l-2 4h-13Z"/><path d="M12 15.5V5l7 10.5Z"/>' +
+    '<rect x="10.5" y="12" width="3" height="3.5"/>',
 };
 
 // ---------------------------------------------------------------------------
-// Buildings — one glyph per BuildingKind (44 after the Phase 2 utility
-// expansion; tsc enforces that every kind appears here exactly once).
+// Buildings — one glyph per BuildingKind (71 entries after the Phase 6
+// naval expansion; the airport workstream's 16 new airport kinds land
+// with their icons in that workstream — tsc enforces full coverage when
+// the tree is integrated).
 // ---------------------------------------------------------------------------
 
 /** Every BuildingKind must appear here exactly once (tsc enforces it). */
@@ -435,6 +547,91 @@ const BUILDING_ICONS: Record<BuildingKind, string> = {
   fuelDepot:
     '<rect x="7" y="5" width="10" height="15" rx="4"/>' +
     '<path d="M7 10h10M7 14.5h10"/><circle cx="12" cy="7.5" r="0.9"/>',
+  // Grand-expansion Phase 6 — naval expansion (workstream C,
+  // 2026-09-30): glyphs for the four ports, in the established
+  // hand-drawn stroke style (quay line + water waves).
+  commercialPort:
+    '<path d="M2 17h20"/>' +
+    '<path d="M7 17V8"/><path d="M7 8l9-4.5"/><path d="M16 3.5V8"/>' +
+    '<rect x="13.5" y="8" width="5" height="3.5"/>' +
+    '<path d="M3 20.5c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/>',
+  containerPort:
+    '<path d="M2 17h20"/>' +
+    '<rect x="3.5" y="13" width="5" height="4"/><rect x="9" y="13" width="5" height="4"/>' +
+    '<rect x="3.5" y="9" width="5" height="4"/>' +
+    '<path d="M17 17V6l5-3"/>' +
+    '<path d="M3 20.5c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/>',
+  fishingHarbor:
+    '<path d="M2 17h20"/>' +
+    '<path d="M5 17v-4.5M11 17v-4.5M5 14.5h13"/>' +
+    '<path d="M14 12.5h7l-1.2 2h-4.6Z"/>' +
+    '<path d="M3 20.5c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/>',
+  navalBase:
+    '<path d="M2 17h20"/>' +
+    '<path d="M3.5 14.5h17l-2 2.5h-13Z"/>' +
+    '<rect x="5" y="9" width="4" height="5.5"/><rect x="15" y="9" width="4" height="5.5"/>' +
+    '<path d="M7 9V5M17 9V5"/>' +
+    '<path d="M3 20.5c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/>',
+  // Grand-expansion Phase 5 — airports (workstream A, S5+S8,
+  // 2026-09-30): glyphs for the 14 airport kinds, in the established
+  // hand-drawn stroke style. Anchors read as terminal + runway; the
+  // hangars as arched sheds; runways as strips with class ticks.
+  civilAirport:
+    '<rect x="4" y="12" width="7" height="6" rx="1"/>' +
+    '<path d="M4 15h7M7.5 12v6"/>' +
+    '<path d="M13 5l7 2-7 2 1.6-2Z"/>',
+  militaryAirbase:
+    '<rect x="4" y="12" width="7" height="6" rx="1"/>' +
+    '<path d="M4 15h7"/>' +
+    '<path d="M15 4l1.2 2.4L18.6 7l-2.4 1.2L15 10.6l-1.2-2.4L11.4 7l2.4-.6Z"/>',
+  mixedAirport:
+    '<rect x="4" y="12" width="7" height="6" rx="1"/>' +
+    '<path d="M4 15h7M7.5 12v6"/>' +
+    '<path d="M13 5l7 2-7 2 1.6-2Z"/>' +
+    '<path d="M19 14l.8 1.6 1.6.8-1.6.8-.8 1.6-.8-1.6-1.6-.8 1.6-.8Z"/>',
+  passengerTerminal:
+    '<rect x="5" y="9" width="14" height="9" rx="1"/>' +
+    '<path d="M5 13h14"/>' +
+    '<path d="M8 9V6.5h8V9"/>' +
+    '<circle cx="12" cy="15.8" r="1.2"/>',
+  cargoTerminal:
+    '<rect x="5" y="9" width="14" height="9" rx="1"/>' +
+    '<path d="M5 13h14"/>' +
+    '<rect x="9" y="5" width="6" height="4"/>' +
+    '<path d="M9 15.5h6"/>',
+  controlTower:
+    '<path d="M9 21l1.5-9h3L15 21"/>' +
+    '<rect x="7" y="4" width="10" height="5" rx="1"/>' +
+    '<path d="M7 6.5h10"/>',
+  hangarS:
+    '<path d="M4 18v-4a8 8 0 0 1 16 0v4"/>' +
+    '<path d="M4 18h16"/>',
+  hangarM:
+    '<path d="M3 18v-5a9 9 0 0 1 18 0v5"/>' +
+    '<path d="M3 18h18"/>' +
+    '<path d="M12 8v10"/>',
+  hangarL:
+    '<path d="M2.5 18v-5.5a9.5 9.5 0 0 1 19 0V18"/>' +
+    '<path d="M2.5 18h19"/>' +
+    '<path d="M8 7.5V18M16 7.5V18"/>',
+  fuelFarm:
+    '<rect x="4" y="10" width="7" height="8" rx="3.5"/>' +
+    '<rect x="13" y="10" width="7" height="8" rx="3.5"/>' +
+    '<path d="M7.5 10V7M16.5 10V7M7.5 7h9"/>',
+  maintenanceHangar:
+    '<path d="M4 18v-4a8 8 0 0 1 16 0v4"/>' +
+    '<path d="M4 18h16"/>' +
+    '<path d="M10 14.5l1.2 1.2 2.3-2.3"/>',
+  runwayS:
+    '<path d="M3 16.5h18"/>' +
+    '<path d="M6 16.5v-2M10 16.5v-2M14 16.5v-2M18 16.5v-2"/>',
+  runwayM:
+    '<path d="M2.5 15v3h19v-3"/>' +
+    '<path d="M6 16.5h2.5M10.75 16.5h2.5M15.5 16.5h2.5"/>',
+  runwayL:
+    '<path d="M2 13.5v6h20v-6"/>' +
+    '<path d="M5 16.5h3M10.5 16.5h3M16 16.5h3"/>' +
+    '<path d="M12 13.5V8l4 1.5-4 1.5"/>',
 };
 
 // ---------------------------------------------------------------------------
@@ -447,6 +644,8 @@ export type PaletteToolIcon =
   | 'zoneR'
   | 'zoneC'
   | 'zoneI'
+  // Grand-expansion Phase 5 (S5): the airport zone tool.
+  | 'zoneA'
   | 'demolish'
   // Phase 2 (utilities): drag-paint network tools.
   | 'powerLine'
@@ -470,6 +669,12 @@ const TOOL_ICONS: Record<PaletteToolIcon, string> = {
     '<rect x="3.5" y="3.5" width="17" height="17" rx="2" stroke-dasharray="3.5 2.5"/>' +
     '<circle cx="12" cy="12" r="2.6"/>' +
     '<path d="M12 6.8v2M12 15.2v2M6.8 12h2M15.2 12h2M8.3 8.3l1.4 1.4M14.3 14.3l1.4 1.4M15.7 8.3l-1.4 1.4M9.7 14.3l-1.4 1.4"/>',
+  // Airport zone: dashed zone rect with a paper-plane glyph (the phase 5
+  // icon set's civilAirport minus the runway — reads as "aviation").
+  zoneA:
+    '<rect x="3.5" y="3.5" width="17" height="17" rx="2" stroke-dasharray="3.5 2.5"/>' +
+    '<path d="M12 6.5l4.5 10.5-4.5-2.4L7.5 17Z"/>' +
+    '<path d="M12 6.5v8.1"/>',
   demolish: '<rect x="12" y="2.5" width="9.5" height="6" rx="1.5"/><path d="M13.5 8 4.5 20.5"/>',
   // Power line: pylon with a sagging wire run.
   powerLine:

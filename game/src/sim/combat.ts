@@ -54,6 +54,7 @@ import {
   UNIT_DEFS,
   HQ_AURA_DAMAGE_BONUS,
   supplyDamageFactor,
+  isSheltered,
   type UnitRecord,
   type UnitKind,
   type UnitDef,
@@ -214,6 +215,10 @@ export function acquireTarget(world: World, unit: UnitRecord, def: UnitDef): Uni
   let bestDist = Infinity;
   for (const other of world.units) {
     if (other.id === unit.id || other.owner === unit.owner || other.hp <= 0) continue;
+    // Grand-expansion Phase 5 (S4): sheltered aircraft (parked in a
+    // hangar or embarked on a carrier) are not valid targets — they
+    // are inside the shelter, not on the battlespace.
+    if (isSheltered(other)) continue;
     if (!canTarget(def, other)) continue;
     const d = Math.hypot(other.x - unit.x, other.z - unit.z);
     if (d > range || d < def.minRange) continue;
@@ -267,6 +272,27 @@ function fireWeapon(world: World, attacker: UnitRecord, def: UnitDef, target: Un
  * never reused, so no id fix-up is needed.
  */
 export function killUnit(world: World, unit: UnitRecord): void {
+  // Grand-expansion Phase 5 (S4): release the unit's hangar slot (a
+  // parked aircraft's slot frees when it dies; the demolish path
+  // already cleared the link for destroyed buildings).
+  const hid = unit.hangarBuildingId ?? 0;
+  if (hid > 0) {
+    const b = world.city.buildings.find((x) => x.id === hid);
+    if (b?.hangars) {
+      for (const s of b.hangars) {
+        if (s.occupant === unit.id) s.occupant = 0;
+      }
+    }
+  }
+  // Grand-expansion Phase 5/6 (S4): a destroyed carrier takes its wing
+  // with it (PLAN §4 S4 — the user requirement). Recursive, wing in id
+  // order (world.units is spawn order); wing aircraft award no XP
+  // (ordnance lost with the ship, like a garrison).
+  const def = UNIT_DEFS[unit.kind as UnitKind];
+  if ((def?.wingCapacity ?? 0) > 0) {
+    const wing = world.units.filter((u) => (u.embarkedOn ?? 0) === unit.id);
+    for (const w of wing) killUnit(world, w);
+  }
   const idx = world.units.indexOf(unit);
   if (idx >= 0) world.units.splice(idx, 1);
   // Phase 3 logistics: a dead unit's in-flight depot reservation returns
@@ -298,17 +324,71 @@ export function killUnit(world: World, unit: UnitRecord): void {
  * O(sources × units), bounded by design (medics are few). Healing caps at
  * the unit's effective max hp (upgrade-aware); the dead stay dead.
  */
+/**
+ * Grand-expansion Phase 6 (workstream C): naval-mine trigger radius in
+ * world units. Mirrors the navalMine def's `range: 8` — keep the two in
+ * sync; the def field documents the radius in UI, this constant drives
+ * the sim pass.
+ */
+export const MINE_TRIGGER_RADIUS = 8;
+
+/**
+ * Naval-mine detonation pass (grand-expansion Phase 6, workstream C).
+ * Runs after heal auras, before the fire pass. Each living naval mine,
+ * in id order, detonates on the nearest living enemy sea unit that is
+ * not itself a mine, within MINE_TRIGGER_RADIUS (distance ascending,
+ * ties break to the lowest unit id — the combat determinism contract).
+ * The detonation spends the mine def's `damage` through
+ * `damageMultiplier` (armor counters apply: heavy hulls shrug mines at
+ * vsHeavy 0.9, light hulls eat them at vsLight 1.5), self-destructs the
+ * mine (hp → 0), and leaves the target for the fire pass's dead list
+ * below (mines award no XP — expendable ordnance). An active Aegis
+ * shield absorbs the blast like any other incoming damage. No RNG.
+ */
+function applyNavalMineDetonations(world: World): void {
+  const mines = world.units.filter((u) => u.hp > 0 && u.kind === 'navalMine');
+  if (mines.length === 0) return;
+  mines.sort((a, b) => a.id - b.id);
+  const mineDef = UNIT_DEFS.navalMine;
+  for (const mine of mines) {
+    let nearest: UnitRecord | undefined;
+    let nearestDist = MINE_TRIGGER_RADIUS;
+    for (const u of world.units) {
+      if (u.hp <= 0 || u.owner === mine.owner) continue;
+      if (u.domain !== 'sea' || u.kind === 'navalMine') continue;
+      const d = Math.hypot(u.x - mine.x, u.z - mine.z);
+      if (d <= nearestDist && (nearest === undefined || d < nearestDist || u.id < nearest.id)) {
+        nearest = u;
+        nearestDist = d;
+      }
+    }
+    if (nearest === undefined) continue;
+    // The Aegis check mirrors fireWeapon: an active shield absorbs the
+    // blast. (Reads world.superweapons directly — importing
+    // superweapons.ts here would cycle, as the comment there notes.)
+    const sw = world.superweapons.players.find((p) => p.owner === nearest.owner);
+    mine.hp = 0; // the mine is spent whether or not the blast lands
+    if (sw && world.tick < sw.aegis.activeUntil) continue;
+    const mult = damageMultiplier(world, mine, mineDef, nearest);
+    nearest.hp -= mineDef.damage * mult;
+  }
+}
+
 function applyHealAuras(world: World): void {
   for (const medic of world.units) {
     if (medic.hp <= 0) continue;
     const mdef = UNIT_DEFS[medic.kind as UnitKind];
     const radius = mdef?.healRadius;
     if (radius === undefined || radius <= 0) continue;
+    // Grand-expansion Phase 6 (workstream C): `healDomain` picks which
+    // domain the aura covers (repairShip heals 'sea'; everything else
+    // heals 'land' as before — the combatMedic behavior is unchanged).
+    const domain = mdef.healDomain ?? 'land';
     const perSec = effectiveHealPerSec(world, medic.owner, mdef);
     if (perSec <= 0) continue;
     const amount = perSec * TICK_DT;
     for (const u of world.units) {
-      if (u.hp <= 0 || u.owner !== medic.owner || u.domain !== 'land') continue;
+      if (u.hp <= 0 || u.owner !== medic.owner || u.domain !== domain) continue;
       const udef = UNIT_DEFS[u.kind as UnitKind];
       if (!udef) continue;
       // Heal cap is veterancy-aware (Phase 1): Veteran+ units are tougher
@@ -326,11 +406,12 @@ function applyHealAuras(world: World): void {
 /**
  * The combat system. Runs after movement each tick:
  *  1. Cooldowns tick down.
- *  2. Heal auras apply (combatMedic).
- *  3. In id order, every armed unit with a ready weapon validates its
+ *  2. Heal auras apply (combatMedic on land, repairShip on sea).
+ *  3. Naval mines detonate (grand-expansion Phase 6, workstream C).
+ *  4. In id order, every armed unit with a ready weapon validates its
  *     target (or auto-acquires), fires when in range, or chases an
- *     explicit attack order.
- *  4. The dead are removed.
+ *     explicit attack order (deployableOnly kinds never fire).
+ *  5. The dead are removed.
  */
 export function createCombatSystem(): SimSystem {
   return (world: World) => {
@@ -348,6 +429,17 @@ export function createCombatSystem(): SimSystem {
       }
     }
     applyHealAuras(world);
+    // Grand-expansion Phase 6 (workstream C): naval-mine detonation pass.
+    // Deployable-only kinds never enter the fire pass below (their
+    // `damage` is spent here, by their own detonation logic — never by
+    // shooting). Each living mine, in id order, finds the nearest living
+    // enemy sea unit (other mines excluded) within MINE_TRIGGER_RADIUS
+    // and detonates on it: the armor-counter multiplier applies, the
+    // mine self-destructs, and the target joins the dead list so the
+    // combat pass credits/removes it in the same order as a normal
+    // kill. Deterministic — no RNG, id-ordered, ties on distance break
+    // to the lowest unit id. Mines award no XP (expendable ordnance).
+    applyNavalMineDetonations(world);
     // Snapshot the roster: killUnit mutates world.units mid-loop. Id order
     // (ascending) is the determinism contract — XP kill crediting happens
     // in this same pass, so kills credit in id order too.
@@ -358,14 +450,22 @@ export function createCombatSystem(): SimSystem {
         dead.push(u);
         continue;
       }
+      // Grand-expansion Phase 5 (S4): sheltered aircraft (parked in a
+      // hangar or embarked on a carrier) neither shoot nor get shot —
+      // they are inside the shelter, not on the battlespace.
+      if (isSheltered(u)) continue;
       const def = UNIT_DEFS[u.kind as UnitKind];
-      if (!def || def.damage <= 0 || u.cooldownLeft > 0) continue;
+      // Deployable-only kinds (navalMine) never shoot — detonations are
+      // handled by applyNavalMineDetonations above.
+      if (!def || def.damage <= 0 || u.cooldownLeft > 0 || def.deployableOnly === true) continue;
 
       // Validate the current target.
       let target: UnitRecord | undefined;
       if (u.targetId !== 0) {
         const t = findUnit(world, u.targetId);
-        if (t && t.hp > 0 && t.owner !== u.owner) {
+        // A target that parked/embarked mid-chase leaves the
+        // battlespace — drop it like a dead one.
+        if (t && t.hp > 0 && t.owner !== u.owner && !isSheltered(t)) {
           target = t;
         } else {
           u.targetId = 0;
@@ -456,11 +556,15 @@ export function registerCombatCommands(queue: CommandQueue): void {
       const attacker = findUnit(world, attackerId);
       if (!attacker) return `attackUnit: no unit with id ${attackerId}`;
       if (attacker.owner !== owner) return `attackUnit: unit ${attackerId} is not owned by player ${owner}`;
+      // Grand-expansion Phase 5 (S4): sheltered aircraft take no attack
+      // orders — launch them first. Loud, never silent.
+      if (isSheltered(attacker)) return `attackUnit: unit ${attackerId} is parked or embarked (launch it first)`;
       const def = UNIT_DEFS[attacker.kind as UnitKind];
       if (!def || def.damage <= 0) return `attackUnit: unit ${attackerId} (${attacker.kind}) is unarmed`;
       const target = findUnit(world, targetId);
       if (!target) return `attackUnit: no target with id ${targetId}`;
       if (target.owner === owner) return 'attackUnit: cannot attack your own unit';
+      if (isSheltered(target)) return `attackUnit: target ${targetId} is parked or embarked (not on the battlespace)`;
       if (!canTarget(def, target)) {
         return `attackUnit: ${attacker.kind} cannot target ${target.domain} units`;
       }

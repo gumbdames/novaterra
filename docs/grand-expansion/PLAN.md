@@ -811,6 +811,28 @@ delta → AI work.** Step gate (§0) applies to every step inside.
 ### Phase 5 — Airports + airline (M–L)
 - **Goal:** airport zones, capability-gated tiers, hangars, civilian
   airline income, mixed-use airports.
+- **Status: IN PROGRESS (2026-09-30, 0.1 Alpha).** Workstream B
+  (aircraft expansion + hangar/carrier system) is DONE: the 16-aircraft
+  §3.5 roster, the S4 hangar system (ground hangars + carrier wings),
+  embark/base/launch commands, tanker refuel, and the full UI layer
+  (HUD buttons, manifests, digest segments), with 32 hangar tests
+  green. Workstream D (AI + snapshot migration) is DONE and landed on
+  `main` uncommitted: the v8 snapshot migration (hangar slots +
+  `hangarBuildingId`/`embarkedOn`, v5/v6/v7 still load), hangar-aware
+  `canTrain`, carrier wing filling (never sails empty), carrier
+  escorts, civil airports on the marshal's build list, documented
+  no-op airline routes / naval mines, and a 3600-tick marshal-vs-general
+  air/naval soak — 34 new tests green. Workstream A (airport zones +
+  airlines) is DONE and landed on `main` uncommitted: the airport zone
+  type with its own tax-rate slot (4-tuple decodes legacy 3-tuples),
+  player-placed-only airport placement, the 14-kind airport roster
+  (civil/military/mixed anchors, terminals, tower, hangars, runways),
+  `establishAirlineRoute`/`cancelAirlineRoute` commands with paying
+  routes, the airline panel + two-click route gesture, the airport
+  overlay (rings + gold route arcs, mixed reads civilian to others),
+  and the ambient `airliner` provider — 50 new tests green.
+  S5 + S8 are now covered by that workstream; the phase is not
+  complete until every workstream has landed on `main`.
 - **Contents:** S4 (hangars) + S5 + S8 (§4) + §3.5 roster + airline
   panel + airport overlay.
 - **Deployable when:** first-plane moment works (build runway →
@@ -834,6 +856,30 @@ delta → AI work.** Step gate (§0) applies to every step inside.
 ### Phase 6 — Naval expansion + carrier wings (M)
 - **Goal:** sub variants, surface combatants, logistics ships,
   civilian sea, ports; carriers as empty hulls with air wings.
+- **Status note (2026-09-30, 0.1 Alpha):** the Phase 5 workstream B
+  (aircraft/hangars) already landed the shared S4 embark machinery
+  the carrier wings need — `embarkAircraft`/`launchAircraft` commands,
+  carrier-capable kinds (Naval Fighter, Trainer, Armed UAV, Recon
+  UAV), Maritime Patrol, Tanker, wing capacity 8, empty-at-training
+  carriers, and carrier-death wing disposition. Workstream C (naval
+  units + ports) is DONE and landed on `main` uncommitted: the 15-kind
+  naval block (66-unit roster: 19 land + 22 air + 25 sea) — coastal
+  sub, nuclear missile sub (never burns fuel), corvette, heavy
+  destroyer, cruiser, battleship, cargo freighter, fuel tanker, ammo
+  ship, repair ship (sea heal aura), minelayer + deployable-only naval
+  mine (`deployMine`, 150 damage, 8-cell trigger), coast guard
+  cutter, cruise liner, yacht — and the 4 ports (commercial,
+  container, fishing, naval base) with coastal placement, harvest
+  income, and shipyard/navalYard `countsAs` training gates. The
+  ambient hook below is also done: the `'cargoShip'` transit type
+  sails decorative container ships between civilian ports
+  (90-tick dwell, 1/800 residents, cap 10), render-only. The AI work
+  below is DONE (workstream D, 2026-09-30, landed on `main`
+  uncommitted): `thinkCarrierWings` fills wings before sailing
+  (escort-first acquisition, `isEmptyWingCarrier` enforced in both
+  attack loops so empty wings never chase) and `thinkCarrierEscorts`
+  keeps 2 escorts per carrier topped up and stationed. Remaining:
+  minesweeping (later).
 - **Contents:** §4 S4 (embark) + §3.6 + §3.7 (carrier-capable kinds,
   maritime patrol, tanker) + naval mines.
 - **Deployable when:** carrier sails empty, embarks a wing, projects
@@ -844,13 +890,15 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   carrier/battleship/airliner-grade hulls).
 - **AI work:** AI fills wings before sailing; builds escorts;
   minesweeping (later).
-- **Ambient city-life hook (naval):** the workstream P transit hook is
-  sized for land/air vehicles; if Phase 6 wants ambient civilian
-  shipping, extend the `AmbientTransitType` union in
-  `render/cityLife.ts` (e.g. `'cargoShip'`) — the provider registry
-  and instanced layer are type-generic, so this is a one-line union
-  change plus a Phase-6 provider. Do NOT put ambient ships in the sim
-  (no unit records — the render-only rule holds).
+- **Ambient city-life hook (naval):** DONE (workstream C, 2026-09-30)
+  — the `'cargoShip'` transit type extends the `AmbientTransitType`
+  union in `render/cityLife.ts`; `render/cargoShipProviders.ts` sails
+  decorative container ships between the player's completed civilian
+  ports (90-tick loading dwell, 1 per 800 residents, cap 10), wired
+  into `ui/game.ts` `syncTransitProviders` with the same rebuild/
+  dispose lifecycle as the Phase 4 providers. No sim coupling (no
+  unit records — the render-only rule holds), digest-pinned in
+  `tests/render.cargoShip.test.ts`.
 
 ### Phase 7 — Intel + spies + recon (M; L with full actions)
 - **Goal:** deterministic asset economy, named spies, recon value,
@@ -917,11 +965,15 @@ are deliberate per field (AGENTS.md rule).
 
 ## 11. Snapshot/digest migration plan
 
-- **No bump:** veterancy fields, fuel/ammo, embarkedOn,
-  hangarBuildingId, hangar slots (with documented legacy-airfield
-  default), sabotagedUntil, ferry routes, intel asset counters,
-  `world.peaceful`, utility network cell sets — all decode to neutral
-  defaults (step-7 AI-personality precedent).
+- **No bump:** veterancy fields, fuel/ammo, sabotagedUntil, ferry
+  routes, intel asset counters, `world.peaceful`, utility network cell
+  sets — all decode to neutral defaults (step-7 AI-personality
+  precedent). **Exception:** `embarkedOn`, `hangarBuildingId`, and
+  hangar slots shipped as **v8** (Phase 5 workstream D, 2026-09-30) —
+  PURELY ADDITIVE (no shape migration; v7 decodes hangars to
+  `defaultHangarSlots(kind)`, embark fields to 0), bumped so the
+  hangar/airport data contract has a versioned home. v5/v6/v7 still
+  load.
 - **Bump v6→v7:** road classes (shape change `number[]` →
   `{cell, cls}[]`, `migrateRoadsV6ToV7`) and the tax-rate 4-tuple
   (`migrateTaxRates` pads the 4th rate). When bumping, decide whether

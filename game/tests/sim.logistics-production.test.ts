@@ -145,7 +145,7 @@ describe('logistics roster (Phase 3 workstream 2)', () => {
     expect(defs.fuelDepot.fuelStorage).toBe(250);
   });
 
-  it('marks exactly the 12 reload points (9 Phase 3 + 3 Phase 4 transport hubs)', () => {
+  it('marks exactly the 18 reload points (12 classic + 4 Phase 5 airports + 2 Phase 6 ports)', () => {
     const reloadPoints = (Object.keys(BUILDING_DEFS) as BuildingKind[]).filter(
       (k) => BUILDING_DEFS[k].reloadPoint,
     );
@@ -163,6 +163,15 @@ describe('logistics roster (Phase 3 workstream 2)', () => {
         'ordnanceDepot',
         'railStation',
         'warFactory',
+        // Grand-expansion Phase 5 (2026-09-30): airport fuel/ammo stops.
+        'civilAirport',
+        'fuelFarm',
+        'militaryAirbase',
+        'mixedAirport',
+        // Grand-expansion Phase 6 workstream C (2026-09-30): the ports
+        // are naval resupply points (fuel/ammo ships top up alongside).
+        'commercialPort',
+        'navalBase',
       ].sort(),
     );
   });

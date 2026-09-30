@@ -161,8 +161,8 @@ describe('initial state', () => {
     expect(initAges()).toEqual({ age: 'foundation', program: null, programs: {} });
   });
 
-  it('snapshot version is 7 (Phase 4 transport: road/rail classes)', () => {
-    expect(SNAPSHOT_VERSION).toBe(7);
+  it('snapshot version is 8 (Phase 5/6 S4: hangar slots + embark fields)', () => {
+    expect(SNAPSHOT_VERSION).toBe(8);
   });
 });
 
@@ -326,22 +326,43 @@ describe('age-gated units', () => {
   });
 
   it('every unit carries its spec §6 minimum age', () => {
-    // Exact roster-expansion age assignments (docs/research/roster-expansion.md §6).
+    // Exact age assignments: the roster-expansion table
+    // (docs/research/roster-expansion.md §6) extended by the
+    // grand-expansion roster — Phase 5 (aircraft expansion: 16 new
+    // aircraft) and Phase 6 (naval expansion). Changing a unit's age
+    // is a balance decision: update this table deliberately, never to
+    // make a red test green.
     const expected: Record<string, string> = {
       engineer: 'foundation', rifles: 'foundation', hauler: 'foundation',
       supplyTruck: 'foundation', fuelTruck: 'foundation',
       drone: 'foundation', spectre: 'foundation', hq: 'foundation',
       tank: 'foundation', artillery: 'foundation', aa: 'foundation',
-      fishingBoat: 'foundation',
-      patrolBoat: 'industry', transportShip: 'industry', destroyer: 'industry',
-      sniperTeam: 'connectivity', combatMedic: 'connectivity', apc: 'connectivity',
-      attackHeli: 'connectivity', missileBoat: 'connectivity',
-      tankDestroyer: 'industry', mlrs: 'industry', fighterBomber: 'industry',
-      frigate: 'industry', submarine: 'industry',
-      awacs: 'information', carrier: 'information', commandShip: 'information',
-      fighter: 'connectivity', transport: 'foundation',
+      fishingBoat: 'foundation', transport: 'foundation',
+      sniperTeam: 'connectivity', combatMedic: 'connectivity',
+      apc: 'connectivity', attackHeli: 'connectivity',
+      missileBoat: 'connectivity', fighter: 'connectivity',
       bus: 'connectivity', tram: 'connectivity', ferry: 'connectivity',
-      passengerTrain: 'industry', freightTrain: 'industry',
+      reconUAV: 'connectivity', armedUAV: 'connectivity',
+      reconPlane: 'connectivity', trainer: 'connectivity',
+      navalFighter: 'connectivity', airliner: 'connectivity',
+      regionalJet: 'connectivity', passengerHeli: 'connectivity',
+      seaplane: 'connectivity', corvette: 'connectivity',
+      repairShip: 'connectivity', cruiseLiner: 'connectivity',
+      yacht: 'connectivity',
+      patrolBoat: 'industry', transportShip: 'industry',
+      destroyer: 'industry', tankDestroyer: 'industry', mlrs: 'industry',
+      fighterBomber: 'industry', frigate: 'industry',
+      submarine: 'industry', passengerTrain: 'industry',
+      freightTrain: 'industry', gunship: 'industry', tanker: 'industry',
+      militaryCargo: 'industry', jumboAirliner: 'industry',
+      cargoPlane: 'industry', coastalSub: 'industry',
+      heavyDestroyer: 'industry', cargoFreighter: 'industry',
+      fuelTanker: 'industry', ammoShip: 'industry', minelayer: 'industry',
+      navalMine: 'industry', coastGuardCutter: 'industry',
+      awacs: 'information', carrier: 'information',
+      commandShip: 'information', strategicBomber: 'information',
+      maritimePatrol: 'information', missileSub: 'information',
+      cruiser: 'information', battleship: 'information',
     };
     expect(Object.keys(UNIT_DEFS).sort()).toEqual(Object.keys(expected).sort());
     for (const [kind, age] of Object.entries(expected)) {

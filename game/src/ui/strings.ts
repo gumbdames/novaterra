@@ -155,6 +155,12 @@ export const STRINGS = {
     // Phase 4 (transport): occupancy line for the selection panel, from
     // the sim's buildingOccupancy() (city.ts).
     occupancyLine: { en: 'Residents {residents}/{residentCap} · Workers {workers}/{workerCap}' },
+    // Grand-expansion Phase 5 (hangar/carrier shelter, workstream B):
+    // buttons for the embark / base / launch orders on aircraft,
+    // carrier, and hangar selections.
+    embarkVerb: { en: 'Embark' },
+    baseVerb: { en: 'Park in hangar' },
+    launchVerb: { en: 'Launch' },
   },
   /** Veterancy display (grand-expansion Phase 1). English-only. */
   veterancy: {
@@ -285,7 +291,7 @@ export const STRINGS = {
   // English-only sections (roster expansion). Every entry is en-only,
   // flowing through the LocalizedString indirection (see docs/I18N.md).
   // ------------------------------------------------------------------
-  /** Localized display names for all 28 unit kinds (tab palettes). */
+  /** Localized display names for all 66 unit kinds (tab palettes). */
   unitNames: {
     engineer: { en: 'Engineer' },
     rifles: { en: 'Rifles' },
@@ -310,6 +316,23 @@ export const STRINGS = {
     drone: { en: 'Drone' },
     awacs: { en: 'AWACS' },
     transport: { en: 'Transport' },
+    // Grand-expansion Phase 5 — aircraft expansion (workstream B, 2026-09-30).
+    strategicBomber: { en: 'Strategic Bomber' },
+    maritimePatrol: { en: 'Maritime Patrol' },
+    reconUAV: { en: 'Recon UAV' },
+    armedUAV: { en: 'Armed UAV' },
+    reconPlane: { en: 'Recon Plane' },
+    gunship: { en: 'Gunship' },
+    tanker: { en: 'Tanker' },
+    militaryCargo: { en: 'Military Cargo' },
+    trainer: { en: 'Trainer' },
+    navalFighter: { en: 'Naval Fighter' },
+    airliner: { en: 'Airliner' },
+    jumboAirliner: { en: 'Jumbo Airliner' },
+    regionalJet: { en: 'Regional Jet' },
+    cargoPlane: { en: 'Cargo Plane' },
+    passengerHeli: { en: 'Passenger Heli' },
+    seaplane: { en: 'Seaplane' },
     patrolBoat: { en: 'Patrol Boat' },
     missileBoat: { en: 'Missile Boat' },
     frigate: { en: 'Frigate' },
@@ -326,6 +349,23 @@ export const STRINGS = {
     bus: { en: 'Bus' },
     tram: { en: 'Tram' },
     ferry: { en: 'Ferry' },
+    // Grand-expansion Phase 6 — naval expansion (workstream C,
+    // 2026-09-30): the 15 new sea kinds.
+    coastalSub: { en: 'Coastal Sub' },
+    missileSub: { en: 'Missile Sub' },
+    corvette: { en: 'Corvette' },
+    cruiser: { en: 'Cruiser' },
+    battleship: { en: 'Battleship' },
+    heavyDestroyer: { en: 'Heavy Destroyer' },
+    cargoFreighter: { en: 'Cargo Freighter' },
+    fuelTanker: { en: 'Fuel Tanker' },
+    ammoShip: { en: 'Ammo Ship' },
+    repairShip: { en: 'Repair Ship' },
+    minelayer: { en: 'Minelayer' },
+    navalMine: { en: 'Naval Mine' },
+    coastGuardCutter: { en: 'Coast Guard Cutter' },
+    cruiseLiner: { en: 'Cruise Liner' },
+    yacht: { en: 'Yacht' },
   } as Record<UnitKind, LocalizedString>,
   /** Localized display names for all building kinds (tab palettes). */
   buildingNames: {
@@ -406,6 +446,28 @@ export const STRINGS = {
     missileSilo: { en: 'Missile Silo' },
     ordnanceDepot: { en: 'Ordnance Depot' },
     fuelDepot: { en: 'Fuel Depot' },
+    // Grand-expansion Phase 6 — naval expansion (workstream C,
+    // 2026-09-30): the four ports.
+    commercialPort: { en: 'Commercial Port' },
+    containerPort: { en: 'Container Port' },
+    fishingHarbor: { en: 'Fishing Harbor' },
+    navalBase: { en: 'Naval Base' },
+    // Grand-expansion Phase 5 — airports (workstream A, S5+S8,
+    // 2026-09-30): the 14 airport kinds.
+    civilAirport: { en: 'Civil Airport' },
+    militaryAirbase: { en: 'Military Airbase' },
+    mixedAirport: { en: 'Mixed Airport' },
+    passengerTerminal: { en: 'Passenger Terminal' },
+    cargoTerminal: { en: 'Cargo Terminal' },
+    controlTower: { en: 'Control Tower' },
+    hangarS: { en: 'Hangar (Light)' },
+    hangarM: { en: 'Hangar (Medium)' },
+    hangarL: { en: 'Hangar (Heavy)' },
+    fuelFarm: { en: 'Fuel Farm' },
+    maintenanceHangar: { en: 'Maintenance Hangar' },
+    runwayS: { en: 'Runway (Light)' },
+    runwayM: { en: 'Runway (Medium)' },
+    runwayL: { en: 'Runway (Heavy)' },
   } as Record<BuildingKind, LocalizedString>,
   /** Train-palette tab names (spec §8). */
   unitTabs: {
@@ -433,6 +495,8 @@ export const STRINGS = {
     logistics: { en: 'Logistics' },
     // Grand-expansion Phase 4 S7 (2026-09-30): the transport hubs tab.
     transport: { en: 'Transport' },
+    // Grand-expansion Phase 5 (S5+S8, 2026-09-30): the airport roster tab.
+    airports: { en: 'Airports' },
   } as Record<string, LocalizedString>,
   /** Research-panel upgrade group names. */
   upgradeGroups: {
@@ -594,6 +658,15 @@ export const STRINGS = {
     /** Selection-panel land-value line for residential buildings. */
     landValueLine: { en: 'Land: {tier} ({score}) · tax ×{mult}' },
   },
+  /** Airport overlay (grand-expansion Phase 5, S5+S8). English-only. */
+  airportsOverlay: {
+    /** Overlay toggle label (top bar). */
+    overlayToggle: { en: 'Airports' },
+    /** Overlay legend (title attribute of the toggle). */
+    overlayLegend: {
+      en: 'Show airport sites (rings by type) and airline routes (arcs).',
+    },
+  },
   /** Underground/x-ray view (Phase 4 RENDER workstream A, item 1). English-only. */
   xray: {
     /** Overlay toggle label (top bar). */
@@ -635,6 +708,8 @@ export const STRINGS = {
     toolZoneR: { en: 'Zone: Homes' },
     toolZoneC: { en: 'Zone: Shops' },
     toolZoneI: { en: 'Zone: Industry' },
+    // Grand-expansion Phase 5 (S5): the airport zone tool.
+    toolZoneA: { en: 'Zone: Airports' },
     toolSectionZoning: { en: 'Zoning' },
     // Phase 2 (utilities): the drag-paint network tools sit together.
     toolSectionNetworks: { en: 'Networks' },
@@ -653,6 +728,10 @@ export const STRINGS = {
     alreadyResearched: { en: 'Already researched' },
     researchedTag: { en: '✓ Researched' },
     navalYardCoast: { en: 'Must be built on the coast — at least one footprint cell adjacent to water' },
+    // Grand-expansion Phase 6 — naval expansion (workstream C,
+    // 2026-09-30): naval mines are never trained directly — the
+    // minelayer lays them with its deployMine command.
+    deployedByMinelayer: { en: 'Deployed by a Minelayer — select a Minelayer to lay mines' },
     resFunds: { en: 'funds' },
     resMaterials: { en: 'materials' },
     resManpower: { en: 'manpower' },
@@ -681,6 +760,8 @@ export const STRINGS = {
       0: { en: 'Homes' },
       1: { en: 'Shops' },
       2: { en: 'Industry' },
+      // Grand-expansion Phase 5 (S5, 2026-09-30): the airport zone rate.
+      3: { en: 'Airports' },
     },
     mayorSetsRates: { en: 'Mayor sets the rates ({policy})' },
     /** Management tab: city specialization (was the Command panel). */
@@ -691,6 +772,22 @@ export const STRINGS = {
     noGeneral: { en: 'No general appointed' },
     dismissVerb: { en: 'Dismiss' },
     mayorBuildsLabel: { en: 'Mayor builds:' },
+    /** Civilian tab: the airline panel (grand-expansion Phase 5, S5). */
+    airlineTitle: { en: 'Airlines' },
+    airlineEmpty: { en: 'No airline routes yet — build two civil airports, then link them.' },
+    newAirlineRoute: { en: 'New route…' },
+    airlineRouteArmed: { en: 'Click a second civil or mixed airport to complete the route' },
+    airlinePickFirst: { en: 'Click one of your completed civil or mixed airports' },
+    airlineNotEndpoint: { en: 'Airline routes need completed civil or mixed airports' },
+    airlineSameAirport: { en: 'Pick a different airport for the route\u2019s other end' },
+    airlineNeedsOwner: { en: 'Airline routes only connect your own airports' },
+    cancelAirlineRoute: { en: 'Cancel route' },
+    airlineNeedsTwo: { en: 'Needs two completed civil or mixed airports' },
+    /** Runway class labels (§AD7 — the build UI shows what each runway serves). */
+    runwayServes: { en: 'Serves: {classes}' },
+    aircraftClassLight: { en: 'Light' },
+    aircraftClassMedium: { en: 'Medium' },
+    aircraftClassHeavy: { en: 'Heavy' },
   },
 } as const;
 

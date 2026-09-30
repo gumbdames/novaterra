@@ -74,6 +74,13 @@ import type { Selection } from './selection';
 import type { AdvisorItem } from './advisor';
 import { STRINGS, loc, fillLoc, type LocalizedString } from './strings';
 import { vetXpLine } from './veterancy';
+// Grand-expansion Phase 5 (S5): the airport/airline UI contract module.
+import {
+  AIRLINE_ROUTE_SETUP_COST,
+  airlineRouteIncomeOf,
+  airlineRoutesOf,
+  isAirlineEndpoint,
+} from './airports';
 import {
   TRAIN_TABS,
   UPGRADE_GROUPS,
@@ -133,6 +140,23 @@ import {
   resupplyBlockReason,
   serviceTogglesOf,
 } from './logistics';
+// Grand-expansion Phase 5 (hangar/carrier shelter, workstream B): the
+// embark / base / launch contract — the panel reads the sim through
+// this module, never the records directly.
+import {
+  baseBlockReason,
+  canBaseUI,
+  canEmbarkUI,
+  canLaunchUI,
+  embarkBlockReason,
+  embarkedAircraft,
+  hangarLine,
+  nearestCarrier,
+  nearestHangarBuilding,
+  parkedAircraft,
+  shelterLine,
+  wingLine,
+} from './hangars';
 
 /** Build-palette tools the HUD can request. */
 export type BuildTool =
@@ -145,6 +169,8 @@ export type BuildTool =
   | 'zoneR'
   | 'zoneC'
   | 'zoneI'
+  // Grand-expansion Phase 5 (S5): the airport zone tool.
+  | 'zoneA'
   | `building:${BuildingKind}`
   // Phase 2 (utilities): new sim building kinds arm with the same
   // 'building:<kind>' shape once the sim's BuildingKind union grows.
@@ -168,6 +194,8 @@ export interface HUDActions {
   onToggleUtilityOverlay(): void;
   /** Phase 3 (logistics): toggle the logistics overlay. */
   onToggleLogisticsOverlay(): void;
+  /** Grand-expansion Phase 5 (S5+S8): toggle the airport overlay. */
+  onToggleAirportOverlay(): void;
   /** Workstream W (desirability): toggle the land-value overlay. */
   onToggleDesirabilityOverlay(): void;
   /** Phase 4 RENDER workstream A (item 1): toggle the underground/x-ray view. */
@@ -176,6 +204,20 @@ export interface HUDActions {
   onToggleGrid(): void;
   /** Phase 3 (logistics): order a unit to resupply at a depot. */
   onResupplyUnit(unitId: number, depotId: number): void;
+  /**
+   * Phase 5 (hangar/carrier shelter): embark a carrier-capable
+   * aircraft onto a carrier's wing. The sim validates (owner,
+   * carrierCapable, free wing slot, EMBARK_RANGE).
+   */
+  onEmbarkAircraft(unitId: number, carrierId: number): void;
+  /**
+   * Phase 5 (hangar/carrier shelter): park an aircraft in a completed
+   * building's hangar. The sim validates (owner, compatible free
+   * slot, HANGAR_BASE_RANGE).
+   */
+  onBaseAircraft(unitId: number, buildingId: number): void;
+  /** Phase 5 (hangar/carrier shelter): launch a parked/embarked aircraft. */
+  onLaunchAircraft(unitId: number): void;
   /** Phase 3 (logistics): set a supply unit's field services. */
   onSetSupplyToggles(
     unitId: number,
@@ -204,7 +246,11 @@ export interface HUDActions {
   /** Phase 3: change general stance. */
   onSetGeneralStance(stance: string): void;
   /** Workstream Y: set one zone's tax rate (Management tab). */
-  onSetTaxRate(zone: 0 | 1 | 2, rate: number): void;
+  onSetTaxRate(zone: 0 | 1 | 2 | 3, rate: number): void;
+  /** Airlines (Phase 5, S5): arm the two-click airline-route gesture. */
+  onAirlineNewRoute(): void;
+  /** Airlines (Phase 5, S5): cancel an airline route by its route id. */
+  onCancelAirlineRoute(id: number): void;
   /** Roster expansion: research an upgrade (from the research panel). */
   onResearchUpgrade(upgradeId: UpgradeId): void;
 }
@@ -265,6 +311,11 @@ export class HUD {
   private readonly utilOverlayBtn: HTMLButtonElement;
   /** Phase 3 (logistics): overlay toggle — built once, write-on-change. */
   private readonly logisticsOverlayBtn: HTMLButtonElement;
+  /**
+   * Grand-expansion Phase 5 (S5+S8): airport overlay toggle — built once,
+   * write-on-change.
+   */
+  private readonly airportOverlayBtn: HTMLButtonElement;
   /** Workstream W (desirability): overlay toggle — built once, write-on-change. */
   private readonly desirabilityOverlayBtn: HTMLButtonElement;
   /** Phase 4 RENDER workstream A (item 1): x-ray toggle — built once, write-on-change. */
@@ -302,6 +353,15 @@ export class HUD {
    * covered (rc:) so the selector highlights repaint on change.
    */
   selectedRoadClass: RoadClass = 'paved';
+  /**
+   * Grand-expansion Phase 5 (S5): the airline tool state, controller-
+   * owned. `airlineArmed` = the "New route…" two-click gesture is live;
+   * `airlineFromId` = the armed first endpoint (null = still picking the
+   * first airport). Digest-covered (aa:) so the armed status line
+   * repaints on change. The HUD never mutates these — game.ts does.
+   */
+  airlineArmed = false;
+  airlineFromId: number | null = null;
   /**
    * Set by tab switches / research clicks so the selection panel rebuilds
    * even when the sim tick hasn't advanced (e.g. while paused).
@@ -392,6 +452,22 @@ export class HUD {
       actions.onToggleLogisticsOverlay(),
     );
     this.topbar.append(this.logisticsOverlayBtn);
+
+    // Grand-expansion Phase 5 (S5+S8): overlay toggle — airport-site
+    // rings and airline-route arcs. Same built-once / write-on-change
+    // pattern as the utilities/logistics toggles (the topbar branch's
+    // noDigestReason invariant).
+    this.airportOverlayBtn = document.createElement('button');
+    this.airportOverlayBtn.className = 'hud-airport';
+    this.airportOverlayBtn.title = loc(STRINGS.airportsOverlay.overlayLegend);
+    this.airportOverlayBtn.innerHTML = buildingIcon('civilAirport');
+    this.airportOverlayBtn.append(
+      document.createTextNode(loc(STRINGS.airportsOverlay.overlayToggle)),
+    );
+    this.airportOverlayBtn.addEventListener('click', () =>
+      actions.onToggleAirportOverlay(),
+    );
+    this.topbar.append(this.airportOverlayBtn);
 
     // Workstream W (desirability): overlay toggle — the residential
     // land-value tint (red low → green prime). Same built-once /
@@ -588,6 +664,9 @@ export class HUD {
       { tool: 'zoneR', label: loc(p.toolZoneR), icon: 'zoneR' },
       { tool: 'zoneC', label: loc(p.toolZoneC), icon: 'zoneC' },
       { tool: 'zoneI', label: loc(p.toolZoneI), icon: 'zoneI' },
+      // Grand-expansion Phase 5 (S5): the airport zone tool rides the
+      // same drag pipeline as the other zones.
+      { tool: 'zoneA', label: loc(p.toolZoneA), icon: 'zoneA' },
     ] as const;
     for (const { tool, label, icon } of zoneTools) {
       zoneGroup.append(makeToolButton(tool, label, icon));
@@ -597,6 +676,72 @@ export class HUD {
     panel.append(toolsRow);
     const tabs = buildTabsForMenuTab(allBuildTabs(), 'civilian');
     this.appendBuildPanel(panel, world, tabs);
+    // Grand-expansion Phase 5 (S5): the airline panel — the player's
+    // routes plus the two-click "New route…" gesture. Registered in
+    // HUD_PANEL_BRANCHES as 'airline-panel' (digestLabels: al:, aa:).
+    panel.append(this.airlinePanelEl(world));
+  }
+
+  /**
+   * Civilian → Airlines (Phase 5, S5). Lists each of the player's airline
+   * routes (endpoint names + the exact income the sim pays, from
+   * ui/airports.ts) with a cancel button, and the "New route…" button
+   * that arms the controller's two-click gesture. While armed, a status
+   * line says what the next click must hit — nothing fails silently.
+   */
+  private airlinePanelEl(world: World): HTMLElement {
+    const m = STRINGS.menuTabs;
+    const sec = this.makeSection(loc(m.airlineTitle));
+    const routes = airlineRoutesOf(world, HUMAN_PLAYER_ID);
+    const byId = new Map<number, string>();
+    for (const b of world.city.buildings) byId.set(b.id, buildingName(b.kind));
+    if (routes.length === 0) {
+      sec.append(el('div', 'panel-status', loc(m.airlineEmpty)));
+    }
+    for (const r of routes) {
+      const row = el('div', 'panel-row');
+      const income = airlineRouteIncomeOf(world, r).toFixed(1);
+      row.append(
+        el(
+          'span',
+          'panel-label',
+          `${byId.get(r.from) ?? '—'} ↔ ${byId.get(r.to) ?? '—'} · +${income} funds/s`,
+        ),
+      );
+      row.append(
+        this.makePanelButton(
+          loc(m.cancelAirlineRoute),
+          `Cancel airline route ${r.id}`,
+          () => this.actions.onCancelAirlineRoute(r.id),
+        ),
+      );
+      sec.append(row);
+    }
+    if (this.airlineArmed) {
+      sec.append(
+        el(
+          'div',
+          'panel-status',
+          this.airlineFromId === null
+            ? loc(m.airlinePickFirst)
+            : loc(m.airlineRouteArmed),
+        ),
+      );
+    }
+    const endpoints = world.city.buildings.filter(
+      (b) => b.owner === HUMAN_PLAYER_ID && isAirlineEndpoint(b),
+    );
+    sec.append(
+      this.makePanelButton(
+        loc(m.newAirlineRoute),
+        endpoints.length >= 2
+          ? `New airline route (${AIRLINE_ROUTE_SETUP_COST} funds setup)`
+          : loc(m.airlineNeedsTwo),
+        () => this.actions.onAirlineNewRoute(),
+        { disabled: endpoints.length < 2, active: this.airlineArmed },
+      ),
+    );
+    return sec;
   }
 
   /**
@@ -661,10 +806,12 @@ export class HUD {
     const sec = this.makeSection(loc(m.taxesTitle));
     const player = getPlayer(world.city, HUMAN_PLAYER_ID);
     const mayor = getMayor(world, HUMAN_PLAYER_ID);
-    const rates: [number, number, number] = [
+    const rates: [number, number, number, number] = [
       player?.taxRates[0] ?? 0,
       player?.taxRates[1] ?? 0,
       player?.taxRates[2] ?? 0,
+      // Grand-expansion Phase 5 (S5): the airport-zone tax rate.
+      player?.taxRates[3] ?? 0,
     ];
     if (mayor !== undefined) {
       // A mayor resets the rates to its policy every economy tick, so
@@ -677,7 +824,7 @@ export class HUD {
         ),
       );
     }
-    for (const zone of [0, 1, 2] as const) {
+    for (const zone of [0, 1, 2, 3] as const) {
       const row = el('div', 'panel-row');
       const nameEntry = m.taxZoneNames[zone];
       row.append(el('span', 'panel-label', nameEntry !== undefined ? loc(nameEntry) : `zone ${zone}`));
@@ -913,6 +1060,14 @@ export class HUD {
   }
 
   /**
+   * Grand-expansion Phase 5 (S5+S8): flip the airport overlay toggle's
+   * active state (write-on-change — the button is never rebuilt).
+   */
+  setAirportOverlayActive(active: boolean): void {
+    this.airportOverlayBtn.classList.toggle('active', active);
+  }
+
+  /**
    * Workstream W (desirability): flip the overlay toggle's active state
    * (write-on-change — the button is never rebuilt).
    */
@@ -1000,6 +1155,9 @@ export class HUD {
       // rebuild, but the digest is the key — the 2026-09-30 click bug
       // rule).
       this.selectedRoadClass,
+      // Grand-expansion Phase 5 (S5): the airline panel's armed status
+      // line is rendered content — undefined when the tool is disarmed.
+      this.airlineArmed ? this.airlineFromId : undefined,
     );
   }
 
@@ -1108,6 +1266,79 @@ export class HUD {
           }
           panel.append(rs);
         }
+        // Grand-expansion Phase 5 (hangar/carrier shelter): the shelter
+        // line + Embark / Park / Launch buttons for aircraft, and the
+        // wing manifest for carriers. Sheltered aircraft are invisible on
+        // the map (render skips them), so the carrier/hangar panels list
+        // their sheltered aircraft with Launch buttons — otherwise a
+        // parked aircraft could never be launched from the UI. Every
+        // value is digest-covered by the ue: / ew: segments (AD11).
+        if (u.owner === HUMAN_PLAYER_ID) {
+          const sheltered = shelterLine(world, u);
+          if (sheltered !== '') {
+            panel.append(el('div', 'sel-unit', sheltered));
+            const launch = document.createElement('button');
+            launch.className = 'sel-action';
+            launch.textContent = loc(sel.launchVerb);
+            launch.addEventListener('click', () => this.actions.onLaunchAircraft(u.id));
+            panel.append(launch);
+          } else if (canEmbarkUI(u)) {
+            // Embark: the UI proposes the nearest friendly carrier in
+            // range; the sim validates. Disabled with the reason named —
+            // never a dead button.
+            const carrier = nearestCarrier(world, u);
+            const eblock =
+              carrier !== null ? embarkBlockReason(world, u, carrier) : 'No carrier in range';
+            const eb = document.createElement('button');
+            eb.className = 'sel-action';
+            eb.textContent = loc(sel.embarkVerb);
+            if (eblock === null && carrier !== null) {
+              eb.addEventListener('click', () =>
+                this.actions.onEmbarkAircraft(u.id, carrier.id),
+              );
+            } else {
+              eb.disabled = true;
+              eb.title = eblock ?? 'No carrier in range';
+            }
+            panel.append(eb);
+          }
+          if (canBaseUI(u)) {
+            // Park in hangar: the UI proposes the nearest friendly
+            // building with a free compatible slot in range.
+            const hangar = nearestHangarBuilding(world, u);
+            const bblock =
+              hangar !== null ? baseBlockReason(world, u, hangar) : 'No hangar in range';
+            const bb = document.createElement('button');
+            bb.className = 'sel-action';
+            bb.textContent = loc(sel.baseVerb);
+            if (bblock === null && hangar !== null) {
+              bb.addEventListener('click', () =>
+                this.actions.onBaseAircraft(u.id, hangar.id),
+              );
+            } else {
+              bb.disabled = true;
+              bb.title = bblock ?? 'No hangar in range';
+            }
+            panel.append(bb);
+          }
+          // Carrier wing manifest: carriers train EMPTY (the wing fills
+          // only through embark orders), so the panel lists the embarked
+          // aircraft with per-aircraft Launch buttons.
+          const wing = wingLine(world, u);
+          if (wing !== '') {
+            panel.append(el('div', 'sel-unit', wing));
+            for (const w of embarkedAircraft(world, u.id)) {
+              const wdef = UNIT_DEFS[w.kind as UnitKind];
+              const row = el('div', 'sel-unit', `✈ ${wdef?.name ?? w.kind}`);
+              panel.append(row);
+              const wl = document.createElement('button');
+              wl.className = 'sel-action';
+              wl.textContent = loc(sel.launchVerb);
+              wl.addEventListener('click', () => this.actions.onLaunchAircraft(w.id));
+              panel.append(wl);
+            }
+          }
+        }
       }
       if (units.length > 6) panel.append(el('div', 'sel-unit', `… +${units.length - 6} more`));
       const stopBtn = document.createElement('button');
@@ -1164,6 +1395,25 @@ export class HUD {
           ),
         );
       }
+      // Grand-expansion Phase 5 (hangar/carrier shelter): the hangar
+      // occupancy line + parked-aircraft manifest with per-aircraft
+      // Launch buttons. Parked aircraft are invisible on the map (render
+      // skips sheltered units), so this is the only way to launch them.
+      // Reuses 'sel-unit' / 'sel-action' — no new DOM class; the bh:
+      // segment digests the parked aircraft ids (AD11).
+      const hl = hangarLine(b);
+      if (hl !== '' && b.owner === HUMAN_PLAYER_ID) {
+        panel.append(el('div', 'sel-unit', hl));
+        for (const p of parkedAircraft(world, b.id)) {
+          const pdef = UNIT_DEFS[p.kind as UnitKind];
+          panel.append(el('div', 'sel-unit', `✈ ${pdef?.name ?? p.kind}`));
+          const pl = document.createElement('button');
+          pl.className = 'sel-action';
+          pl.textContent = loc(sel.launchVerb);
+          pl.addEventListener('click', () => this.actions.onLaunchAircraft(p.id));
+          panel.append(pl);
+        }
+      }
       // A completed Research Lab opens the research panel (spec §8).
       if (b.kind === 'lab' && b.owner === HUMAN_PLAYER_ID && b.progress >= 1) {
         this.appendResearchPanel(panel, world);
@@ -1171,7 +1421,7 @@ export class HUD {
     }
   }
 
-  /** Tabbed train palette: 5 tabs for the 35 units (spec §8 + Phase 4 S7 transport). */
+  /** Tabbed train palette: 5 tabs for the 66 units (spec §8 + Phase 4 S7 transport). */
   private appendTrainPanel(panel: HTMLElement, world: World): void {
     const wrap = el('div', 'train-panel');
     wrap.append(el('div', 'hud-panel-title', loc(STRINGS.palettes.trainTitle)));

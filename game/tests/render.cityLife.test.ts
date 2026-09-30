@@ -42,6 +42,7 @@ import {
   MAX_AMBIENT_TRAM,
   MAX_AMBIENT_FERRY,
   MAX_AMBIENT_AIRLINER,
+  MAX_AMBIENT_CARGOSHIP,
   registerAmbientTransitProvider,
   unregisterAmbientTransitProvider,
   ambientTransitProviderTypes,
@@ -527,15 +528,18 @@ describe('ambient transit hooks', () => {
 
   it('density pins: more people ⇒ more transit, in the documented order', () => {
     const empty = ambientTransitDensity(0);
-    expect(empty).toEqual({ bus: 0, tram: 0, ferry: 0, airliner: 0 });
+    expect(empty).toEqual({ bus: 0, tram: 0, ferry: 0, airliner: 0, cargoShip: 0 });
     const town = ambientTransitDensity(3000);
-    expect(town).toEqual({ bus: 20, tram: 7, ferry: 5, airliner: 1 });
+    // Grand-expansion Phase 6 workstream C (2026-09-30): cargo ships
+    // trail last — 1 per 800 residents (3000 → 3).
+    expect(town).toEqual({ bus: 20, tram: 7, ferry: 5, airliner: 1, cargoShip: 3 });
     const metro = ambientTransitDensity(1_000_000);
     expect(metro).toEqual({
       bus: MAX_AMBIENT_BUS,
       tram: MAX_AMBIENT_TRAM,
       ferry: MAX_AMBIENT_FERRY,
       airliner: MAX_AMBIENT_AIRLINER,
+      cargoShip: MAX_AMBIENT_CARGOSHIP,
     });
   });
 

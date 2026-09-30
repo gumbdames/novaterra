@@ -33,6 +33,7 @@
 import type { BuildTool } from './hud';
 import {
   buildDemolishOrder,
+  buildEstablishAirlineRouteOrder,
   buildPlaceBuildingOrder,
   buildPowerLineOrder,
   buildRailOrder,
@@ -41,8 +42,9 @@ import {
   buildWaterPipeOrder,
   type OrderIntent,
 } from './orders';
-import { STRINGS } from './strings';
-import { CITY_GRID_CELLS, type RoadClass } from '../sim/city';
+import { isAirlineEndpoint } from './airports';
+import { STRINGS, loc } from './strings';
+import { CITY_GRID_CELLS, type BuildingRecord, type RoadClass } from '../sim/city';
 
 /** A picked city-grid cell (from the controller's worldToCell). */
 export interface CellRef {
@@ -137,5 +139,53 @@ export function resolveTrainClick(
   return {
     kind: 'order',
     intent: buildTrainOrder(unitKind, owner, point.x, point.z),
+  };
+}
+
+/**
+ * What an airline-tool click means: an order to enqueue, an armed
+ * endpoint (the controller remembers the building id until the second
+ * click), or a hint to toast. Nothing fails silently.
+ */
+export type AirlineClickResolution =
+  | { kind: 'order'; intent: OrderIntent }
+  | { kind: 'arm'; id: number }
+  | { kind: 'disarm' }
+  | { kind: 'hint'; message: string };
+
+/**
+ * Resolve an airline-tool click. The gesture is two clicks: the first on
+ * one of the owner's completed civil/mixed airports arms the tool (the
+ * controller holds the building id); the second on a DIFFERENT valid
+ * endpoint emits the `establishAirlineRoute` order. Clicking the armed
+ * airport again disarms it. `target` is the controller's picked building
+ * (null when the click missed every building).
+ */
+export function resolveAirlineClick(
+  owner: number,
+  fromId: number | null,
+  target: BuildingRecord | null,
+): AirlineClickResolution {
+  const h = (message: string): AirlineClickResolution => ({ kind: 'hint', message });
+  if (target === null) {
+    return h(fromId === null ? loc(STRINGS.menuTabs.airlinePickFirst) : loc(STRINGS.menuTabs.airlineRouteArmed));
+  }
+  if (target.owner !== owner) {
+    return h(loc(STRINGS.menuTabs.airlineNeedsOwner));
+  }
+  if (!isAirlineEndpoint(target)) {
+    return h(loc(STRINGS.menuTabs.airlineNotEndpoint));
+  }
+  if (fromId === null) {
+    return { kind: 'arm', id: target.id };
+  }
+  if (target.id === fromId) {
+    // Re-clicking the armed airport disarms the tool (a fresh "New
+    // route…" click re-arms it).
+    return { kind: 'disarm' };
+  }
+  return {
+    kind: 'order',
+    intent: buildEstablishAirlineRouteOrder(owner, fromId, target.id),
   };
 }

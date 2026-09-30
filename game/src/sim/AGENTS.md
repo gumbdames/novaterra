@@ -68,18 +68,25 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   city→commands→movement→pathfinding (the NaN-GRID_CELLS SSR trap,
   2026-09-30); do not add new city→commands edges.
 - `digest.ts` — FNV-1a canonical encoding, including full city state.
-- `snapshot.ts` — versioned snapshots (v7: road classes as
+- `snapshot.ts` — versioned snapshots (v8: hangar slots on buildings
+  + `hangarBuildingId`/`embarkedOn` on units; v7: road classes as
   `RoadCell[]` (v6 `number[]` migrates to `paved`), the rail layer,
-  ferry routes on units; v6 still loads, v5 with empty upgrades).
+  ferry routes on units; v6/v7 still load, v5 with empty upgrades).
 - `terrain.ts` — seeded mapgen (not snapshotted); `spatial.ts` — hash grid.
 - `units.ts` — `UnitRecord` store (stable ids, owner/kind/speed/state),
-  `spawnUnit` command. The 35-unit roster (19 land: engineer, rifles,
+  `spawnUnit` command. The 66-unit roster (19 land: engineer, rifles,
   tank, artillery, aa, hauler, supplyTruck, fuelTruck, spectre, hq,
   sniperTeam, combatMedic, apc, tankDestroyer, mlrs, passengerTrain,
-  freightTrain, bus, tram; 6 air: fighter, transport, drone,
-  fighterBomber, attackHeli, awacs; 10 sea: patrolBoat, destroyer,
+  freightTrain, bus, tram; 22 air: fighter, transport, drone,
+  fighterBomber, attackHeli, awacs, strategicBomber, maritimePatrol,
+  reconUAV, armedUAV, reconPlane, gunship, tanker, militaryCargo,
+  trainer, navalFighter, airliner, jumboAirliner, regionalJet,
+  cargoPlane, passengerHeli, seaplane; 25 sea: patrolBoat, destroyer,
   transportShip, missileBoat, frigate, submarine, carrier, commandShip,
-  fishingBoat, ferry) with
+  fishingBoat, ferry, coastalSub, missileSub, corvette, cruiser,
+  battleship, heavyDestroyer, cargoFreighter, fuelTanker, ammoShip,
+  repairShip, minelayer, navalMine, coastGuardCutter, cruiseLiner,
+  yacht) with
   combat stats (`UnitDef`: hp, speed, armor, damage, range,
   minRange, targets, vsArmor/vsAir multipliers, sight). Training costs
   (`trainFunds`/`trainMaterials`) are deducted at spawn; gated units
@@ -168,6 +175,28 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   contract for wiring it to the sim's network diagnostics if the AI ever
   gains physical buildings (think cadence only, `ai-<owner>` stream
   draws only, orders through the queue).
+  Air/naval (grand-expansion Phase 5/6, workstream D): `canTrain` is
+  hangar-aware — infrastructure aircraft (a `requiredBuilding` AND a
+  `hangarClass`) train only while the AI holds a free virtual hangar
+  slot (completed virtual airfields yield their
+  `defaultHangarSlots`; class-exact-then-generic greedy fit, embarked
+  aircraft excluded, zero RNG). Field-operated micro-UAVs (no
+  `requiredBuilding`, e.g. the scout drone) are exempt — gating them
+  would ground the commander's approved early scouting behind an
+  airfield it never builds. Carriers spawn EMPTY
+  (`UNIT_DEFS.carrier.wingCapacity`, no embarked aircraft);
+  `thinkCarrierWings` acquires one carrier once the escort screen
+  exists (2 escorts), trains carrier-capable aircraft into the wing,
+  and converges idle carrier-capable aircraft onto the carrier via
+  `embarkAircraft`/`moveTo`; `isEmptyWingCarrier` is enforced in BOTH
+  attack loops so an empty-wing carrier never chases. `thinkAirlineRoutes`
+  and `thinkNavalMines` are documented no-ops (airline income flows
+  through the def.output credit; minelaying needs a player-driven
+  field doctrine first) — pinned by digest-unchanged tests. Marshal
+  builds `civilAirport` (connectivity+, its landing-fee harvest credits
+  through the virtual economy). Exported kind sets: `SUB_KINDS`,
+  `CAPITAL_KINDS`, `ESCORT_KINDS` (used by the counter table, upkeep,
+  and the carrier screen).
   **Cap invariant:** the cap counts ALL of the AI's units, so starting
   forces must leave headroom — `ui/session.ts` gives cadet 2 starters
   (cap 6), everyone else 6 (caps 14/26/34/48).
@@ -222,6 +251,59 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   tick-aligned command specs, `issuer: 'cheat'` enforced at validate;
   deterministic fixed effects, no RNG. The `cheated` metadata flag is
   UI-owned (ui/session.ts), never sim state.
+
+## Hangars & carrier wings (grand-expansion Phase 5, workstream B)
+
+The aircraft-shelter system spans five modules; `city.ts` owns the
+canonical hangar data model and every other module reads it:
+
+- **Data model (`city.ts`):** `HangarClass` (`'light'|'medium'|'heavy'`),
+  `HangarSlot { cls; occupant }` (`occupant` 0 = free; `cls` may be
+  `'generic'` on legacy airfields), `LEGACY_AIRFIELD_HANGAR_SLOTS = 6`,
+  `defaultHangarSlots(kind)` (airfield → 6 generic; hangarS/M/L →
+  typed per-class; else undefined = "never had hangars", AD9),
+  `findBuildingHangarSlot`. `placeBuilding` sets `hangars`; `demolish`
+  releases parked aircraft inline — mirroring the resupply-release
+  loop — because `city.ts` must NEVER value-import `commands.ts`
+  (the NaN-GRID_CELLS SSR trap; the two release paths must stay in
+  sync manually).
+- **Defs + commands (`units.ts`):** `hangarClass` on every air def;
+  `carrierCapable` on exactly four kinds (navalFighter, trainer,
+  armedUAV, reconUAV); `wingCapacity: 8` on the carrier (trains
+  EMPTY — the user requirement). `embarkAircraft {unitId, carrierId,
+  owner}`, `baseAircraft {unitId, buildingId, owner}`,
+  `launchAircraft {unitId, owner}` — validate≡apply with the slot
+  reserved atomically at apply (a stale validate throws
+  `CommandRejectedError`, never silently drops). `EMBARK_RANGE = 48`,
+  `HANGAR_BASE_RANGE = 64`; helpers `isSheltered(u)`,
+  `wingOccupancy(world, carrierId)`, `findHangarSlot(world,
+  {kind,id}, cls)` (PLAN §4 S4). Buildings are in cell coords, units
+  in world coords — range checks go through `cellCenterWorld`.
+- **Movement (`movement.ts`):** `syncEmbarkedPositions(world)` runs
+  FIRST in the movement system (id order — out-of-id-order embarks
+  stay deterministic); sheltered units skip displacement;
+  `validateOwnedUnit` rejects sheltered units loudly.
+- **Combat (`combat.ts`):** `acquireTarget` + the combat loop skip
+  sheltered candidates; `attackUnit` validate rejects sheltered
+  targets; `killUnit` releases the hangar slot and recursively
+  destroys a carrier's wing (id order, no XP — ordnance lost with
+  the ship).
+- **Logistics (`economy.ts`):** tankers load `cargoFuel` at depots
+  inside `serveDepotUnit` (gated on `tankerRefuelRadius: 40`);
+  `runTankerRefuel(world)` runs after `runSupplyAura` — id-ordered
+  tankers transfer hold fuel to friendly fossil air units in radius,
+  neediest first; nuclear units are never refueled (data-driven
+  exemption — the user directive).
+- **AI (`ai.ts`):** `BASE_MIX` gains gunship 0.04 + strategicBomber
+  0.03 (rifles/tank trimmed, sum 1.0); `thinkCarrierWings` issues
+  `embarkAircraft` for carrier-capable aircraft near friendly
+  carriers.
+- **Persistence:** the v8 snapshot (workstream D) covers
+  `hangarBuildingId` / `embarkedOn` / `hangars`. Take is faithful (a
+  building without hangars snapshots as absent — the legacy default is
+  NEVER invented on save); restore of pre-v8 snapshots decodes hangars
+  via `defaultHangarSlots` (legacy airfields → 6 generic, AD9). The
+  digest covers the shelter fields (AD11).
 
 ## City/economy conventions
 - All rates in `BUILDING_DEFS` are **per sim-second**; the economy system

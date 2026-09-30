@@ -78,7 +78,7 @@ import {
   worldToCell,
 } from './pathfinding';
 import type { FlowField } from './pathfinding';
-import { clearUnitOrder, failUnitOrder, findUnit, UNIT_DEFS, supplySpeedFactor, isRailBound } from './units';
+import { clearUnitOrder, failUnitOrder, findUnit, UNIT_DEFS, supplySpeedFactor, isRailBound, isSheltered } from './units';
 import type { UnitRecord, UnitKind } from './units';
 import { findRailRoute, stationRailCells, trainTrackFactor } from './rail';
 import { createSpatialHash, shInsert, shQueryRadius } from './spatial';
@@ -404,6 +404,11 @@ function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: Uni
 /** Movement system: rebuild the hash, then integrate every moving unit. */
 export function createMovementSystem(t: TerrainData): (world: World, dt: number) => void {
   return (world: World, dt: number) => {
+    // Grand-expansion Phase 5 (S4): embarked aircraft ride their
+    // carrier — sync FIRST, in unit-id order, before any displacement
+    // (PLAN §4 S4: "sync position = carrier's in id order, before
+    // combat").
+    syncEmbarkedPositions(world);
     // Phase 4 (S7): the ferry loop runs FIRST, in unit-id order — idle
     // ferries with a route get dispatched before any displacement, so a
     // ferry that just arrived re-dispatches and sails the same tick.
@@ -415,10 +420,15 @@ export function createMovementSystem(t: TerrainData): (world: World, dt: number)
     const hash = createSpatialHash(16);
     for (const unit of world.units) {
       if (unit.state !== 'moving') continue;
+      // Grand-expansion Phase 5 (S4): sheltered aircraft (parked in a
+      // hangar or embarked on a carrier) never displace — they ride
+      // with their shelter.
+      if (isSheltered(unit)) continue;
       shInsert(hash, unit.id, unit.x, unit.z);
     }
     for (const unit of world.units) {
       if (unit.state !== 'moving') continue;
+      if (isSheltered(unit)) continue;
       // Phase 3 logistics (S2): the fuel gate runs BEFORE displacement —
       // an empty tank fails the order loudly, never silently.
       if (!fuelGateOk(unit)) continue;
@@ -454,6 +464,32 @@ function advanceFerryRoutes(world: World): void {
     const tx = r.leg === 'a' ? r.ax : r.bx;
     const tz = r.leg === 'a' ? r.az : r.bz;
     orderMoveTo(world, unit, tx, tz);
+  }
+}
+
+/**
+ * Grand-expansion Phase 5 (S4): embarked aircraft ride their carrier.
+ * world.units is spawn (id) order, so this loop is id-ordered —
+ * deterministic. Each embarked aircraft's position and destinations
+ * snap to its carrier's. A carrier that vanished without killUnit
+ * (defensive only — killUnit destroys the wing) releases its wing
+ * instead of stranding it.
+ */
+function syncEmbarkedPositions(world: World): void {
+  for (const u of world.units) {
+    const carrierId = u.embarkedOn ?? 0;
+    if (carrierId <= 0) continue;
+    const carrier = world.units.find((c) => c.id === carrierId);
+    if (!carrier || carrier.hp <= 0) {
+      u.embarkedOn = 0;
+      continue;
+    }
+    u.x = carrier.x;
+    u.z = carrier.z;
+    u.destX = carrier.x;
+    u.destZ = carrier.z;
+    u.arriveX = carrier.x;
+    u.arriveZ = carrier.z;
   }
 }
 
@@ -541,6 +577,9 @@ function validateOwnedUnit(world: World, unitId: unknown, owner: unknown, kind: 
   const unit = findUnit(world, unitId);
   if (!unit) return `${kind}: no unit with id ${unitId}`;
   if (unit.owner !== owner) return `${kind}: unit ${unitId} is not owned by player ${owner}`;
+  // Grand-expansion Phase 5 (S4): sheltered aircraft take no move/stop
+  // orders — launch them first. Loud, never silent.
+  if (isSheltered(unit)) return `${kind}: unit ${unitId} is parked or embarked (launch it first)`;
   return unit;
 }
 

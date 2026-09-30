@@ -132,6 +132,47 @@ Information → Ascendance** — each with a permanent National Program
 choice. Later ages cost Influence, so build Media Centers early. Ships
 unlock at Industry; the strongest programs are in Ascendance.
 
+## Hangars and carriers
+
+Aircraft don't have to stay airborne. Select a flying aircraft and
+press **Park** to store it in the nearest airfield hangar with a free
+slot of its size (small/medium/large hangars live on the **Airports**
+build tab; old airfields have 6 all-purpose slots). Parked aircraft
+are invisible to the enemy, safe from attack, and burn no fuel —
+select the airfield to see who is parked and **Launch** them back
+into the sky.
+
+**Carriers** train **empty**. Only carrier-capable aircraft (Naval
+Fighter, Trainer, Armed UAV, Recon UAV) can **Embark** on a nearby
+friendly carrier: select one, press **Embark**, and it parks on the
+deck. The selection panel shows the carrier's wing (**Wing 3/8**) —
+each embarked aircraft has its own **Launch** button. If the carrier
+sinks, its wing goes down with it, so screen your carriers.
+
+The **Tanker** (air tab) keeps your air force flying: it loads fuel
+at depots and automatically refuels the thirstiest friendly
+aircraft around it — bombers stay on station, fighters never flame
+out over the ocean. Nuclear units (nuclear submarines, carriers)
+never need fuel.
+
+## Airports and airlines
+
+Paint **airport zones** with the Airports zone tool, then open the
+**Airports** build tab: Civil Airport, Military Airbase, Mixed
+Airport, terminals, tower, hangars, and three runway sizes (S serves
+light aircraft, M adds medium, L serves everything). Airports never
+auto-build — every airport building is placed by you.
+
+To run an **airline**: open the **Airlines** panel in the Civilian
+tab, press **New route…**, and click two of your completed civil or
+mixed airports. Each route costs 500 funds and pays you every
+second — more for longer routes, more again for every completed
+passenger/cargo terminal you own. The **Airports** button in the top
+bar toggles the overlay: rings around your airports (blue civilian,
+red military, violet mixed) and gold arcs for your routes. Airliners
+start flying between your airports once your first civil airport is
+done — decorative, but they make the city feel alive.
+
 ## Tips
 
 - Your first buildings should be farms (food) and a power plant.
@@ -141,6 +182,13 @@ unlock at Industry; the strongest programs are in Ascendance.
   tank-hunters. Build counters, not just more of the same.
 - On water maps, control the sea first — ships can't be touched by
   land armies.
+- Ports must touch the coastline. A Commercial Port earns funds and
+  trains shipyard ships; a Naval Base trains warships like a naval
+  yard. Two or more trade ports bring decorative container ships to
+  your sea lanes.
+- Minelayers don't fight — they lay naval mines (50 Funds + 10
+  Materials each) that detonate under enemy ships. Your own fleet
+  sails over them safely.
 - Big armies need manpower, which grows with population. Grow your
   city to grow your army.
 

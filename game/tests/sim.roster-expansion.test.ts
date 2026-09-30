@@ -273,8 +273,8 @@ function findCoastalFootprint(
 }
 
 describe('roster definitions (§2)', () => {
-  it('has exactly the 35 unit kinds (28 + Phase 3 workstream 3 supplyTruck/fuelTruck + Phase 4 S7 civilian transports)', () => {
-    expect(UNIT_KINDS).toHaveLength(35);
+  it('has exactly the 66 unit kinds (35 + 16 Phase 5 aircraft + 15 Phase 6 naval)', () => {
+    expect(UNIT_KINDS).toHaveLength(66);
     const expected = [
       'engineer', 'rifles', 'spectre', 'sniperTeam', 'combatMedic',
       'tank', 'apc', 'tankDestroyer', 'artillery', 'mlrs', 'aa',
@@ -286,6 +286,16 @@ describe('roster definitions (§2)', () => {
       'supplyTruck', 'fuelTruck',
       // Phase 4 S7 (2026-09-30): the civilian transports.
       'passengerTrain', 'freightTrain', 'bus', 'tram', 'ferry',
+      // Grand-expansion Phase 5 workstream B (2026-09-30): the 16 aircraft.
+      'strategicBomber', 'maritimePatrol', 'reconUAV', 'armedUAV',
+      'reconPlane', 'gunship', 'tanker', 'militaryCargo', 'trainer',
+      'navalFighter', 'airliner', 'jumboAirliner', 'regionalJet',
+      'cargoPlane', 'passengerHeli', 'seaplane',
+      // Grand-expansion Phase 6 workstream C (2026-09-30): the 15 naval kinds.
+      'coastalSub', 'missileSub', 'corvette', 'cruiser', 'battleship',
+      'heavyDestroyer', 'cargoFreighter', 'fuelTanker', 'ammoShip',
+      'repairShip', 'minelayer', 'navalMine', 'coastGuardCutter',
+      'cruiseLiner', 'yacht',
     ];
     expect([...UNIT_KINDS].sort()).toEqual([...expected].sort());
   });
@@ -433,7 +443,13 @@ describe('building definitions (§3 + Phase 1 + Workstream Z)', () => {
     // Phase 4 tiered transit (2026-09-30): +7 stops/stations
     // (busStop, taxiStand, tramStop, ferryPier, neighborhoodStation,
     // centralStation, airportInterchange) → 67.
-    expect(Object.keys(BUILDING_DEFS)).toHaveLength(67);
+    // Grand-expansion Phase 5 (2026-09-30): +14 airport/airline kinds
+    // (civilAirport, militaryAirbase, mixedAirport, passengerTerminal,
+    // cargoTerminal, controlTower, hangarS, hangarM, hangarL, fuelFarm,
+    // maintenanceHangar, runwayS, runwayM, runwayL) → 81.
+    // Grand-expansion Phase 6 workstream C (2026-09-30): +4 ports
+    // (commercialPort, containerPort, fishingHarbor, navalBase) → 85.
+    expect(Object.keys(BUILDING_DEFS)).toHaveLength(85);
     expect(BUILDING_DEFS.barracks).toMatchObject({
       costFunds: 700, costMaterials: 250, buildSeconds: 40, minAge: 'foundation',
     });
@@ -980,7 +996,7 @@ describe('upgrade effects (§4)', () => {
     completeBuildings(ctx.world, 0, ['factory']);
     const player = getPlayer(ctx.world.city, 0)!;
     player.fuel = 1000;
-    player.taxRates = [0, 0, 0];
+    player.taxRates = [0, 0, 0, 0];
     const mats: number[] = [player.materials];
     for (let i = 0; i < 2; i += 1) {
       runEconomyTick(ctx.world, ctx.terrain);
@@ -1032,7 +1048,7 @@ describe('upgrade effects (§4)', () => {
     const player = getPlayer(ctx.world.city, 0)!;
     player.food = 1000;
     player.goods = 1000;
-    player.taxRates = [0, 0, 0];
+    player.taxRates = [0, 0, 0, 0];
     const upkeep = BUILDING_DEFS.market.upkeepFundsPerSec;
     const f0 = player.funds;
     runEconomyTick(ctx.world, ctx.terrain);
@@ -1051,7 +1067,7 @@ describe('upgrade effects (§4)', () => {
     const ctx = setup();
     completeBuildings(ctx.world, 0, ['lab']);
     completeBuildings(ctx.world, 1, ['lab']);
-    for (const p of ctx.world.city.players) p.taxRates = [0, 0, 0];
+    for (const p of ctx.world.city.players) p.taxRates = [0, 0, 0, 0];
     ctx.world.city.tradeRoutes.push({ owner: 0, partner: 1, establishedTick: 0 });
     const player = getPlayer(ctx.world.city, 0)!;
     const f0 = player.funds;
@@ -1065,15 +1081,15 @@ describe('upgrade effects (§4)', () => {
   });
 });
 
-describe('snapshot v7 + canonical digest (§9)', () => {
-  it('round-trips upgrades through a v7 snapshot', () => {
+describe('snapshot v8 + canonical digest (§9)', () => {
+  it('round-trips upgrades through a v8 snapshot', () => {
     const ctx = setupRich();
     const at = findLandNear(ctx.terrain, 0, 0);
     spawnNow(ctx, 'tank', 0, at.x, at.z);
     ctx.world.upgrades[0] = ['apRounds', 'engineTuning'];
     ctx.world.upgrades[1] = ['droneOptics'];
     const snap = takeSnapshot(ctx.world);
-    expect(snap.version).toBe(7); // Phase 4 transport: road/rail classes
+    expect(snap.version).toBe(8); // Phase 5 workstream B: hangar slots on buildings + hangarBuildingId/embarkedOn on units
     const world2 = restoreSnapshot(snap);
     expect(world2.upgrades).toEqual({ 0: ['apRounds', 'engineTuning'], 1: ['droneOptics'] });
     expect(digestWorld(world2)).toBe(digestWorld(ctx.world));

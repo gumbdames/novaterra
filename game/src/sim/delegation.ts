@@ -70,14 +70,18 @@ export type MayorPolicy = 'balanced' | 'growth' | 'revenue';
 export const MAYOR_POLICIES: MayorPolicy[] = ['balanced', 'growth', 'revenue'];
 
 /**
- * Tax rates [residential, commercial, industrial] a mayor enforces.
- * Balanced: steady income. Growth: low taxes to attract population.
- * Revenue: squeeze every fund out of the city.
+ * Tax rates [residential, commercial, industrial, airport] a mayor
+ * enforces. Balanced: steady income. Growth: low taxes to attract
+ * population. Revenue: squeeze every fund out of the city.
+ * Grand-expansion Phase 5 (S5, 2026-09-30): the 4th element is the
+ * airport-zone rate — the mayor sets it like the others (airport
+ * policy mirrors industrial: airports are production-adjacent
+ * infrastructure, taxed for growth or revenue the same way).
  */
-export const MAYOR_POLICY_RATES: Record<MayorPolicy, [number, number, number]> = {
-  balanced: [0.15, 0.15, 0.15],
-  growth: [0.08, 0.1, 0.08],
-  revenue: [0.25, 0.22, 0.25],
+export const MAYOR_POLICY_RATES: Record<MayorPolicy, [number, number, number, number]> = {
+  balanced: [0.15, 0.15, 0.15, 0.15],
+  growth: [0.08, 0.1, 0.08, 0.08],
+  revenue: [0.25, 0.22, 0.25, 0.25],
 };
 
 /**
@@ -378,6 +382,8 @@ export function createMayorSystem(queue: CommandQueue, terrain: TerrainData): Si
         player.taxRates[0] = rates[0];
         player.taxRates[1] = rates[1];
         player.taxRates[2] = rates[2];
+        // Grand-expansion Phase 5 (S5): the mayor sets the airport rate too.
+        player.taxRates[3] = rates[3];
       }
     }
     if (world.tick % MAYOR_BUILD_TICKS !== 0) return;

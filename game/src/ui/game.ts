@@ -77,6 +77,21 @@ import {
   type TransitProviderType,
   type TransitRouteStop,
 } from '../render/transitProviders';
+// Grand-expansion Phase 5 (S5+S8): ambient airliners.
+import {
+  airlinerCount,
+  airlinerRouteKey,
+  createAirlinerProvider,
+} from '../render/airlineProviders';
+import {
+  createCargoShipProvider,
+  cargoShipRouteKey,
+  cargoShipRoutePoints,
+  cargoShipVehicleCount,
+  type AmbientCargoShipProvider,
+  type CargoRouteStop,
+  type CargoShipProviderOptions,
+} from '../render/cargoShipProviders';
 import { createRenderer, applyEnvironmentLighting } from '../render/renderer';
 import { buildNatureView, type NatureView } from '../render/nature';
 import { loadNatureTreeModels } from '../render/natureTrees';
@@ -129,6 +144,9 @@ import {
   buildFireAegisOrder,
   buildFireStormOrder,
   buildMoveOrder,
+  buildEmbarkOrder,
+  buildBaseOrder,
+  buildLaunchOrder,
   buildSetMayorBuildPolicyOrder,
   buildSetGeneralStanceOrder,
   buildSetSpecializationOrder,
@@ -139,6 +157,8 @@ import {
   buildResupplyOrder,
   buildSupplyTogglesOrder,
   buildUpgradeRoadOrder,
+  // Grand-expansion Phase 5 (S5): the airline orders.
+  buildCancelAirlineRouteOrder,
   partitionRoadCells,
   type OrderIntent,
 } from './orders';
@@ -147,7 +167,10 @@ import { HUD, type BuildTool } from './hud';
 import {
   resolveBuildToolClick,
   resolveTrainClick,
+  // Grand-expansion Phase 5 (S5): the airline two-click gesture.
+  resolveAirlineClick,
   type PlacementResolution,
+  type AirlineClickResolution,
 } from './placement';
 import { classifyPointerUp } from './pointer';
 import { networkToolHint } from './utilities';
@@ -267,8 +290,9 @@ export interface GameFrameDeps {
   syncEntities(world: World): void;
   /**
    * Phase 4 (transport): keep the ambient transit providers (bus/tram/
-   * ferry) in sync with the player's transit networks. Runs before
-   * syncEntities so the crowd sees the current providers.
+   * ferry) — and the Phase 6 cargo-ship provider — in sync with the
+   * player's networks. Runs before syncEntities so the crowd sees the
+   * current providers.
    */
   syncTransitProviders(world: World): void;
   setSelectedEntities(unitIds: number[]): void;
@@ -620,6 +644,8 @@ class GameController {
   private utilityOverlayVisible = false;
   /** Phase 3 (logistics): logistics-overlay visibility. */
   private logisticsOverlayVisible = false;
+  /** Grand-expansion Phase 5 (S5+S8): airport-site overlay visibility. */
+  private airportOverlayVisible = false;
   /** Workstream W (desirability): land-value overlay visibility. */
   private desirabilityOverlayVisible = false;
   /** Phase 4 RENDER workstream A (item 1): x-ray view visibility. */
@@ -667,6 +693,24 @@ class GameController {
    */
   private transitProviders = new Map<TransitProviderType, AmbientVehicleProvider>();
   private lastTransitRouteKey = '';
+  /**
+   * Grand-expansion Phase 6 (workstream C): the ambient cargo-ship
+   * provider. Lifecycle mirrors the Phase 4 transit providers —
+   * rebuilt only when the civilian-port key moves (player actions),
+   * `count` refreshed every frame from population (cheap, no geometry
+   * churn). Kept separate from the transitProviders map because its
+   * route/key/count helpers have a different shape (ports, not stops).
+   */
+  private cargoShipProvider: AmbientCargoShipProvider | null = null;
+  private lastCargoRouteKey = '';
+  /**
+   * Grand-expansion Phase 5 (S5+S8): the ambient airliner provider.
+   * Lifecycle mirrors the cargo-ship provider — rebuilt only when the
+   * airline-endpoint key moves (player actions), `count` refreshed
+   * every frame from population (cheap, no geometry churn).
+   */
+  private airlinerProvider: AmbientVehicleProvider | null = null;
+  private lastAirlineRouteKey = '';
   private zoneDragStart: { cx: number; cz: number } | null = null;
   private disposed = false;
   /** `?inputdebug=1` — verbose pointer-event console logging for diagnosis. */
@@ -747,10 +791,16 @@ class GameController {
       onStopSelection: () => this.issueStop(),
       onTrainUnit: (kind) => {
         this.placement = { kind: 'train', unitKind: kind };
+        // Grand-expansion Phase 5 (S5): arming a palette tool disarms
+        // the airline gesture (one armed gesture at a time).
+        this.disarmAirlineTool();
         this.hud.toast(trainPlacementToast(kind));
       },
       onBuildTool: (tool) => {
         this.placement = { kind: 'build', tool };
+        // Grand-expansion Phase 5 (S5): arming a palette tool disarms
+        // the airline gesture (one armed gesture at a time).
+        this.disarmAirlineTool();
         // Phase 2 (utilities): network tools say what they paint.
         this.hud.toast(
           tool === 'powerLine' || tool === 'waterPipe'
@@ -788,6 +838,13 @@ class GameController {
         this.entities.setLogisticsOverlayVisible(this.logisticsOverlayVisible);
         this.hud.setLogisticsOverlayActive(this.logisticsOverlayVisible);
       },
+      // Grand-expansion Phase 5 (S5+S8): the airport overlay toggle —
+      // airport-site rings + airline-route arcs.
+      onToggleAirportOverlay: () => {
+        this.airportOverlayVisible = !this.airportOverlayVisible;
+        this.entities.setAirportOverlayVisible(this.airportOverlayVisible);
+        this.hud.setAirportOverlayActive(this.airportOverlayVisible);
+      },
       // Workstream W (desirability): the land-value overlay toggle.
       onToggleDesirabilityOverlay: () => {
         this.desirabilityOverlayVisible = !this.desirabilityOverlayVisible;
@@ -812,6 +869,15 @@ class GameController {
         this.enqueue(buildResupplyOrder(unitId, depotId, HUMAN_PLAYER_ID)),
       onSetSupplyToggles: (unitId, services) =>
         this.enqueue(buildSupplyTogglesOrder(unitId, HUMAN_PLAYER_ID, services)),
+      // Grand-expansion Phase 5 (hangar/carrier shelter, workstream B):
+      // the embark / base / launch orders. The sim validates each at
+      // enqueue AND apply time; a rejection throws CommandRejectedError
+      // and the player gets a loud toast — never a silent no-op.
+      onEmbarkAircraft: (unitId, carrierId) =>
+        this.enqueue(buildEmbarkOrder(unitId, carrierId, HUMAN_PLAYER_ID)),
+      onBaseAircraft: (unitId, buildingId) =>
+        this.enqueue(buildBaseOrder(unitId, buildingId, HUMAN_PLAYER_ID)),
+      onLaunchAircraft: (unitId) => this.enqueue(buildLaunchOrder(unitId, HUMAN_PLAYER_ID)),
       // Phase 3: superweapons, specialization, trade, delegation.
       onFireAegis: () => this.issueOrder(buildFireAegisOrder(HUMAN_PLAYER_ID)),
       onStormTarget: () => {
@@ -836,6 +902,10 @@ class GameController {
       // Workstream Y (3-tab menu): taxes live in the Management tab.
       onSetTaxRate: (zone, rate) =>
         this.issueOrder(buildSetTaxRateOrder(HUMAN_PLAYER_ID, zone, rate)),
+      // Grand-expansion Phase 5 (S5): the airline two-click gesture.
+      onAirlineNewRoute: () => this.armAirlineTool(),
+      onCancelAirlineRoute: (id) =>
+        this.enqueue(buildCancelAirlineRouteOrder(HUMAN_PLAYER_ID, id)),
     });
     this.pauseMenu = new PauseMenu(container, {
       onStartSkirmish: () => undefined,
@@ -984,8 +1054,11 @@ class GameController {
    * actions (build/demolish/disconnect a stop) — then the providers are
    * rebuilt and the old geometry disposed; population flows through the
    * mutable `count` every frame instead, so geometry is never churned by
-   * ordinary growth. Called from the frame loop before `syncEntities`
-   * so the crowd renders this frame's registrations.
+   * ordinary growth. Grand-expansion Phase 6 (workstream C) folds the
+   * ambient cargo-ship provider into the same method — same contract,
+   * different route (completed civilian ports) and key. Called from the
+   * frame loop before `syncEntities` so the crowd renders this frame's
+   * registrations.
    */
   private syncTransitProviders(world: World): void {
     const owner = HUMAN_PLAYER_ID;
@@ -999,6 +1072,55 @@ class GameController {
     const pop = getPlayer(world.city, owner)?.population ?? 0;
     for (const [type, provider] of this.transitProviders) {
       provider.count = transitVehicleCount(type, provider.stops.length, pop);
+    }
+    // Grand-expansion Phase 6 (workstream C): ambient cargo ships ride
+    // the player's completed civilian ports. Same contract as above —
+    // rebuild on route change, `count` from population every frame.
+    const cargoKey = cargoShipRouteKey(world, owner);
+    if (cargoKey !== this.lastCargoRouteKey) {
+      this.lastCargoRouteKey = cargoKey;
+      if (this.cargoShipProvider !== null) {
+        unregisterAmbientTransitProvider('cargoShip');
+        this.cargoShipProvider.dispose();
+        this.cargoShipProvider = null;
+      }
+      const stops = cargoShipRoutePoints(world, owner);
+      // Fewer than two civilian ports is not a shipping lane — the
+      // crowd renders nothing until the player builds a real network
+      // (the Phase 4 transit precedent).
+      if (stops.length >= 2) {
+        const provider = createCargoShipProvider(stops, { population: pop });
+        this.cargoShipProvider = provider;
+        registerAmbientTransitProvider('cargoShip', provider);
+      }
+    }
+    if (this.cargoShipProvider !== null) {
+      this.cargoShipProvider.count = cargoShipVehicleCount(
+        this.cargoShipProvider.stops.length,
+        pop,
+      );
+    }
+    // Grand-expansion Phase 5 (S5+S8): ambient airliners ride the
+    // player's completed civil/mixed airports. Same contract as above —
+    // rebuild on route change, `count` from population every frame. The
+    // provider itself gates to null (nothing registered) when the player
+    // has no completed civil airport.
+    const airlineKey = airlinerRouteKey(world, owner);
+    if (airlineKey !== this.lastAirlineRouteKey) {
+      this.lastAirlineRouteKey = airlineKey;
+      if (this.airlinerProvider !== null) {
+        unregisterAmbientTransitProvider('airliner');
+        this.airlinerProvider.dispose();
+        this.airlinerProvider = null;
+      }
+      const provider = createAirlinerProvider(world, owner);
+      if (provider !== null) {
+        this.airlinerProvider = provider;
+        registerAmbientTransitProvider('airliner', provider);
+      }
+    }
+    if (this.airlinerProvider !== null) {
+      this.airlinerProvider.count = airlinerCount(world, owner);
     }
   }
 
@@ -1216,6 +1338,20 @@ class GameController {
       provider.dispose();
     }
     this.transitProviders.clear();
+    // Grand-expansion Phase 6 (workstream C): the cargo-ship provider
+    // has the same provider-owned lifecycle — release it here too.
+    if (this.cargoShipProvider !== null) {
+      unregisterAmbientTransitProvider('cargoShip');
+      this.cargoShipProvider.dispose();
+      this.cargoShipProvider = null;
+    }
+    // Grand-expansion Phase 5 (S5+S8): the airliner provider has the
+    // same provider-owned lifecycle — release it here too.
+    if (this.airlinerProvider !== null) {
+      unregisterAmbientTransitProvider('airliner');
+      this.airlinerProvider.dispose();
+      this.airlinerProvider = null;
+    }
     // Shared model assets (caller-owned): released once here, never
     // per view. The renderer only borrowed them.
     disposeModels(this.modelMap);
@@ -1467,7 +1603,13 @@ class GameController {
   private handleLeftClick(ndcX: number, ndcY: number, shift: boolean): void {
     const world = this.session.world;
     const point = this.groundPoint(ndcX, ndcY);
-    const placing = this.placement?.kind === 'train' || this.placement?.kind === 'build';
+    // Grand-expansion Phase 5 (S5): the armed airline tool counts as a
+    // placement mode for the sky-click hint (the click meant to pick an
+    // airport — say so instead of swallowing it).
+    const placing =
+      this.placement?.kind === 'train' ||
+      this.placement?.kind === 'build' ||
+      this.hud.airlineArmed;
     if (!point) {
       // Clicking the sky selects nothing (silent), but in a placement mode
       // the click meant to place something — say so instead of swallowing it.
@@ -1486,6 +1628,12 @@ class GameController {
     // Placement modes consume the click first.
     if (this.placement?.kind === 'train') {
       this.placeResolution(resolveTrainClick(this.placement.unitKind, HUMAN_PLAYER_ID, point));
+      return;
+    }
+    // Grand-expansion Phase 5 (S5): the airline two-click gesture is not
+    // a palette placement mode — it consumes the click while armed.
+    if (this.hud.airlineArmed) {
+      this.handleAirlineClick(point.x, point.z);
       return;
     }
     if (this.placement?.kind === 'build') {
@@ -1549,6 +1697,62 @@ class GameController {
   }
 
   /**
+   * Grand-expansion Phase 5 (S5): arm the airline route tool. The gesture
+   * is two clicks on the player's completed civil/mixed airports (see
+   * resolveAirlineClick in ui/placement.ts). Arming cancels any palette
+   * placement tool; the armed state lives on the HUD (public fields,
+   * digest-covered aa:) so the panel's status line repaints.
+   */
+  private armAirlineTool(): void {
+    this.placement = null;
+    this.networkDrag = null;
+    this.hud.airlineArmed = true;
+    this.hud.airlineFromId = null;
+    this.hud.toast(loc(STRINGS.menuTabs.airlinePickFirst));
+    this.audio.playSfx('select');
+  }
+
+  /** Grand-expansion Phase 5 (S5): disarm the airline route tool. */
+  private disarmAirlineTool(): void {
+    this.hud.airlineArmed = false;
+    this.hud.airlineFromId = null;
+  }
+
+  /**
+   * Grand-expansion Phase 5 (S5): one click of the airline two-click
+   * gesture. The resolver arms the first endpoint, emits the
+   * establishAirlineRoute order on the second valid click, or toasts a
+   * hint — the click never fails silently.
+   */
+  private handleAirlineClick(x: number, z: number): void {
+    const picked = this.buildingAt(x, z);
+    const target =
+      picked === null
+        ? null
+        : (this.session.world.city.buildings.find((b) => b.id === picked.id) ?? null);
+    const res: AirlineClickResolution = resolveAirlineClick(
+      HUMAN_PLAYER_ID,
+      this.hud.airlineFromId,
+      target,
+    );
+    if (res.kind === 'arm') {
+      this.hud.airlineFromId = res.id;
+      this.hud.toast(loc(STRINGS.menuTabs.airlineRouteArmed));
+      this.audio.playSfx('select');
+    } else if (res.kind === 'order') {
+      this.enqueue(res.intent);
+      this.audio.playSfx('place');
+      this.disarmAirlineTool();
+    } else if (res.kind === 'disarm') {
+      this.disarmAirlineTool();
+      this.hud.toast('Airline route cancelled.');
+    } else {
+      this.hud.toast(res.message);
+      this.audio.playSfx('error');
+    }
+  }
+
+  /**
    * Cancel the armed placement tool AND abort any in-flight placement
    * gesture (network drag-paint, drag rectangle) so a cancelled tool can
    * never emit an order when the pointer is released. Camera gestures
@@ -1558,6 +1762,9 @@ class GameController {
   private cancelPlacement(): void {
     this.placement = null;
     this.networkDrag = null;
+    // Grand-expansion Phase 5 (S5): cancelling a tool also disarms the
+    // airline gesture — a stale armed endpoint can never emit an order.
+    this.disarmAirlineTool();
     // Phase 4 RENDER workstream A (item 1): the pipe tool's
     // auto-enabled x-ray turns back off (never a manual toggle).
     this.clearXrayAuto();
@@ -1617,14 +1824,15 @@ class GameController {
   private handleZoneDrag(x0: number, z0: number, x1: number, z1: number): void {
     if (this.placement?.kind !== 'build') return;
     const tool = this.placement.tool;
-    const zone = tool === 'zoneR' ? 0 : tool === 'zoneC' ? 1 : tool === 'zoneI' ? 2 : null;
+    // Grand-expansion Phase 5 (S5): zoneA paints the airport zone (3).
+    const zone = tool === 'zoneR' ? 0 : tool === 'zoneC' ? 1 : tool === 'zoneI' ? 2 : tool === 'zoneA' ? 3 : null;
     if (zone === null) return;
     const a = this.worldToCell(x0, z0);
     const b = this.worldToCell(x1, z1);
     if (!a || !b) return;
     this.enqueue(buildZoneOrder(
       HUMAN_PLAYER_ID,
-      zone as 0 | 1 | 2,
+      zone as 0 | 1 | 2 | 3,
       Math.min(a.cx, b.cx),
       Math.min(a.cz, b.cz),
       Math.max(a.cx, b.cx),
@@ -1987,7 +2195,9 @@ class GameController {
     // Zone tools: the drag paints a zone rectangle.
     if (
       this.placement?.kind === 'build' &&
-      (this.placement.tool === 'zoneR' || this.placement.tool === 'zoneC' || this.placement.tool === 'zoneI')
+      (this.placement.tool === 'zoneR' || this.placement.tool === 'zoneC' || this.placement.tool === 'zoneI' ||
+        // Grand-expansion Phase 5 (S5): the airport zone tool.
+        this.placement.tool === 'zoneA')
     ) {
       this.handleZoneDrag(pa.x, pa.z, pb.x, pb.z);
       return;

@@ -43,7 +43,7 @@ import { createWorld } from './world';
 import type { RngState } from './rng';
 import type { BuildingRecord, CityState, PlayerState } from './city';
 import type { RailCell, RoadCell } from './city';
-import { migrateRoadsV6ToV7 } from './city';
+import { migrateRoadsV6ToV7, defaultHangarSlots, DEFAULT_TAX_RATE } from './city';
 import type { UnitRecord } from './units';
 import type { FieldBuild, FieldRequest, FlowField, PathfindingState, PathRequest } from './pathfinding';
 import { initPathfinding } from './pathfinding';
@@ -78,10 +78,23 @@ import { encodeUpgrades, decodeUpgrades } from './upgrades';
  *     migrateRoadsV6ToV7 — the old flat cost and moveCost ARE paved's
  *     stats), rails default to [], ferry routes default to undefined
  *     (the AD9 additive precedent).
+ * v8: Grand-expansion Phase 5/6 data contract (S4): BuildingRecord.hangars
+ *     (HangarSlot[]), UnitRecord.hangarBuildingId / embarkedOn. PURELY
+ *     ADDITIVE — v5/v6/v7 snapshots still load with no shape migration:
+ *     v7 buildings decode hangars to defaultHangarSlots(kind) (legacy
+ *     airfields get LEGACY_AIRFIELD_HANGAR_SLOTS generic slots — the
+ *     documented S4 default, pinned in sim.hangars.test.ts; everything
+ *     else gets undefined, "never had hangars"), v7 units decode
+ *     hangarBuildingId/embarkedOn to 0 (unparked, unembarked). Note this
+ *     deliberately deviates from PLAN §11's "no bump" line for these
+ *     fields: the bump was ordered for Phase 5 workstream D so the
+ *     hangar/airport data contract has a versioned home before workers
+ *     A/B/C land their behavior; the decode defaults remain AD9-neutral
+ *     so every old save still plays.
  */
-export const SNAPSHOT_VERSION = 7;
+export const SNAPSHOT_VERSION = 8;
 
-/** Oldest snapshot version that still loads (pre-v7 gains paved roads + empty rails). */
+/** Oldest snapshot version that still loads (v5: paved roads, empty rails; v7: hangars/embark defaults). */
 export const OLDEST_SUPPORTED_SNAPSHOT_VERSION = 5;
 
 /** Plain-data snapshot of the world at a tick boundary. */
@@ -129,7 +142,24 @@ function copyRng(rng: RngState): RngState {
   return out;
 }
 
-function copyBuilding(b: BuildingRecord): BuildingRecord {
+/**
+ * Deep-copy one building record. Shared by the take path (live world →
+ * snapshot) and the restore path (snapshot → world); the two differ
+ * ONLY for the v8 hangar field:
+ * - Take (legacy=false): faithful copy — a live building without
+ *   hangars snapshots as absent (undefined), NOT as the legacy
+ *   default. Inventing defaults here broke digest-stability: a
+ *   fixture-built airfield (no hangars array) would digest differently
+ *   after a save/load round trip (caught by sim.ai.test.ts
+ *   determinism, 2026-09-30).
+ * - Restore of a pre-v8 snapshot (legacy=true): the snapshot predates
+ *   the hangar field — decode to defaultHangarSlots(kind) (legacy
+ *   airfields → LEGACY_AIRFIELD_HANGAR_SLOTS generic slots, everything
+ *   else → undefined, AD9). The snapshot version disambiguates a v8
+ *   "absent" (faithful undefined — JSON drops undefined keys) from a
+ *   v7 "absent" (predates the field).
+ */
+function copyBuilding(b: BuildingRecord, legacy = false): BuildingRecord {
   return {
     id: b.id, kind: b.kind, owner: b.owner, cx: b.cx, cz: b.cz,
     facing: b.facing, progress: b.progress, level: b.level,
@@ -156,6 +186,14 @@ function copyBuilding(b: BuildingRecord): BuildingRecord {
     workers: b.workers ?? 0,
     variant: b.variant ?? 0,
     sizeTier: b.sizeTier ?? 1,
+    // v8 (grand-expansion Phase 5/6, S4): hangar slots. Take path:
+    // deep-copy what's there (absent stays absent). Restore path for
+    // pre-v8 snapshots: decode to defaultHangarSlots(kind) — legacy
+    // airfields get LEGACY_AIRFIELD_HANGAR_SLOTS generic empty slots
+    // (the documented S4 default), everything else undefined (AD9).
+    hangars: b.hangars !== undefined
+      ? b.hangars.map((s) => ({ cls: s.cls, occupant: s.occupant }))
+      : legacy ? defaultHangarSlots(b.kind) : undefined,
   };
 }
 
@@ -164,7 +202,16 @@ function copyPlayer(p: PlayerState): PlayerState {
     id: p.id, name: p.name, funds: p.funds, materials: p.materials,
     fuel: p.fuel, food: p.food, research: p.research,
     goods: p.goods, influence: p.influence, manpower: p.manpower,
-    taxRates: [p.taxRates[0] as number, p.taxRates[1] as number, p.taxRates[2] as number],
+    taxRates: [
+      p.taxRates[0] as number,
+      p.taxRates[1] as number,
+      p.taxRates[2] as number,
+      // Grand-expansion Phase 5 (S5, 2026-09-30): the airport-zone rate.
+      // Older saves (3-element arrays) decode element 3 to
+      // DEFAULT_TAX_RATE — AD9 additive, no version bump (stays v8).
+      // Pinned by sim.airports.test.ts.
+      (p.taxRates[3] as number | undefined) ?? DEFAULT_TAX_RATE,
+    ],
     population: p.population,
     specialization: p.specialization,
   };
@@ -189,7 +236,7 @@ function copyRails(rails: unknown): RailCell[] {
   return (rails as RailCell[]).map((r) => ({ cell: r.cell, cls: r.cls }));
 }
 
-function copyCity(city: CityState): CityState {
+function copyCity(city: CityState, legacy = false): CityState {
   return {
     // Phase 4 (S7, v7): roads carry a class now. v6 snapshots store
     // number[] — migrate every cell to 'paved' (behavior-preserving:
@@ -203,13 +250,21 @@ function copyCity(city: CityState): CityState {
     pipes: [...(city.pipes ?? [])],
     utilityEpoch: city.utilityEpoch ?? 0,
     zones: city.zones.map((z) => ({ cell: z.cell, zone: z.zone })),
-    buildings: city.buildings.map(copyBuilding),
+    buildings: city.buildings.map((b) => copyBuilding(b, legacy)),
     nextBuildingId: city.nextBuildingId,
     players: city.players.map(copyPlayer),
     foodShortage: city.foodShortage,
     tradeRoutes: city.tradeRoutes.map((r) => ({
       owner: r.owner, partner: r.partner, establishedTick: r.establishedTick,
     })),
+    // Grand-expansion Phase 5 (S5, 2026-09-30): airline routes.
+    // Legacy saves (no field) decode to [] / 1 — AD9 additive, no
+    // version bump (stays v8).
+    airlineRoutes: (city.airlineRoutes ?? []).map((r) => ({
+      id: r.id, owner: r.owner, from: r.from, to: r.to,
+      establishedTick: r.establishedTick,
+    })),
+    nextAirlineRouteId: city.nextAirlineRouteId ?? 1,
   };
 }
 
@@ -243,6 +298,11 @@ function copyUnit(u: UnitRecord): UnitRecord {
     // saves and non-ferry units (AD9 additive — no bump needed for this
     // field alone; it rides the v7 roads/rails bump).
     route: u.route ? { ...u.route } : undefined,
+    // v8 (grand-expansion Phase 5/6, S4): hangar parking + carrier
+    // embark state (0 = unparked / unembarked). Legacy v7 saves decode
+    // to 0 via ?? 0 (AD9 — the same precedent as fuel/ammo).
+    hangarBuildingId: u.hangarBuildingId ?? 0,
+    embarkedOn: u.embarkedOn ?? 0,
   };
 }
 
@@ -313,16 +373,19 @@ export function takeSnapshot(world: World): Snapshot {
 
 /**
  * Rebuild a world from a snapshot. The result shares no references with the
- * snapshot. Throws SnapshotVersionError on version mismatch. v5/v6
+ * snapshot. Throws SnapshotVersionError on version mismatch. v5/v6/v7
  * snapshots still load: per the spec, old saves default upgrades to {},
  * v6 roads migrate to paved RoadCells (migrateRoadsV6ToV7), rails
- * default to [], and ferry routes default to undefined.
+ * default to [], ferry routes default to undefined, and v8's hangar
+ * fields decode to their AD9 defaults (legacy airfields → 6 generic
+ * slots via defaultHangarSlots, other buildings → undefined, units →
+ * hangarBuildingId/embarkedOn 0).
  */
 export function restoreSnapshot(snap: Snapshot): World {
   if (snap === null || typeof snap !== 'object') {
     throw new SnapshotVersionError(SNAPSHOT_VERSION, snap);
   }
-  if (snap.version !== SNAPSHOT_VERSION && snap.version !== 6 && snap.version !== 5) {
+  if (snap.version !== SNAPSHOT_VERSION && snap.version !== 7 && snap.version !== 6 && snap.version !== 5) {
     throw new SnapshotVersionError(SNAPSHOT_VERSION, snap.version);
   }
   const world = createWorld(snap.seed);
@@ -331,7 +394,10 @@ export function restoreSnapshot(snap: Snapshot): World {
   world.nextId = snap.nextId;
   world.entities = copyEntities(snap.entities);
   world.rng = copyRng(snap.rng);
-  world.city = copyCity(snap.city);
+  // v8 hangar decode: pre-v8 snapshots predate the hangar field, so
+  // their buildings decode to the legacy default (legacy=true); v8
+  // snapshots copy faithfully (see copyBuilding).
+  world.city = copyCity(snap.city, snap.version < 8);
   world.units = (snap.units ?? []).map(copyUnit);
   // Defensive: a hand-built v3 snapshot might omit pathfinding state —
   // init instead of crashing on undefined.

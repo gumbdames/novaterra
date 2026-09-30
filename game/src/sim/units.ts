@@ -20,8 +20,12 @@
  * Responsibilities:
  *  - Plain-data records for mobile entities (units): id, owner, kind,
  *    position, speed, order state, and combat state (hp, cooldown,
- *    target). The roster is 13 land + 6 air + 9 sea (spec
- *    docs/research/roster-expansion.md §2).
+ *    target). The roster is 19 land + 22 air + 25 sea (66 kinds; the sea
+ *    count grew in grand-expansion Phase 6's naval expansion —
+ *    workstream C, 2026-09-30: coastalSub, missileSub, corvette,
+ *    cruiser, battleship, heavyDestroyer, cargoFreighter, fuelTanker,
+ *    ammoShip, repairShip, minelayer, navalMine, coastGuardCutter,
+ *    cruiseLiner, yacht — 15 new sea kinds).
  *  - Unit ids come from `world.nextId` (the same counter as entities), so
  *    they are stable, never reused, and never collide with entity ids.
  *  - Movement state lives here too (`path`, `fieldId`, `destX/Z`); the
@@ -39,21 +43,29 @@
 import type { World } from './world';
 import type { TerrainData } from './terrain';
 import { isWater } from './terrain';
-import { getPlayer, MAP_HALF_SIZE, BUILDING_DEFS, hasProductionBuilding } from './city';
-import type { BuildingKind, ResourceKey } from './city';
+import { getPlayer, MAP_HALF_SIZE, BUILDING_DEFS, hasProductionBuilding, cellCenterWorld, defaultHangarSlots, findBuildingHangarSlot } from './city';
+import type { BuildingKind, HangarClass, ResourceKey } from './city';
 import type { CommandQueue } from './commands';
 import type { Age } from './ages';
 import { isUnitAvailableForAge } from './ages';
 import { effectiveMaxHp, effectiveSpeed } from './upgrades';
 
 /**
- * The full 30-unit roster (spec docs/research/roster-expansion.md §2,
- * plus Phase 3 logistics trucks).
- * Land (15): engineer, rifles, tank, artillery, aa, hauler, supplyTruck,
- * fuelTruck, spectre, hq, apc, tankDestroyer, mlrs, sniperTeam, combatMedic.
- * Air (6): fighter, transport, drone, fighterBomber, attackHeli, awacs.
- * Sea (9): patrolBoat, destroyer, transportShip, missileBoat, frigate,
- * submarine, carrier, commandShip, fishingBoat.
+ * The full 66-unit roster (spec docs/research/roster-expansion.md §2,
+ * plus Phase 3 logistics trucks, Phase 4 transports, Phase 5 aircraft
+ * expansion, Phase 6 naval expansion).
+ * Land (19): engineer, rifles, tank, artillery, aa, hauler, supplyTruck,
+ * fuelTruck, spectre, hq, apc, tankDestroyer, mlrs, sniperTeam, combatMedic,
+ * passengerTrain, freightTrain, bus, tram.
+ * Air (22): fighter, transport, drone, fighterBomber, attackHeli, awacs,
+ * strategicBomber, maritimePatrol, reconUAV, armedUAV, reconPlane, gunship,
+ * tanker, militaryCargo, trainer, navalFighter, airliner, jumboAirliner,
+ * regionalJet, cargoPlane, passengerHeli, seaplane.
+ * Sea (25): patrolBoat, destroyer, transportShip, missileBoat, frigate,
+ * submarine, carrier, commandShip, fishingBoat, ferry, coastalSub, missileSub,
+ * corvette, cruiser, battleship, heavyDestroyer, cargoFreighter, fuelTanker,
+ * ammoShip, repairShip, minelayer, navalMine, coastGuardCutter, cruiseLiner,
+ * yacht.
  */
 export const UNIT_KINDS = [
   'engineer',
@@ -80,6 +92,30 @@ export const UNIT_KINDS = [
   'fighterBomber',
   'attackHeli',
   'awacs',
+  // ------------------------------------------------------------------
+  // Grand-expansion Phase 5 — aircraft expansion (workstream B,
+  // 2026-09-30). 16 new air kinds: 10 military (strike, patrol, recon,
+  // CAS, logistics, carrier wing) + 6 civilian (airline roster —
+  // routes are the sibling airport workstream's). The sea section
+  // below this block belongs to the naval-expansion workstream — stay
+  // in this region.
+  // ------------------------------------------------------------------
+  'strategicBomber',
+  'maritimePatrol',
+  'reconUAV',
+  'armedUAV',
+  'reconPlane',
+  'gunship',
+  'tanker',
+  'militaryCargo',
+  'trainer',
+  'navalFighter',
+  'airliner',
+  'jumboAirliner',
+  'regionalJet',
+  'cargoPlane',
+  'passengerHeli',
+  'seaplane',
   'missileBoat',
   'frigate',
   'submarine',
@@ -93,6 +129,28 @@ export const UNIT_KINDS = [
   'bus',
   'tram',
   'ferry',
+  // ------------------------------------------------------------------
+  // Grand-expansion Phase 6 — naval expansion (workstream C,
+  // 2026-09-30). 15 new sea kinds: sub variants, surface combatants,
+  // logistics ships, civilian sea, the minelayer + its deployable mine,
+  // and the coast-guard cutter. The air section above this block belongs
+  // to the aircraft-expansion workstream — stay in this region.
+  // ------------------------------------------------------------------
+  'coastalSub',
+  'missileSub',
+  'corvette',
+  'cruiser',
+  'battleship',
+  'heavyDestroyer',
+  'cargoFreighter',
+  'fuelTanker',
+  'ammoShip',
+  'repairShip',
+  'minelayer',
+  'navalMine',
+  'coastGuardCutter',
+  'cruiseLiner',
+  'yacht',
 ] as const;
 export type UnitKind = (typeof UNIT_KINDS)[number];
 
@@ -197,6 +255,43 @@ export interface UnitDef {
   cargoFuelCapacity?: number;
   cargoAmmoCapacity?: number;
   /**
+   * Grand-expansion Phase 5 (tanker, S2/S4 — 2026-09-30). When set, this
+   * aircraft is a flying fuel station: on the economy tick it transfers
+   * fuel from its cargo hold (`cargoFuel`, loaded at depots — the
+   * supply-truck chain never loads aircraft) to friendly fossil-fuel
+   * air units inside this radius (world units). The tanker itself keeps
+   * burning from its own tank. Nuclear-fuel units are never refueled
+   * (they never burn — the data-driven exemption). Set on `tanker`
+   * only.
+   */
+  tankerRefuelRadius?: number;
+  /**
+   * Grand-expansion Phase 5/6, S4 (hangars + carriers). The aircraft
+   * hangar class this unit parks as (`HangarClass` — matched against
+   * hangar slot classes; 'generic' slots accept any class). Undefined
+   * = the unit needs no hangar slot (non-aircraft). Every air def sets
+   * one (assigned by the aircraft workstream). The AI's hangar-aware
+   * canTrain (ai.ts) uses this to gate aircraft training on virtual
+   * capacity.
+   */
+  hangarClass?: HangarClass;
+  /**
+   * Grand-expansion Phase 6 (carrier wings). True when this aircraft
+   * can embark on a carrier (PLAN §3.7) — set on navalFighter (the
+   * carrier multirole fighter), armedUAV/reconUAV (carrier-launched
+   * strike/recon drones) and trainer (carrier qualification flights).
+   * Undefined/false = not carrier-capable: the embarkAircraft command
+   * rejects it loudly, and the UI never offers the order.
+   */
+  carrierCapable?: boolean;
+  /**
+   * Grand-expansion Phase 6 (carrier wings). How many aircraft this
+   * unit carries (the carrier's wing — the carrier def sets 8 and
+   * trains EMPTY; the wing fills only through embarkAircraft orders).
+   * Undefined/0 = carries none.
+   */
+  wingCapacity?: number;
+  /**
    * Phase 4 transport (S7). Civilian earnings rate in funds per
    * sim-second, paid by `runTransportEarnings` (economy.ts) ONLY while
    * the unit is on its network (see `isOnTransportNetwork` in city.ts).
@@ -226,6 +321,26 @@ export interface UnitDef {
   healPerSec?: number;
   /** Passive resource harvest per sim-second while alive (fishingBoat: food 0.6). */
   harvest?: Partial<Record<ResourceKey, number>>;
+  // ------------------------------------------------------------------
+  // Grand-expansion Phase 6 — naval expansion (workstream C,
+  // 2026-09-30). The S4 embark flags (hangarClass, carrierCapable,
+  // wingCapacity) and record fields (embarkedOn, hangarBuildingId)
+  // landed in the Phase 5/6 workstream above — they are not repeated
+  // here. This block holds only the naval workstream's own flags.
+  // ------------------------------------------------------------------
+  /**
+   * When true, this kind is never trained via `spawnUnit` — it enters
+   * the world only through its own command (navalMine: `deployMine`
+   * from a minelayer). The spawnUnit validator rejects it loudly, and
+   * the combat fire pass skips it (its `damage` is spent by its own
+   * detonation logic, not by shooting).
+   */
+  deployableOnly?: boolean;
+  /**
+   * Which domain this unit's heal aura covers (repairShip: 'sea').
+   * Default 'land' — the combatMedic behavior is unchanged.
+   */
+  healDomain?: UnitDomain;
 }
 
 /** Mobile HQ command aura: radius and friendly damage bonus. */
@@ -347,6 +462,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 1.6, sight: 40, minAge: 'connectivity',
     manpowerCost: 3, trainFunds: 800, trainMaterials: 120, requiredBuilding: 'airfield',
     fuelCapacity: 45, fuelPerSecond: 0.5, fuelType: 'fossil', // 90 s — the air tempo constraint
+    hangarClass: 'medium',
   },
   transport: {
     kind: 'transport', name: 'Transport', domain: 'air', hp: 240, speed: 22, armor: 'medium',
@@ -354,6 +470,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'foundation',
     manpowerCost: 2, trainFunds: 500, trainMaterials: 80,
     fuelCapacity: 55, fuelPerSecond: 0.4, fuelType: 'fossil', // ~137 s; airlifter legs
+    hangarClass: 'heavy',
   },
   drone: {
     kind: 'drone', name: 'Drone', domain: 'air', hp: 55, speed: 20, armor: 'light',
@@ -361,6 +478,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 0.9, vsMedium: 0.5, vsHeavy: 0.3, vsAir: 1.0, sight: 26, minAge: 'foundation',
     manpowerCost: 0, trainFunds: 80, trainMaterials: 10,
     fuelCapacity: 25, fuelPerSecond: 0.25, fuelType: 'fossil', // 100 s; efficient, tiny tank
+    hangarClass: 'light',
   },
   patrolBoat: {
     kind: 'patrolBoat', name: 'Patrol Boat', domain: 'sea', hp: 220, speed: 14, armor: 'light',
@@ -427,6 +545,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 0.8, vsMedium: 1.0, vsHeavy: 1.6, vsAir: 1.0, sight: 32, minAge: 'industry',
     manpowerCost: 4, trainFunds: 1000, trainMaterials: 150, requiredBuilding: 'airfield',
     fuelCapacity: 55, fuelPerSecond: 0.55, fuelType: 'fossil', // 100 s; strike needs the extra tank
+    hangarClass: 'medium',
   },
   attackHeli: {
     kind: 'attackHeli', name: 'Attack Helicopter', domain: 'air', hp: 150, speed: 30, armor: 'light',
@@ -434,6 +553,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 0.9, vsMedium: 1.1, vsHeavy: 1.5, vsAir: 1.0, sight: 30, minAge: 'connectivity',
     manpowerCost: 4, trainFunds: 700, trainMaterials: 100, requiredBuilding: 'airfield',
     fuelCapacity: 40, fuelPerSecond: 0.5, fuelType: 'fossil', // 80 s; helos are thirsty
+    hangarClass: 'light',
   },
   awacs: {
     kind: 'awacs', name: 'AWACS', domain: 'air', hp: 180, speed: 24, armor: 'light',
@@ -441,6 +561,150 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 65, minAge: 'information',
     manpowerCost: 3, trainFunds: 900, trainMaterials: 120, requiredBuilding: 'airfield',
     fuelCapacity: 60, fuelPerSecond: 0.4, fuelType: 'fossil', // 150 s; endurance is its job
+    hangarClass: 'heavy',
+  },
+  // ------------------------------------------------------------------
+  // Grand-expansion Phase 5 (aircraft expansion, S4 — 2026-09-30): 16
+  // new aircraft. Every def sets `hangarClass` (S/M/L → light/medium/
+  // heavy); the four carrier-capable kinds set `carrierCapable` (the
+  // carrier's wing — PLAN §3.7); `strategicBomber` is the §3.2 missile
+  // consumer (8-missile magazine), `armedUAV` a 4-missile hellfire-type
+  // exception; `tanker`/`militaryCargo` are the S2 air-logistics pair.
+  // All require the airfield (civil airports are the sibling Phase 5
+  // workstream's). Balance: fighters are the ~90 s fuel-tempo baseline;
+  // heavier/longer-legged frames trade speed for endurance.
+  // ------------------------------------------------------------------
+  strategicBomber: {
+    kind: 'strategicBomber', name: 'Strategic Bomber', domain: 'air', hp: 260, speed: 24, armor: 'medium',
+    damage: 200, range: 24, minRange: 0, cooldownTicks: 120, targets: 'ground',
+    vsLight: 0.8, vsMedium: 1.2, vsHeavy: 1.8, vsAir: 1.0, sight: 34, minAge: 'information',
+    manpowerCost: 5, trainFunds: 1800, trainMaterials: 260, requiredBuilding: 'airfield',
+    ammoCapacity: 8, ammoPerShot: 1, // §3.2 missile consumer: a full heavy-ordnance bay
+    fuelCapacity: 100, fuelPerSecond: 0.5, fuelType: 'fossil', // 200 s; intercontinental legs
+    hangarClass: 'heavy',
+  },
+  maritimePatrol: {
+    kind: 'maritimePatrol', name: 'Maritime Patrol', domain: 'air', hp: 170, speed: 27, armor: 'medium',
+    damage: 70, range: 26, minRange: 0, cooldownTicks: 60, targets: 'sea',
+    vsLight: 1.0, vsMedium: 1.6, vsHeavy: 0.8, vsAir: 1.0, sight: 52, minAge: 'information',
+    manpowerCost: 4, trainFunds: 1100, trainMaterials: 170, requiredBuilding: 'airfield',
+    fuelCapacity: 90, fuelPerSecond: 0.5, fuelType: 'fossil', // 180 s; long ASW loiter
+    hangarClass: 'medium',
+  },
+  reconUAV: {
+    kind: 'reconUAV', name: 'Recon UAV', domain: 'air', hp: 45, speed: 32, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 58, minAge: 'connectivity',
+    manpowerCost: 0, trainFunds: 220, trainMaterials: 30, requiredBuilding: 'airfield',
+    fuelCapacity: 30, fuelPerSecond: 0.25, fuelType: 'fossil', // 120 s; cheap expendable eyes
+    hangarClass: 'light', carrierCapable: true,
+  },
+  armedUAV: {
+    kind: 'armedUAV', name: 'Armed UAV', domain: 'air', hp: 70, speed: 30, armor: 'light',
+    damage: 45, range: 16, minRange: 0, cooldownTicks: 40, targets: 'ground',
+    vsLight: 1.2, vsMedium: 0.9, vsHeavy: 0.5, vsAir: 1.0, sight: 40, minAge: 'connectivity',
+    manpowerCost: 0, trainFunds: 450, trainMaterials: 70, requiredBuilding: 'airfield',
+    ammoCapacity: 4, ammoPerShot: 1, // hellfire-type light missile rack
+    fuelCapacity: 36, fuelPerSecond: 0.3, fuelType: 'fossil', // 120 s
+    hangarClass: 'light', carrierCapable: true,
+  },
+  reconPlane: {
+    kind: 'reconPlane', name: 'Recon Plane', domain: 'air', hp: 130, speed: 34, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 62, minAge: 'connectivity',
+    manpowerCost: 2, trainFunds: 950, trainMaterials: 140, requiredBuilding: 'airfield',
+    fuelCapacity: 64, fuelPerSecond: 0.4, fuelType: 'fossil', // 160 s; outruns what it can't outsee
+    hangarClass: 'medium',
+  },
+  gunship: {
+    kind: 'gunship', name: 'Gunship', domain: 'air', hp: 280, speed: 22, armor: 'medium',
+    damage: 90, range: 20, minRange: 0, cooldownTicks: 55, targets: 'ground',
+    vsLight: 1.5, vsMedium: 1.1, vsHeavy: 0.7, vsAir: 1.0, sight: 30, minAge: 'industry',
+    manpowerCost: 4, trainFunds: 1400, trainMaterials: 210, requiredBuilding: 'airfield',
+    fuelCapacity: 65, fuelPerSecond: 0.5, fuelType: 'fossil', // 130 s; heavy CAS loiter
+    hangarClass: 'medium',
+  },
+  tanker: {
+    kind: 'tanker', name: 'Tanker', domain: 'air', hp: 260, speed: 24, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 30, minAge: 'industry',
+    manpowerCost: 2, trainFunds: 1300, trainMaterials: 190, requiredBuilding: 'airfield',
+    fuelCapacity: 120, fuelPerSecond: 0.4, fuelType: 'fossil', // 300 s; its own long legs
+    cargoFuelCapacity: 200, tankerRefuelRadius: 40, // flying fuel station (S2 air logistics)
+    hangarClass: 'heavy',
+  },
+  militaryCargo: {
+    kind: 'militaryCargo', name: 'Military Cargo', domain: 'air', hp: 300, speed: 20, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 24, minAge: 'industry',
+    manpowerCost: 2, trainFunds: 1100, trainMaterials: 170, requiredBuilding: 'airfield',
+    fuelCapacity: 96, fuelPerSecond: 0.4, fuelType: 'fossil', // 240 s; airlift legs
+    cargoFuelCapacity: 60, cargoAmmoCapacity: 20, // air hauler for forward depots
+    hangarClass: 'heavy',
+  },
+  trainer: {
+    kind: 'trainer', name: 'Trainer', domain: 'air', hp: 100, speed: 28, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 34, minAge: 'connectivity',
+    manpowerCost: 1, trainFunds: 350, trainMaterials: 50, requiredBuilding: 'airfield',
+    fuelCapacity: 40, fuelPerSecond: 0.4, fuelType: 'fossil', // 100 s; cheap flight hours
+    hangarClass: 'light', carrierCapable: true,
+  },
+  navalFighter: {
+    kind: 'navalFighter', name: 'Naval Fighter', domain: 'air', hp: 190, speed: 27, armor: 'light',
+    damage: 36, range: 24, minRange: 0, cooldownTicks: 28, targets: 'both',
+    vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 1.6, sight: 42, minAge: 'connectivity',
+    manpowerCost: 3, trainFunds: 950, trainMaterials: 140, requiredBuilding: 'airfield',
+    fuelCapacity: 55, fuelPerSecond: 0.5, fuelType: 'fossil', // 110 s; carrier strike range
+    hangarClass: 'medium', carrierCapable: true,
+  },
+  airliner: {
+    kind: 'airliner', name: 'Airliner', domain: 'air', hp: 200, speed: 26, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'connectivity',
+    manpowerCost: 2, trainFunds: 1500, trainMaterials: 200, requiredBuilding: 'airfield',
+    fuelCapacity: 80, fuelPerSecond: 0.4, fuelType: 'fossil', // 200 s; scheduled legs
+    hangarClass: 'heavy',
+  },
+  jumboAirliner: {
+    kind: 'jumboAirliner', name: 'Jumbo Airliner', domain: 'air', hp: 320, speed: 24, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'industry',
+    manpowerCost: 3, trainFunds: 2200, trainMaterials: 320, requiredBuilding: 'airfield',
+    fuelCapacity: 96, fuelPerSecond: 0.4, fuelType: 'fossil', // 240 s; long-haul
+    hangarClass: 'heavy',
+  },
+  regionalJet: {
+    kind: 'regionalJet', name: 'Regional Jet', domain: 'air', hp: 150, speed: 30, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'connectivity',
+    manpowerCost: 1, trainFunds: 800, trainMaterials: 110, requiredBuilding: 'airfield',
+    fuelCapacity: 48, fuelPerSecond: 0.3, fuelType: 'fossil', // 160 s; short hops
+    hangarClass: 'medium',
+  },
+  cargoPlane: {
+    kind: 'cargoPlane', name: 'Cargo Plane', domain: 'air', hp: 280, speed: 22, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 24, minAge: 'industry',
+    manpowerCost: 1, trainFunds: 1200, trainMaterials: 200, requiredBuilding: 'airfield',
+    fuelCapacity: 96, fuelPerSecond: 0.4, fuelType: 'fossil', // 240 s; freight legs
+    hangarClass: 'heavy',
+  },
+  passengerHeli: {
+    kind: 'passengerHeli', name: 'Passenger Heli', domain: 'air', hp: 90, speed: 24, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'connectivity',
+    manpowerCost: 1, trainFunds: 500, trainMaterials: 80, requiredBuilding: 'airfield',
+    fuelCapacity: 36, fuelPerSecond: 0.3, fuelType: 'fossil', // 120 s; city hops
+    hangarClass: 'light',
+  },
+  seaplane: {
+    kind: 'seaplane', name: 'Seaplane', domain: 'air', hp: 80, speed: 26, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'connectivity',
+    manpowerCost: 0, trainFunds: 450, trainMaterials: 70, requiredBuilding: 'airfield',
+    fuelCapacity: 42, fuelPerSecond: 0.3, fuelType: 'fossil', // 140 s; bush legs
+    hangarClass: 'light',
   },
   missileBoat: {
     kind: 'missileBoat', name: 'Missile Boat', domain: 'sea', hp: 180, speed: 18, armor: 'light',
@@ -471,6 +735,11 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.2, vsMedium: 1.0, vsHeavy: 0.9, vsAir: 2.0, sight: 36, minAge: 'information',
     manpowerCost: 10, trainFunds: 3500, trainMaterials: 1000, requiredBuilding: 'navalYard',
     fuelType: 'nuclear', // no conventional refueling — user directive 2026-09-30
+    // Grand-expansion Phase 5/6 (S4): the carrier sails with an empty
+    // 8-slot wing (PLAN §4 S4) — it trains EMPTY and the wing fills
+    // only through embarkAircraft orders (carrierCapable kinds:
+    // navalFighter, armedUAV, reconUAV, trainer).
+    wingCapacity: 8,
   },
   commandShip: {
     kind: 'commandShip', name: 'Command Ship', domain: 'sea', hp: 700, speed: 9, armor: 'heavy',
@@ -543,6 +812,141 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 2, trainFunds: 400, trainMaterials: 140,
     fuelCapacity: 120, fuelPerSecond: 0.2, fuelType: 'fossil', // 600 s crossing tank
     transitEarnings: 0.8,
+  },
+  // ------------------------------------------------------------------
+  // Grand-expansion Phase 6 — naval expansion (workstream C,
+  // 2026-09-30). 15 new sea kinds. Sea tempo: fuel tanks size ~320–560 s
+  // (ship fuelPerSecond ×30 in logistics.ts — the torpedo boats burn
+  // hardest). The gunfighter/destroyer split: 'destroyer' is the
+  // fleet's AA escort (seaAir, vsAir 1.6); 'heavyDestroyer' is the
+  // surface gunfighter (sea targets only). Missile subs are nuclear —
+  // they never burn or refuel fuel (user rule 2026-09-30).
+  // ------------------------------------------------------------------
+  coastalSub: {
+    kind: 'coastalSub', name: 'Coastal Sub', domain: 'sea', hp: 220, speed: 11, armor: 'light',
+    damage: 60, range: 24, minRange: 0, cooldownTicks: 70, targets: 'sea',
+    vsLight: 0.9, vsMedium: 1.4, vsHeavy: 1.8, vsAir: 1.0, sight: 24, minAge: 'industry',
+    requiredBuilding: 'navalYard',
+    manpowerCost: 4, trainFunds: 700, trainMaterials: 180,
+    fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil', // 400 s
+    ammoCapacity: 6,
+  },
+  missileSub: {
+    kind: 'missileSub', name: 'Missile Sub', domain: 'sea', hp: 550, speed: 9, armor: 'heavy',
+    damage: 140, range: 40, minRange: 0, cooldownTicks: 120, targets: 'sea',
+    vsLight: 1.0, vsMedium: 1.4, vsHeavy: 2.0, vsAir: 1.0, sight: 30, minAge: 'information',
+    requiredBuilding: 'navalYard',
+    manpowerCost: 8, trainFunds: 2500, trainMaterials: 700,
+    fuelCapacity: 0, fuelPerSecond: 0, fuelType: 'nuclear', // never burns or refuels
+    ammoCapacity: 16,
+  },
+  corvette: {
+    kind: 'corvette', name: 'Corvette', domain: 'sea', hp: 260, speed: 15, armor: 'light',
+    damage: 22, range: 22, minRange: 0, cooldownTicks: 30, targets: 'sea',
+    vsLight: 1.3, vsMedium: 0.9, vsHeavy: 0.6, vsAir: 1.0, sight: 28, minAge: 'connectivity',
+    requiredBuilding: 'shipyard',
+    manpowerCost: 3, trainFunds: 450, trainMaterials: 110,
+    fuelCapacity: 80, fuelPerSecond: 0.25, fuelType: 'fossil', // 320 s
+  },
+  cruiser: {
+    kind: 'cruiser', name: 'Cruiser', domain: 'sea', hp: 650, speed: 10, armor: 'heavy',
+    damage: 60, range: 28, minRange: 0, cooldownTicks: 50, targets: 'seaAir',
+    vsLight: 1.2, vsMedium: 1.2, vsHeavy: 1.1, vsAir: 1.6, sight: 34, minAge: 'information',
+    requiredBuilding: 'navalYard',
+    manpowerCost: 7, trainFunds: 2200, trainMaterials: 600,
+    fuelCapacity: 120, fuelPerSecond: 0.25, fuelType: 'fossil', // 480 s
+  },
+  battleship: {
+    kind: 'battleship', name: 'Battleship', domain: 'sea', hp: 800, speed: 9, armor: 'heavy',
+    damage: 110, range: 32, minRange: 0, cooldownTicks: 90, targets: 'sea',
+    vsLight: 1.2, vsMedium: 1.3, vsHeavy: 1.4, vsAir: 1.0, sight: 32, minAge: 'information',
+    requiredBuilding: 'navalYard',
+    manpowerCost: 9, trainFunds: 3000, trainMaterials: 900,
+    fuelCapacity: 140, fuelPerSecond: 0.25, fuelType: 'fossil', // 560 s
+  },
+  heavyDestroyer: {
+    kind: 'heavyDestroyer', name: 'Heavy Destroyer', domain: 'sea', hp: 550, speed: 12, armor: 'medium',
+    damage: 65, range: 26, minRange: 0, cooldownTicks: 45, targets: 'sea',
+    vsLight: 1.4, vsMedium: 1.3, vsHeavy: 1.2, vsAir: 1.0, sight: 30, minAge: 'industry',
+    requiredBuilding: 'navalYard',
+    manpowerCost: 6, trainFunds: 1800, trainMaterials: 500,
+    fuelCapacity: 110, fuelPerSecond: 0.25, fuelType: 'fossil', // 440 s
+  },
+  cargoFreighter: {
+    kind: 'cargoFreighter', name: 'Cargo Freighter', domain: 'sea', hp: 300, speed: 8, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'industry',
+    manpowerCost: 2, trainFunds: 500, trainMaterials: 150,
+    fuelCapacity: 120, fuelPerSecond: 0.2, fuelType: 'fossil', // 600 s
+    harvest: { funds: 0.5 }, // civilian sea income
+  },
+  fuelTanker: {
+    kind: 'fuelTanker', name: 'Fuel Tanker', domain: 'sea', hp: 320, speed: 8, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'industry',
+    manpowerCost: 2, trainFunds: 600, trainMaterials: 200,
+    fuelCapacity: 140, fuelPerSecond: 0.2, fuelType: 'fossil', // 700 s
+    cargoFuelCapacity: 400, // naval supply ship (Phase 3 logistics on water)
+  },
+  ammoShip: {
+    kind: 'ammoShip', name: 'Ammo Ship', domain: 'sea', hp: 280, speed: 8, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'industry',
+    requiredBuilding: 'shipyard',
+    manpowerCost: 2, trainFunds: 700, trainMaterials: 250,
+    fuelCapacity: 120, fuelPerSecond: 0.2, fuelType: 'fossil', // 600 s
+    cargoAmmoCapacity: 80, // floating munitions store
+  },
+  repairShip: {
+    kind: 'repairShip', name: 'Repair Ship', domain: 'sea', hp: 300, speed: 9, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 22, minAge: 'connectivity',
+    requiredBuilding: 'shipyard',
+    manpowerCost: 3, trainFunds: 600, trainMaterials: 200,
+    fuelCapacity: 100, fuelPerSecond: 0.2, fuelType: 'fossil', // 500 s
+    healRadius: 15, healPerSec: 1.5, healDomain: 'sea', // heals ships, not soldiers
+  },
+  minelayer: {
+    kind: 'minelayer', name: 'Minelayer', domain: 'sea', hp: 250, speed: 10, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 24, minAge: 'industry',
+    requiredBuilding: 'shipyard',
+    manpowerCost: 3, trainFunds: 800, trainMaterials: 250,
+    fuelCapacity: 90, fuelPerSecond: 0.2, fuelType: 'fossil', // 450 s
+  },
+  navalMine: {
+    kind: 'navalMine', name: 'Naval Mine', domain: 'sea', hp: 40, speed: 0, armor: 'light',
+    // damage is the detonation yield spent by combat.ts's mine pass via
+    // damageMultiplier (armor counters apply); the fire pass skips
+    // deployableOnly kinds so mines never "shoot".
+    damage: 150, range: 8, minRange: 0, cooldownTicks: 1, targets: 'sea',
+    vsLight: 1.5, vsMedium: 1.2, vsHeavy: 0.9, vsAir: 1.0, sight: 8, minAge: 'industry',
+    deployableOnly: true,
+    manpowerCost: 0, trainFunds: 0, trainMaterials: 0,
+    fuelCapacity: 0, fuelPerSecond: 0, fuelType: 'none',
+  },
+  coastGuardCutter: {
+    kind: 'coastGuardCutter', name: 'Coast Guard Cutter', domain: 'sea', hp: 180, speed: 14, armor: 'light',
+    damage: 12, range: 18, minRange: 0, cooldownTicks: 25, targets: 'sea',
+    vsLight: 1.4, vsMedium: 0.7, vsHeavy: 0.3, vsAir: 0.8, sight: 30, minAge: 'industry',
+    manpowerCost: 2, trainFunds: 300, trainMaterials: 80,
+    fuelCapacity: 70, fuelPerSecond: 0.2, fuelType: 'fossil', // 350 s
+  },
+  cruiseLiner: {
+    kind: 'cruiseLiner', name: 'Cruise Liner', domain: 'sea', hp: 350, speed: 10, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'connectivity',
+    manpowerCost: 2, trainFunds: 800, trainMaterials: 250,
+    fuelCapacity: 120, fuelPerSecond: 0.2, fuelType: 'fossil', // 600 s
+    harvest: { funds: 0.6 }, // civilian sea income
+  },
+  yacht: {
+    kind: 'yacht', name: 'Yacht', domain: 'sea', hp: 90, speed: 13, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 18, minAge: 'connectivity',
+    manpowerCost: 0, trainFunds: 200, trainMaterials: 60,
+    fuelCapacity: 50, fuelPerSecond: 0.15, fuelType: 'fossil', // ~333 s
+    harvest: { funds: 0.15 }, // civilian sea income
   },
 };
 
@@ -673,6 +1077,24 @@ export interface UnitRecord {  /** Stable id from `world.nextId`. Never reused. 
    */
   cargoFuel: number;
   cargoAmmo: number;
+  /**
+   * Grand-expansion Phase 5/6, S4 (hangars + carriers): the building
+   * id whose hangar slot this aircraft is parked in (0 = not parked).
+   * Set by the hangar system (embarkAircraft / ground parking) once
+   * the aircraft workstream lands. Optional; reads use `?? 0`
+   * (AD9). Snapshotted and digest-covered (PLAN §4 S4).
+   */
+  hangarBuildingId?: number;
+  /**
+   * Grand-expansion Phase 6 (carrier wings): the carrier unit id this
+   * aircraft is embarked on (0 = flying / parked on land, not
+   * embarked). Embarked aircraft move with the carrier (movement.ts
+   * syncs position in id order), are skipped by target acquisition,
+   * and die with the carrier (killUnit releases the slot / destroys
+   * the wing — PLAN §4 S4). Optional; reads use `?? 0` (AD9).
+   * Snapshotted and digest-covered (PLAN §4 S4).
+   */
+  embarkedOn?: number;
 }
 
 /** Spawn a unit into the world. Returns the new record. Caller validates. */
@@ -719,6 +1141,10 @@ export function spawnUnit(world: World, kind: string, owner: number, x: number, 
     resupplyDepotId: 0,
     resupplyReservedAmmo: 0,
     resupplyReservedFuel: 0,
+    // Grand-expansion Phase 5/6 (S4): aircraft spawn unparked and
+    // unembarked — parking/embarking are commands, never conjured.
+    hangarBuildingId: 0,
+    embarkedOn: 0,
   };
   world.nextId += 1;
   world.units.push(record);
@@ -727,9 +1153,11 @@ export function spawnUnit(world: World, kind: string, owner: number, x: number, 
   // first threshold in veterancy.ts (hardcoded to keep this module from
   // importing veterancy.ts; the constant lives there). Unarmed units
   // (haulers, medics, transports) get no bonus — there is nothing to
-  // drill them in. `hasProductionBuilding` covers real and AI-virtual
-  // academies, like every other production gate in this file.
-  if (def.damage > 0 && hasProductionBuilding(world, owner, 'militaryAcademy')) {
+  // drill them in. Deployable-only kinds (navalMine, Phase 6
+  // workstream C) get no bonus either — mines earn no XP, they detonate.
+  // `hasProductionBuilding` covers real and AI-virtual academies, like
+  // every other production gate in this file.
+  if (def.damage > 0 && def.deployableOnly !== true && hasProductionBuilding(world, owner, 'militaryAcademy')) {
     record.xp = 200;
     record.vetLevel = 1;
   }
@@ -819,6 +1247,12 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
       if (typeof kind !== 'string' || !(UNIT_KINDS as readonly string[]).includes(kind)) {
         return `spawnUnit: kind must be one of ${UNIT_KINDS.join(', ')}`;
       }
+      // Grand-expansion Phase 6 (workstream C): deployable-only kinds
+      // (navalMine) enter the world through their own command — the
+      // train path is closed loudly so no UI or AI path can conjure one.
+      if (UNIT_DEFS[kind as UnitKind].deployableOnly === true) {
+        return `spawnUnit: ${kind} is deployable-only (lay it with a minelayer's deployMine command)`;
+      }
       const owner = cmd.payload['owner'];
       if (typeof owner !== 'number' || !Number.isInteger(owner) || !getPlayer(world.city, owner)) {
         return 'spawnUnit: unknown owner';
@@ -906,6 +1340,74 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
     },
   });
 
+  // ------------------------------------------------------------------
+  // Grand-expansion Phase 6 — naval expansion (workstream C,
+  // 2026-09-30). The minelayer's deployMine command: the ONLY way a
+  // navalMine enters the world (spawnUnit rejects deployableOnly
+  // kinds loudly — see the validator above). The lay-down cost (50
+  // funds + 10 materials per mine) is validated at enqueue AND at
+  // apply, and deducted at apply. The mine spawns at the minelayer's
+  // own position; the combat system's mine pass (combat.ts) arms it
+  // deterministically from there.
+  // ------------------------------------------------------------------
+  const MINE_DEPLOY_FUNDS = 50;
+  const MINE_DEPLOY_MATERIALS = 10;
+  queue.register('deployMine', {
+    validate(cmd, world): string | null {
+      const owner = cmd.payload['owner'];
+      if (typeof owner !== 'number' || !Number.isInteger(owner) || !getPlayer(world.city, owner)) {
+        return 'deployMine: unknown owner';
+      }
+      const minelayerId = cmd.payload['minelayerId'];
+      if (typeof minelayerId !== 'number' || !Number.isInteger(minelayerId)) {
+        return 'deployMine: payload.minelayerId must be an integer unit id';
+      }
+      const minelayer = findUnit(world, minelayerId);
+      if (minelayer === undefined || minelayer.hp <= 0 || minelayer.owner !== owner) {
+        return 'deployMine: minelayer must be a living unit owned by the issuer';
+      }
+      if (minelayer.kind !== 'minelayer') {
+        return 'deployMine: only a minelayer can deploy naval mines';
+      }
+      // Mines need water under the hull — terrain is static, so this
+      // check is stable between enqueue and apply.
+      if (!isWater(t, minelayer.x, minelayer.z)) {
+        return 'deployMine: the minelayer must be on water';
+      }
+      const player = getPlayer(world.city, owner as number);
+      if (
+        !player ||
+        player.funds < MINE_DEPLOY_FUNDS ||
+        player.materials < MINE_DEPLOY_MATERIALS
+      ) {
+        return (
+          `deployMine: cannot afford the lay-down cost ` +
+          `(${MINE_DEPLOY_FUNDS} funds + ${MINE_DEPLOY_MATERIALS} materials)`
+        );
+      }
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const owner = cmd.payload['owner'] as number;
+      const player = getPlayer(world.city, owner);
+      if (
+        !player ||
+        player.funds < MINE_DEPLOY_FUNDS ||
+        player.materials < MINE_DEPLOY_MATERIALS
+      ) {
+        throw new Error('deployMine: cannot afford the lay-down cost at apply time');
+      }
+      player.funds -= MINE_DEPLOY_FUNDS;
+      player.materials -= MINE_DEPLOY_MATERIALS;
+      const minelayer = findUnit(world, cmd.payload['minelayerId'] as number);
+      if (minelayer === undefined || minelayer.hp <= 0 || minelayer.owner !== owner) {
+        throw new Error('deployMine: minelayer is gone at apply time');
+      }
+      const mine = spawnUnit(world, 'navalMine', owner, minelayer.x, minelayer.z);
+      return mine.id;
+    },
+  });
+
   /**
    * Phase 4 transport (S7): assign a ferry its shipping lane. Both
    * endpoints must be water (inside the map); the route starts idle
@@ -959,6 +1461,182 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
       return unit.id;
     },
   });
+
+  // ------------------------------------------------------------------
+  // Grand-expansion Phase 5 — hangars + carriers (workstream B, S4,
+  // 2026-09-30). embarkAircraft (carrier wing), baseAircraft (ground
+  // hangar), launchAircraft (leave either). Reservation is atomic at
+  // apply time — validate≡apply agreement under contention (the
+  // Phase 5 deployable test pins it). Carriers train EMPTY (their wing
+  // fills only through these commands — the user requirement); only
+  // carrierCapable aircraft may embark (sim gate here, UI gate in
+  // ui/hangars.ts).
+  // ------------------------------------------------------------------
+  queue.register('embarkAircraft', {
+    validate(cmd, world): string | null {
+      const owner = cmd.payload['owner'];
+      if (typeof owner !== 'number' || !Number.isInteger(owner) || !getPlayer(world.city, owner)) {
+        return 'embarkAircraft: unknown owner';
+      }
+      const unitId = cmd.payload['unitId'];
+      if (typeof unitId !== 'number' || !Number.isInteger(unitId)) {
+        return 'embarkAircraft: payload.unitId must be an integer';
+      }
+      const unit = world.units.find((u) => u.id === unitId);
+      if (!unit) return `embarkAircraft: no unit with id ${unitId}`;
+      if (unit.owner !== owner) return `embarkAircraft: unit ${unitId} is not owned by player ${owner}`;
+      if (unit.hp <= 0) return `embarkAircraft: unit ${unitId} is dead`;
+      const def = UNIT_DEFS[unit.kind as UnitKind];
+      if (!def || def.domain !== 'air') return `embarkAircraft: unit ${unitId} is not an aircraft`;
+      if (def.carrierCapable !== true) {
+        return `embarkAircraft: ${unit.kind} is not carrier-capable (only carrier-capable aircraft may embark)`;
+      }
+      if (isSheltered(unit)) return `embarkAircraft: unit ${unitId} is already parked or embarked`;
+      const carrierId = cmd.payload['carrierId'];
+      if (typeof carrierId !== 'number' || !Number.isInteger(carrierId)) {
+        return 'embarkAircraft: payload.carrierId must be an integer';
+      }
+      const carrier = world.units.find((u) => u.id === carrierId);
+      if (!carrier) return `embarkAircraft: no carrier with id ${carrierId}`;
+      if (carrier.owner !== owner) return `embarkAircraft: carrier ${carrierId} is not owned by player ${owner}`;
+      if (carrier.hp <= 0) return `embarkAircraft: carrier ${carrierId} is dead`;
+      if ((UNIT_DEFS[carrier.kind as UnitKind]?.wingCapacity ?? 0) <= 0) {
+        return `embarkAircraft: ${carrier.kind} has no wing capacity`;
+      }
+      if (findHangarSlot(world, { kind: 'carrier', id: carrierId }, def.hangarClass) < 0) {
+        return `embarkAircraft: carrier ${carrierId}'s wing is full`;
+      }
+      const dx = unit.x - carrier.x;
+      const dz = unit.z - carrier.z;
+      if (dx * dx + dz * dz > EMBARK_RANGE * EMBARK_RANGE) {
+        return `embarkAircraft: unit ${unitId} is out of embark range (${EMBARK_RANGE})`;
+      }
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const unit = world.units.find((u) => u.id === (cmd.payload['unitId'] as number)) as UnitRecord;
+      const carrier = world.units.find((u) => u.id === (cmd.payload['carrierId'] as number)) as UnitRecord;
+      const def = UNIT_DEFS[unit.kind as UnitKind];
+      // validate≡apply: the slot is reserved atomically here — a stale
+      // validate (two aircraft racing one slot) throws loudly instead
+      // of double-booking.
+      if (findHangarSlot(world, { kind: 'carrier', id: carrier.id }, def.hangarClass) < 0) {
+        throw new Error(`embarkAircraft: carrier ${carrier.id}'s wing filled before apply`);
+      }
+      unit.embarkedOn = carrier.id;
+      // Embarked aircraft ride the carrier: drop orders, snap to the
+      // deck (the movement sync keeps them there in id order).
+      unit.x = carrier.x;
+      unit.z = carrier.z;
+      unit.destX = carrier.x;
+      unit.destZ = carrier.z;
+      unit.arriveX = carrier.x;
+      unit.arriveZ = carrier.z;
+      unit.path = [];
+      unit.fieldId = 0;
+      unit.targetId = 0;
+      unit.chasing = false;
+      unit.state = 'idle';
+      unit.failReason = null;
+      return unit.id;
+    },
+  });
+
+  queue.register('baseAircraft', {
+    validate(cmd, world): string | null {
+      const owner = cmd.payload['owner'];
+      if (typeof owner !== 'number' || !Number.isInteger(owner) || !getPlayer(world.city, owner)) {
+        return 'baseAircraft: unknown owner';
+      }
+      const unitId = cmd.payload['unitId'];
+      if (typeof unitId !== 'number' || !Number.isInteger(unitId)) {
+        return 'baseAircraft: payload.unitId must be an integer';
+      }
+      const unit = world.units.find((u) => u.id === unitId);
+      if (!unit) return `baseAircraft: no unit with id ${unitId}`;
+      if (unit.owner !== owner) return `baseAircraft: unit ${unitId} is not owned by player ${owner}`;
+      if (unit.hp <= 0) return `baseAircraft: unit ${unitId} is dead`;
+      const def = UNIT_DEFS[unit.kind as UnitKind];
+      if (!def || def.domain !== 'air') return `baseAircraft: unit ${unitId} is not an aircraft`;
+      if (isSheltered(unit)) return `baseAircraft: unit ${unitId} is already parked or embarked`;
+      const buildingId = cmd.payload['buildingId'];
+      if (typeof buildingId !== 'number' || !Number.isInteger(buildingId)) {
+        return 'baseAircraft: payload.buildingId must be an integer';
+      }
+      const b = world.city.buildings.find((x) => x.id === buildingId);
+      if (!b) return `baseAircraft: no building with id ${buildingId}`;
+      if (b.owner !== owner) return `baseAircraft: building ${buildingId} is not owned by player ${owner}`;
+      if (b.progress < 1) return `baseAircraft: building ${buildingId} is not completed`;
+      if (findHangarSlot(world, { kind: 'building', id: buildingId }, def.hangarClass) < 0) {
+        return `baseAircraft: building ${buildingId} has no free compatible hangar slot`;
+      }
+      const bx = cellCenterWorld(b.cx);
+      const bz = cellCenterWorld(b.cz);
+      const dx = unit.x - bx;
+      const dz = unit.z - bz;
+      if (dx * dx + dz * dz > HANGAR_BASE_RANGE * HANGAR_BASE_RANGE) {
+        return `baseAircraft: unit ${unitId} is out of basing range (${HANGAR_BASE_RANGE})`;
+      }
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const unit = world.units.find((u) => u.id === (cmd.payload['unitId'] as number)) as UnitRecord;
+      const b = world.city.buildings.find((x) => x.id === (cmd.payload['buildingId'] as number));
+      if (!b) throw new Error(`baseAircraft: building ${cmd.payload['buildingId']} gone before apply`);
+      const def = UNIT_DEFS[unit.kind as UnitKind];
+      // validate≡apply: reserve the slot atomically — a stale validate
+      // (two aircraft racing one slot) throws loudly.
+      const slots = b.hangars ?? defaultHangarSlots(b.kind);
+      const idx = findBuildingHangarSlot(slots, def.hangarClass);
+      if (idx < 0 || !slots) {
+        throw new Error(`baseAircraft: building ${b.id}'s hangar filled before apply`);
+      }
+      if (b.hangars === undefined) b.hangars = slots;
+      b.hangars[idx] = { cls: (slots[idx] as { cls: HangarClass | 'generic' }).cls, occupant: unit.id };
+      unit.hangarBuildingId = b.id;
+      unit.targetId = 0;
+      unit.chasing = false;
+      unit.state = 'idle';
+      unit.failReason = null;
+      return unit.id;
+    },
+  });
+
+  queue.register('launchAircraft', {
+    validate(cmd, world): string | null {
+      const owner = cmd.payload['owner'];
+      if (typeof owner !== 'number' || !Number.isInteger(owner) || !getPlayer(world.city, owner)) {
+        return 'launchAircraft: unknown owner';
+      }
+      const unitId = cmd.payload['unitId'];
+      if (typeof unitId !== 'number' || !Number.isInteger(unitId)) {
+        return 'launchAircraft: payload.unitId must be an integer';
+      }
+      const unit = world.units.find((u) => u.id === unitId);
+      if (!unit) return `launchAircraft: no unit with id ${unitId}`;
+      if (unit.owner !== owner) return `launchAircraft: unit ${unitId} is not owned by player ${owner}`;
+      if (unit.hp <= 0) return `launchAircraft: unit ${unitId} is dead`;
+      if (!isSheltered(unit)) return `launchAircraft: unit ${unitId} is not parked or embarked`;
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const unit = world.units.find((u) => u.id === (cmd.payload['unitId'] as number)) as UnitRecord;
+      const hid = unit.hangarBuildingId ?? 0;
+      if (hid > 0) {
+        // Free the ground slot (the building may be gone — demolish
+        // already cleared the link; then there is nothing to free).
+        const b = world.city.buildings.find((x) => x.id === hid);
+        if (b?.hangars) {
+          for (const s of b.hangars) {
+            if (s.occupant === unit.id) s.occupant = 0;
+          }
+        }
+        unit.hangarBuildingId = 0;
+      }
+      if ((unit.embarkedOn ?? 0) > 0) unit.embarkedOn = 0;
+      return unit.id;
+    },
+  });
 }
 
 /**
@@ -967,4 +1645,61 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
  */
 export function isRailBound(kind: string): boolean {
   return (UNIT_DEFS[kind as UnitKind]?.railBound ?? false) === true;
+}
+
+// ------------------------------------------------------------------
+// Grand-expansion Phase 5 — hangars + carriers (workstream B, S4,
+// 2026-09-30). Sheltered aircraft (parked in a ground hangar or
+// embarked on a carrier) are invisible to combat and movement: they
+// ride with their shelter, die with a destroyed carrier, and are
+// released (alive) when a ground hangar is demolished.
+// ------------------------------------------------------------------
+
+/** Max order distance (world units) for `embarkAircraft` onto a carrier. */
+export const EMBARK_RANGE = 48;
+/** Max order distance (world units) for `baseAircraft` at a ground hangar. */
+export const HANGAR_BASE_RANGE = 64;
+
+/** True when the unit is sheltered: parked in a hangar or embarked on a carrier. */
+export function isSheltered(u: UnitRecord): boolean {
+  return (u.hangarBuildingId ?? 0) > 0 || (u.embarkedOn ?? 0) > 0;
+}
+
+/**
+ * Number of living aircraft currently embarked on the carrier
+ * `carrierId`. world.units is spawn (id) order, so callers iterating it
+ * see the wing in id order — deterministic.
+ */
+export function wingOccupancy(world: World, carrierId: number): number {
+  let n = 0;
+  for (const u of world.units) {
+    if (u.hp > 0 && (u.embarkedOn ?? 0) === carrierId) n++;
+  }
+  return n;
+}
+
+/**
+ * The shared hangar-slot reservation (PLAN §4 S4): the free slot for
+ * one aircraft of `cls` on a ground building or a carrier wing, or -1
+ * when there is none.
+ * - building → index into the building's hangar slots ('generic'
+ *   accepts any class; otherwise the classes must match).
+ * - carrier → 0 when the wing has a free slot
+ *   (`wingCapacity` − `wingOccupancy` > 0), else -1.
+ * Pure — the caller performs the reservation write inside apply.
+ */
+export function findHangarSlot(
+  world: World,
+  target: { kind: 'building'; id: number } | { kind: 'carrier'; id: number },
+  cls: HangarClass | undefined,
+): number {
+  if (target.kind === 'carrier') {
+    const carrier = world.units.find((u) => u.id === target.id);
+    if (!carrier || carrier.hp <= 0) return -1;
+    const cap = UNIT_DEFS[carrier.kind as UnitKind]?.wingCapacity ?? 0;
+    return wingOccupancy(world, target.id) < cap ? 0 : -1;
+  }
+  const b = world.city.buildings.find((x) => x.id === target.id);
+  if (!b) return -1;
+  return findBuildingHangarSlot(b.hangars ?? defaultHangarSlots(b.kind), cls);
 }

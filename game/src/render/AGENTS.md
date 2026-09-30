@@ -115,7 +115,14 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   Phase 3 logistics buildings: oilWell (derrick tower), oilRig (deck on
   legs), munitionsFactory (hall + shell prop), missilePlant (hall +
   missile on stand), missileSilo (concrete silo + dome), ordnanceDepot
-  (crate stacks + sandbag ring), fuelDepot (twin horizontal tanks). Each
+  (crate stacks + sandbag ring), fuelDepot (twin horizontal tanks), plus
+  the 6 grand-expansion Phase 5 (S5+S8) airport models:
+  runwayS/runwayM/runwayL (one parametric builder — 6/9/12-unit strips
+  with threshold bars and centerline dashes), controlTower (tapered
+  shaft, mullioned glass cab, whip antenna), passengerTerminal (glass
+  curtain wall, roof skylight, landside canopy, two jet bridges),
+  cargoTerminal (ribbed warehouse, dock canopy, roller doors, yard
+  crane). Each
   builder is a detailed smooth (never blocky) composite;
   `PROCEDURAL_KINDS` / `buildProceduralModel(kind)` is the registry.
   Builders rest at y=0 (destroyer / submarine / frigate / carrier
@@ -124,7 +131,8 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   sniper scoped rifle + bipod / medic helmet + red-cross pack),
   `buildHqAntenna`, `buildRadarDishProp` (aegisControl's yard dish),
   `buildAwacsDome` (rotodome), `buildShipMast` (command-ship comms
-  mast), `buildRunwayStrip` (airfield), `buildCoolingTower`
+  mast), `buildRunwayStrip` (airfield), `buildControlTower` (Phase 5
+  airport anchors), `buildCoolingTower`
   (nuclearPlant), `buildHospitalCross` (hospital roof sign).
 
 ## Procedural surface library (`render/surfaceTextures.ts`, `surfaceMaterials.ts`, `boxProjectUVs.ts`, 0.1 Alpha)
@@ -466,6 +474,49 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   toggled by `setLogisticsOverlayVisible(v)`, disposed in `dispose()`.
   Tested in `tests/render.logistics.test.ts` (model validity + hoop-arch
   orientation + overlay geometry + digest stability).
+
+## Airport overlay (`render/airportOverlay.ts`, 0.1 Alpha)
+
+- Grand-expansion Phase 5 (S5+S8): the toggleable airport overlay — one
+  merged mesh of vertex-colored ground rings under completed airport
+  anchors (sky blue = civilian, red = military, violet = mixed; the
+  mixed rule from `ui/airports.ts` `airportDisplayType` — rivals see
+  mixed sites as civilian; +0.22 terrain offset, above the logistics
+  rings' +0.18) plus one merged `LineSegments` of gold quadratic-bezier
+  arcs between airline-route endpoints (apex grows with distance, ~6–10
+  world units up). 1 draw call per layer, 0 when empty.
+- Pure geometry builders (`buildAirportRingGeometry`,
+  `buildAirlineRouteGeometry`) are Node-testable: counter-clockwise
+  winding from above (up-facing), flat headless fallback when no terrain
+  sampler is passed. `airportOverlayDigest(data)` (in `ui/airports.ts`,
+  next to the `airportOverlayData(world, viewerOwner)` view) is the
+  FNV-1a rebuild key. Owned by `EntityRenderer`: constructed in its
+  constructor, synced in `sync()` from `ui/airports.ts`, toggled by
+  `setAirportOverlayVisible(v)` (top-bar "Airports" button), disposed in
+  `dispose()`. Tested in `tests/render.airportOverlay.test.ts`.
+- Ambient airliners (`render/airlineProviders.ts`): decorative airliners
+  fly a closed circuit through the player's completed civil/mixed
+  airports (holding ellipse over a lone airport) at ~25 world units.
+  The Phase 4 `AmbientVehicleProvider` contract — provider-owned
+  geometry/material (`buildAirlinerModel`), a mutable `count` refreshed
+  per frame by game.ts from `ambientTransitDensity(pop).airliner`
+  (1/2000 residents, cap 8; 0 without a completed civil airport), poses
+  pure in (index, tick). Registered under the existing `'airliner'`
+  transit type; lifecycle (rebuild on `airlinerRouteKey` change,
+  dispose) mirrors the transit providers in `ui/game.ts`. Tested in
+  `tests/render.airlineProviders.test.ts`.
+- Ambient cargo ships (`render/cargoShipProviders.ts`, grand-expansion
+  Phase 6 workstream C, 0.1 Alpha): decorative container ships sail a
+  closed lane through the player's completed civilian ports
+  (`CARGO_PORT_KINDS`: commercialPort + containerPort; fishing harbors
+  and naval bases are excluded), with a 90-tick loading dwell at each
+  port and a deterministic swell. `cargoShipVehicleCount` gates on ≥2
+  ports and 1 ship per 800 residents (cap `MAX_AMBIENT_CARGOSHIP = 10`,
+  matching `ambientTransitDensity(pop).cargoShip`); `cargoShipRouteKey`
+  (port ids+cells) drives provider rebuilds in `ui/game.ts`
+  (`syncTransitProviders`, same lifecycle as the Phase 4 providers).
+  Render-only: the provider never touches sim state (digest-pinned in
+  `tests/render.cargoShip.test.ts`).
 
 ## Logistics procedural models (render/proceduralModels.ts, 0.1 Alpha)
 

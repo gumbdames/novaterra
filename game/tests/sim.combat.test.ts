@@ -17,7 +17,7 @@
 /**
  * NOVATERRA — sim combat tests (Phase 1, step 7).
  *
- * Covers the 28-unit roster (13 land + 6 air + 9 sea), combat resolution
+ * Covers the 66-unit roster (19 land + 22 air + 25 sea), combat resolution
  * (targeting, range, cooldowns, armor/domain counters, HQ aura), the
  * attackUnit command, death cleanup, air-unit direct flight, and
  * determinism of combat via digest comparison.
@@ -155,7 +155,7 @@ function advanceToConnectivity(ctx: Ctx, owner = 0): void {
 }
 
 describe('roster', () => {
-  it('has exactly the 35 kinds (19 land + 6 air + 10 sea: Phase 4 added 4 land + 1 sea transports)', () => {
+  it('has exactly the 66 kinds (19 land + 22 air + 25 sea: Phase 4 added 4 land + 1 sea transports, Phase 6 adds 15 sea, the aircraft workstream adds 16 air)', () => {
     const kinds = Object.keys(UNIT_DEFS).sort();
     expect(kinds).toEqual(
       [
@@ -171,14 +171,26 @@ describe('roster', () => {
         'supplyTruck', 'fuelTruck',
         // Phase 4 (S7, 2026-09-30): civilian transport units.
         'bus', 'tram', 'passengerTrain', 'freightTrain', 'ferry',
+        // Grand-expansion Phase 6 — naval expansion (workstream C,
+        // 2026-09-30): the 15 new sea kinds.
+        'coastalSub', 'missileSub', 'corvette', 'cruiser', 'battleship',
+        'heavyDestroyer', 'cargoFreighter', 'fuelTanker', 'ammoShip',
+        'repairShip', 'minelayer', 'navalMine', 'coastGuardCutter',
+        'cruiseLiner', 'yacht',
+        // Grand-expansion Phase 5 — aircraft expansion (workstream B,
+        // 2026-09-30): the 16 new air kinds.
+        'strategicBomber', 'maritimePatrol', 'reconUAV', 'armedUAV',
+        'reconPlane', 'gunship', 'tanker', 'militaryCargo', 'trainer',
+        'navalFighter', 'airliner', 'jumboAirliner', 'regionalJet',
+        'cargoPlane', 'passengerHeli', 'seaplane',
       ].sort(),
     );
     const land = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'land');
     const air = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'air');
     const sea = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'sea');
     expect(land).toHaveLength(19);
-    expect(air).toHaveLength(6);
-    expect(sea).toHaveLength(10);
+    expect(air).toHaveLength(22);
+    expect(sea).toHaveLength(25);
   });
 
   it('spawns with full hp, zero cooldown, no target', () => {

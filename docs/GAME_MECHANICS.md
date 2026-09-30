@@ -266,6 +266,103 @@ destroyers beat tanks at range, AA beats anything that flies**.
 - **AWACS** — unarmed radar plane with enormous sight range. Losing
   it blinds you (needs an airfield).
 - **Transport** — airlifts units across the map.
+- **Strategic Bomber** — long-range level bomber; flattens
+  buildings and armies from high altitude, slow to turn (needs an
+  airfield).
+- **Maritime Patrol** — long-endurance patrol aircraft; hunts
+  submarines over open water (needs an airfield).
+- **Recon UAV** — tiny unarmed spotter; even cheaper than a drone,
+  sees almost as far (carrier-capable).
+- **Armed UAV** — small hunter-killer drone with a light missile
+  rack; cheap precision strikes (carrier-capable).
+- **Recon Plane** — fast manned spotter with long legs (needs an
+  airfield).
+- **Gunship** — heavy helicopter gun platform; melts armor, terrified
+  of AA (needs an airfield).
+- **Tanker** — flying fuel depot; refuels friendly aircraft in flight
+  so they never have to turn back (needs an airfield).
+- **Military Cargo** — heavy airlifter; hauls the biggest loads
+  across the map (needs an airfield).
+- **Trainer** — light training jet; cheap flight hours, and it can
+  embark on a carrier (carrier-capable).
+- **Naval Fighter** — carrier-capable multirole jet; the fleet's
+  fighter arm (needs an airfield).
+- **Airliner** — civilian passenger jet; keep it away from wars
+  (needs an airfield).
+- **Jumbo Airliner** — the biggest civilian passenger jet (needs an
+  airfield).
+- **Regional Jet** — smaller civilian airliner for short hops
+  (needs an airfield).
+- **Cargo Plane** — civilian freighter (needs an airfield).
+- **Passenger Heli** — civilian helicopter shuttle (needs an
+  airfield).
+- **Seaplane** — civilian floatplane; lands on water (needs an
+  airfield).
+
+Aircraft burn fuel while they fly — a fighter gets about a minute
+and a half of flight before it must refuel — and most carry a
+limited ammo load, so they must rearm and refuel at a friendly
+airfield. Nuclear-powered submarines and carriers never burn fuel.
+
+## Hangars and carriers
+
+Aircraft don't have to stay airborne. Build **hangars** at your
+airfields (the **Airports** build tab: hangars come in Light, Medium
+and Heavy sizes for different aircraft) and select a flying
+aircraft to **park it in a hangar** — parked aircraft are invisible
+to the enemy, safe from attack, and burn no fuel. Select it again
+(or open the airfield) to **launch** it back into the sky.
+
+**Carriers** are floating airfields, and they train **empty** —
+every aircraft on a carrier's deck got there the hard way. Only
+**carrier-capable** aircraft — the Naval Fighter, Trainer, Armed
+UAV and Recon UAV — can **embark** on a carrier: select the
+aircraft, press **Embark** near a friendly carrier, and it parks on
+the deck. Embarked aircraft move with the ship and are safe from
+attack — but if the carrier sinks, its whole wing goes down with it.
+
+- **Embark** — park a carrier-capable aircraft on a nearby carrier.
+- **Park** — store an aircraft in a ground hangar.
+- **Launch** — return a parked or embarked aircraft to the sky.
+
+The **Tanker** keeps your air force flying: it carries fuel in its
+holds and automatically refuels the thirstiest friendly aircraft
+around it, so bombers can stay on station and fighters never flame
+out over the ocean. Tankers refuel from depots between missions.
+
+## Airports and airlines
+
+**Airport zones** are the fourth zone type, painted like the others
+with the Airports zone tool (the tax panel has a fourth rate for
+them — airport buildings pay it). Airports are player-placed only:
+the city never auto-builds on airport zoning. The **Airports** build
+tab holds the full roster:
+
+- **Civil Airport** — civilian airline hub (landing-fee income).
+- **Military Airbase** — trains military aircraft exactly like an
+  airfield.
+- **Mixed Airport** — both: civilian airline hub *and* trains like an
+  airfield. To everyone else it reads as a civilian airport — the
+  military side only shows to you.
+- **Passenger / Cargo Terminals** — boost every airline route you run
+  (+funds per second each); the cargo terminal pays a little more.
+- **Control Tower, Fuel Farm, Maintenance Hangar** — airport
+  build-out (the tower also props up the three anchors' models).
+- **Hangars S / M / L** — park Light, Medium, Heavy aircraft (the
+  hangar system from above).
+- **Runways S / M / L** — short strips serve light aircraft, medium
+  strips add medium, long strips serve everything.
+
+**Airlines** turn airports into income. Open the **Airlines** panel
+(Civilian tab), press **New route…**, and click two of your
+completed civil or mixed airports: the route costs 500 funds to
+establish and pays every second — a base rate, plus a distance
+bonus, plus your completed passenger/cargo terminal bonuses. Demolish
+an endpoint and the route closes. Flip the **Airports** toggle in
+the top bar to see airport sites ringed by type (blue civilian, red
+military, violet mixed) with your airline routes arcing gold between
+them — and once your first civil airport completes, decorative
+airliners start flying circuits between your airports.
 
 ## Navy
 
@@ -282,11 +379,77 @@ Industry age, and rule the seas:
   frigates reliably answer it (needs a naval yard).
 - **Destroyer** — heavy warship; shreds ships and aircraft alike.
 - **Carrier** — the ultimate capital ship and fleet anchor (needs a
-  naval yard).
+  naval yard). Carriers train **empty** — only carrier-capable
+  aircraft can embark on them (see Hangars and carriers above).
 - **Command Ship** — makes every nearby warship fight better (needs a
   naval yard).
 - **Transport Ship** — unarmed, carries your plans across the water.
 - **Fishing Boat** — harvests food from the sea; a water economy.
+
+**The expanded navy.** Beyond the classic fleet, the naval yard
+(Industry age and later) unlocks a full order of battle:
+
+- **Coastal Sub** — a cheaper, shorter-ranged boat for defending
+  home waters.
+- **Missile Sub** — a nuclear boat: it **never burns fuel and never
+  refuels**, and its long-range missiles reach 40 cells. The fleet's
+  ultimate deterrent (Information age).
+- **Corvette** — a fast, cheap escort that screens against light ships
+  and aircraft (Connectivity age, from a shipyard).
+- **Heavy Destroyer** — a tougher, longer-ranged destroyer.
+- **Cruiser** — a heavy gun platform with strong anti-air cover.
+- **Battleship** — the heaviest surface guns afloat: 800 hull points
+  and 110-damage salvos (Information age).
+
+And a support fleet that keeps the war machine — and the economy —
+moving:
+
+- **Cargo Freighter** — earns funds on the sea lanes (civilian sea
+  income); trains without a production building.
+- **Fuel Tanker** — a floating fuel depot for the Phase 3 naval
+  logistics chain.
+- **Ammo Ship** — a floating munitions store (needs a shipyard).
+- **Repair Ship** — heals friendly **sea** units in a 15-cell radius
+  (the combat medic still owns land).
+- **Minelayer** — lays **Naval Mines** (see below).
+
+Plus a civilian side: the **Coast Guard Cutter** (fast patrol),
+the **Cruise Liner** (prestige on the waves), and the **Yacht**
+(cheap and quick). Civilian ships need no production building — once
+you reach their age, train them straight from the Navy tab.
+
+**Naval mines.** Mines are never trained: the Navy tab shows the mine
+greyed out with *"Deployed by a Minelayer"*. Order a minelayer's
+**Deploy Mine** action and it lays a mine at its position for 50 Funds
++ 10 Materials. The mine sits on the seabed and detonates when an
+**enemy** sea unit closes within 8 cells — 150 damage, worse against
+light hulls, blunted by heavy armor. Friendly ships sail over your own
+mines unharmed. Mines earn no academy XP: they are expendable
+ordnance, not sailors.
+
+## Ports
+
+**Ports go on the coast.** All four ports must be built on land that
+touches the water — the game rejects inland placement outright. Each
+port earns its keep, and each unlocks part of the navy:
+
+- **Commercial Port** (Connectivity, 4×3) — harvests **+1.5
+  Funds/sec**, upkeep 0.8/sec. Counts as a **shipyard** for training:
+  build one and you can train shipyard ships without a shipyard.
+- **Container Port** (Industry, 5×4) — harvests **+2.5 Funds/sec**,
+  upkeep 1.5/sec. The big trade hub.
+- **Fishing Harbor** (Foundation, 3×2) — harvests **+1.2 Food/sec**,
+  upkeep 0.35/sec. A water economy from the very first age.
+- **Naval Base** (Industry, 5×4) — no harvest, upkeep 2.0/sec. Counts
+  as a **naval yard** for training: your warship program without the
+  full naval yard.
+
+Build **two or more** commercial/container ports and the sea lanes
+come alive: decorative container ships start sailing between your
+ports — pausing 90 ticks at each to "load cargo" — purely for show.
+More residents means more ships (one per 800, up to 10). They are
+render-only: they never fight, never carry cargo, and never touch the
+simulation.
 
 Ships can only be placed on water and can only fight on water — they
 can't attack land targets, and tanks can't shoot back at them. On

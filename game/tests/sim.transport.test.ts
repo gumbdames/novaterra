@@ -493,9 +493,9 @@ describe('Classic AI and civilian transport', () => {
 // Snapshot v7 round-trip
 // ---------------------------------------------------------------------------
 
-describe('snapshot v7: roads, rails, ferry routes', () => {
+describe('snapshot v8: roads, rails, ferry routes', () => {
   it('round-trips road classes, rails, and ferry routes with an identical digest', () => {
-    expect(SNAPSHOT_VERSION).toBe(7);
+    expect(SNAPSHOT_VERSION).toBe(8); // v8: Phase 5/6 S4 hangar data contract
     const ctx = setup(10101);
     const { cx, cz } = findLandRect(ctx.terrain, 8, 2);
     const roadCells = [0, 1, 2].map((i) => cellIndex(cx + i, cz));

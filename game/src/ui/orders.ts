@@ -162,11 +162,12 @@ export function partitionRoadCells(
 
 /**
  * Zone tool: paint a rectangle of cells. `zone` is 0 = residential,
- * 1 = commercial, 2 = industrial (matches sim/city.ts ZoneType).
+ * 1 = commercial, 2 = industrial, 3 = airport (matches sim/city.ts
+ * ZoneType).
  */
 export function buildZoneOrder(
   owner: number,
-  zone: 0 | 1 | 2,
+  zone: 0 | 1 | 2 | 3,
   x0: number,
   z0: number,
   x1: number,
@@ -266,10 +267,10 @@ export function buildResearchUpgradeOrder(
   };
 }
 
-/** HUD tax control: set one zone's tax rate (0..1). */
+/** HUD tax control: set one zone's tax rate (0..1). Zone 3 = airports. */
 export function buildSetTaxRateOrder(
   owner: number,
-  zone: 0 | 1 | 2,
+  zone: 0 | 1 | 2 | 3,
   rate: number,
 ): OrderIntent {
   return {
@@ -328,6 +329,34 @@ export function buildCancelTradeRouteOrder(
   return {
     kind: 'cancelTradeRoute',
     payload: { owner, partner },
+  };
+}
+
+/**
+ * Grand-expansion Phase 5 (S5): establish an airline route between two of
+ * the owner's airport anchors. `from` / `to` are building ids — both must
+ * be the owner's completed civil or mixed airports (the sim's
+ * `establishAirlineRoute` validates authoritatively); 500 funds setup.
+ */
+export function buildEstablishAirlineRouteOrder(
+  owner: number,
+  from: number,
+  to: number,
+): OrderIntent {
+  return {
+    kind: 'establishAirlineRoute',
+    payload: { owner, from, to },
+  };
+}
+
+/** Grand-expansion Phase 5 (S5): cancel an airline route by its route id. */
+export function buildCancelAirlineRouteOrder(
+  owner: number,
+  id: number,
+): OrderIntent {
+  return {
+    kind: 'cancelAirlineRoute',
+    payload: { owner, id },
   };
 }
 
@@ -432,5 +461,54 @@ export function buildSupplyTogglesOrder(
       rearm: services.rearm,
       refuel: services.refuel,
     },
+  };
+}
+
+/**
+ * Grand-expansion Phase 5 — aircraft expansion (workstream B,
+ * 2026-09-30): hangar/carrier order builders. The UI gathers the three
+ * hangar commands through these builders, mirroring the sim's
+ * `registerUnitCommands` payload shapes exactly. The sim still
+ * validates every command at enqueue AND apply time — these only shape
+ * well-formed intents.
+ */
+
+/**
+ * Embark a carrier-capable aircraft onto a carrier's wing.
+ * The sim rejects: non-aircraft, non-carrier-capable, dead, already
+ * sheltered, wrong owner, full wing, or out of EMBARK_RANGE.
+ */
+export function buildEmbarkOrder(
+  unitId: number,
+  carrierId: number,
+  owner: number,
+): OrderIntent {
+  return {
+    kind: 'embarkAircraft',
+    payload: { unitId, carrierId, owner },
+  };
+}
+
+/**
+ * Park an aircraft in a completed building's hangar.
+ * The sim rejects: non-aircraft, dead, already sheltered, wrong owner,
+ * incomplete building, or no compatible free slot.
+ */
+export function buildBaseOrder(
+  unitId: number,
+  buildingId: number,
+  owner: number,
+): OrderIntent {
+  return {
+    kind: 'baseAircraft',
+    payload: { unitId, buildingId, owner },
+  };
+}
+
+/** Launch a sheltered aircraft (frees its wing/hangar slot). */
+export function buildLaunchOrder(unitId: number, owner: number): OrderIntent {
+  return {
+    kind: 'launchAircraft',
+    payload: { unitId, owner },
   };
 }

@@ -101,7 +101,13 @@ export function canonicalizeWorld(world: World): string {
     // Phase 4 occupancy + variety (2026-09-30): behavior-affecting
     // (occupancy) and selection-panel-visible (variant), so both are
     // digest-covered (legacy decode defaults 0/0/0/1).
-    out += `${b.residents ?? 0},${b.workers ?? 0},${b.variant ?? 0},${b.sizeTier ?? 1};`;
+    out += `${b.residents ?? 0},${b.workers ?? 0},${b.variant ?? 0},${b.sizeTier ?? 1},`;
+    // v8 (grand-expansion Phase 5/6, S4): hangar slots — parked aircraft
+    // change what the building can do ⇒ digest-covered (PLAN §11).
+    // Legacy decode default: the airfield's 6 generic slots /
+    // undefined — digests of legacy saves are stable because the
+    // default is deterministic, not because the slots are absent.
+    out += `${(b.hangars ?? []).map((s) => `${s.cls}:${s.occupant}`).join('.')};`;
   }
   out += '|players:';
   for (const p of world.city.players) {
@@ -113,6 +119,10 @@ export function canonicalizeWorld(world: World): string {
   out += `|shortage=${world.city.foodShortage ? 1 : 0}`;
   // Trade routes: owner→partner pairs in establishment order.
   out += `|trade=${world.city.tradeRoutes.map((r) => `${r.owner}>${r.partner}@${r.establishedTick}`).join(',')};`;
+  // Grand-expansion Phase 5 (S5, 2026-09-30): airline routes — route
+  // income is behavior-affecting ⇒ digest-covered (PLAN §11).
+  // Establishment order; legacy saves decode to [] (the empty string).
+  out += `|airline=${(world.city.airlineRoutes ?? []).map((r) => `${r.id}:${r.owner}:${r.from}>${r.to}@${r.establishedTick}`).join(',')};`;
   // Units: spawn order; floats canonicalized. failReason is a plain string.
   out += `|units=${world.units.length}|`;
   for (const u of world.units) {
@@ -141,7 +151,12 @@ export function canonicalizeWorld(world: World): string {
     const r = u.route;
     out += r === undefined
       ? '-'
-      : `${canonicalNumber(r.ax)},${canonicalNumber(r.az)},${canonicalNumber(r.bx)},${canonicalNumber(r.bz)},${r.leg};`;
+      : `${canonicalNumber(r.ax)},${canonicalNumber(r.az)},${canonicalNumber(r.bx)},${canonicalNumber(r.bz)},${r.leg},`;
+    // v8 (grand-expansion Phase 5/6, S4): hangar parking + carrier embark
+    // state. 0 = unparked / unembarked (the legacy decode default).
+    // Behavior-affecting (parked/embarked units are skipped by target
+    // acquisition and move with their carrier) ⇒ digest-covered.
+    out += `${u.hangarBuildingId ?? 0},${u.embarkedOn ?? 0};`;
   }
   // Pathfinding: queues in FIFO order, fields in creation order; dirs are
   // small ints so they join cheaply. The active build's dist array is

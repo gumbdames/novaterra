@@ -709,9 +709,11 @@ export function ambientModelDigest(
 
 /**
  * Ambient transit types. `bus`/`tram`/`ferry` arrive with Phase 4
- * (transport variety); `airliner` with Phase 5 (airports + airline).
+ * (transport variety); `airliner` with Phase 5 (airports + airline);
+ * `cargoShip` with Phase 6 (naval expansion, workstream C — ambient
+ * container ships circuiting the player's civilian ports).
  */
-export type AmbientTransitType = 'bus' | 'tram' | 'ferry' | 'airliner';
+export type AmbientTransitType = 'bus' | 'tram' | 'ferry' | 'airliner' | 'cargoShip';
 
 /** Population-scaled target counts for ambient transit vehicles. */
 export interface AmbientTransitDensity {
@@ -719,6 +721,7 @@ export interface AmbientTransitDensity {
   tram: number;
   ferry: number;
   airliner: number;
+  cargoShip: number;
 }
 
 /** Hard caps per transit type (frame budget — same instancing discipline). */
@@ -726,19 +729,23 @@ export const MAX_AMBIENT_BUS = 40;
 export const MAX_AMBIENT_TRAM = 24;
 export const MAX_AMBIENT_FERRY = 12;
 export const MAX_AMBIENT_AIRLINER = 8;
+/** Grand-expansion Phase 6 (workstream C): ambient cargo-ship cap. */
+export const MAX_AMBIENT_CARGOSHIP = 10;
 
 /**
  * Desired ambient transit counts for a city population. More people ⇒
  * more ambient transit — buses first, then trams, then ferries, then
- * airliners. Pure and deterministic. The per-type divisor is a Phase-1
- * engineering choice — tune it, keep the tests green.
+ * airliners, then cargo ships. Pure and deterministic. The per-type
+ * divisor is a Phase-1 engineering choice — tune it, keep the tests
+ * green.
  *
  * NOTE for Phases 4–6: this function only sizes the bustle. The
  * vehicles themselves come from providers registered via
  * `registerAmbientTransitProvider` (a phase may gate on its own state —
  * e.g. trams only when a tram network exists, ferries only when ferry
- * routes exist, airliners only when a civil airport is built — by
- * returning `count: 0` / `poseAt: () => null` until its conditions hold).
+ * routes exist, airliners only when a civil airport is built, cargo
+ * ships only when ≥2 civilian ports are built — by returning
+ * `count: 0` / `poseAt: () => null` until its conditions hold).
  */
 export function ambientTransitDensity(cityPop: number): AmbientTransitDensity {
   const p = Number.isFinite(cityPop) && cityPop > 0 ? Math.floor(cityPop) : 0;
@@ -747,6 +754,9 @@ export function ambientTransitDensity(cityPop: number): AmbientTransitDensity {
     tram: Math.min(MAX_AMBIENT_TRAM, Math.floor(p / 400)),
     ferry: Math.min(MAX_AMBIENT_FERRY, Math.floor(p / 600)),
     airliner: Math.min(MAX_AMBIENT_AIRLINER, Math.floor(p / 2000)),
+    // Grand-expansion Phase 6 (workstream C): cargo ships trail last —
+    // one per 800 residents, capped at 10.
+    cargoShip: Math.min(MAX_AMBIENT_CARGOSHIP, Math.floor(p / 800)),
   };
 }
 

@@ -79,8 +79,8 @@ function runTicks(ctx: Ctx, n: number): void {
   for (let i = 0; i < n; i++) ctx.driver.step(ctx.world, TICK_MS);
 }
 
-function taxRates(ctx: Ctx): [number, number, number] {
-  return (getPlayer(ctx.world.city, 0) as { taxRates: [number, number, number] }).taxRates;
+function taxRates(ctx: Ctx): [number, number, number, number] {
+  return (getPlayer(ctx.world.city, 0) as { taxRates: [number, number, number, number] }).taxRates;
 }
 
 describe('sim/delegation — mayors', () => {
@@ -90,7 +90,7 @@ describe('sim/delegation — mayors', () => {
     runTicks(ctx, 1); // apply the command
     expect(getMayor(ctx.world, 0)?.policy).toBe('revenue');
     // Manual rate first, then let the mayor tick run.
-    (getPlayer(ctx.world.city, 0) as { taxRates: [number, number, number] }).taxRates = [0.01, 0.01, 0.01];
+    (getPlayer(ctx.world.city, 0) as { taxRates: [number, number, number, number] }).taxRates = [0.01, 0.01, 0.01, 0.01];
     runTicks(ctx, 30);
     expect(taxRates(ctx)).toEqual([...MAYOR_POLICY_RATES.revenue]);
   });
@@ -113,10 +113,10 @@ describe('sim/delegation — mayors', () => {
     enqueue(ctx, [{ kind: 'dismissMayor', payload: { owner: 0 } }]);
     runTicks(ctx, 1);
     expect(getMayor(ctx.world, 0)).toBeUndefined();
-    const player = getPlayer(ctx.world.city, 0) as { taxRates: [number, number, number] };
-    player.taxRates = [0.11, 0.12, 0.13];
+    const player = getPlayer(ctx.world.city, 0) as { taxRates: [number, number, number, number] };
+    player.taxRates = [0.11, 0.12, 0.13, 0.14];
     runTicks(ctx, 60);
-    expect(taxRates(ctx)).toEqual([0.11, 0.12, 0.13]);
+    expect(taxRates(ctx)).toEqual([0.11, 0.12, 0.13, 0.14]);
   });
 
   it('rejects bad policy, unknown owner, and dismissing nobody', () => {
@@ -140,10 +140,10 @@ describe('sim/delegation — mayors', () => {
 
   it('opt-in: without a mayor, tax rates never change on their own', () => {
     const ctx = setup();
-    const player = getPlayer(ctx.world.city, 0) as { taxRates: [number, number, number] };
-    player.taxRates = [0.2, 0.2, 0.2];
+    const player = getPlayer(ctx.world.city, 0) as { taxRates: [number, number, number, number] };
+    player.taxRates = [0.2, 0.2, 0.2, 0.2];
     runTicks(ctx, 120);
-    expect(taxRates(ctx)).toEqual([0.2, 0.2, 0.2]);
+    expect(taxRates(ctx)).toEqual([0.2, 0.2, 0.2, 0.2]);
   });
 });
 
@@ -281,13 +281,14 @@ describe('sim/delegation — setTaxRate', () => {
     const ctx = setup();
     enqueue(ctx, [{ kind: 'setTaxRate', payload: { owner: 0, zone: 1, rate: 0.25 } }]);
     runTicks(ctx, 2);
-    expect(taxRates(ctx)).toEqual([0.1, 0.25, 0.1]);
+    // The airport zone (3) got its own rate slot in Phase 5.
+    expect(taxRates(ctx)).toEqual([0.1, 0.25, 0.1, 0.1]);
   });
 
   it('rejects bad zones and rates', () => {
     const ctx = setup();
     for (const payload of [
-      { owner: 0, zone: 3, rate: 0.2 },
+      { owner: 0, zone: 4, rate: 0.2 },
       { owner: 0, zone: 1, rate: -0.1 },
       { owner: 0, zone: 1, rate: 1.5 },
       { owner: 0, zone: 1, rate: 'high' },
@@ -296,7 +297,7 @@ describe('sim/delegation — setTaxRate', () => {
         CommandRejectedError,
       );
     }
-    expect(taxRates(ctx)).toEqual([0.1, 0.1, 0.1]);
+    expect(taxRates(ctx)).toEqual([0.1, 0.1, 0.1, 0.1]);
   });
 
   it('applies even while a mayor holds office (the mayor system resets it next economy tick)', () => {
@@ -315,7 +316,7 @@ describe('sim/delegation — setTaxRate', () => {
   });
 
   it('is deterministic across identical runs', () => {
-    const run = (): [number, number, number] => {
+    const run = (): [number, number, number, number] => {
       const ctx = setup(777001);
       enqueue(ctx, [
         { kind: 'setTaxRate', payload: { owner: 0, zone: 0, rate: 0.2 } },

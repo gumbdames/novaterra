@@ -226,7 +226,7 @@ describe('taxes', () => {
     const { cx, cz } = findLandRect(ctx.terrain, 6, 4);
     pave(ctx.world.city, roadCells(cx, cz + 1, 6));
     completed(ctx.world.city, { kind: 'house', owner: 0, cx, cz: cz + 2, facing: 0 });
-    ctx.world.city.players[0]!.taxRates = [rate, rate, rate];
+    ctx.world.city.players[0]!.taxRates = [rate, rate, rate, rate];
     return ctx;
   }
 

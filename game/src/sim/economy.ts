@@ -94,6 +94,7 @@ import {
   type PlayerState,
   type ResourceKey,
   type TradeRoute,
+  type AirlineRoute,
 } from './city';
 
 /** Economy ticks run once per sim-second (30 sim ticks). */
@@ -610,6 +611,23 @@ function runHarvest(world: World, city: CityState): void {
       if (rate > 0) addStock(player, key, rate);
     }
   }
+  // Grand-expansion Phase 6 — naval expansion (workstream C,
+  // 2026-09-30): buildings with a def `harvest` (the civilian ports)
+  // pay it too — once per economy tick, in building-id order, for
+  // completed, operational buildings only. The fishingBoat precedent:
+  // static and simple, no simulation of the trade itself. Unit harvest
+  // (above) and building harvest (here) share the per-resource loop.
+  for (const b of city.buildings) {
+    if (b.progress < 1 || !b.operational) continue;
+    const def = BUILDING_DEFS[b.kind as keyof typeof BUILDING_DEFS];
+    if (!def?.harvest) continue;
+    const player = getPlayer(city, b.owner);
+    if (!player) continue;
+    for (const key of RESOURCE_KEYS) {
+      const rate = def.harvest[key] ?? 0;
+      if (rate > 0) addStock(player, key, rate);
+    }
+  }
 }
 
 /**
@@ -797,9 +815,85 @@ function serveDepotUnit(d: BuildingRecord, u: UnitRecord, isReserved: boolean): 
     d.reservedAmmo = Math.max(0, (d.reservedAmmo ?? 0) - gaveAmmo);
     d.reservedFuel = Math.max(0, (d.reservedFuel ?? 0) - gaveFuel);
   }
+  // Grand-expansion Phase 5 (tanker, S2/S4): flying fuel stations load
+  // their cargo hold at depots — gated on the def flag, so no existing
+  // truck behavior changes. The cargo hold is what the tanker gives
+  // away through its refuel aura (runTankerRefuel); its own tank fills
+  // through the normal fossil leg above.
+  if ((def.tankerRefuelRadius ?? 0) > 0) {
+    const cargoCap = def.cargoFuelCapacity ?? 0;
+    const need = cargoCap - u.cargoFuel;
+    if (need > 0) {
+      const stock = d.fuelStock ?? 0;
+      const reserved = d.reservedFuel ?? 0;
+      const avail = isReserved ? stock : stock - reserved;
+      const give = Math.min(need, Math.max(0, avail));
+      if (give > 0) {
+        d.fuelStock = stock - give;
+        u.cargoFuel += give;
+      }
+    }
+  }
 }
 
 /** Population eats; shortage stalls growth (flag read by runGrowth). */
+/**
+ * Grand-expansion Phase 5 (tanker, S2/S4 — 2026-09-30): flying fuel
+ * stations. Each living tanker, in id order, transfers fuel from its
+ * cargo hold (loaded at depots — see serveDepotUnit) to friendly
+ * fossil-fuel air units inside `tankerRefuelRadius`: neediest first
+ * (fuel fraction ascending, ties break to the lowest unit id), until
+ * the hold is dry. Nuclear-fuel units never burn fuel, so they are
+ * never refueled (the data-driven exemption — user directive
+ * 2026-09-30); the tanker's own tank is untouched (it burns from it).
+ * Runs on the economy tick, after the depot aura (tankers load, then
+ * give). Deterministic: id-ordered tankers, sorted recipients, no RNG.
+ */
+function runTankerRefuel(world: World): void {
+  const tankers = world.units.filter(
+    (u) => u.hp > 0 && (UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS]?.tankerRefuelRadius ?? 0) > 0,
+  );
+  if (tankers.length === 0) return;
+  // world.units is spawn (id) order; sort defensively so the service
+  // order never depends on insertion accidents.
+  tankers.sort((a, b) => a.id - b.id);
+  for (const t of tankers) {
+    const tdef = UNIT_DEFS[t.kind as keyof typeof UNIT_DEFS];
+    const radius = tdef?.tankerRefuelRadius ?? 0;
+    let hold = t.cargoFuel;
+    if (hold <= 0 || radius <= 0) continue;
+    const r2 = radius * radius;
+    const needy: UnitRecord[] = [];
+    for (const u of world.units) {
+      if (u.hp <= 0 || u.id === t.id || u.owner !== t.owner) continue;
+      const def = UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS];
+      if (!def || def.domain !== 'air' || def.fuelType !== 'fossil') continue;
+      const cap = def.fuelCapacity ?? 0;
+      if (cap <= 0 || u.fuel >= cap) continue;
+      const dx = u.x - t.x;
+      const dz = u.z - t.z;
+      if (dx * dx + dz * dz <= r2) needy.push(u);
+    }
+    // Neediest first: fuel fraction ascending, ties break to lowest id.
+    needy.sort((a, b) => {
+      const da = UNIT_DEFS[a.kind as keyof typeof UNIT_DEFS];
+      const db = UNIT_DEFS[b.kind as keyof typeof UNIT_DEFS];
+      const fa = a.fuel / (da?.fuelCapacity ?? 1);
+      const fb = b.fuel / (db?.fuelCapacity ?? 1);
+      return fa !== fb ? fa - fb : a.id - b.id;
+    });
+    for (const u of needy) {
+      if (hold <= 0) break;
+      const def = UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS];
+      const give = Math.min((def?.fuelCapacity ?? 0) - u.fuel, hold);
+      if (give > 0) {
+        u.fuel += give;
+        hold -= give;
+      }
+    }
+    t.cargoFuel = hold;
+  }
+}
 function runFood(city: CityState): void {
   let shortage = false;
   for (const player of city.players) {
@@ -872,9 +966,143 @@ function runTradeRoutes(world: World, city: CityState): void {
   }
 }
 
+/** Funds to establish one airline route. */
+export const AIRLINE_ROUTE_SETUP_COST = 500;
+/** Base funds per sim-second per active airline route. */
+export const AIRLINE_BASE_INCOME_PER_SEC = 1.5;
+/** Extra funds per sim-second per world-unit of route distance. */
+export const AIRLINE_DISTANCE_INCOME_PER_UNIT = 0.005;
+/** Extra funds per sim-second per completed passenger terminal (owner's). */
+export const AIRLINE_PASSENGER_TERMINAL_BONUS = 0.4;
+/** Extra funds per sim-second per completed cargo terminal (owner's). */
+export const AIRLINE_CARGO_TERMINAL_BONUS = 0.5;
+
+/**
+ * Grand-expansion Phase 5 (S5, 2026-09-30): civilian airline routes.
+ * Pure route income (§3.5): base + distance × per-unit + the owner's
+ * completed passenger/cargo terminal bonuses. Exported so the UI's
+ * airline panel shows exactly what the sim pays (no duplicated
+ * formula). Returns 0 when an endpoint is dead (missing, incomplete,
+ * or non-operational) — `runAirlineIncome` removes dead routes after
+ * paying the living ones. Deterministic: building-id order, no RNG;
+ * Math.sqrt is IEEE-754 correctly rounded (same engine ⇒ same bits).
+ */
+export function airlineRouteIncome(world: World, route: AirlineRoute): number {
+  const city = world.city;
+  const from = city.buildings.find((b) => b.id === route.from);
+  const to = city.buildings.find((b) => b.id === route.to);
+  if (!from || !to || from.progress < 1 || !from.operational || to.progress < 1 || !to.operational) {
+    return 0;
+  }
+  const dx = cellCenterWorld(from.cx) - cellCenterWorld(to.cx);
+  const dz = cellCenterWorld(from.cz) - cellCenterWorld(to.cz);
+  const distance = Math.sqrt(dx * dx + dz * dz);
+  let terminalBonus = 0;
+  for (const b of city.buildings) {
+    if (b.owner !== route.owner || b.progress < 1) continue;
+    if (b.kind === 'passengerTerminal') terminalBonus += AIRLINE_PASSENGER_TERMINAL_BONUS;
+    else if (b.kind === 'cargoTerminal') terminalBonus += AIRLINE_CARGO_TERMINAL_BONUS;
+  }
+  return AIRLINE_BASE_INCOME_PER_SEC + distance * AIRLINE_DISTANCE_INCOME_PER_UNIT + terminalBonus;
+}
+
+/** Pay living routes, remove dead ones (demolished endpoint) — id order, no RNG. */
+function runAirlineIncome(world: World, city: CityState): void {
+  const dead = new Set<number>();
+  for (const route of city.airlineRoutes) {
+    const owner = getPlayer(city, route.owner);
+    const income = airlineRouteIncome(world, route);
+    if (!owner || income <= 0) {
+      dead.add(route.id);
+      continue;
+    }
+    owner.funds += income;
+  }
+  if (dead.size > 0) {
+    city.airlineRoutes = city.airlineRoutes.filter((r) => !dead.has(r.id));
+  }
+}
+
+/** An airline endpoint must be the owner's completed civil/mixed airport. */
+function airlineEndpointProblem(world: World, owner: number, id: number, which: string): string | null {
+  const b = world.city.buildings.find((x) => x.id === id);
+  if (!b) return `establishAirlineRoute: unknown ${which} building #${id}`;
+  if (b.owner !== owner) return `establishAirlineRoute: ${which} building #${id} is not yours`;
+  if (b.progress < 1) return `establishAirlineRoute: ${which} building #${id} is not completed`;
+  const type = BUILDING_DEFS[b.kind].airportType;
+  if (type !== 'civilian' && type !== 'mixed') {
+    return `establishAirlineRoute: ${which} building #${id} is not a civil or mixed airport`;
+  }
+  return null;
+}
+
+const establishAirlineRouteSpec: CommandSpec = {
+  validate(cmd, world): string | null {
+    const owner = payloadInt(cmd.payload, 'owner');
+    if (owner === null || !getPlayer(world.city, owner)) {
+      return 'establishAirlineRoute: unknown owner';
+    }
+    const from = payloadInt(cmd.payload, 'from');
+    const to = payloadInt(cmd.payload, 'to');
+    if (from === null || to === null) {
+      return 'establishAirlineRoute: from/to must be building ids';
+    }
+    if (from === to) return 'establishAirlineRoute: from and to must be different airports';
+    const problem = airlineEndpointProblem(world, owner, from, 'from')
+      ?? airlineEndpointProblem(world, owner, to, 'to');
+    if (problem) return problem;
+    // Routes are undirected for duplication (A↔B == B↔A).
+    const a = Math.min(from, to);
+    const b = Math.max(from, to);
+    const dup = world.city.airlineRoutes.some(
+      (r) => r.owner === owner && Math.min(r.from, r.to) === a && Math.max(r.from, r.to) === b,
+    );
+    if (dup) return 'establishAirlineRoute: route already exists';
+    const player = getPlayer(world.city, owner) as PlayerState;
+    if (player.funds < AIRLINE_ROUTE_SETUP_COST) {
+      return `establishAirlineRoute: cannot afford ${AIRLINE_ROUTE_SETUP_COST} funds setup`;
+    }
+    return null;
+  },
+  apply(cmd, world): unknown {
+    const owner = payloadInt(cmd.payload, 'owner') as number;
+    const from = payloadInt(cmd.payload, 'from') as number;
+    const to = payloadInt(cmd.payload, 'to') as number;
+    const player = getPlayer(world.city, owner) as PlayerState;
+    player.funds -= AIRLINE_ROUTE_SETUP_COST;
+    const route: AirlineRoute = {
+      id: world.city.nextAirlineRouteId++,
+      owner,
+      from,
+      to,
+      establishedTick: world.tick,
+    };
+    world.city.airlineRoutes.push(route);
+    return { id: route.id, from, to };
+  },
+};
+
+const cancelAirlineRouteSpec: CommandSpec = {
+  validate(cmd, world): string | null {
+    const owner = payloadInt(cmd.payload, 'owner');
+    if (owner === null || !getPlayer(world.city, owner)) {
+      return 'cancelAirlineRoute: unknown owner';
+    }
+    const id = payloadInt(cmd.payload, 'id');
+    const route = world.city.airlineRoutes.find((r) => r.id === id);
+    if (!route) return 'cancelAirlineRoute: unknown route';
+    if (route.owner !== owner) return 'cancelAirlineRoute: route belongs to another player';
+    return null;
+  },
+  apply(cmd, world): unknown {
+    const id = payloadInt(cmd.payload, 'id') as number;
+    world.city.airlineRoutes = world.city.airlineRoutes.filter((r) => r.id !== id);
+    return { id };
+  },
+};
+
 /** Slow development levels for thriving buildings (1→3). */
-function runLevels(world: World): void {
-  const bank = rngBank(world);
+function runLevels(world: World): void {  const bank = rngBank(world);
   for (const b of world.city.buildings) {
     if (b.progress >= 1 && b.operational && b.powered && b.watered && b.level < 3) {
       if (bank.next('city') < 0.002) b.level += 1;
@@ -1000,9 +1228,15 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   // Phase 3 logistics: the refill aura runs after production/harvest so
   // it sees this tick's fresh producer stocks (PLAN S2).
   runSupplyAura(world, city);
+  // Grand-expansion Phase 5 (tanker, S2/S4): the flying fuel stations
+  // distribute after the depot aura (tankers load, then give).
+  runTankerRefuel(world);
   runFood(city);
   runTaxes(world, economyTickIndex(world), t);
   runTradeRoutes(world, city);
+  // Grand-expansion Phase 5 (S5, 2026-09-30): airline route income —
+  // same position as trade routes (after taxes, before growth).
+  runAirlineIncome(world, city);
   runLevels(world);
   runGrowth(t, world, powerHeadroom, waterHeadroom);
 }
@@ -1076,6 +1310,9 @@ export function registerEconomyCommands(queue: CommandQueue): void {
   queue.register('marketTrade', marketTradeSpec);
   queue.register('establishTradeRoute', establishTradeRouteSpec);
   queue.register('cancelTradeRoute', cancelTradeRouteSpec);
+  // Grand-expansion Phase 5 (S5, 2026-09-30): civilian airline routes.
+  queue.register('establishAirlineRoute', establishAirlineRouteSpec);
+  queue.register('cancelAirlineRoute', cancelAirlineRouteSpec);
 }
 
 const establishTradeRouteSpec: CommandSpec = {

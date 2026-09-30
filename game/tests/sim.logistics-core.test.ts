@@ -201,12 +201,12 @@ function findWaterNear(t: TerrainData, x: number, z: number): { x: number; z: nu
 }
 
 describe('Phase 3 logistics core — roster provisioning (units.ts)', () => {
-  it('has the 35-unit roster with the two new logistics trucks', () => {
-    expect(UNIT_KINDS).toHaveLength(35);
+  it('has the 66-unit roster with the two new logistics trucks', () => {
+    expect(UNIT_KINDS).toHaveLength(66);
     expect(UNIT_KINDS).toContain('supplyTruck');
     expect(UNIT_KINDS).toContain('fuelTruck');
     const kinds = Object.keys(UNIT_DEFS).sort();
-    expect(kinds).toHaveLength(35);
+    expect(kinds).toHaveLength(66);
     const land = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'land');
     expect(land).toHaveLength(19);
   });
@@ -575,7 +575,7 @@ describe('Phase 3 logistics core — cargo holds in save/load', () => {
   });
 
   it('decodes a snapshot without cargo fields as empty holds (AD9 neutral decode)', () => {
-    expect(SNAPSHOT_VERSION).toBe(7); // Phase 4 transport bumped v6 -> v7
+    expect(SNAPSHOT_VERSION).toBe(8); // Phase 5/6 S4 bumped v7 -> v8 (hangars + embark fields)
     const ctx = setup();
     const p = findLandNear(ctx.terrain, -60, -60);
     const truck = spawnUnit(ctx.world, 'supplyTruck', 0, p.x, p.z);

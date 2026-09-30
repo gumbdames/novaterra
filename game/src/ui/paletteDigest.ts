@@ -84,6 +84,14 @@ import {
   cargoAmmoOf,
   serviceTogglesOf,
 } from './logistics';
+// Grand-expansion Phase 5 (hangar/carrier shelter): the parked-aircraft
+// manifest on building selections reads through the ui/hangars contract.
+import { parkedAircraft } from './hangars';
+// Grand-expansion Phase 5 (S5): the airline panel's route list + armed
+// tool state are dynamic civilian-tab content, so the digest carries
+// them (al: / aa:).
+import { airlineRoutesOf } from './airports';
+import { airlineRouteIncome } from '../sim/economy';
 
 /**
  * Digest of the selection panel's dynamic content. Stable when nothing
@@ -111,6 +119,11 @@ export function selectionDigest(
   // on a class switch. Optional so existing callers/tests keep
   // compiling; defaults to the sim's buildRoad default.
   roadClass: RoadClass = 'paved',
+  // Grand-expansion Phase 5 (S5): the airline tool's armed endpoint.
+  // undefined = the airline tool is not armed; null = armed, still
+  // picking the first airport; a number = the armed first endpoint's
+  // building id. Optional so existing callers/tests keep compiling.
+  airlineArmedFrom: number | null | undefined = undefined,
 ): string {
   const parts: string[] = [
     `u:${selection.unitIds.join(',')}`,
@@ -151,6 +164,32 @@ export function selectionDigest(
       } else {
         parts.push(`uf:${id}:x`);
         parts.push(`us:${id}:x`);
+      }
+      // Grand-expansion Phase 5 (hangar/carrier shelter): the panel
+      // renders the shelter line + Embark/Park/Launch buttons per
+      // aircraft, and the carrier wing manifest. ue: carries the
+      // aircraft's shelter state (f = free, w<id> = embarked on carrier
+      // id, h<id> = parked in building id) so the panel repaints when a
+      // button set would change; ew: carries the carrier's wing
+      // occupancy as embarked aircraft ids (x for non-carriers, which
+      // render no wing). Always emitted, like uf:/us:.
+      if (u !== undefined) {
+        const e = u.embarkedOn ?? 0;
+        const h = u.hangarBuildingId ?? 0;
+        parts.push(`ue:${id}:${e > 0 ? `w${e}` : h > 0 ? `h${h}` : 'f'}`);
+        const cap = UNIT_DEFS[u.kind as UnitKind]?.wingCapacity ?? 0;
+        if (cap > 0) {
+          const wingIds = world.units
+            .filter((x) => (x.embarkedOn ?? 0) === id && x.hp > 0)
+            .map((x) => x.id)
+            .sort((a, b) => a - b);
+          parts.push(`ew:${id}:${wingIds.join(',')}`);
+        } else {
+          parts.push(`ew:${id}:x`);
+        }
+      } else {
+        parts.push(`ue:${id}:x`);
+        parts.push(`ew:${id}:x`);
       }
     }
     if (selection.unitIds.length > 6) parts.push(`um:${selection.unitIds.length}`);
@@ -202,6 +241,19 @@ export function selectionDigest(
     parts.push(
       `bo:${occ?.residents ?? 0}/${occ?.residentCap ?? 0}:${occ?.workers ?? 0}/${occ?.workerCap ?? 0}`,
     );
+    // Grand-expansion Phase 5 (hangar/carrier shelter): the panel
+    // renders the hangar occupancy line + parked-aircraft manifest
+    // (each with a Launch button) for buildings with hangars. bh:
+    // carries the parked aircraft ids (x when the building has no
+    // hangars) so the panel repaints exactly when the parked set
+    // changes. Always emitted.
+    const slots = b.hangars;
+    if (slots !== undefined && slots.length > 0) {
+      const parkedIds = parkedAircraft(world, b.id).map((u) => u.id);
+      parts.push(`bh:${parkedIds.join(',')}`);
+    } else {
+      parts.push('bh:x');
+    }
   } else {
     // No selection: the train/build palettes render the active tab's
     // buttons; only each button's availability can move per tick.
@@ -214,6 +266,20 @@ export function selectionDigest(
     // selected class so the active-button highlight repaints on change.
     if (menuTab === 'civilian') {
       parts.push(`rc:${roadClass}`);
+      // Grand-expansion Phase 5 (S5): the airline panel renders the
+      // player's routes (endpoints + the exact income the sim pays) and
+      // the armed "New route…" status. al: moves when routes change or a
+      // route's income does (terminal build-out); aa: moves when the
+      // two-click gesture arms/disarms or the first endpoint is picked.
+      // Both always emitted (empty al: when there are no routes) so the
+      // representative state covers them.
+      const routes = airlineRoutesOf(world, HUMAN_PLAYER_ID);
+      parts.push(
+        `al:${routes.map((r) => `${r.id}.${r.from}.${r.to}.${airlineRouteIncome(world, r).toFixed(1)}`).join(',')}`,
+      );
+      parts.push(
+        `aa:${airlineArmedFrom === undefined ? 'off' : airlineArmedFrom === null ? 'pick' : airlineArmedFrom}`,
+      );
     }
     const buildTabDef = allBuildTabs().find((t) => t.id === buildTab) ?? allBuildTabs()[0]!;
     for (const kind of buildTabDef.kinds) {
@@ -321,6 +387,7 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'hud-pause',
       'hud-util',
       'hud-logistics',
+      'hud-airport',
       'hud-desirability',
       'hud-xray',
       'hud-grid',
@@ -375,7 +442,12 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     domClasses: ['sel-title', 'sel-unit', 'sel-action', 'sel-bar', 'sel-bar-fill', 'sel-bar-label', 'sel-toggle-row', 'sel-toggle'],
     // uf: fuel/ammo/cargo levels (Phase 3 logistics, 5% quantization);
     // us: the unit's field-service toggles.
-    digestLabels: ['u:', 'uh:', 'uv:', 'um:', 'uf:', 'us:'],
+    // ue: the aircraft's shelter state (Phase 5 hangar/carrier shelter:
+    // f = free, w<id> = embarked on carrier id, h<id> = parked in
+    // building id — the Embark/Park/Launch button set follows it);
+    // ew: the carrier's wing occupancy as embarked aircraft ids
+    // (x for non-carriers, which render no wing).
+    digestLabels: ['u:', 'uh:', 'uv:', 'um:', 'uf:', 'us:', 'ue:', 'ew:'],
   },
   {
     id: 'selection-building',
@@ -388,7 +460,9 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // residential buildings only — 'bv:x' otherwise).
     // bo: occupancy line (Phase 4 transport; "Residents 12/50 ·
     // Workers 8/20", from the sim's buildingOccupancy()).
-    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:', 'bv:', 'bo:'],
+    // bh: hangar occupancy as parked aircraft ids (Phase 5
+    // hangar/carrier shelter; 'bh:x' when the building has no hangars).
+    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:', 'bv:', 'bo:', 'bh:'],
   },
   {
     id: 'train-palette',
@@ -440,6 +514,27 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // Phase 4 (transport): the class picker highlights the selected
     // road class — the only dynamic value in the tools row.
     digestLabels: ['rc:'],
+  },
+  {
+    id: 'airline-panel',
+    renderedIn: 'airlinePanelEl',
+    // panel-section / panel-section-title: the Airlines section wrapper;
+    // panel-row / panel-label: one row per route (endpoints + income);
+    // panel-btn: the per-route cancel button + the "New route…" button;
+    // panel-status: the empty-routes hint and the armed-gesture status
+    // line (both also claimed by military-panel's domClasses — the
+    // contract only requires each class be claimed somewhere).
+    domClasses: [
+      'panel-section',
+      'panel-section-title',
+      'panel-row',
+      'panel-label',
+      'panel-btn',
+      'panel-status',
+    ],
+    // al: the player's routes (id.from.to.income each); aa: the armed
+    // two-click gesture state (off / pick / first-endpoint id).
+    digestLabels: ['al:', 'aa:'],
   },
   {
     id: 'menu-tabs',

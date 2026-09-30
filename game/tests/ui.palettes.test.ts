@@ -108,6 +108,24 @@ describe('train tabs', () => {
       'drone',
       'awacs',
       'transport',
+      // Grand-expansion Phase 5 — aircraft expansion (workstream B,
+      // 2026-09-30): the 16 new air kinds.
+      'strategicBomber',
+      'maritimePatrol',
+      'reconUAV',
+      'armedUAV',
+      'reconPlane',
+      'gunship',
+      'tanker',
+      'militaryCargo',
+      'trainer',
+      'navalFighter',
+      'airliner',
+      'jumboAirliner',
+      'regionalJet',
+      'cargoPlane',
+      'passengerHeli',
+      'seaplane',
     ]);
     expect(byId.get('navy')).toEqual([
       'patrolBoat',
@@ -119,6 +137,23 @@ describe('train tabs', () => {
       'commandShip',
       'transportShip',
       'fishingBoat',
+      // Grand-expansion Phase 6 — naval expansion (workstream C,
+      // 2026-09-30): the 15 new sea kinds.
+      'coastalSub',
+      'missileSub',
+      'corvette',
+      'cruiser',
+      'battleship',
+      'heavyDestroyer',
+      'cargoFreighter',
+      'fuelTanker',
+      'ammoShip',
+      'repairShip',
+      'minelayer',
+      'navalMine',
+      'coastGuardCutter',
+      'cruiseLiner',
+      'yacht',
     ]);
   });
 
@@ -178,7 +213,18 @@ describe('build tabs', () => {
       'waterPump',
       'desalination',
     ]);
-    expect(byId.get('navalAir')).toEqual(['shipyard', 'navalYard', 'airfield', 'radarStation']);
+    expect(byId.get('navalAir')).toEqual([
+      'shipyard',
+      'navalYard',
+      'airfield',
+      'radarStation',
+      // Grand-expansion Phase 6 — naval expansion (workstream C,
+      // 2026-09-30): the four ports.
+      'commercialPort',
+      'containerPort',
+      'fishingHarbor',
+      'navalBase',
+    ]);
     expect(byId.get('special')).toEqual(['monument', 'aegisControl', 'stormArray']);
     // Phase 3 workstream 2 (2026-09-30): the logistics tab — production
     // (oil, munitions, missiles) followed by the depots.

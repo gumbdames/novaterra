@@ -18,14 +18,23 @@ land, sea and air — or play a fully peaceful game with war disabled.
   classes with in-place upgrades, the rail drag tool, ambient buses/
   trams/ferries over player-placed stops, building variants + size
   tiers, the occupancy line in the selection panel, marinas raising
-  nearby land value, and the NaN camera guard. See the live plan:
+  nearby land value, and the NaN camera guard. Phase 5/6 work in
+  flight: the aircraft + hangar/carrier system (16-aircraft roster,
+  ground hangars, embark/base/launch commands), the naval expansion
+  (15-kind roster, 4 ports), and the AI + snapshot workstream (v8
+  snapshot migration, hangar-aware AI training, carrier wings that
+  fill before sailing, carrier escorts, civil airports), and the
+  airports + airline workstream (airport zones with their own tax rate,
+  civil/military/mixed airports, runways, terminals, the airline panel
+  with paying routes, the airport overlay, and ambient airliners).
+  See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
 ## What the game has today (0.1 Alpha)
 
 - City building with visible zoning, terrain-following roads, and
   power/water utility networks you drag-paint across the map
-- 55 buildings and 30 units across land, sea, and air, with tech ages
+- 85 buildings and 66 units across land, sea, and air, with tech ages
 - Unit veterancy (Recruit → Elite), a Military Academy, education and civic
   systems, land value and desirability (elevation, shoreline, clean air,
   and nearby libraries/parks/schools/parking/marinas set each block's

@@ -339,11 +339,18 @@ export const ResourceKey = {
 } as const;
 export type ResourceKey = (typeof ResourceKey)[keyof typeof ResourceKey];
 
-/** The three zone types. Stored as small ints in zone records. */
+/** The four zone types. Stored as small ints in zone records. */
 export const ZoneType = {
   RESIDENTIAL: 0,
   COMMERCIAL: 1,
   INDUSTRIAL: 2,
+  /**
+   * Grand-expansion Phase 5 (S8, 2026-09-30): airport zones. Player-painted
+   * like the other zones (a fourth zone paint tool); airport buildings
+   * (zone: AIRPORT) require it, and tryAutoDevelop never builds on it —
+   * airports are player-placed infrastructure only.
+   */
+  AIRPORT: 3,
 } as const;
 export type ZoneType = (typeof ZoneType)[keyof typeof ZoneType];
 
@@ -363,6 +370,28 @@ export interface TradeRoute {
   owner: number;
   /** Trading partner: another player id. */
   partner: number;
+  /** Sim tick when the route was established. */
+  establishedTick: number;
+}
+
+/**
+ * Grand-expansion Phase 5 (S5, 2026-09-30): one civilian airline route.
+ * `from`/`to` are building ids of the owner's completed airports
+ * (civil or mixed — military airbases can't take airline routes).
+ * Income is paid per economy tick while BOTH endpoints are completed
+ * and operational (see `airlineRouteIncome` in economy.ts); a dead
+ * endpoint removes the route at the economy tick. Plain data —
+ * snapshotted (decode default `[]`) and digest-covered.
+ */
+export interface AirlineRoute {
+  /** Route id (city.nextAirlineRouteId, assigned at establishment). */
+  id: number;
+  /** Route owner (pays the setup cost, collects the income). */
+  owner: number;
+  /** Origin airport building id. */
+  from: number;
+  /** Destination airport building id. */
+  to: number;
   /** Sim tick when the route was established. */
   establishedTick: number;
 }
@@ -476,6 +505,39 @@ export const BuildingKind = {
   NEIGHBORHOOD_STATION: 'neighborhoodStation',
   CENTRAL_STATION: 'centralStation',
   AIRPORT_INTERCHANGE: 'airportInterchange',
+  // Grand-expansion Phase 5 (S5+S8, 2026-09-30): the airport roster —
+  // airport ZONES (ZoneType.AIRPORT = 3) hold these buildings. The three
+  // site anchors (civilAirport / militaryAirbase / mixedAirport) are the
+  // big placeable airports; the existing `airfield` stays the military
+  // production building and is NOT zone-gated (leave-airfield-alone —
+  // the AI's virtual construction still keys on it). Terminals, the
+  // control tower, hangars (per aircraft class, §AD6), the fuel farm,
+  // the maintenance hangar, and the three runway modules are the
+  // build-out pieces. All defs live in the "Phase 5 airports" region of
+  // BUILDING_DEFS below. (Port defs are another worker's — they own
+  // their own region of this file.)
+  CIVIL_AIRPORT: 'civilAirport',
+  MILITARY_AIRBASE: 'militaryAirbase',
+  MIXED_AIRPORT: 'mixedAirport',
+  PASSENGER_TERMINAL: 'passengerTerminal',
+  CARGO_TERMINAL: 'cargoTerminal',
+  CONTROL_TOWER: 'controlTower',
+  HANGAR_S: 'hangarS',
+  HANGAR_M: 'hangarM',
+  HANGAR_L: 'hangarL',
+  FUEL_FARM: 'fuelFarm',
+  MAINTENANCE_HANGAR: 'maintenanceHangar',
+  RUNWAY_S: 'runwayS',
+  RUNWAY_M: 'runwayM',
+  RUNWAY_L: 'runwayL',
+  // Grand-expansion Phase 6 — naval expansion (workstream C,
+  // 2026-09-30): the four ports. civilian/military/mixed via
+  // `portType` on the def; all require coastline (the placement rule in
+  // validatePlacement keys on def.portType — no per-kind list).
+  COMMERCIAL_PORT: 'commercialPort',
+  CONTAINER_PORT: 'containerPort',
+  FISHING_HARBOR: 'fishingHarbor',
+  NAVAL_BASE: 'navalBase',
 } as const;
 export type BuildingKind = (typeof BuildingKind)[keyof typeof BuildingKind];
 
@@ -590,9 +652,11 @@ export interface BuildingDef {
    * gate from the producer's own stock), the three purpose-built
    * depots (missileSilo, ordnanceDepot, fuelDepot), and the three
    * Phase 4 transport hubs (railStation, busDepot, ferryTerminal —
-   * fuel only, stocked by the supply-truck chain via fuelStorage). No
-   * port-like building exists in 0.1 Alpha — civilian ports/military
-   * harbors join this list when they land (Phases 5–6).
+   * fuel only, stocked by the supply-truck chain via fuelStorage), the
+   * Phase 5 airports (their terminal/fuel-farm pieces), and the Phase 6
+   * ports (commercialPort — fuel stocked by the supply chain; navalBase —
+   * fuel + ammo, the fleet's forward depot). Container ports and fishing
+   * harbors are pure economy — no reload point.
    */
   reloadPoint?: boolean;
   /**
@@ -640,6 +704,71 @@ export interface BuildingDef {
    * also carry.
    */
   ridershipIncome?: number;
+  /**
+   * Grand-expansion Phase 5 (S5, 2026-09-30): airport designation.
+   * - 'civilian' — civil airports (airline routes + ambient airliners).
+   * - 'military' — military airbases (combat aircraft).
+   * - 'mixed' — mixed-use airports: military-capable, but they DISPLAY
+   *   as civilian in UI until discovered (intel is Phase 7 — see
+   *   `airportDisplayType` in ui/airports.ts for the display rule and
+   *   the Phase-7 hook).
+   * Unset for non-airport buildings.
+   */
+  airportType?: 'civilian' | 'military' | 'mixed';
+  /**
+   * Grand-expansion Phase 5 (S5, 2026-09-30): production kinds this
+   * building also counts as for `hasProductionBuilding` gates. A mixed
+   * airport counts as an airfield, so military aircraft can train from
+   * it without changing `hasProductionBuilding(world, owner, kind)`'s
+   * signature — the mixed site satisfies the any-of production gate.
+   * (Grand-expansion Phase 6, workstream C: the ports use the same
+   * mechanism — commercialPort counts as shipyard, navalBase as
+   * navalYard.)
+   */
+  countsAs?: BuildingKind[];
+  /**
+   * Grand-expansion Phase 6 — naval expansion (workstream C,
+   * 2026-09-30): port designation, the S5 civilian/military/mixed
+   * axis for harbors. Unset for non-port buildings. `validatePlacement`
+   * requires coastline for every def with a portType — one rule for
+   * all ports, no per-kind list.
+   */
+  portType?: 'civilian' | 'military' | 'mixed';
+  /**
+   * Grand-expansion Phase 6 — naval expansion (workstream C,
+   * 2026-09-30): passive resource income in resource-units per
+   * sim-second for a completed, operational building (commercialPort:
+   * funds 1.5, containerPort: funds 2.5, fishingHarbor: food 1.2).
+   * Paid by `runHarvest` (economy.ts) in building-id order — the
+   * runRidershipIncome shape, deliberately flat (no simulation). Unit
+   * harvest (fishingBoat and friends) is separate and stays in units.ts.
+   */
+  harvest?: Partial<Record<ResourceKey, number>>;
+  /**
+   * Grand-expansion Phase 5 (§AD6, 2026-09-30): aircraft class this
+   * building stores — one of HangarClass, or 'generic' (any class —
+   * the legacy airfield default). Set on hangarS/hangarM/hangarL (one
+   * class each) and the airfield ('generic'). Drives `findHangarSlot`.
+   */
+  hangarClass?: HangarClass | 'generic';
+  /**
+   * Grand-expansion Phase 5 (§AD6): hangar slot count for the class in
+   * `hangarClass`. `placeBuilding` initializes `BuildingRecord.hangars`
+   * with this many empty slots; legacy saves decode via
+   * `defaultHangarSlots` (snapshot.ts v8 — the exact default is pinned
+   * by test). Requires `hangarClass`.
+   */
+  hangarCapacity?: number;
+  /**
+   * Grand-expansion Phase 5 (§AD7, 2026-09-30): runway class. A runway
+   * module of class C serves aircraft of class ≤ C in the
+   * light < medium < heavy order (a 'light' runway serves light
+   * aircraft only; 'medium' serves light+medium; 'heavy' serves
+   * everything). The build UI shows the served classes so the runway
+   * choice gates aircraft class pre-purchase. Set on
+   * runwayS/runwayM/runwayL only.
+   */
+  runwayClass?: AircraftClass;
 }
 
 export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
@@ -795,6 +924,12 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     // Phase 3: the airport is a reload point for aircraft (and any
     // land unit parked on the field).
     reloadPoint: true,
+    // Grand-expansion Phase 5 (hangars, S4 — 2026-09-30): the legacy
+    // airfield predates per-class hangar buildings, so it keeps
+    // 'generic' slots (any class parks here) — exactly
+    // LEGACY_AIRFIELD_HANGAR_SLOTS of them, the decode default pinned
+    // in sim.hangars.test.ts. `defaultHangarSlots` reads this pair.
+    hangarClass: 'generic', hangarCapacity: 6,
     jobs: 20,
   },
   navalYard: {
@@ -1374,6 +1509,239 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     fuelStorage: 250, reloadPoint: true,
     jobs: 6,
   },
+  // ------------------------------------------------------------------
+  // Grand-expansion Phase 5 — airports (workstream A, S5+S8,
+  // 2026-09-30): the airport roster. All fourteen kinds require
+  // ZoneType.AIRPORT (the fourth zone type); `validatePlacement`
+  // enforces it and `tryAutoDevelop` never builds here — airports are
+  // player-placed infrastructure only. The three site anchors
+  // (civilAirport / militaryAirbase / mixedAirport) are the big
+  // placeable airports: the civil one anchors civilian airline routes
+  // (§3.5 income) and ambient airliners, the military one is a
+  // zone-gated alternative to the utility-zone airfield for the
+  // military air arm, and the mixed one does both while DISPLAYING as
+  // civilian to other players (intel is Phase 7 — the display rule
+  // lives in ui/airports.ts `airportDisplayType`). Terminals drive
+  // §3.5 income directly (harvest funds, runHarvest) and boost airline
+  // route income (economy.ts `airlineRouteIncome`); the control tower
+  // is neutral ops flavor; hangarS/M/L are the per-class aircraft
+  // storage of §AD6 (light/medium/heavy — `hangarCapacity` slot counts
+  // × `hangarClass` feed the hangar workstream's `defaultHangarSlots`);
+  // the fuel farm is the airside fuel-logistics hook (fuelStorage 500
+  // × reloadPoint, same refill path as the depots); the maintenance
+  // hangar is repair flavor (jobs); runwayS/M/L are the §AD7 tier
+  // modules — a runway of class C serves aircraft of class ≤ C, shown
+  // in the build UI so the choice gates aircraft class pre-purchase.
+  // (Port defs are workstream C's own region below — same S5
+  // civilian/military/mixed axis via `portType`, `countsAs`, and
+  // `harvest`, but zone UTILITY_ZONE + coastline, not airport zones.)
+  // ------------------------------------------------------------------
+  civilAirport: {
+    kind: 'civilAirport', name: 'Civil Airport', zone: ZoneType.AIRPORT,
+    footprintW: 6, footprintH: 5, costFunds: 2000, costMaterials: 800,
+    buildSeconds: 90, upkeepFundsPerSec: 2.5,
+    powerDemand: 8, powerSupply: 0, waterDemand: 4, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 8.0,
+    minAge: 'connectivity',
+    airportType: 'civilian',
+    harvest: { funds: 1.0 }, // landing fees (economy runHarvest)
+    reloadPoint: true,
+    jobs: 40,
+  },
+  militaryAirbase: {
+    kind: 'militaryAirbase', name: 'Military Airbase', zone: ZoneType.AIRPORT,
+    footprintW: 6, footprintH: 5, costFunds: 1800, costMaterials: 700,
+    buildSeconds: 80, upkeepFundsPerSec: 2.0,
+    powerDemand: 7, powerSupply: 0, waterDemand: 3, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 6.0,
+    minAge: 'connectivity',
+    airportType: 'military',
+    countsAs: ['airfield'], // trains military aircraft like an airfield
+    reloadPoint: true,
+    jobs: 35,
+  },
+  mixedAirport: {
+    kind: 'mixedAirport', name: 'Mixed Airport', zone: ZoneType.AIRPORT,
+    footprintW: 7, footprintH: 6, costFunds: 2600, costMaterials: 1000,
+    buildSeconds: 110, upkeepFundsPerSec: 3.0,
+    powerDemand: 10, powerSupply: 0, waterDemand: 5, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 10.0,
+    minAge: 'connectivity',
+    airportType: 'mixed', // displays civilian to others (ui/airports.ts)
+    countsAs: ['airfield'], // military-capable: trains like an airfield
+    harvest: { funds: 1.2 }, // landing fees + military contracts
+    reloadPoint: true,
+    jobs: 50,
+  },
+  passengerTerminal: {
+    kind: 'passengerTerminal', name: 'Passenger Terminal', zone: ZoneType.AIRPORT,
+    footprintW: 3, footprintH: 3, costFunds: 900, costMaterials: 300,
+    buildSeconds: 50, upkeepFundsPerSec: 0.9,
+    powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 6.0,
+    minAge: 'connectivity',
+    harvest: { funds: 0.8 }, // §3.5 passenger income (economy runHarvest)
+    jobs: 25,
+  },
+  cargoTerminal: {
+    kind: 'cargoTerminal', name: 'Cargo Terminal', zone: ZoneType.AIRPORT,
+    footprintW: 3, footprintH: 3, costFunds: 900, costMaterials: 350,
+    buildSeconds: 50, upkeepFundsPerSec: 0.9,
+    powerDemand: 4, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 5.0,
+    minAge: 'connectivity',
+    harvest: { funds: 0.6 }, // §3.5 cargo income (economy runHarvest)
+    jobs: 20,
+  },
+  controlTower: {
+    kind: 'controlTower', name: 'Control Tower', zone: ZoneType.AIRPORT,
+    footprintW: 2, footprintH: 2, costFunds: 500, costMaterials: 200,
+    buildSeconds: 30, upkeepFundsPerSec: 0.4,
+    powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'connectivity',
+    jobs: 8,
+  },
+  hangarS: {
+    kind: 'hangarS', name: 'Hangar (Light)', zone: ZoneType.AIRPORT,
+    footprintW: 2, footprintH: 2, costFunds: 300, costMaterials: 120,
+    buildSeconds: 25, upkeepFundsPerSec: 0.3,
+    powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 1.0,
+    minAge: 'connectivity',
+    hangarClass: 'light', hangarCapacity: 2, // §AD6 per-class storage
+    jobs: 4,
+  },
+  hangarM: {
+    kind: 'hangarM', name: 'Hangar (Medium)', zone: ZoneType.AIRPORT,
+    footprintW: 3, footprintH: 2, costFunds: 450, costMaterials: 180,
+    buildSeconds: 30, upkeepFundsPerSec: 0.4,
+    powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 1.5,
+    minAge: 'connectivity',
+    hangarClass: 'medium', hangarCapacity: 2, // §AD6 per-class storage
+    jobs: 5,
+  },
+  hangarL: {
+    kind: 'hangarL', name: 'Hangar (Heavy)', zone: ZoneType.AIRPORT,
+    footprintW: 3, footprintH: 3, costFunds: 700, costMaterials: 280,
+    buildSeconds: 40, upkeepFundsPerSec: 0.6,
+    powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'connectivity',
+    hangarClass: 'heavy', hangarCapacity: 1, // §AD6 per-class storage
+    jobs: 6,
+  },
+  fuelFarm: {
+    kind: 'fuelFarm', name: 'Fuel Farm', zone: ZoneType.AIRPORT,
+    footprintW: 3, footprintH: 3, costFunds: 600, costMaterials: 250,
+    buildSeconds: 40, upkeepFundsPerSec: 0.7,
+    powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'connectivity',
+    fuelStorage: 500, reloadPoint: true, // airside fuel-logistics hook
+    jobs: 8,
+  },
+  maintenanceHangar: {
+    kind: 'maintenanceHangar', name: 'Maintenance Hangar', zone: ZoneType.AIRPORT,
+    footprintW: 3, footprintH: 2, costFunds: 500, costMaterials: 200,
+    buildSeconds: 35, upkeepFundsPerSec: 0.5,
+    powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'connectivity',
+    jobs: 10,
+  },
+  runwayS: {
+    kind: 'runwayS', name: 'Runway (Light)', zone: ZoneType.AIRPORT,
+    footprintW: 5, footprintH: 1, costFunds: 400, costMaterials: 150,
+    buildSeconds: 30, upkeepFundsPerSec: 0.3,
+    powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 1.0,
+    minAge: 'connectivity',
+    runwayClass: 'light', // §AD7: serves light aircraft
+    jobs: 0,
+  },
+  runwayM: {
+    kind: 'runwayM', name: 'Runway (Medium)', zone: ZoneType.AIRPORT,
+    footprintW: 7, footprintH: 1, costFunds: 700, costMaterials: 250,
+    buildSeconds: 40, upkeepFundsPerSec: 0.5,
+    powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 1.5,
+    minAge: 'connectivity',
+    runwayClass: 'medium', // §AD7: serves light + medium aircraft
+    jobs: 0,
+  },
+  runwayL: {
+    kind: 'runwayL', name: 'Runway (Heavy)', zone: ZoneType.AIRPORT,
+    footprintW: 9, footprintH: 1, costFunds: 1100, costMaterials: 400,
+    buildSeconds: 55, upkeepFundsPerSec: 0.8,
+    powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'connectivity',
+    runwayClass: 'heavy', // §AD7: serves all aircraft classes
+    jobs: 0,
+  },
+  // ------------------------------------------------------------------
+  // Grand-expansion Phase 6 — naval expansion (workstream C,
+  // 2026-09-30): the four ports (S5). All require coastline — the
+  // validatePlacement rule keys on def.portType (one rule, no per-kind
+  // list). commercialPort counts as a shipyard and navalBase as a
+  // navalYard for production gates (S5 `countsAs`), so a fleet can be
+  // built from a mixed-use port town. Ports are the navy-side reload
+  // infrastructure: commercialPort stocks fuel, navalBase stocks fuel
+  // + ammo (the fleet's forward depot, via fuelStorage/ammoStorage —
+  // the supply-chain refill path is the same as the depots').
+  // ------------------------------------------------------------------
+  commercialPort: {
+    kind: 'commercialPort', name: 'Commercial Port', zone: UTILITY_ZONE,
+    footprintW: 4, footprintH: 3, costFunds: 800, costMaterials: 300,
+    buildSeconds: 45, upkeepFundsPerSec: 0.8,
+    powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 8.0,
+    minAge: 'connectivity',
+    portType: 'civilian',
+    countsAs: ['shipyard'],
+    harvest: { funds: 1.5 }, // civilian sea-trade income (economy runHarvest)
+    reloadPoint: true,
+    fuelStorage: 200,
+    jobs: 30,
+  },
+  containerPort: {
+    kind: 'containerPort', name: 'Container Port', zone: UTILITY_ZONE,
+    footprintW: 5, footprintH: 4, costFunds: 1500, costMaterials: 600,
+    buildSeconds: 70, upkeepFundsPerSec: 1.5,
+    powerDemand: 6, powerSupply: 0, waterDemand: 3, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 12.0,
+    minAge: 'industry',
+    portType: 'civilian',
+    harvest: { funds: 2.5 }, // heavy sea-trade income (economy runHarvest)
+    jobs: 40,
+  },
+  fishingHarbor: {
+    kind: 'fishingHarbor', name: 'Fishing Harbor', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 2, costFunds: 350, costMaterials: 120,
+    buildSeconds: 25, upkeepFundsPerSec: 0.35,
+    powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 3.0,
+    minAge: 'foundation',
+    portType: 'civilian',
+    harvest: { food: 1.2 }, // the dockside catch (economy runHarvest)
+    jobs: 12,
+  },
+  navalBase: {
+    kind: 'navalBase', name: 'Naval Base', zone: UTILITY_ZONE,
+    footprintW: 5, footprintH: 4, costFunds: 2000, costMaterials: 800,
+    buildSeconds: 90, upkeepFundsPerSec: 2.0,
+    powerDemand: 6, powerSupply: 0, waterDemand: 3, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 6.0,
+    minAge: 'industry',
+    portType: 'military',
+    countsAs: ['navalYard'],
+    reloadPoint: true,
+    fuelStorage: 300,
+    ammoStorage: 100,
+    jobs: 35,
+  },
 };
 
 /** Defs in a fixed order (cheapest funds cost first) — used by growth. */
@@ -1420,6 +1788,102 @@ export const PIPE_COST_MATERIALS = 1;
 export type UtilityDiag = 'ok' | 'shortage' | 'disconnected';
 
 /** One placed building. Plain data — the renderer draws kind/footprint/pos/facing. */
+/**
+ * Grand-expansion Phase 5 (hangars, S4 — 2026-09-30): aircraft size
+ * class. 'light' = small (drones, trainers, light helos), 'medium' =
+ * medium (fighters, patrol aircraft, gunships), 'heavy' = large
+ * (bombers, airliners, tankers, heavy lift). Matches PLAN §3.5's
+ * hangarS/M/L (hangarS stores light-class aircraft, etc.) and §AD6.
+ * Set on every air UnitDef (`hangarClass`); the legacy airfield's
+ * generic slots accept any class.
+ */
+export type HangarClass = 'light' | 'medium' | 'heavy';
+/**
+ * TEMPORARY ALIAS (2026-09-30, airport workstream): the hangar
+ * workstream is mid-rename from `HangarClass` to `AircraftClass`
+ * (the taxonomy classifies aircraft, hangar slots AND runways —
+ * `HangarSlot.cls` and `findBuildingHangarSlot` already say
+ * `AircraftClass`). This alias keeps the tree compiling until they
+ * land the rename; the hangar workstream owns the final name and
+ * should delete this alias when it does. Do not branch new code on
+ * the difference — the two names are identical by construction.
+ */
+export type AircraftClass = HangarClass;
+
+/**
+ * One parked-aircraft slot: `cls` is the aircraft class the slot
+ * accepts ('generic' = any class — the pre-class-system legacy
+ * default); `occupant` is the parked aircraft's unit id (0 = empty).
+ * Snapshotted and digest-covered (PLAN §4 S4).
+ */
+export interface HangarSlot {
+  cls: HangarClass | 'generic';
+  occupant: number;
+}
+
+/**
+ * How many generic hangar slots a legacy (v7) airfield decodes to —
+ * and how many a freshly placed airfield gets. The pre-Phase-5
+ * airfield had no class system — any aircraft could park there — so
+ * the slots are 'generic'. Pinned in sim.hangars.test.ts: change the
+ * number and the test (and this doc) must change with it (PLAN §4 S4:
+ * "document the exact default, pin in test").
+ */
+export const LEGACY_AIRFIELD_HANGAR_SLOTS = 6;
+
+/**
+ * Hangar slots for a building kind when no slots are stored: legacy v7
+ * saves (via snapshot.ts v8) and fresh `placeBuilding` records share
+ * this definition. 'airfield' → LEGACY_AIRFIELD_HANGAR_SLOTS generic
+ * empty slots; a def-declared `hangarCapacity` with a typed
+ * `hangarClass` (hangarS/M/L, one class each) → that many typed slots;
+ * everything else → undefined ("never had hangars", distinct from
+ * "hangars removed" — AD9). Exported so the AI's virtual-capacity
+ * logic (ai.ts) shares one definition.
+ */
+export function defaultHangarSlots(kind: BuildingKind): HangarSlot[] | undefined {
+  const def = BUILDING_DEFS[kind];
+  if (
+    def?.hangarCapacity !== undefined &&
+    def?.hangarClass !== undefined &&
+    def.hangarClass !== 'generic'
+  ) {
+    const slots: HangarSlot[] = [];
+    for (let i = 0; i < def.hangarCapacity; i++) {
+      slots.push({ cls: def.hangarClass, occupant: 0 });
+    }
+    return slots;
+  }
+  if (kind === 'airfield') {
+    const slots: HangarSlot[] = [];
+    for (let i = 0; i < LEGACY_AIRFIELD_HANGAR_SLOTS; i++) {
+      slots.push({ cls: 'generic', occupant: 0 });
+    }
+    return slots;
+  }
+  return undefined;
+}
+
+/**
+ * Index of a free slot compatible with `cls` in `slots`, or -1. A
+ * 'generic' slot accepts any class; otherwise the classes must match.
+ * Pure — the reservation write belongs to the caller (the shared
+ * `findHangarSlot` in sim/units.ts, inside `registerUnitCommands` —
+ * PLAN §4 S4).
+ */
+export function findBuildingHangarSlot(
+  slots: HangarSlot[] | undefined,
+  cls: HangarClass | undefined,
+): number {
+  if (!slots) return -1;
+  for (let i = 0; i < slots.length; i++) {
+    const s = slots[i] as HangarSlot;
+    if (s.occupant !== 0) continue;
+    if (s.cls === 'generic' || cls === undefined || s.cls === cls) return i;
+  }
+  return -1;
+}
+
 export interface BuildingRecord {
   id: number;
   kind: BuildingKind;
@@ -1492,6 +1956,18 @@ export interface BuildingRecord {
    */
   variant?: number;
   sizeTier?: 1 | 2 | 3;
+  /**
+   * Grand-expansion Phase 5/6, S4 (hangars + carriers): the aircraft
+   * parking slots this building offers (`HangarSlot`, defined with the
+   * hangar system — `cls` + `occupant`, 0 = empty). Optional; reads
+   * use `?? defaultHangarSlots(kind)` (AD9). v7 snapshots predate the
+   * field — legacy airfields decode to LEGACY_AIRFIELD_HANGAR_SLOTS
+   * generic slots (the documented S4 default, pinned in
+   * sim.hangars.test.ts); every other legacy building decodes to
+   * undefined ("never had hangars", distinct from "hangars removed").
+   * Snapshotted (v8) and digest-covered.
+   */
+  hangars?: HangarSlot[];
 }
 
 /** One player's stockpiles and policy. */
@@ -1506,8 +1982,16 @@ export interface PlayerState {
   goods: number;
   influence: number;
   manpower: number;
-  /** Tax rates 0..1 for [residential, commercial, industrial]. */
-  taxRates: [number, number, number];
+  /**
+   * Tax rates 0..1 for [residential, commercial, industrial, airport].
+   * The 4th element (airport zones) is grand-expansion Phase 5 (S5,
+   * 2026-09-30): older saves decode it to DEFAULT_TAX_RATE via
+   * `?? DEFAULT_TAX_RATE` in snapshot.ts `copyPlayer` (AD9 additive —
+   * no snapshot version bump; the exact default is pinned by
+   * sim.airports.test.ts). `runTaxes` indexes by zone so airport-zone
+   * buildings are taxed at the airport rate.
+   */
+  taxRates: [number, number, number, number];
   /** Derived each economy tick from residential capacity. */
   population: number;
   /**
@@ -1558,6 +2042,15 @@ export interface CityState {
   foodShortage: boolean;
   /** Phase 3: active trade routes (established via command). */
   tradeRoutes: TradeRoute[];
+  /**
+   * Grand-expansion Phase 5 (S5, 2026-09-30): active civilian airline
+   * routes (established via the `establishAirlineRoute` command).
+   * Additive — legacy saves decode to [] (snapshot.ts, no version
+   * bump); digest-covered (route income is behavior-affecting).
+   */
+  airlineRoutes: AirlineRoute[];
+  /** Next airline route id (starts at 1; 0 = none). */
+  nextAirlineRouteId: number;
 }
 
 /** Starting stockpiles for a fresh player. */
@@ -1587,7 +2080,7 @@ function createPlayer(id: number, name: string): PlayerState {
     goods: STARTING_STOCKS.goods,
     influence: STARTING_STOCKS.influence,
     manpower: STARTING_STOCKS.manpower,
-    taxRates: [DEFAULT_TAX_RATE, DEFAULT_TAX_RATE, DEFAULT_TAX_RATE],
+    taxRates: [DEFAULT_TAX_RATE, DEFAULT_TAX_RATE, DEFAULT_TAX_RATE, DEFAULT_TAX_RATE],
     population: 0,
     specialization: 'balanced',
   };
@@ -1607,6 +2100,8 @@ export function initCity(): CityState {
     players: [createPlayer(0, 'Player'), createPlayer(1, 'Rival')],
     foodShortage: false,
     tradeRoutes: [],
+    airlineRoutes: [],
+    nextAirlineRouteId: 1,
   };
 }
 
@@ -1755,7 +2250,10 @@ export function validatePlacement(t: TerrainData, city: CityState, p: Placement)
     if (def.zone !== UTILITY_ZONE) {
       const z = zoneAt(city, cell);
       if (z !== def.zone) {
-        const want = def.zone === ZoneType.RESIDENTIAL ? 'residential' : def.zone === ZoneType.COMMERCIAL ? 'commercial' : 'industrial';
+        // Grand-expansion Phase 5 (S5, 2026-09-30): the fourth zone
+        // type gets its own label — airport buildings (zone: AIRPORT)
+        // reject loudly anywhere but airport zoning.
+        const want = def.zone === ZoneType.RESIDENTIAL ? 'residential' : def.zone === ZoneType.COMMERCIAL ? 'commercial' : def.zone === ZoneType.AIRPORT ? 'airport' : 'industrial';
         return `${def.name}: needs ${want} zoning`;
       }
     }
@@ -1765,6 +2263,12 @@ export function validatePlacement(t: TerrainData, city: CityState, p: Placement)
   // Roster expansion: the naval yard is coastal construction — at least one
   // footprint cell must touch water (makes coastline valuable).
   if (p.kind === 'navalYard' && !isCoastal(t, p.cx, p.cz, def.footprintW, def.footprintH)) {
+    return `${def.name}: must be built on the coast (adjacent to water)`;
+  }
+  // Grand-expansion Phase 6 — naval expansion (workstream C,
+  // 2026-09-30): every port needs the coast — one rule keyed on
+  // def.portType, no per-kind list (the navalYard isCoastal precedent).
+  if (def.portType !== undefined && !isCoastal(t, p.cx, p.cz, def.footprintW, def.footprintH)) {
     return `${def.name}: must be built on the coast (adjacent to water)`;
   }
   // Phase 2: hydro dams need a river or coastline — at least one
@@ -1855,6 +2359,10 @@ export function placeBuilding(city: CityState, p: Placement, seed = 0): Building
     sizeTier: (buildingVariantSeed(seed, cellIndex(p.cx, p.cz), p.kind, 'size') % BUILDING_SIZE_TIERS + 1) as 1 | 2 | 3,
     residents: 0,
     workers: 0,
+    // Phase 5 hangars (S4): fresh buildings get their kind's hangar
+    // slots now (airfield → LEGACY_AIRFIELD_HANGAR_SLOTS generic;
+    // hangarS/M/L → typed slots; everything else → undefined).
+    hangars: defaultHangarSlots(p.kind),
   };
   city.nextBuildingId += 1;
   city.buildings.push(record);
@@ -2197,6 +2705,11 @@ function tryAutoDevelop(
     const zrec = city.zones[zi] as { cell: number; zone: ZoneType };
     const { cx, cz } = cellCoords(zrec.cell);
     if (buildingAtCell(city, zrec.cell) || roadSortedHas(city.roads, zrec.cell)) continue;
+    // Grand-expansion Phase 5 (S8, 2026-09-30): airport zones never
+    // auto-develop — airports are player-placed infrastructure only.
+    // (Without this, `affordableDefForZone` could match an airport def
+    // to zone 3 and the growth pulse would plop runways on its own.)
+    if (zrec.zone === ZoneType.AIRPORT) continue;
     // No road gate (user directive 2026-09-30): zoned houses develop with
     // or without roads; the desirability roll below is the only filter.
     let desirability = growthDesirability(player.taxRates[zrec.zone] as number, powerHeadroom, waterHeadroom);
@@ -2435,12 +2948,26 @@ export function isBuildingAgeMet(currentAge: Age, minAge: Age): boolean {
  */
 export function hasProductionBuilding(world: World, owner: number, kind: BuildingKind): boolean {
   for (const b of world.city.buildings) {
-    if (b.owner === owner && b.kind === kind && b.progress >= 1) return true;
+    if (b.owner === owner && b.progress >= 1 && (b.kind === kind || countsAsProduction(b.kind, kind))) {
+      return true;
+    }
   }
   // AI virtual construction (see sim/ai.ts): completed virtual buildings
   // live on the AI player's state, not on the city grid.
   const ai = world.ai.players.find((p) => p.owner === owner);
   return ai !== undefined && ai.virtualBuildings.completed.includes(kind);
+}
+
+/**
+ * Grand-expansion Phase 5/6 (S5): whether a building of `buildingKind`
+ * satisfies a production gate for `gateKind` via its def's `countsAs`
+ * (a mixed airport counts as an airfield; commercialPort counts as
+ * shipyard, navalBase as navalYard — see the S5 field doc on
+ * `BuildingDef.countsAs`).
+ */
+function countsAsProduction(buildingKind: BuildingKind, gateKind: BuildingKind): boolean {
+  const def = BUILDING_DEFS[buildingKind];
+  return def?.countsAs?.includes(gateKind) === true;
 }
 
 function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
@@ -2642,8 +3169,10 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       const owner = payloadInt(cmd.payload, 'owner');
       if (owner === null || !getPlayer(world.city, owner)) return 'paintZone: unknown owner';
       const zone = payloadInt(cmd.payload, 'zone');
-      if (zone === null || (zone !== 0 && zone !== 1 && zone !== 2)) {
-        return 'paintZone: zone must be 0 (residential), 1 (commercial) or 2 (industrial)';
+      // Grand-expansion Phase 5 (S8, 2026-09-30): zone 3 is the airport
+      // zone — painted like the others, owns the airport roster.
+      if (zone === null || (zone !== 0 && zone !== 1 && zone !== 2 && zone !== 3)) {
+        return 'paintZone: zone must be 0 (residential), 1 (commercial), 2 (industrial) or 3 (airport)';
       }
       const x0 = payloadInt(cmd.payload, 'x0');
       const z0 = payloadInt(cmd.payload, 'z0');
@@ -2795,6 +3324,13 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
             u.resupplyReservedFuel = 0;
           }
         }
+        // Phase 5 hangars (S4): parked aircraft survive on the tarmac —
+        // clear their hangar link (the slots die with the building).
+        // Mirrored inline for the same city→commands import-cycle reason
+        // as the loop above.
+        for (const u of world.units) {
+          if ((u.hangarBuildingId ?? 0) === b.id) u.hangarBuildingId = 0;
+        }
         return { removed: 'building', id: demolishBuilding(world.city, b.id) ? b.id : -1 };
       }
       // demolishBuilding bumps the epoch for buildings; cell removal
@@ -2832,8 +3368,10 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       const owner = payloadInt(cmd.payload, 'owner');
       if (owner === null || !getPlayer(world.city, owner)) return 'setTaxRate: unknown owner';
       const zone = payloadInt(cmd.payload, 'zone');
-      if (zone === null || (zone !== 0 && zone !== 1 && zone !== 2)) {
-        return 'setTaxRate: zone must be 0, 1 or 2';
+      // Grand-expansion Phase 5 (S5, 2026-09-30): zone 3 is the airport
+      // zone — it has its own tax rate (the 4th taxRates element).
+      if (zone === null || (zone !== 0 && zone !== 1 && zone !== 2 && zone !== 3)) {
+        return 'setTaxRate: zone must be 0, 1, 2 or 3';
       }
       const rate = payloadNum(cmd.payload, 'rate');
       if (rate === null || rate < 0 || rate > 1) return 'setTaxRate: rate must be between 0 and 1';

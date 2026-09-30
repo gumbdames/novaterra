@@ -19,7 +19,7 @@
  * data and availability logic (roster expansion).
  *
  * Responsibilities:
- *  - The tab groupings (spec §8): 5 train tabs for the 35 units, 11 build
+ *  - The tab groupings (spec §8): 5 train tabs for the 66 units, 11 build
  *    tabs for the 67 buildings, 2 research groups for the 12 upgrades.
  *  - Availability checks that mirror the sim's command validation so the
  *    UI greys out exactly what the sim would reject: `unitAvailability`
@@ -61,7 +61,8 @@ export interface TrainTab {
   kinds: readonly UnitKind[];
 }
 
-/** 35 units across 5 tabs. Every unit kind appears in exactly one tab. */
+/** 66 units across 5 tabs (Phase 6 adds the 15-kind naval expansion to
+ * the navy tab). Every unit kind appears in exactly one tab. */
 export const TRAIN_TABS: readonly TrainTab[] = [
   {
     id: 'infantry',
@@ -76,10 +77,41 @@ export const TRAIN_TABS: readonly TrainTab[] = [
   },
   {
     id: 'air',
-    kinds: ['fighter', 'fighterBomber', 'attackHeli', 'drone', 'awacs', 'transport'],
+    // Grand-expansion Phase 5 — aircraft expansion (workstream B,
+    // 2026-09-30): 10 military + 6 civilian aircraft join the air tab.
+    // All train from the airfield (the sibling airport workstream's
+    // civil airports add civilian training when they land).
+    kinds: [
+      'fighter',
+      'fighterBomber',
+      'attackHeli',
+      'drone',
+      'awacs',
+      'transport',
+      'strategicBomber',
+      'maritimePatrol',
+      'reconUAV',
+      'armedUAV',
+      'reconPlane',
+      'gunship',
+      'tanker',
+      'militaryCargo',
+      'trainer',
+      'navalFighter',
+      'airliner',
+      'jumboAirliner',
+      'regionalJet',
+      'cargoPlane',
+      'passengerHeli',
+      'seaplane',
+    ],
   },
   {
     id: 'navy',
+    // Grand-expansion Phase 6 — naval expansion (workstream C,
+    // 2026-09-30): the 15 new sea kinds. navalMine rides the tab too —
+    // it shows disabled with the "Deployed by a Minelayer" reason (see
+    // unitAvailability), so players learn how mines are laid.
     kinds: [
       'patrolBoat',
       'missileBoat',
@@ -90,6 +122,21 @@ export const TRAIN_TABS: readonly TrainTab[] = [
       'commandShip',
       'transportShip',
       'fishingBoat',
+      'coastalSub',
+      'missileSub',
+      'corvette',
+      'cruiser',
+      'battleship',
+      'heavyDestroyer',
+      'cargoFreighter',
+      'fuelTanker',
+      'ammoShip',
+      'repairShip',
+      'minelayer',
+      'navalMine',
+      'coastGuardCutter',
+      'cruiseLiner',
+      'yacht',
     ],
   },
   // Grand-expansion Phase 4 S7 (2026-09-30): the civilian transports get
@@ -114,14 +161,16 @@ export type BuildTabId =
   // Grand-expansion Phase 3 (logistics): production + depots.
   | 'logistics'
   // Grand-expansion Phase 4 S7 (2026-09-30): transport hubs.
-  | 'transport';
+  | 'transport'
+  // Grand-expansion Phase 5 (S5+S8, 2026-09-30): the airport roster.
+  | 'airports';
 
 export interface BuildTab {
   id: BuildTabId;
   kinds: readonly BuildingKind[];
 }
 
-/** 67 buildings across 11 tabs. Every building kind appears in exactly one. */
+/** 85 buildings across 12 tabs. Every building kind appears in exactly one. */
 export const BUILD_TABS: readonly BuildTab[] = [
   { id: 'housing', kinds: ['house', 'apartment'] },
   // Workstream Z (2026-09-30): the civic tab — the four education
@@ -177,7 +226,20 @@ export const BUILD_TABS: readonly BuildTab[] = [
   },
   {
     id: 'navalAir',
-    kinds: ['shipyard', 'navalYard', 'airfield', 'radarStation'],
+    // Grand-expansion Phase 6 — naval expansion (workstream C,
+    // 2026-09-30): the four ports build from the Naval & Air tab (they
+    // are naval infrastructure). The airport roster got its own
+    // civilian 'airports' tab instead (workstream A, S5+S8).
+    kinds: [
+      'shipyard',
+      'navalYard',
+      'airfield',
+      'radarStation',
+      'commercialPort',
+      'containerPort',
+      'fishingHarbor',
+      'navalBase',
+    ],
   },
   // Grand-expansion Phase 3 (2026-09-30): the logistics roster — crude
   // extraction, ammo production (general + specialized), and the three
@@ -206,6 +268,21 @@ export const BUILD_TABS: readonly BuildTab[] = [
       'railStation', 'busDepot', 'ferryTerminal', 'marina', 'marinaLarge',
       'busStop', 'taxiStand', 'tramStop', 'ferryPier',
       'neighborhoodStation', 'centralStation', 'airportInterchange',
+    ],
+  },
+  // Grand-expansion Phase 5 (S5+S8, 2026-09-30): the airport roster —
+  // anchors, terminals, tower, per-class hangars, fuel farm,
+  // maintenance hangar, runway modules. Civilian infrastructure (the
+  // military airbase is one building among fourteen — the tab lives
+  // under Civilian, unlike the military navalAir tab).
+  {
+    id: 'airports',
+    kinds: [
+      'civilAirport', 'militaryAirbase', 'mixedAirport',
+      'passengerTerminal', 'cargoTerminal', 'controlTower',
+      'hangarS', 'hangarM', 'hangarL',
+      'fuelFarm', 'maintenanceHangar',
+      'runwayS', 'runwayM', 'runwayL',
     ],
   },
 ];
@@ -249,6 +326,8 @@ export const BUILD_TAB_MENU_TABS: Record<BuildTabId, 'civilian' | 'military'> = 
   navalAir: 'military',
   special: 'military',
   transport: 'civilian',
+  // Grand-expansion Phase 5 (S5+S8): airports are civilian infrastructure.
+  airports: 'civilian',
 };
 
 /**
@@ -376,6 +455,12 @@ export function unitAvailability(
 ): Availability {
   const def = UNIT_DEFS[kind];
   const p = STRINGS.palettes;
+  // Grand-expansion Phase 6 (workstream C): deployable-only kinds
+  // (navalMine) are never trained — the button stays visible but
+  // disabled with the reason, so players learn to use a minelayer.
+  if (def.deployableOnly === true) {
+    return { ok: false, reason: loc(p.deployedByMinelayer) };
+  }
   if (!isUnitAvailableForAge(world, def.minAge)) {
     return {
       ok: false,

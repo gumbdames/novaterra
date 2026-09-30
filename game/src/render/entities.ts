@@ -62,7 +62,7 @@
 import * as THREE from 'three';
 import type { World } from '../sim/world';
 import type { UnitRecord } from '../sim/units';
-import { UNIT_DEFS, type UnitKind } from '../sim/units';
+import { UNIT_DEFS, isSheltered, type UnitKind } from '../sim/units';
 import {
   BUILDING_DEFS,
   cellCenterWorld,
@@ -86,6 +86,8 @@ import {
   buildAwacsDome,
   buildShipMast,
   buildRunwayStrip,
+  // Grand-expansion Phase 5 (S5+S8): the airport-anchor tower prop.
+  buildControlTower,
   buildCoolingTower,
   buildHospitalCross,
 } from './proceduralModels';
@@ -124,6 +126,10 @@ import { desirabilityOverlayData } from '../ui/desirability';
 // three.js) — safe to import from the render layer.
 import { LogisticsOverlay } from './logisticsOverlay';
 import { logisticsOverlayData } from '../ui/logistics';
+// Grand-expansion Phase 5 (S5+S8): the airport overlay.
+import { AirportOverlay } from './airportOverlay';
+import { airportOverlayData } from '../ui/airports';
+import { HUMAN_PLAYER_ID } from '../ui/session';
 import {
   cityPowerLines,
   cityPipes,
@@ -243,6 +249,87 @@ export type ModelSource =
   bus: { type: 'procedural' },
   tram: { type: 'procedural' },
   ferry: { type: 'procedural' },
+  // Grand-expansion Phase 5 — aircraft expansion (workstream B,
+  // 2026-09-30): source entries so modelSourceFor never returns
+  // placeholder for the new kinds. The procedural BUILDERS are the
+  // render workstream's follow-up (buildProceduralModel returns
+  // undefined until then and the resolution chain falls back to
+  // placeholders — never blank), per the Phase 4 precedent above.
+  strategicBomber: { type: 'procedural' },
+  maritimePatrol: { type: 'procedural' },
+  reconUAV: { type: 'procedural' },
+  armedUAV: { type: 'procedural' },
+  reconPlane: { type: 'procedural' },
+  gunship: { type: 'procedural' },
+  tanker: { type: 'procedural' },
+  militaryCargo: { type: 'procedural' },
+  trainer: { type: 'procedural' },
+  navalFighter: { type: 'procedural' },
+  airliner: { type: 'procedural' },
+  // Grand-expansion Phase 5 — airports (workstream A, S5+S8,
+  // 2026-09-30): source entries for the 14 airport kinds. Anchors reuse
+  // the airfield's GLB hangar pieces (one key each, loaded once) with
+  // runway-strip + control-tower props attached via extraPropSpecs;
+  // the per-class hangars reuse the same two hangar pieces at different
+  // sizes; the fuel farm reuses the refinery tank pieces; terminals,
+  // tower and runway modules are procedural (buildProceduralModel).
+  civilAirport: {
+    type: 'glb',
+    pieces: [piece('airfieldHangar', -2.6, 0, -2.2), piece('airfieldHangar2', 2.6, 0, -2.4)],
+  },
+  militaryAirbase: {
+    type: 'glb',
+    pieces: [piece('airfieldHangar', -2.4, 0, -1.6), piece('airfieldHangar', 2.4, 0, -1.8)],
+  },
+  mixedAirport: {
+    type: 'glb',
+    pieces: [piece('airfieldHangar', -2.6, 0, -2.2), piece('airfieldHangar2', 2.6, 0, -2.4)],
+  },
+  passengerTerminal: { type: 'procedural' },
+  cargoTerminal: { type: 'procedural' },
+  controlTower: { type: 'procedural' },
+  hangarS: { type: 'glb', pieces: [piece('airfieldHangar2')] },
+  hangarM: { type: 'glb', pieces: [piece('airfieldHangar')] },
+  hangarL: {
+    type: 'glb',
+    pieces: [piece('airfieldHangar'), piece('airfieldHangar2', 3.4, 0, 0.6)],
+  },
+  fuelFarm: {
+    type: 'glb',
+    pieces: [piece('oilRefineryTank', -1.6, 0, -0.8), piece('industrialTank', 1.6, 0, 0.8)],
+  },
+  maintenanceHangar: {
+    type: 'glb',
+    pieces: [piece('airfieldHangar2', -1.8, 0, 0), piece('airfieldHangar2', 1.8, 0, 0.4)],
+  },
+  runwayS: { type: 'procedural' },
+  runwayM: { type: 'procedural' },
+  runwayL: { type: 'procedural' },
+  jumboAirliner: { type: 'procedural' },
+  regionalJet: { type: 'procedural' },
+  cargoPlane: { type: 'procedural' },
+  passengerHeli: { type: 'procedural' },
+  seaplane: { type: 'procedural' },
+  // Grand-expansion Phase 6 — naval expansion (workstream C): source
+  // entries so modelSourceFor never returns placeholder for the 14 new
+  // sea kinds. The procedural BUILDERS are a render follow-up
+  // (buildProceduralModel returns undefined until then and the
+  // resolution chain falls back to placeholders — never blank).
+  coastalSub: { type: 'procedural' },
+  missileSub: { type: 'procedural' },
+  corvette: { type: 'procedural' },
+  cruiser: { type: 'procedural' },
+  battleship: { type: 'procedural' },
+  heavyDestroyer: { type: 'procedural' },
+  cargoFreighter: { type: 'procedural' },
+  fuelTanker: { type: 'procedural' },
+  ammoShip: { type: 'procedural' },
+  repairShip: { type: 'procedural' },
+  minelayer: { type: 'procedural' },
+  navalMine: { type: 'procedural' },
+  coastGuardCutter: { type: 'procedural' },
+  cruiseLiner: { type: 'procedural' },
+  yacht: { type: 'procedural' },
   // ---- NOVATERRA roster-expansion buildings ----
   barracks: { type: 'glb', pieces: [piece('barracks')] },
   // Phase 1 (veterancy): the military academy hall.
@@ -336,6 +423,14 @@ export type ModelSource =
   missileSilo: { type: 'procedural' },
   ordnanceDepot: { type: 'procedural' },
   fuelDepot: { type: 'procedural' },
+  // Grand-expansion Phase 6 — naval expansion (workstream C): the four
+  // ports. Source entries so modelSourceFor never returns placeholder;
+  // the procedural BUILDERS are a render follow-up (placeholders until
+  // then — never blank).
+  commercialPort: { type: 'procedural' },
+  containerPort: { type: 'procedural' },
+  fishingHarbor: { type: 'procedural' },
+  navalBase: { type: 'procedural' },
 };
 
 /**
@@ -926,6 +1021,9 @@ export class EntityRenderer {
    */
   private readonly logisticsOverlay: LogisticsOverlay;
   private logisticsOverlayVisible = false;
+  // Grand-expansion Phase 5 (S5+S8): airport-site rings + airline-route arcs.
+  private readonly airportOverlay: AirportOverlay;
+  private airportOverlayVisible = false;
   /** Workstream W: the toggleable residential-desirability overlay. */
   private readonly desirabilityOverlay: DesirabilityOverlay;
   private desirabilityOverlayVisible = false;
@@ -1059,6 +1157,8 @@ export class EntityRenderer {
     );
     this.logisticsOverlay = new LogisticsOverlay(scene);
     this.desirabilityOverlay = new DesirabilityOverlay(scene);
+    // Grand-expansion Phase 5 (S5+S8).
+    this.airportOverlay = new AirportOverlay(scene);
   }
 
   /** Create/update/remove meshes to match the world. Render-side only. */
@@ -1077,6 +1177,8 @@ export class EntityRenderer {
     this.syncUtilityIndicators(world);
     this.syncLogisticsOverlay(world);
     this.syncDesirabilityOverlay(world);
+    // Grand-expansion Phase 5 (S5+S8).
+    this.syncAirportOverlay(world);
     this.syncSuperweaponFx(world);
     this.syncChevrons(world);
     this.instancer?.endFrame(this.camera ?? undefined);
@@ -1153,8 +1255,11 @@ export class EntityRenderer {
    * whether their bodies render instanced or legacy.
    */
   private syncChevrons(world: World): void {
+    // Sheltered units (parked in a hangar / embarked on a carrier) have
+    // no body view to anchor chevrons to — filter them out too.
+    const visible = world.units.filter((u) => !isSheltered(u));
     this.chevrons.sync(
-      world.units,
+      visible,
       this.terrain,
       this.waterLevel,
       (kind) => this.modelTopForKind(kind),
@@ -1315,6 +1420,27 @@ export class EntityRenderer {
   setLogisticsOverlayVisible(visible: boolean): void {
     this.logisticsOverlayVisible = visible;
     this.logisticsOverlay.setVisible(visible);
+  }
+
+  // -------------------------------------------------------------------------
+  // Grand-expansion Phase 5 (S5+S8): airport overlay
+  // -------------------------------------------------------------------------
+
+  private syncAirportOverlay(world: World): void {
+    if (!this.airportOverlayVisible) return;
+    const t = this.terrain;
+    const heightFn =
+      t === null ? undefined : (x: number, z: number): number => heightAt(t, x, z);
+    this.airportOverlay.sync(airportOverlayData(world, HUMAN_PLAYER_ID), { heightFn });
+  }
+
+  /**
+   * Toggle the airport-site / airline-route overlay. Called by the
+   * controller from the top-bar button.
+   */
+  setAirportOverlayVisible(visible: boolean): void {
+    this.airportOverlayVisible = visible;
+    this.airportOverlay.setVisible(visible);
   }
 
   /**
@@ -1512,6 +1638,8 @@ export class EntityRenderer {
     this.utilityIndicators.dispose();
     this.logisticsOverlay.dispose();
     this.desirabilityOverlay.dispose();
+    // Grand-expansion Phase 5 (S5+S8).
+    this.airportOverlay.dispose();
     this.gridView.dispose();
     // Shared per-kind assets (never per-view): release once here.
     for (const m of this.proceduralCache.values()) {
@@ -1599,6 +1727,10 @@ export class EntityRenderer {
         m = buildShipMast();
       } else if (key === 'runwayStrip') {
         m = buildRunwayStrip();
+        // Grand-expansion Phase 5 (S5+S8): the procedural control tower
+        // rides the airport anchors as an attached prop.
+      } else if (key === 'controlTower') {
+        m = buildControlTower();
       } else if (key === 'coolingTower') {
         m = buildCoolingTower();
       } else if (key === 'hospitalCross') {
@@ -1626,7 +1758,8 @@ export class EntityRenderer {
    * infantry gear (rifle / hard-hat / sniper rifle / medic kit), the HQ
    * command antenna, the aegisControl radar dish, the AWACS rotodome,
    * the command-ship comms mast, the airfield runway strip, the nuclear
-   * cooling tower, and the hospital cross. Declared as data so both the
+   * cooling tower, the hospital cross, and the airport anchors' runway
+   * strip + procedural control tower (grand-expansion Phase 5, S5+S8). Declared as data so both the
    * legacy per-view path (`attachModelExtras`) and the instanced path
    * (`resolveVisualPieces`) place them identically.
    */
@@ -1659,6 +1792,24 @@ export class EntityRenderer {
       case 'airfield':
         // Runway along x beside the hangars.
         return [{ prop: 'runwayStrip', dx: 0, dy: 0.02, dz: 2.2 }];
+      // Grand-expansion Phase 5 (S5+S8): the airport anchors read as
+      // airports via the same runway-strip prop plus a procedural
+      // control tower at the apron's edge.
+      case 'civilAirport':
+        return [
+          { prop: 'runwayStrip', dx: 0, dy: 0.02, dz: 3.4 },
+          { prop: 'controlTower', dx: 3.2, dy: 0, dz: -0.5 },
+        ];
+      case 'militaryAirbase':
+        return [
+          { prop: 'runwayStrip', dx: 0, dy: 0.02, dz: 3.4 },
+          { prop: 'controlTower', dx: -3.2, dy: 0, dz: -0.5 },
+        ];
+      case 'mixedAirport':
+        return [
+          { prop: 'runwayStrip', dx: 0, dy: 0.02, dz: 3.4 },
+          { prop: 'controlTower', dx: 3.2, dy: 0, dz: -0.5 },
+        ];
       case 'nuclearPlant':
         // Beside the reactor hall, clear of its footprint.
         return [{ prop: 'coolingTower', dx: 2.2, dy: 0, dz: 1.8 }];
@@ -1915,6 +2066,10 @@ export class EntityRenderer {
     const seen = new Set<number>();
     for (const u of world.units) {
       if (u.hp <= 0) continue;
+      // Sheltered units (parked in a hangar / embarked on a carrier)
+      // have no map presence: skipping them here keeps them out of the
+      // `seen` set, so the dispose sweep below releases their views.
+      if (isSheltered(u)) continue;
       seen.add(u.id);
       let view = this.units.get(u.id);
       if (!view) {

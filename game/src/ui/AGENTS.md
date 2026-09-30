@@ -89,9 +89,12 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   superweapons), **Management** (tax steppers + city focus + cabinet +
   research panel). `menuTab` state is remembered per tab, and so is the
   build tab per main tab. Selecting a unit/building replaces the tab
-  content with the contextual branch (as before). TRAIN palette has 4 tabs (Infantry / Armor / Air / Navy),
-  BUILD palette has 10 tabs (Housing / Civic / Commerce / Industry /
-  Utilities / Power / Water / Naval & Air / Special / Logistics) — the spec groupings
+  content with the contextual branch (as before). TRAIN palette has 4 tabs (Infantry / Armor / Air / Navy —
+  the Navy tab lists 24 kinds; navalMine rides along but is never trained — its button stays disabled
+  with the "Deployed by a Minelayer" reason, teaching the minelayer's `deployMine` order), BUILD palette has 10 tabs (Housing / Civic / Commerce / Industry /
+  Utilities / Power / Water / Naval & Air / Special / Logistics) — the Naval & Air tab holds 8
+  naval-air buildings (the 4 Phase 6 ports: commercialPort, containerPort, fishingHarbor, navalBase,
+  plus the 4 airport buildings) — the spec groupings
   plus the Workstream Z civic tab (education buildings), plus the Phase 2
   utility tabs (the 13 new power/water buildings), plus the Phase 3
   logistics tab (the 7 new fuel/ammo production + depot buildings), see `palettes.ts`.
@@ -144,6 +147,22 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   Selected residential buildings show their land-value line
   ("Land: Nice (64) · tax ×1.3", via `ui/desirability.ts`
   `landValueLine`); digest-covered (`bv:` segment, AD11).
+  Hangars (Phase 5 workstream B): a selected sheltered aircraft shows
+  its `shelterLine` ("Parked in hangar" / "Embarked on carrier") plus a
+  **Launch** button; a selected flying aircraft shows **Embark** (the
+  nearest friendly carrier in range, via `ui/hangars.ts`
+  `nearestCarrier`) and **Park in hangar** (the nearest building with a
+  free compatible slot) buttons when the sim would accept them —
+  disabled buttons name the reason from `embarkBlockReason` /
+  `baseBlockReason` (never dead buttons). A selected carrier shows its
+  wing manifest ("Wing 3/8" + one **Launch** button per embarked
+  aircraft — embarked aircraft are invisible on the map, so the manifest
+  is the only way to reach them); a selected hangar building shows its
+  occupancy line ("Hangars 4/6") plus a parked-aircraft manifest with
+  **Launch** buttons. All shelter state is digest-covered: per-unit
+  `ue:` (f / w<carrierId> / h<buildingId>), carrier `ew:` (wing ids),
+  building `bh:` (parked ids) — always emitted, `x` for non-applicable
+  (AD11 contract-test states stay green).
   Tools row (Phase 2): "Power line" and "Water pipe" drag-paint tools ride
   the generic `linearNetworkDrag.ts` pipeline (see "Adding a
   linear-network kind" below) and emit `buildPowerLine` / `buildPipe`
@@ -187,10 +206,15 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   refuel })` — flat payloads, the exact shapes `registerLogisticsCommands`
   validates. Until the sim wires registration at boot, enqueue throws
   `CommandRejectedError` and the controller toasts loudly — never silent.
+  The hangar builders (Phase 5 workstream B) shape the shelter command
+  payloads exactly: `buildEmbarkOrder(unitId, carrierId, owner)` →
+  `embarkAircraft`; `buildBaseOrder(unitId, buildingId, owner)` →
+  `baseAircraft`; `buildLaunchOrder(unitId, owner)` → `launchAircraft`.
 - `palettes.ts` — headless-safe palette data + availability logic for
   the tabbed TRAIN/BUILD palettes and the research panel: `TRAIN_TABS`
-  (4 tabs, 30 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck),
-  `BUILD_TABS` (10 tabs, 55 buildings — workstream W added library+park, workstream P added the two parking buildings),
+  (5 tabs, 66 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck;
+  Phase 5 workstream B added the 16-aircraft air tab),
+  `BUILD_TABS` (12 tabs, 85 buildings — workstream W added library+park, workstream P added the two parking buildings),
   `UPGRADE_GROUPS` (military 8 / economy 4 / infrastructure 6 / logistics 1), `unitAvailability` /
   `buildingAvailability` / `upgradeAvailability` (ready | reason), cost
   formatters, and the
@@ -237,6 +261,23 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `DesirabilityOverlay` renders: sorted cells + the model cache key).
   Reads every sim field defensively (empty pre-sim → empty view), never
   writes sim state.
+- `hangars.ts` — **hangar/carrier UI contract module (pure, tested,
+  `tests/ui.hangars.test.ts`).** The UI-side mirror of the sim's
+  shelter system (`sim/units.ts` + `sim/city.ts`): `canEmbarkUI` /
+  `canBaseUI` / `canLaunchUI` (the user requirements — carriers train
+  EMPTY, only carrier-capable aircraft embark — mirrored as UI gates so
+  buttons never promise what the sim would reject), `embarkBlockReason`
+  / `baseBlockReason` (the disabled-button tooltip strings, in sim
+  validate order — never a dead button), `nearestCarrier` /
+  `nearestHangarBuilding` (in-range, compatible, friendly proposals),
+  `parkedAircraft` / `embarkedAircraft` (id order), display lines
+  `wingLine` ("Wing 3/8") / `hangarLine` ("Hangars 4/6") /
+  `shelterLine` ("Parked in hangar" / "Embarked on carrier"), plus
+  re-exports of `EMBARK_RANGE` / `HANGAR_BASE_RANGE` / `isSheltered`.
+  Reads every sim field defensively (empty pre-sim → empty view), never
+  writes sim state. Buildings are in cell coords, units in world coords
+  — range math goes through `cellCenterWorld` (the 2026-09-30
+  cell/world mixup that rejected every in-range basing).
 - `linearNetworkDrag.ts` — **generic linear-network gesture pipeline (pure,
   tested, `tests/ui.linearNetworkDrag.test.ts`).** One drag-paint pipeline
   shared by every linear network tool: road today, power lines / water pipes
@@ -277,7 +318,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `icons.ts` — **hand-drawn inline SVG icon set (pure, tested,
   `tests/ui.icons.test.ts`).** Every button shows icon AND text (user
   directive 2026-09-30) — icons are `aria-hidden`, never icon-only.
-  `unitIcon` / `buildingIcon` cover all 35 units + 67 buildings
+  `unitIcon` / `buildingIcon` cover all 66 units + 85 buildings
   (`Record<UnitKind, string>` so a missing glyph is a compile error);
   `toolIcon` for the build tools row (incl. the Phase 2 powerLine /
   waterPipe tools); `viewIcon` for the top-bar view toggles (Phase 4
@@ -309,7 +350,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `LocalizedString` (`{en}` — the localization indirection, kept as the
   extension point), module-level language
   state (`setUiLanguage` / `getUiLanguage` / `loc` / `fillLoc`). Covers
-  all 30 unit names, 55 building names, palette/upgrade tab names, the
+  all 66 unit names, 85 building names, palette/upgrade tab names, the
   19 upgrade names + one-line effects, cost labels, and lock reasons.
   Legacy Phase 3 strings are still English-only; they were never localized.
 - Audio: `game.ts` owns an `AudioEngine` (see `src/audio/AGENTS.md`) —

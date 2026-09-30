@@ -54,6 +54,9 @@ export const ZONE_DECAL_COLORS: Record<ZoneType, number> = {
   [ZoneType.RESIDENTIAL]: 0x43a047, // green
   [ZoneType.COMMERCIAL]: 0x1e88e5, // blue
   [ZoneType.INDUSTRIAL]: 0xfb8c00, // orange
+  // Grand-expansion Phase 5 (S8, 2026-09-30): airport zones — violet,
+  // distinct from the three classic tints at a glance.
+  [ZoneType.AIRPORT]: 0x9c27b0, // violet
 };
 
 /** Decal transparency: a translucent wash — the terrain reads through. */

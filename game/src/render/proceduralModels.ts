@@ -66,6 +66,9 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import type { LoadedModel } from './models';
+
+// Grand-expansion Phase 5 (S5): the runway-module class parameter.
+import type { AircraftClass } from '../sim/city';
 // Re-exported so render tests can name the builder return type without
 // importing the model-loading module (Phase 3 logistics, 2026-09-30).
 export type { LoadedModel } from './models';
@@ -1183,6 +1186,159 @@ export function buildRunwayStrip(): LoadedModel {
   return b.build();
 }
 
+
+/**
+ * Grand-expansion Phase 5 (S5): parametric runway module. One builder
+ * serves the three runway classes — the strip grows with class (light
+ * 6×1.2, medium 9×1.6, heavy 12×2.2) in the same markings language as
+ * the airfield's runwayStrip prop (edge lines, threshold bars,
+ * centerline dashes). Base y=0; entities.ts places it beside the
+ * terminal cluster.
+ */
+export function buildRunwayModule(cls: AircraftClass): LoadedModel {
+  const dims =
+    cls === 'light'
+      ? { l: 6.0, w: 1.2 }
+      : cls === 'medium'
+        ? { l: 9.0, w: 1.6 }
+        : { l: 12.0, w: 2.2 };
+  const b = new ModelBuilder();
+  const asphalt = smat('concrete', { color: 0x3a3d42 });
+  const white = smat('paintedMetal');
+  const { l, w } = dims;
+  b.add(new THREE.BoxGeometry(l, 0.06, w), asphalt, tr(0, 0.03, 0));
+  // Edge lines.
+  for (const sz of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(l, 0.02, 0.07), white, tr(0, 0.07, sz * (w / 2 - 0.12)));
+  }
+  // Threshold bars at both ends.
+  for (const ex of [-1, 1]) {
+    const n = Math.max(2, Math.round(w / 0.45));
+    for (let i = 0; i < n; i++) {
+      b.add(
+        new THREE.BoxGeometry(0.4, 0.02, 0.14),
+        white,
+        tr(ex * (l / 2 - 0.6), 0.07, -((n - 1) * 0.3) / 2 + i * 0.3),
+      );
+    }
+  }
+  // Centerline dashes.
+  const dashes = Math.max(2, Math.floor(l / 1.8));
+  for (let i = 0; i < dashes; i++) {
+    const x = -l / 2 + 1.2 + (i * (l - 2.4)) / Math.max(1, dashes - 1);
+    b.add(new THREE.BoxGeometry(0.7, 0.02, 0.09), white, tr(x, 0.07, 0));
+  }
+  return b.build();
+}
+
+/**
+ * Grand-expansion Phase 5 (S5): control tower — tapered concrete shaft,
+ * glass control cab with a mullioned band, equipment roof, and a whip
+ * antenna. Base y=0.
+ */
+export function buildControlTower(): LoadedModel {
+  const b = new ModelBuilder();
+  const concrete = smat('concrete');
+  const glass = smat('glassBlue');
+  const white = smat('paintedMetal', { color: 0xdfe3e6 });
+  // Tapered shaft (wider at the base).
+  b.add(new THREE.CylinderGeometry(0.85, 1.25, 7.0, 10), concrete, tr(0, 3.5, 0));
+  // Equipment band + stair windows up the shaft.
+  b.add(new THREE.CylinderGeometry(1.05, 1.05, 0.7, 10), white, tr(0, 6.2, 0));
+  for (let i = 0; i < 4; i++) {
+    b.add(new THREE.BoxGeometry(0.28, 0.28, 0.1), glass, tr(0, 2.0 + i * 1.1, 1.12));
+  }
+  // Control cab: wider drum with a continuous glass band.
+  b.add(new THREE.CylinderGeometry(1.9, 1.5, 1.5, 12), white, tr(0, 7.75, 0));
+  b.add(new THREE.CylinderGeometry(1.72, 1.72, 0.62, 12), glass, tr(0, 7.85, 0));
+  // Mullions around the glass band.
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2;
+    b.add(
+      new THREE.BoxGeometry(0.09, 0.66, 0.09),
+      white,
+      tr(Math.cos(a) * 1.72, 7.85, Math.sin(a) * 1.72, 0, -a, 0),
+    );
+  }
+  // Roof + whip antenna.
+  b.add(new THREE.CylinderGeometry(1.95, 1.95, 0.22, 12), concrete, tr(0, 8.6, 0));
+  b.add(new THREE.CylinderGeometry(0.05, 0.08, 2.4, 6), white, tr(0, 9.8, 0));
+  b.add(new THREE.SphereGeometry(0.12, 8, 6), smat('paintedMetal', { color: 0xc22e2e }), tr(0, 11.0, 0));
+  return b.build();
+}
+
+/**
+ * Grand-expansion Phase 5 (S5): passenger terminal — long landside hall
+ * with a glass curtain wall, a curved-ish roof slab, a departures
+ * canopy, and two jet bridges reaching airside. Base y=0.
+ */
+export function buildPassengerTerminal(): LoadedModel {
+  const b = new ModelBuilder();
+  const hall = smat('paintedMetal', { color: 0xcfd6dc });
+  const glass = smat('glassBlue');
+  const roof = smat('concrete', { color: 0x9aa0a6 });
+  const bridge = smat('paintedMetal', { color: 0xb9c0c7 });
+  // Main hall (12 × 3.2 × 4.5).
+  b.add(new THREE.BoxGeometry(12, 3.2, 4.5), hall, tr(0, 1.6, 0));
+  // Glass curtain wall on the airside face.
+  b.add(new THREE.BoxGeometry(11.4, 2.2, 0.12), glass, tr(0, 1.7, 2.28));
+  for (let i = 0; i < 12; i++) {
+    b.add(new THREE.BoxGeometry(0.1, 2.2, 0.16), hall, tr(-5.5 + i, 1.7, 2.28));
+  }
+  // Roof slab with a slight overhang + skylight strip.
+  b.add(new THREE.BoxGeometry(12.8, 0.35, 5.3), roof, tr(0, 3.35, 0));
+  b.add(new THREE.BoxGeometry(11.0, 0.12, 1.0), glass, tr(0, 3.56, 0));
+  // Landside departures canopy.
+  b.add(new THREE.BoxGeometry(10.0, 0.22, 2.4), roof, tr(0, 2.9, -3.4));
+  for (const cx of [-4, 0, 4]) {
+    b.add(new THREE.CylinderGeometry(0.14, 0.14, 2.8, 8), hall, tr(cx, 1.4, -4.2));
+  }
+  // Two jet bridges reaching airside.
+  for (const bx of [-3, 3]) {
+    b.add(new THREE.BoxGeometry(1.1, 1.0, 2.6), bridge, tr(bx, 2.2, 3.6));
+    b.add(new THREE.BoxGeometry(1.5, 1.4, 1.2), bridge, tr(bx, 1.9, 5.2));
+    b.add(new THREE.CylinderGeometry(0.16, 0.2, 1.6, 8), bridge, tr(bx, 0.8, 4.6));
+  }
+  return b.build();
+}
+
+/**
+ * Grand-expansion Phase 5 (S5): cargo terminal — corrugated warehouse
+ * box with a loading-dock canopy, roller doors, and a small yard crane.
+ * Base y=0.
+ */
+export function buildCargoTerminal(): LoadedModel {
+  const b = new ModelBuilder();
+  const clad = smat('paintedMetal', { color: 0x7e8b94 });
+  const dark = smat('gunmetal');
+  const canopy = smat('concrete', { color: 0xa8adb2 });
+  // Warehouse box (10 × 3.6 × 6) with vertical ribbing.
+  b.add(new THREE.BoxGeometry(10, 3.6, 6), clad, tr(0, 1.8, 0));
+  for (let i = 0; i < 14; i++) {
+    b.add(new THREE.BoxGeometry(0.14, 3.6, 0.08), dark, tr(-4.55 + i * 0.7, 1.8, 3.02));
+  }
+  // Roof + vent boxes.
+  b.add(new THREE.BoxGeometry(10.4, 0.3, 6.4), canopy, tr(0, 3.75, 0));
+  for (const vx of [-3, 3]) {
+    b.add(new THREE.BoxGeometry(1.2, 0.8, 1.2), dark, tr(vx, 4.2, -1.5));
+  }
+  // Loading-dock canopy + roller doors on the long face.
+  b.add(new THREE.BoxGeometry(10.6, 0.25, 2.6), canopy, tr(0, 3.0, 4.2));
+  for (const cx of [-4, 0, 4]) {
+    b.add(new THREE.CylinderGeometry(0.13, 0.13, 2.9, 8), dark, tr(cx, 1.45, 5.3));
+  }
+  for (let i = 0; i < 5; i++) {
+    b.add(new THREE.BoxGeometry(1.5, 2.2, 0.1), dark, tr(-4 + i * 2, 1.3, 3.04));
+  }
+  // Small yard crane: mast + jib + hook block.
+  b.add(new THREE.BoxGeometry(0.5, 5.2, 0.5), smat('paintedMetal', { color: 0xc7a23a }), tr(5.8, 2.6, 2.0));
+  b.add(new THREE.BoxGeometry(4.2, 0.4, 0.4), smat('paintedMetal', { color: 0xc7a23a }), tr(4.0, 5.0, 2.0));
+  b.add(new THREE.BoxGeometry(0.12, 1.4, 0.12), dark, tr(2.2, 4.2, 2.0));
+  b.add(new THREE.BoxGeometry(0.5, 0.4, 0.5), dark, tr(2.2, 3.4, 2.0));
+  return b.build();
+}
+
+
 /**
  * Nuclear-plant hyperboloid cooling tower: lathe shell + top rim, dark
  * inner disc. Base y=0; entities.ts places it beside the reactor hall.
@@ -2002,6 +2158,15 @@ export const PROCEDURAL_KINDS = [
   'neighborhoodStation',
   'centralStation',
   'airportInterchange',
+  // Grand-expansion Phase 5 (S5+S8, 2026-09-30): the airport models —
+  // the three runway modules (one parametric builder), the control
+  // tower, and the two terminal types.
+  'controlTower',
+  'passengerTerminal',
+  'cargoTerminal',
+  'runwayS',
+  'runwayM',
+  'runwayL',
 ] as const;
 
 export type ProceduralKind = (typeof PROCEDURAL_KINDS)[number];
@@ -2138,6 +2303,20 @@ export function buildProceduralModel(kind: string): LoadedModel | undefined {
       return buildCentralStation();
     case 'airportInterchange':
       return buildAirportInterchange();
+    // Grand-expansion Phase 5 (S5+S8): the airport models. The three
+    // runway classes share one parametric builder.
+    case 'controlTower':
+      return buildControlTower();
+    case 'passengerTerminal':
+      return buildPassengerTerminal();
+    case 'cargoTerminal':
+      return buildCargoTerminal();
+    case 'runwayS':
+      return buildRunwayModule('light');
+    case 'runwayM':
+      return buildRunwayModule('medium');
+    case 'runwayL':
+      return buildRunwayModule('heavy');
     default:
       return undefined;
   }

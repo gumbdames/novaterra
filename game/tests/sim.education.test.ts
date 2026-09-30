@@ -173,7 +173,7 @@ describe('education bonus in auto-development', () => {
     const p = world.city.players[0]!;
     p.funds = 100000;
     p.materials = 100000;
-    p.taxRates = [1.0, 1.0, 1.0]; // max tax: base desirability 0.0034
+    p.taxRates = [1.0, 1.0, 1.0, 1.0]; // max tax: base desirability 0.0034
     for (let i = 0; i < schools; i++) {
       const b = placeBuilding(world.city, {
         kind: 'school',
