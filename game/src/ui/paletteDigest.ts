@@ -209,10 +209,9 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     ],
     digestLabels: [],
     noDigestReason:
-      'Rebuilt on its own change key (severity+title), not the selection digest. ' +
-      'KNOWN GAP: item.detail is rendered but not part of the key — the panel can ' +
-      'go stale if detail changes under an identical severity+title (same bug class ' +
-      'as the click bug). Fix in hud.ts updateAdvisor; out of scope for paletteDigest.ts.',
+      'Rebuilt on its own change key (severity+title+detail, fixed 2026-09-30 in ' +
+      'hud.ts updateAdvisor), not the selection digest. The key covers every ' +
+      'rendered value, so the panel cannot go stale.',
   },
   {
     id: 'selection-empty',

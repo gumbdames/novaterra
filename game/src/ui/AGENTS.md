@@ -201,10 +201,8 @@ rebuilds only when `selectionDigest()` changes — and the contract test
 The test enforces all three: any `append*/build*/update*` method or
 `el()/className` DOM class in hud.ts that is not registered fails the
 suite, and each declared `digestLabels` entry must literally appear in
-digest output for a representative state. Known gap (not digest-covered):
-the advisor panel rebuilds on its own `severity`+`title` key and renders
-`item.detail` without keying it — same stale-panel bug class; fix in
-`hud.ts updateAdvisor`.
+digest output for a representative state. (The advisor panel's key was
+extended to severity+title+detail on 2026-09-30 so it cannot go stale.)
 
 ## Adding a linear-network kind (Phase 2/4)
 

@@ -452,7 +452,11 @@ export class HUD {
   }
 
   private updateAdvisor(items: AdvisorItem[]): void {
-    const key = items.map((i) => `${i.severity}:${i.title}`).join('|');
+    // Keyed on severity + title + detail (AD11 digest contract): the panel
+    // renders item.detail, so the rebuild key must cover it — otherwise a
+    // detail change under identical severity+title leaves a stale panel
+    // (same bug class as the 2026-09-30 click bug).
+    const key = items.map((i) => `${i.severity}:${i.title}:${i.detail}`).join('|');
     if (key === this.lastAdvisorKey) return;
     this.lastAdvisorKey = key;
     this.advisorList.textContent = '';
