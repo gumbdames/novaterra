@@ -407,7 +407,7 @@ function buildNatureOccupancy(world: World): (x: number, z: number) => boolean {
     }
   }
   for (const c of world.city.roads) {
-    const { cx, cz } = cellCoords(c as number);
+    const { cx, cz } = cellCoords(c.cell);
     cells.add(`${cx},${cz}`);
   }
   for (const u of world.units) {
@@ -1466,6 +1466,22 @@ class GameController {
     };
     document.addEventListener('mouseout', docMouseOut);
     this.removeListeners.push(() => document.removeEventListener('mouseout', docMouseOut));
+    // A cancelled gesture (touch interruption, pointer capture loss) must
+    // release exactly like a pointerup with no button pressed: without
+    // this, dragStart/leftDragKind/orbitLast could linger until the next
+    // press. (Next press re-snapshots everything, so this is defense in
+    // depth rather than a freeze fix.)
+    on(window, 'pointercancel', () => {
+      this.dragStart = null;
+      this.leftDragKind = null;
+      this.panLast = null;
+      this.orbitLast = null;
+      this.networkDrag = null;
+      if (this.dragRect) {
+        this.dragRect.remove();
+        this.dragRect = null;
+      }
+    });
     on(window, 'pointerup', (e) => {
       // Middle-drag ends here: it never selects or places.
       if (e.button === 1) {
