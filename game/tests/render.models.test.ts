@@ -45,18 +45,21 @@ const mockState = vi.hoisted(() => ({
   failUrls: [] as string[],
   scene: null as THREE.Group | null,
   lastUrl: null as string | null,
+  lastBytes: null as number | null,
+  lastFetchUrl: null as string | null,
 }));
 
 vi.mock('three/addons/loaders/GLTFLoader.js', () => {
   class FakeGLTFLoader {
-    async loadAsync(url: string): Promise<{ scene: THREE.Object3D }> {
-      mockState.lastUrl = url;
-      if (mockState.behavior === 'reject' || mockState.failUrls.includes(url)) {
+    async parseAsync(data: ArrayBuffer, path: string): Promise<{ scene: THREE.Object3D }> {
+      mockState.lastUrl = path;
+      mockState.lastBytes = data.byteLength;
+      if (mockState.behavior === 'reject' || mockState.failUrls.includes(path)) {
         throw new Error('404 Not Found');
       }
       if (mockState.behavior === 'hang') {
         return new Promise<{ scene: THREE.Object3D }>(() => {
-          /* pends forever, like a stalled CDN fetch */
+          /* pends forever, like a stalled parse */
         });
       }
       return { scene: mockState.scene ?? new THREE.Group() };
@@ -70,6 +73,24 @@ beforeEach(() => {
   mockState.failUrls = [];
   mockState.scene = null;
   mockState.lastUrl = null;
+  mockState.lastBytes = null;
+  // Route the Cache-API fetch layer at a fake network: resolve = 200 with
+  // dummy bytes, reject/hang driven by the same hoisted behavior.
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (url: string) => {
+      mockState.lastFetchUrl = url;
+      if (mockState.behavior === 'hang') {
+        return new Promise<Response>(() => {
+          /* pends forever, like a stalled CDN fetch */
+        });
+      }
+      if (mockState.behavior === 'reject' || mockState.failUrls.includes(url)) {
+        return new Response('not found', { status: 404 });
+      }
+      return new Response(new ArrayBuffer(16), { status: 200 });
+    }),
+  );
 });
 
 afterEach(() => {

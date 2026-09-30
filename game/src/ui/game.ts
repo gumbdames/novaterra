@@ -61,10 +61,14 @@ import { buildNatureView, type NatureView } from '../render/nature';
 import { loadNatureTreeModels } from '../render/natureTrees';
 import {
   disposeModels,
-  loadModels,
   MODEL_PATHS,
   type LoadedModel,
 } from '../render/models';
+import {
+  collectKindKeys,
+  LazyModelStore,
+  TREE_MODEL_KEYS,
+} from '../render/lazyModels';
 import { createSession, getSkirmishOutcome, HUMAN_PLAYER_ID, type GameSession } from './session';
 import {
   applyCameraState,
@@ -288,11 +292,17 @@ const MODEL_LOAD_ALL_TIMEOUT_MS = 20000;
 /**
  * Load the CC0 entity models (bounded by MODEL_LOAD_ALL_TIMEOUT_MS —
  * whatever finished in time is used; the rest fall back), overlay the
- * procedural textured trees (same bound; Kenney tree GLBs stay as the
- * silent fallback), construct the EntityRenderer with the resulting map,
- * and build the deterministic render-only nature scatter for the session
- * terrain. An empty model map is fully supported: entities resolve GLB →
- * procedural → placeholder and the game stays playable.
+ * procedural textured trees (same bound; the Kenney tree GLBs stay as
+ * the silent fallback and are fetched only if the textured trees fail),
+ * construct the EntityRenderer with the resulting map, and build the
+ * deterministic render-only nature scatter for the session terrain.
+ *
+ * Boot loads only the lazy boot set (foundation-age kinds + nature
+ * props — `render/lazyModels.ts`); every other key loads on first use
+ * through the store's self-triggering map, with the Cache API keeping
+ * fetched keys available offline. An empty model map is fully
+ * supported: entities resolve GLB → procedural → placeholder and the
+ * game stays playable.
  */
 async function loadEntityModels(
   session: GameSession,
@@ -302,28 +312,43 @@ async function loadEntityModels(
     setTimeout(() => resolve(null), MODEL_LOAD_ALL_TIMEOUT_MS);
   });
   const loadAll = (async () => {
-    const [loaded, trees] = await Promise.all([
-      loadModels(MODEL_PATHS),
+    const store = new LazyModelStore(MODEL_PATHS);
+    // Kinds already present in the world (loaded save games, campaign
+    // missions with pre-placed forces): request their keys up front so
+    // their views resolve on the first sync instead of flashing the
+    // fallback. Fresh games only have engineers/rifles (boot keys).
+    const presentKinds = new Set<string>();
+    for (const u of session.world.units) presentKinds.add(u.kind);
+    for (const b of session.world.city.buildings) presentKinds.add(b.kind);
+    const [boot, , trees] = await Promise.all([
+      store.loadBootSet(),
+      store.requestMany(collectKindKeys(presentKinds)),
       // Textured trees replace the Kenney tree GLBs in the map below.
-      // A texture failure throws → caught here → the GLB fallbacks stay.
+      // A texture failure throws → caught here → the tree GLBs are
+      // fetched as the fallback before the scatter is built.
       loadNatureTreeModels().catch((err: unknown) => {
         console.warn('[game] textured tree models unavailable (Kenney GLB fallback in use):', err);
         return null;
       }),
     ]);
-    return { loaded, trees };
+    if (trees === null) {
+      await store.requestMany(TREE_MODEL_KEYS);
+    } else {
+      for (const [key, model] of trees) store.adopt(key, model);
+    }
+    return { store, boot };
   })();
   const result = await Promise.race([loadAll, timeout]);
-  const loaded = result?.loaded ?? null;
-  const modelMap = loaded?.models ?? new Map<string, LoadedModel>();
-  const trees = result?.trees ?? null;
-  if (trees !== null) {
-    for (const [key, model] of trees) modelMap.set(key, model);
-  }
-  if (loaded === null) {
+  // On timeout the in-flight loads keep settling into the abandoned
+  // store (harmless); the game starts with an empty map and keys stream
+  // in on first use — same graceful degradation as before.
+  const store = result?.store ?? new LazyModelStore(MODEL_PATHS);
+  const modelMap = store.map;
+  const boot = result?.boot ?? null;
+  if (boot === null) {
     console.warn('[game] model loading exceeded the startup budget; using fallbacks');
-  } else if (loaded.failed.length > 0) {
-    console.warn('[game] models failed to load (fallbacks in use):', loaded.failed.join(', '));
+  } else if (boot.failed.length > 0) {
+    console.warn('[game] models failed to load (fallbacks in use):', boot.failed.join(', '));
   }
   const renderer = new EntityRenderer(scene, modelMap, {
     waterLevel: session.terrain.waterLevel,

@@ -38,6 +38,14 @@
  *    never hang boot. Callers fall back to the procedural builders in
  *    `render/proceduralModels.ts` (then the placeholders in
  *    `render/entities.ts`) for failed/missing keys.
+ *  - `loadOneModel`: the per-key pipeline behind `loadModels`, also used
+ *    by the lazy loader (`render/lazyModels.ts`) so boot and lazy loads
+ *    share one fetch path.
+ *  - `cachedFetch`: every GLB byte travels through the Cache API
+ *    (`MODEL_CACHE_NAME`, same-origin). A key fetched once is served
+ *    from the cache thereafter — the game stays playable
+ *    offline-after-first-load. Falls back to plain fetch where the Cache
+ *    API is unavailable (Node/tests).
  *  - Pure, testable helpers: `modelBaseUrl`, `normalizeModel`,
  *    `extractModelGeometry`, `disposeModels`.
  *
@@ -269,11 +277,117 @@ export function modelBaseUrl(): string {
   return `${base}models/`;
 }
 
-/** Join a ModelSpec path onto the models base URL. */
-function modelUrl(spec: ModelSpec): string {
+/** Join a ModelSpec path onto the models base URL. Exported for the lazy loader. */
+export function modelUrl(spec: ModelSpec): string {
   let rel = spec.path.replace(/^\/+/, '');
   if (rel === 'models' || rel.startsWith('models/')) rel = rel.slice('models'.length).replace(/^\/+/, '');
   return modelBaseUrl() + rel;
+}
+
+/**
+ * Cache API bucket for model GLB bytes (same-origin URLs only — every
+ * model URL is built by `modelUrl` above, so this holds by construction).
+ * Versioned: bump the suffix if the cache schema ever changes.
+ */
+export const MODEL_CACHE_NAME = 'novaterra-models-v1';
+
+/**
+ * Fetch through the Cache API: serve a cached response when present,
+ * otherwise fetch from the network and stash a clone for next time.
+ * A cache read/write failure never breaks the load — the network
+ * response is already in hand. Where the Cache API is unavailable
+ * (Node, tests, very old browsers) this is plain fetch.
+ *
+ * This is what makes the game playable offline-after-first-load: every
+ * GLB byte the loader needs passes through here, so a key fetched once
+ * is served from the cache on later visits even with no network.
+ */
+export async function cachedFetch(url: string): Promise<Response> {
+  const cachesApi = (globalThis as { caches?: CacheStorage }).caches;
+  if (cachesApi === undefined) return fetch(url);
+  const cache = await cachesApi.open(MODEL_CACHE_NAME);
+  const hit = await cache.match(url);
+  if (hit !== undefined) return hit;
+  const response = await fetch(url);
+  if (response.ok) {
+    try {
+      // put() consumes the body — clone first. Quota or any other
+      // failure must not break the load in progress.
+      await cache.put(url, response.clone());
+    } catch {
+      /* cache write failed; the live response is still fine */
+    }
+  }
+  return response;
+}
+
+/**
+ * Minimal GLTFLoader surface the model pipeline needs. `parseAsync`
+ * (bytes + resource path) is used instead of `loadAsync(url)` so the
+ * GLB bytes travel through `cachedFetch` above; texture references
+ * inside the GLB still resolve relative to the model's URL, exactly as
+ * with `loadAsync`.
+ */
+export interface ModelLoader {
+  parseAsync(data: ArrayBuffer, path: string): Promise<{ scene: THREE.Object3D }>;
+}
+
+/**
+ * Dynamically import GLTFLoader (separate chunk — only downloaded when
+ * models load, same as before). Throws if the loader module itself is
+ * unavailable; callers translate that into per-key failures.
+ */
+export async function createModelLoader(): Promise<ModelLoader> {
+  const mod = await import('three/addons/loaders/GLTFLoader.js');
+  return new mod.GLTFLoader() as ModelLoader;
+}
+
+/**
+ * Load, normalize, and extract ONE model key. The shared per-key
+ * pipeline: `loadModels` maps over it for boot, the lazy loader
+ * (`render/lazyModels.ts`) calls it per key on first use.
+ *
+ * Throws on any failure (404, timeout, parse error, bad scale, loader
+ * unavailable) — callers record the key as failed and continue.
+ */
+export async function loadOneModel(
+  loader: ModelLoader,
+  key: string,
+  spec: ModelSpec,
+  timeoutMs: number = MODEL_LOAD_TIMEOUT_MS,
+): Promise<LoadedModel> {
+  const url = modelUrl(spec);
+  const gltf = await withTimeout(
+    (async () => {
+      const response = await cachedFetch(url);
+      if (!response.ok) {
+        throw new Error(`loadOneModel(${key}): HTTP ${response.status} for ${url}`);
+      }
+      const bytes = await response.arrayBuffer();
+      return loader.parseAsync(bytes, url);
+    })(),
+    timeoutMs,
+    `loadOneModel(${key})`,
+  );
+  // rotY first so normalization centers the yaw-corrected model and
+  // the baked geometry faces the game's forward axis (+z).
+  if (spec.rotY !== undefined && spec.rotY !== 0) {
+    gltf.scene.rotateY(spec.rotY);
+  }
+  normalizeModel(gltf.scene, spec.scale);
+  // yOffset after normalization: base rests at yOffset, not y=0
+  // (boats/ships float with the waterline up the hull).
+  if (spec.yOffset !== undefined && spec.yOffset !== 0) {
+    gltf.scene.position.y += spec.yOffset;
+    gltf.scene.updateMatrixWorld(true);
+  }
+  const { geometries, materials } = await extractModelGeometry(gltf.scene);
+  // Layer shared procedural surfaces onto the per-load clones once
+  // here — before the model is shared across views — never per-view
+  // in the hot path (render/entitySurfaces.ts).
+  applySurfaceTreatment(key, geometries, materials);
+  disposeSourceScene(gltf.scene);
+  return { geometries, materials };
 }
 
 /**
@@ -457,11 +571,16 @@ function disposeSourceScene(root: THREE.Object3D): void {
 /**
  * Load every model in `paths` (normally `MODEL_PATHS`).
  *
- * Each GLB is fetched with `withTimeout(loader.loadAsync(url), timeoutMs)`:
+ * Each GLB is fetched with `withTimeout(loadOneModel(...), timeoutMs)`:
  * a 404, a parse error, or a pend past the deadline records the key in
  * `failed` and the loop CONTINUES — the result carries only successes, so a
  * missing/broken model degrades to the procedural placeholder instead of
  * throwing or hanging boot. Never throws, never pends forever.
+ *
+ * All entries load concurrently: with dozens of models, sequential loads
+ * would multiply the per-model timeouts far past any sane startup budget.
+ * Concurrent fetch+parse against the same origin multiplexes fine; result
+ * semantics are unchanged.
  */
 export async function loadModels(
   paths: Record<string, ModelSpec>,
@@ -471,10 +590,9 @@ export async function loadModels(
   const models = new Map<string, LoadedModel>();
   const failed: string[] = [];
 
-  let GLTFLoaderCtor: new () => { loadAsync(url: string): Promise<{ scene: THREE.Object3D }> };
+  let loader: ModelLoader;
   try {
-    const mod = await import('three/addons/loaders/GLTFLoader.js');
-    GLTFLoaderCtor = mod.GLTFLoader;
+    loader = await createModelLoader();
   } catch (error) {
     // The loader module itself is unavailable: everything fails, loudly but
     // without throwing.
@@ -482,40 +600,12 @@ export async function loadModels(
     console.warn('[models] GLTFLoader unavailable; all model loads failed:', error);
     return { models, failed };
   }
-  const loader = new GLTFLoaderCtor();
 
-  // All entries load concurrently: with 32 models, sequential loads
-  // would multiply the per-model timeouts (32 × 15s worst case) far
-  // past any sane startup budget. Concurrent fetch+parse against the
-  // same origin multiplexes fine; result semantics are unchanged.
   const results = await Promise.all(
     Object.entries(paths).map(async ([key, spec]) => {
       try {
-        const url = modelUrl(spec);
-        const gltf = await withTimeout(
-          loader.loadAsync(url),
-          timeoutMs,
-          `loadModels(${key})`,
-        );
-        // rotY first so normalization centers the yaw-corrected model and
-        // the baked geometry faces the game's forward axis (+z).
-        if (spec.rotY !== undefined && spec.rotY !== 0) {
-          gltf.scene.rotateY(spec.rotY);
-        }
-        normalizeModel(gltf.scene, spec.scale);
-        // yOffset after normalization: base rests at yOffset, not y=0
-        // (boats/ships float with the waterline up the hull).
-        if (spec.yOffset !== undefined && spec.yOffset !== 0) {
-          gltf.scene.position.y += spec.yOffset;
-          gltf.scene.updateMatrixWorld(true);
-        }
-        const { geometries, materials } = await extractModelGeometry(gltf.scene);
-        // Layer shared procedural surfaces onto the per-load clones once
-        // here — before the model is shared across views — never per-view
-        // in the hot path (render/entitySurfaces.ts).
-        applySurfaceTreatment(key, geometries, materials);
-        disposeSourceScene(gltf.scene);
-        return { key, model: { geometries, materials } as LoadedModel };
+        const model = await loadOneModel(loader, key, spec, timeoutMs);
+        return { key, model };
       } catch (error) {
         // 404 / timeout / parse error / bad scale: record and continue.
         failed.push(key);
