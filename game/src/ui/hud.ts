@@ -112,6 +112,9 @@ import {
   type MenuIconKey,
 } from './icons';
 import { HUMAN_PLAYER_ID } from './session';
+// Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+// the peaceful UI contract (tab visibility, objectives lines).
+import { menuTabsForWorld, peacefulObjectiveLines } from './peaceful';
 import { getMayor, getGeneral } from '../sim/delegation';
 import { selectionDigest as paletteDigest } from './paletteDigest';
 import {
@@ -592,18 +595,23 @@ export class HUD {
    * selection panel — Civilian / Military / Management, icon AND text
    * (user directive 2026-09-30). Registered in HUD_PANEL_BRANCHES as
    * 'menu-tabs' (digest label mt:).
+   *
+   * Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+   * peaceful worlds hide the Military tab entirely (the tab list comes
+   * from the pure `menuTabsForWorld` helper so it is headless-testable);
+   * the Civilian tab carries the one-line note.
    */
-  private buildMenuTabBar(): HTMLElement {
+  private buildMenuTabBar(world: World): HTMLElement {
     const bar = el('div', 'menu-tabs');
-    const tabs: Array<{ id: MenuTabId; icon: MenuIconKey }> = [
-      { id: 'civilian', icon: 'tabCivilian' },
-      { id: 'military', icon: 'tabMilitary' },
-      { id: 'management', icon: 'tabManagement' },
-    ];
-    for (const { id, icon } of tabs) {
+    const icons: Record<MenuTabId, MenuIconKey> = {
+      civilian: 'tabCivilian',
+      military: 'tabMilitary',
+      management: 'tabManagement',
+    };
+    for (const id of menuTabsForWorld(world.peaceful === true)) {
       const b = document.createElement('button');
       b.className = `menu-tab${this.menuTab === id ? ' active' : ''}`;
-      b.prepend(iconSpan(menuIcon(icon)));
+      b.prepend(iconSpan(menuIcon(icons[id])));
       b.append(el('span', 'palette-label', loc(STRINGS.menuTabs[id])));
       b.setAttribute('aria-pressed', this.menuTab === id ? 'true' : 'false');
       b.addEventListener('click', () => {
@@ -647,9 +655,20 @@ export class HUD {
    * Civilian main tab: the build tools row (road / power line / water
    * pipe / zone R-C-I / demolish) plus the civilian build tabs. The
    * tools live here because they are civilian infrastructure tools.
+   *
+   * Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+   * peaceful worlds hide the Military tab, so this tab carries the
+   * one-line note saying so. Static text — no digest segment needed
+   * (the military tab's own absence is implied by mt: + world.peaceful,
+   * which never toggles mid-game).
    */
   private appendCivilianPanel(panel: HTMLElement, world: World): void {
     const p = STRINGS.palettes;
+    if (world.peaceful === true) {
+      panel.append(
+        el('div', 'panel-status', loc(STRINGS.peaceful.militaryHiddenNote)),
+      );
+    }
     const toolsRow = el('div', 'palette-tools');
     const makeToolButton = (
       tool: BuildTool,
@@ -841,9 +860,16 @@ export class HUD {
    * old Phase 3 "Command" panel's specialization/mayor/general controls
    * live here now; taxes are new UI over the existing setTaxRate command
    * (orders.ts already had the HUD-tax builder waiting for a home).
+   *
+   * Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+   * peaceful games head the tab with the peaceful-objectives section —
+   * the victory condition is the tab's most important content.
    */
   private appendManagementPanel(panel: HTMLElement, world: World): void {
     const m = STRINGS.menuTabs;
+    if (world.peaceful === true) {
+      panel.append(this.peacefulObjectivesEl(world));
+    }
     panel.append(this.taxSectionEl(world));
     panel.append(this.focusSectionEl(world));
     panel.append(this.cabinetSectionEl(world));
@@ -853,6 +879,39 @@ export class HUD {
     if (playerHasCompletedLab(world, HUMAN_PLAYER_ID)) {
       this.appendResearchPanel(panel, world);
     }
+  }
+
+  /**
+   * Management → Peaceful objectives (grand-expansion Phase 8,
+   * workstream B). Renders only in peaceful worlds: live progress
+   * toward the peaceful victory — population vs the 8,000 target,
+   * treasury status, and the rival's progress (the rival can win
+   * first, which is the peaceful defeat).
+   *
+   * Named *El (not append/build/update-prefixed) per the ui/AGENTS.md
+   * AD11 rule — it is covered by the management-panel digest branch
+   * (po: segment), not a branch of its own. All DOM classes are the
+   * shared panel classes that branch already claims.
+   */
+  private peacefulObjectivesEl(world: World): HTMLElement {
+    const lines = peacefulObjectiveLines(world, HUMAN_PLAYER_ID);
+    const sec = this.makeSection(loc(STRINGS.peaceful.objectivesTitle));
+    {
+      const row = el('div', 'panel-row');
+      row.append(el('span', 'panel-label', lines.populationLine));
+      sec.append(row);
+    }
+    {
+      const row = el('div', 'panel-row');
+      row.append(el('span', 'panel-label', lines.treasuryLine));
+      sec.append(row);
+    }
+    if (lines.rivalLine !== null) {
+      const row = el('div', 'panel-row');
+      row.append(el('span', 'panel-label', lines.rivalLine));
+      sec.append(row);
+    }
+    return sec;
   }
 
   /**
@@ -891,6 +950,16 @@ export class HUD {
       row.append(el('span', 'panel-label', loc(s.spiesTitle)));
       sec.append(row);
     }
+    // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+    // covert ops are hostile acts — the sim rejects them loudly, so the
+    // UI must not offer them either. One note replaces the whole action
+    // set; the spy display lines stay (informational).
+    const peaceful = world.peaceful === true;
+    if (peaceful) {
+      sec.append(
+        el('div', 'panel-status', loc(STRINGS.peaceful.covertOpsDisabled)),
+      );
+    }
     const spies = playerSpies(world, HUMAN_PLAYER_ID);
     if (spies.length === 0) {
       sec.append(el('div', 'panel-status', loc(s.noSpies)));
@@ -906,8 +975,10 @@ export class HUD {
         ),
       );
       sec.append(row);
-      // Covert actions against enemy buildings in reach.
-      const targets = opTargetsOf(world, spy);
+      // Covert actions against enemy buildings in reach. Skipped in
+      // peaceful games (see the note above) — the sim would reject
+      // them loudly, so offering the buttons would be a lie.
+      const targets = peaceful ? [] : opTargetsOf(world, spy);
       if (targets.length === 0) {
         sec.append(el('div', 'panel-status', loc(s.noTargets)));
       }
@@ -930,9 +1001,10 @@ export class HUD {
       }
       // Tech steal: offered when the spy is embedded in an enemy
       // building (the sim's stealTech requires the embedding — the
-      // "Embedded … ready to steal tech" line says so).
+      // "Embedded … ready to steal tech" line says so). Not offered in
+      // peaceful games (hostile act — see the note above).
       const state = spyDisplayState(world, spy);
-      if (state.kind === 'embedded') {
+      if (state.kind === 'embedded' && !peaceful) {
         const victimOwner = world.city.buildings.find(
           (b) => b.id === state.targetId,
         )?.owner;
@@ -1390,13 +1462,22 @@ export class HUD {
     // Workstream Y (3-tab menu): the main tab bar heads the panel in
     // every state; the content below is the active tab when nothing is
     // selected, or the contextual unit/building branch when something is.
-    panel.append(this.buildMenuTabBar());
+    // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+    // the Military tab is hidden in peaceful worlds — a remembered
+    // 'military' selection can never point at it, so render Civilian
+    // instead (the stored state is left alone; the button is simply
+    // gone). The digest's mt: segment still keys on the stored tab.
+    panel.append(this.buildMenuTabBar(world));
 
     if (selection.unitIds.length === 0 && selection.buildingId === null) {
       panel.append(el('div', 'sel-empty', sel.noSelection));
-      if (this.menuTab === 'civilian') {
+      const menuTab =
+        world.peaceful === true && this.menuTab === 'military'
+          ? 'civilian'
+          : this.menuTab;
+      if (menuTab === 'civilian') {
         this.appendCivilianPanel(panel, world);
-      } else if (this.menuTab === 'military') {
+      } else if (menuTab === 'military') {
         this.appendMilitaryPanel(panel, world);
       } else {
         this.appendManagementPanel(panel, world);

@@ -39,8 +39,16 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   outcome; `game.ts`'s `maybeShowConquestOutcome` early-returns). NOT
   the same as `sandbox`: sandbox skips the rival entirely; peaceful
   keeps the rival and has a builder's victory condition (8,000 housed
-  residents, non-negative treasury). The peaceful victory UI panel is
-  the sibling workstream's.
+  residents, non-negative treasury). The peaceful victory UI panel
+  (workstream B, 2026-09-30) is in: the skirmish-setup toggle
+  (`menus.ts`) flows through `main.ts` → `GameOptions.peaceful` →
+  `createSession`; `game.ts`'s `maybeShowConquestOutcome` routes
+  peaceful worlds to `peacefulOutcome` / `peacefulEndCopy`
+  (ui/peaceful.ts) and the existing `EndScreen` with peaceful copy —
+  the rival winning the race first is a peaceful DEFEAT (same-tick
+  ties go to the player). The Management tab heads with the live
+  objectives section, the Military tab is hidden, and covert-op
+  buttons are replaced by a note.
 - `demoDirector.ts` — the living menu demo (workstream X, 2026-09-30).
   `createDemoSession()` = canonical `createSession()` (sandbox, fixed
   `DEMO_SEED`) + a designed opening stockpile (campaign
@@ -90,7 +98,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `getSkirmishOutcome()` adds the 30-tick grace period and the
   mutual-elimination tiebreak (defeat takes precedence). The
   `win`/`lose` cheats also use it. No-rival skirmishes are sandbox
-  (no win/lose condition).
+  (no win/lose condition). Grand-expansion Phase 8 (peaceful,
+  workstream B, 2026-09-30): `showVictory(title?, detail?)` /
+  `showDefeat(title?, detail?)` take optional copy overrides for the
+  peaceful end screens (defaults = the existing conquest/cheat copy —
+  existing callers pass nothing and see no change).
 - `saveslots.ts` — save/load slot picker dialog + pure
   `formatSaveSummary`.
 - `hud.ts` — top bar, advisor panel, selection panel, tabbed train/build
@@ -186,6 +198,17 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   the generic `linearNetworkDrag.ts` pipeline (see "Adding a
   linear-network kind" below) and emit `buildPowerLine` / `buildPipe`
   orders via `orders.ts`.
+  Grand-expansion Phase 8 (peaceful, workstream B, 2026-09-30): the tab
+  bar renders `menuTabsForWorld(world.peaceful)` — the Military tab is
+  hidden entirely in peaceful worlds (a remembered 'military' selection
+  falls back to Civilian for rendering; the stored state is untouched).
+  The Civilian tab heads with the one-line "military units are disabled"
+  note; the Management tab heads with the peaceful-objectives section
+  (`peacefulObjectivesEl` — population / treasury / rival lines from
+  ui/peaceful.ts, first in the tab); the intel panel skips the
+  infiltrate / sabotage / steal-tech buttons and shows the
+  "covert operations are disabled" note instead (the sim would reject
+  them loudly — offering the buttons would be a lie).
 - `paletteDigest.ts` — **selection-panel content digest (pure, tested,
   `tests/ui.paletteDigest.test.ts`).** `hud.ts` rebuilds the selection
   panel only when this digest changes: it covers everything the panel
@@ -204,7 +227,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `phase3-panel` branch with the three menu branches; the digest gained
   an always-present `mt:` (active main tab) segment plus `tx:`
   (tax rates), `ms:` (city focus) and `mg:` (cabinet) segments that only
-  appear while the Management tab renders them.
+  appear while the Management tab renders them. Grand-expansion Phase 8
+  (peaceful, workstream B, 2026-09-30): the Management tab's peaceful-
+  objectives section contributes `po:` (player population, treasury
+  flag, rival population — `po:x` when the section does not render, so
+  the non-peaceful representative state covers the label).
   The contract test asserts each declared label really appears in digest
   output and scans hud.ts for unregistered panel methods / DOM classes —
   see "Adding a HUD panel" below.
@@ -212,8 +239,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   pause overlay, settings (quality, key list, accessibility, audio). Quality,
   colorblind mode, UI scale and audio persist in localStorage. Skirmish
   setup shows all 8 MAP_PRESETS (name
-  + water %) and all 5 AI difficulties; `onStartSkirmish(difficulty,
-  mapPreset)`. The setup column scrolls (`#menu .buttons` has
+  + water %) and all 5 AI difficulties, plus the grand-expansion Phase 8
+  (workstream B, 2026-09-30) **Peaceful mode** checkbox with its one-line
+  explanation (no military, rivals build peacefully, win by growing your
+  city); `onStartSkirmish(difficulty, mapPreset, peaceful)`. The setup
+  column scrolls (`#menu .buttons` has
   `overflow-y: auto`) so every map/difficulty stays clickable on short
   viewports.
 - `camera.ts` / `selection.ts` — pure state + transitions, fully tested.
@@ -241,6 +271,33 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   formatters, and the
   Naval Yard coast-rule tooltip. Availability mirrors sim validation
   (age gate, production-building gate, affordability, manpower).
+  Grand-expansion Phase 8 (peaceful, workstream B, 2026-09-30): the
+  three availability functions gain a peaceful gate FIRST (mirroring
+  the sim's `spawnUnit` / `placeBuilding` / `researchUpgrade` validate
+  ordering) — military defs report not-ok/locked with
+  `STRINGS.palettes.peacefulLocked` ("Not available in peaceful mode"),
+  so buttons grey out instead of failing loudly at enqueue.
+  `upgradeIsMilitary(id)` is the flag-keyed lockout predicate (the
+  sim's `UpgradeDef.military` — never the visual group); the groups
+  stay explicit thematics but the flag partition is pinned by the
+  no-drift test (`tests/ui.peaceful.test.ts`): the war-apparatus
+  groups (military/logistics/intel) hold exactly the military-flagged
+  defs, economy/infrastructure hold none.
+- `peaceful.ts` — **peaceful-mode UI contract (pure, tested,
+  `tests/ui.peaceful.test.ts`).** The UI-side mirror of the sim's
+  peaceful system (`sim/peaceful.ts`, grand-expansion Phase 8,
+  workstream B, 2026-09-30): `menuTabsForWorld(peaceful)` (the Military
+  tab list — hud.ts renders from this), `formatCount` (deterministic
+  thousands separators, no `toLocaleString`), `peacefulObjectiveLines`
+  (the Management tab's objectives section: population vs the 8,000
+  target, treasury status, the rival's progress — the rival line is
+  null when the rival isn't actually playing, detected via
+  `world.ai.players`, NOT the city player record, which always creates
+  a dormant 'Rival' shell), `peacefulOutcome` (the end-screen decider:
+  the player is checked first, so a same-tick tie goes to the player —
+  the opposite of the conquest tiebreak), and `peacefulEndCopy` (the
+  victory/defeat title+detail, incl. the rival-won-first defeat).
+  Reads sim state defensively, never writes it.
 - `utilities.ts` — **Phase 2 utility contract module (pure, tested,
   `tests/ui.utilities.test.ts`).** The UI/render boundary for the sim's
   utility networks: the 13-building roster (`UTILITY_BUILDING_KINDS`),
@@ -399,6 +456,12 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   all 68 unit names, 89 building names, palette/upgrade tab names, the
   21 upgrade names + one-line effects, cost labels, and lock reasons.
   Legacy Phase 3 strings are still English-only; they were never localized.
+  Grand-expansion Phase 8 (peaceful, workstream B, 2026-09-30):
+  `STRINGS.peaceful` (setup toggle + explanation, the Military-tab
+  note, the objectives section lines, the victory/defeat titles and
+  details, the covert-ops-disabled note) and
+  `STRINGS.palettes.peacefulLocked` ("Not available in peaceful mode"
+  — the greyed-out palette reason).
 - Audio: `game.ts` owns an `AudioEngine` (see `src/audio/AGENTS.md`) —
   unlocked on first pointer/key gesture, `updateMusic(world, playerId)`
   polled ~2×/sec, SFX on select/orders/placement/age-advance/rejections/

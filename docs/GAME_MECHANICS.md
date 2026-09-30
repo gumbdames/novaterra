@@ -632,10 +632,13 @@ transport, civilian airlines and shipping, research, and city life.
 Your rival still plays — peacefully. The Classic AI builds its own city
 beside yours but fields no army and launches no attacks; there is no way
 for either side to conquer the other, so the conquest and defeat screens
-never appear. A peaceful game can only be **won**, never lost: reach
-**8,000 housed residents** with a non-negative treasury and you claim the
-peaceful victory. Grow a genuinely great city — roughly 270 apartment
-blocks' worth of people on under 4% of the map — and the win is yours.
+never appear. Instead it is a **race**: the first side to reach **8,000
+housed residents** with a non-negative treasury wins. Reach it first and
+you claim the peaceful victory; if your rival's city gets there before
+yours, the game ends in defeat — watch the Management tab's objectives
+section to see how the race is going. Grow a genuinely great city —
+roughly 270 apartment blocks' worth of people on under 4% of the map —
+and the win is yours.
 
 ## The campaign: "The First Term"
 

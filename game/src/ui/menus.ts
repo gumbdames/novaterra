@@ -35,7 +35,7 @@
 import { GAME_TAGLINE, GAME_TITLE } from '../config';
 import type { AIDifficulty } from '../sim/ai';
 import { MAP_PRESETS } from '../sim/terrain';
-import { STRINGS } from './strings';
+import { STRINGS, loc } from './strings';
 import { difficultyIcon, mapIcon, menuIcon } from './icons';
 import {
   loadAudioSettings,
@@ -95,8 +95,13 @@ export function saveSettings(s: Settings): void {
 
 /** Callbacks the menus delegate to the application. */
 export interface MenuActions {
-  /** Start a skirmish against the chosen AI difficulty on the chosen map. */
-  onStartSkirmish(difficulty: AIDifficulty, mapPreset: string): void;
+  /**
+   * Start a skirmish against the chosen AI difficulty on the chosen map.
+   * `peaceful` (grand-expansion Phase 8, workstream B, 2026-09-30) starts
+   * a peaceful skirmish: no military, the rival builds peacefully, and
+   * the builder's victory (8,000 residents) applies.
+   */
+  onStartSkirmish(difficulty: AIDifficulty, mapPreset: string, peaceful: boolean): void;
   /** Resume the paused game. */
   onResume(): void;
   /** Leave the game and return to the main menu. */
@@ -202,9 +207,10 @@ export class MainMenu {
   }
 
   /**
-   * Skirmish setup: pick a map, then a rival difficulty. The selected map
-   * is highlighted; clicking a difficulty starts the game immediately
-   * with the selected map.
+   * Skirmish setup: pick a map, choose peaceful mode, then a rival
+   * difficulty. The selected map is highlighted; clicking a difficulty
+   * starts the game immediately with the selected map and the peaceful
+   * toggle's value.
    */
   private showSkirmishSetup(buttons: HTMLElement): void {
     const s = STRINGS.menu;
@@ -235,6 +241,26 @@ export class MainMenu {
     }
     buttons.append(mapRow);
 
+    // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+    // the peaceful toggle. One line explains what it means — no
+    // military, rivals build peacefully, win by growing your city.
+    // Reuses the settings rows' classes (no new CSS needed).
+    const p = STRINGS.peaceful;
+    let peacefulMode = false;
+    const peacefulRow = el('label', 'settings-row', '');
+    const peacefulBox = document.createElement('input');
+    peacefulBox.type = 'checkbox';
+    peacefulBox.setAttribute('aria-label', loc(p.setupToggle));
+    peacefulBox.addEventListener('change', () => {
+      peacefulMode = peacefulBox.checked;
+    });
+    peacefulRow.append(
+      peacefulBox,
+      document.createTextNode(` ${loc(p.setupToggle)}`),
+    );
+    buttons.append(peacefulRow);
+    buttons.append(el('div', 'settings-note', loc(p.setupExplanation)));
+
     buttons.append(el('div', 'difficulty-title', s.chooseDifficulty));
     const options: Array<[AIDifficulty, string]> = [
       ['cadet', s.difficultyCadet],
@@ -245,7 +271,7 @@ export class MainMenu {
     ];
     for (const [difficulty, label] of options) {
       buttons.append(
-        menuButton(label, () => this.actions.onStartSkirmish(difficulty, selectedMap), false, difficultyIcon(difficulty)),
+        menuButton(label, () => this.actions.onStartSkirmish(difficulty, selectedMap, peacefulMode), false, difficultyIcon(difficulty)),
       );
     }
     buttons.append(menuButton(s.back, () => this.show(), false, menuIcon('back')));

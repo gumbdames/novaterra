@@ -766,6 +766,10 @@ export const STRINGS = {
     resManpower: { en: 'manpower' },
     resResearch: { en: 'research' },
     hpLabel: { en: 'HP' },
+    // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+    // the lockout reason for military defs in peaceful worlds — mirrors
+    // the sim's command-layer rejection (never a dead button).
+    peacefulLocked: { en: 'Not available in peaceful mode' },
   },
   /** Workstream Y (2026-09-30): the three main menu tabs. English-only. */
   menuTabs: {
@@ -901,6 +905,49 @@ export const STRINGS = {
     },
     discoveryRevealedFlag: { en: 'CONFIRMED — military-capable' },
   },
+  /**
+   * Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+   * the skirmish-setup toggle, the peaceful objectives panel, the
+   * military-tab lockout note, and the peaceful end screens.
+   * English-only via loc()/fillLoc().
+   */
+  peaceful: {
+    /** Skirmish setup: the peaceful-mode toggle label. */
+    setupToggle: { en: 'Peaceful mode' },
+    /** Skirmish setup: one-line explanation of what peaceful means. */
+    setupExplanation: {
+      en: 'No military — you and your rival build peacefully. Win by growing your city to 8,000 residents.',
+    },
+    /** Civilian tab note (the Military tab is hidden in peaceful games). */
+    militaryHiddenNote: {
+      en: 'Peaceful mode: the military is disabled. Grow your city — 8,000 residents wins the game.',
+    },
+    /** Management tab: the peaceful objectives section title. */
+    objectivesTitle: { en: 'Peaceful victory' },
+    /** Objectives panel: population vs the victory target. */
+    populationLine: { en: 'Population: {pop} / {target}' },
+    /** Objectives panel: treasury is at or above the floor. */
+    treasuryOk: { en: 'Treasury: healthy' },
+    /** Objectives panel: treasury is below the floor. */
+    treasuryBad: { en: 'Treasury: negative' },
+    /** Objectives panel: the rival's progress (the rival can win first). */
+    rivalLine: { en: 'Rival: {pop} / {target}' },
+    /** End screen: the player reached the target first. */
+    victoryTitle: { en: 'Peaceful victory!' },
+    victoryDetail: {
+      en: 'Your city thrives — {pop} residents call it home. A triumph built, not conquered.',
+    },
+    /** End screen: the rival reached the target first. */
+    defeatTitle: { en: 'Rival wins' },
+    defeatDetail: {
+      en: 'Your rival reached {pop} residents first. Keep building — or start a new city and outgrow them.',
+    },
+    /** Intel panel: covert ops are not offered in peaceful games. */
+    covertOpsDisabled: {
+      en: 'Covert operations are not available in peaceful mode.',
+    },
+  },
+  /**
 } as const;
 
 export type Strings = typeof STRINGS;

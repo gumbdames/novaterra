@@ -34,12 +34,15 @@ land, sea and air — or play a fully peaceful game with war disabled.
   after 1800 ticks; radar/SIGINT/recon sight wired into AI perception),
   and the Classic AI intel play (virtual intel construction, spy
   training to quota, target-value-directed infiltration/steal/sabotage,
-  counter-intel surge). Phase 8 (peaceful mode) sim core is in:
-  `world.peaceful` + the def-level `military` predicate lock out all
+  counter-intel surge). Phase 8 (peaceful mode) sim core + UI panel are
+  in: `world.peaceful` + the def-level `military` predicate lock out all
   war apparatus at the command layer (the AI rival keeps playing
   peacefully), conquest is bypassed, and the builder's victory is
-  8,000 housed residents — the peaceful UI panel and Mk II/III tech
-  levels are queued. See the live plan:
+  8,000 housed residents — the skirmish-setup toggle, the hidden
+  Military tab, the Management tab's live objectives section, the
+  peaceful victory/defeat end screens, and the greyed-out palette
+  lockout are all wired. Mk II/III tech levels are queued. See the live
+  plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
 ## What the game has today (0.1 Alpha)
@@ -47,11 +50,12 @@ land, sea and air — or play a fully peaceful game with war disabled.
 - City building with visible zoning, terrain-following roads, and
   power/water utility networks you drag-paint across the map
 - 89 buildings and 68 units across land, sea, and air, with tech ages
-- Peaceful mode (Phase 8, sim core in): war disabled by design — the
-  full military roster (units, buildings, upgrades, covert ops,
-  superweapons) is locked out at the command layer while the AI rival
-  keeps playing peacefully beside you; win by growing to 8,000 housed
-  residents with a solvent treasury (no conquest, no defeat)
+- Peaceful mode (Phase 8, sim core + UI panel in): war disabled by
+  design — the full military roster (units, buildings, upgrades,
+  covert ops, superweapons) is locked out at the command layer while
+  the AI rival keeps playing peacefully beside you; it is a race to
+  8,000 housed residents with a solvent treasury (no conquest — but the
+  rival can win the race first, which ends the game in defeat)
 - Unit veterancy (Recruit → Elite), a Military Academy, education and civic
   systems, land value and desirability (elevation, shoreline, clean air,
   and nearby libraries/parks/schools/parking/marinas set each block's

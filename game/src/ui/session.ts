@@ -265,9 +265,11 @@ export function checkSkirmishVictory(world: World): boolean {
  * no wall clock, no RNG. Mirror of checkSkirmishVictory.
  */
 export function checkSkirmishDefeat(world: World): boolean {
-  // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): a peaceful
-  // game can only be won, never lost — nothing hostile exists. The UI
-  // routes peaceful victory through the objective panel instead.
+  // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): conquest
+  // defeat is unreachable in peaceful worlds (nothing hostile exists)
+  // — the peaceful DEFEAT is the rival winning the builder's race
+  // first, owned by ui/peaceful.ts `peacefulOutcome`, not by this
+  // conquest check.
   if (world.peaceful === true) return false;
   for (const unit of world.units) {
     if (unit.owner === HUMAN_PLAYER_ID) return false;

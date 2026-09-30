@@ -23,6 +23,11 @@
  *  - Triggered by the `win` / `lose` cheat console commands in 0.1
  *    Alpha. A future conquest system (Phase 1 exit criteria) will call
  *    the same `showVictory()` / `showDefeat()` — the overlay is the hook.
+ *  - Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+ *    `showVictory(title?, detail?)` / `showDefeat(title?, detail?)` take
+ *    optional copy overrides so the peaceful end screens can say what
+ *    actually happened (the defaults stay the conquest/cheat copy —
+ *    existing callers pass nothing and see no change).
  *
  * Pure DOM. Copy comes from ui/strings.ts.
  */
@@ -50,12 +55,12 @@ export class EndScreen {
     return this.el !== null;
   }
 
-  showVictory(): void {
-    this.show('victory');
+  showVictory(title?: string, detail?: string): void {
+    this.show('victory', title, detail);
   }
 
-  showDefeat(): void {
-    this.show('defeat');
+  showDefeat(title?: string, detail?: string): void {
+    this.show('defeat', title, detail);
   }
 
   hide(): void {
@@ -63,7 +68,7 @@ export class EndScreen {
     this.el = null;
   }
 
-  private show(kind: 'victory' | 'defeat'): void {
+  private show(kind: 'victory' | 'defeat', title?: string, detail?: string): void {
     this.hide();
     const s = STRINGS.end;
     const overlay = document.createElement('div');
@@ -71,13 +76,15 @@ export class EndScreen {
     const panel = document.createElement('div');
     panel.className = 'end-panel';
 
-    const title = document.createElement('h2');
-    title.textContent = kind === 'victory' ? s.victoryTitle : s.defeatTitle;
-    panel.append(title);
+    const titleEl = document.createElement('h2');
+    titleEl.textContent =
+      title ?? (kind === 'victory' ? s.victoryTitle : s.defeatTitle);
+    panel.append(titleEl);
 
-    const detail = document.createElement('p');
-    detail.textContent = kind === 'victory' ? s.victoryDetail : s.defeatDetail;
-    panel.append(detail);
+    const detailEl = document.createElement('p');
+    detailEl.textContent =
+      detail ?? (kind === 'victory' ? s.victoryDetail : s.defeatDetail);
+    panel.append(detailEl);
 
     const keep = document.createElement('button');
     keep.textContent = s.keepPlaying;

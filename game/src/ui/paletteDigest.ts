@@ -22,8 +22,9 @@
  *    renders (see hud.ts `updateSelection`): selection identity, the
  *    active main menu tab (workstream Y: Civilian/Military/Management),
  *    the active train/build tabs, per-button availability, research
- *    states, the selected unit/building vitals, and the Management tab's
- *    tax/focus/cabinet values.
+ *    states, the selected unit/building vitals, the Management tab's
+ *    tax/focus/cabinet values, and the peaceful-objectives progress
+ *    (Phase 8 peaceful, workstream B: population, treasury, rival).
  *  - hud.ts rebuilds the panel only when this digest changes. The panel
  *    must stay node-stable across frames: recreating the palette buttons
  *    every sim tick broke real clicks — pointerdown and pointerup landed
@@ -66,7 +67,7 @@ import {
   playerHasCompletedLab,
   type MenuTabId,
 } from './palettes';
-import { HUMAN_PLAYER_ID } from './session';
+import { HUMAN_PLAYER_ID, AI_PLAYER_ID } from './session';
 import {
   allBuildTabs,
   buildingPowerDiag,
@@ -103,6 +104,10 @@ import {
   intelWarningsDigest,
   spyUnitDigest,
 } from './intel';
+// Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+// the peaceful-objectives section (po:) reads the sim's pure progress
+// helper — no DOM, safe in the digest.
+import { peacefulObjectiveProgress } from '../sim/peaceful';
 
 /**
  * Digest of the selection panel's dynamic content. Stable when nothing
@@ -334,6 +339,23 @@ export function selectionDigest(
       parts.push(intelSpiesDigest(world, HUMAN_PLAYER_ID));
       parts.push(intelWarningsDigest(world, HUMAN_PLAYER_ID));
       parts.push(intelAirportsDigest(world, HUMAN_PLAYER_ID));
+      // Grand-expansion Phase 8 (peaceful mode, workstream B,
+      // 2026-09-30): the peaceful-objectives section renders only in
+      // peaceful worlds on the Management tab — the digest carries the
+      // player's population, the treasury flag, and the rival's
+      // population (the rival can win first), so the panel repaints
+      // exactly when a rendered number would change. 'po:x' when the
+      // section does not render, so the branch's representative state
+      // (non-peaceful) covers the label.
+      if (world.peaceful === true) {
+        const prog = peacefulObjectiveProgress(world, HUMAN_PLAYER_ID);
+        const rival = peacefulObjectiveProgress(world, AI_PLAYER_ID);
+        parts.push(
+          `po:${prog.population}:${prog.treasuryOk ? 1 : 0}:${rival.population}`,
+        );
+      } else {
+        parts.push('po:x');
+      }
     }
   }
   // The research panel is listed whenever the player owns a completed
@@ -576,7 +598,11 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     renderedIn: 'buildMenuTabBar',
     domClasses: ['menu-tabs', 'menu-tab'],
     // mt: the active main tab — the bar highlights it, so the digest
-    // must move on a tab switch.
+    // must move on a tab switch. Grand-expansion Phase 8 (peaceful,
+    // workstream B): the tab LIST itself follows ui/peaceful.ts
+    // `menuTabsForWorld` (Military hidden in peaceful worlds) — the
+    // list is fixed at tick 0 with world.peaceful, so no digest segment
+    // is needed for the list itself.
     digestLabels: ['mt:'],
   },
   {
@@ -624,7 +650,10 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // is: per-spy mission-state codes in id order; iw: the active
     // warnings (id.kind.countdown); ig: rival airport ids + display
     // types (the discovered/undiscovered list).
-    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:'],
+    // po: the peaceful-objectives section (Phase 8 peaceful, workstream
+    // B — player population, treasury flag, rival population; 'po:x'
+    // when the section does not render, i.e. non-peaceful worlds).
+    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:', 'po:'],
   },
   {
     id: 'research-panel',

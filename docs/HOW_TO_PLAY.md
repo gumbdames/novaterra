@@ -38,6 +38,29 @@ more water means more naval fighting) → pick your **rival**:
 - **General** — very hard, uses land, air, and sea.
 - **Marshal** — the ultimate fair challenge.
 
+Tick **Peaceful mode** before picking your rival for a no-military
+game: no armies for either side, no spies or sabotage, no superweapons
+— the Military tab disappears and every military unit, building, and
+upgrade is locked. See **Peaceful mode** below for how you win.
+
+## Peaceful mode
+
+Prefer building to fighting? A peaceful skirmish is pure city-building:
+the Military tab is gone, military training/building/research buttons
+are locked ("Not available in peaceful mode"), and spies, sabotage,
+tech theft, and superweapons are all disabled. Everything civilian is
+open — housing, economy, utilities, power and water, transport,
+airlines, research, and city life.
+
+Your rival still plays, peacefully: the Classic AI builds its own city
+but no army. There is no conquest — instead it is a **race**. The
+first side to reach **8,000 housed residents** with a non-negative
+treasury wins. Reach it first for the victory screen; if the rival's
+city gets there before yours, the game ends in defeat. The
+**Management** tab's objectives section shows the race live: your
+population against the target, your treasury status, and the rival's
+progress.
+
 ## Mouse
 
 - **Left-click** — select a unit or building.

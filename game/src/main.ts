@@ -227,7 +227,7 @@ export async function boot(): Promise<void> {
   camera.position.set(0, orbitHeight, orbitRadius);
 
   const menu = new MainMenu(app, {
-    onStartSkirmish: (difficulty: AIDifficulty, mapPreset: string) => {
+    onStartSkirmish: (difficulty: AIDifficulty, mapPreset: string, peaceful: boolean) => {
       menu.hide();
       renderer.setAnimationLoop(null);
       canvas.style.display = 'none';
@@ -241,6 +241,9 @@ export async function boot(): Promise<void> {
         seed,
         aiDifficulty: difficulty,
         mapPreset,
+        // Grand-expansion Phase 8 (peaceful mode, workstream B,
+        // 2026-09-30): the skirmish setup's peaceful toggle.
+        peaceful,
         quality: loadSettings().quality,
         onExitToMenu: () => {
           canvas.style.display = '';

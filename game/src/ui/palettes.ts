@@ -372,7 +372,30 @@ export interface UpgradeGroup {
   ids: readonly UpgradeId[];
 }
 
-/** 21 upgrades in 5 research groups. */
+/**
+ * True when the sim's def for this upgrade is military-flagged — the
+ * single source of truth for the peaceful lockout (sim/upgrades.ts
+ * `UpgradeDef.military`). Never key lockout off the visual group below;
+ * groups are thematics, flags are authority.
+ */
+export function upgradeIsMilitary(id: UpgradeId): boolean {
+  return UPGRADE_DEFS[id]?.military === true;
+}
+
+/**
+ * 21 upgrades in 5 research groups.
+ *
+ * Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+ * the group LISTS stay explicit (order + thematics are visual), but the
+ * military-flag PARTITION is pinned, not hand-maintained — the no-drift
+ * test (tests/ui.peaceful.test.ts) asserts the flag-anchored invariant:
+ * every upgrade with `def.military === true` sits in one of the
+ * war-apparatus groups (military / logistics / intel), every upgrade in
+ * those groups is military-flagged, and economy / infrastructure hold
+ * only civilian upgrades. A def rebalance that flips a flag breaks the
+ * suite loudly instead of silently drifting the UI. The peaceful
+ * lockout keys off `upgradeIsMilitary` (the flag), never the group.
+ */
 export const UPGRADE_GROUPS: readonly UpgradeGroup[] = [
   {
     id: 'military',
@@ -484,6 +507,15 @@ export function unitAvailability(
 ): Availability {
   const def = UNIT_DEFS[kind];
   const p = STRINGS.palettes;
+  // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+  // military defs are not orderable in peaceful worlds — the button
+  // greys out with the reason (the sim rejects loudly at the command
+  // layer; the UI mirrors it so the button never lies). Keyed off the
+  // def flag, never the visual tab. The flag is immutable (tick 0), so
+  // no digest impact outside peaceful worlds.
+  if (world.peaceful === true && def.military === true) {
+    return { ok: false, reason: loc(p.peacefulLocked) };
+  }
   // Grand-expansion Phase 6 (workstream C): deployable-only kinds
   // (navalMine) are never trained — the button stays visible but
   // disabled with the reason, so players learn to use a minelayer.
@@ -527,6 +559,15 @@ export function buildingAvailability(
 ): Availability {
   const def = BUILDING_DEFS[kind];
   const p = STRINGS.palettes;
+  // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+  // military defs are not orderable in peaceful worlds — mirrors the
+  // sim's `placeBuilding` rejection (the Military build tabs are hidden
+  // anyway; this covers the military production buildings that ride
+  // along in the civilian industry tab). Def-flag-keyed, immutable, no
+  // digest impact outside peaceful worlds.
+  if (world.peaceful === true && def.military === true) {
+    return { ok: false, reason: loc(p.peacefulLocked) };
+  }
   if (!isUnitAvailableForAge(world, def.minAge)) {
     return {
       ok: false,
@@ -565,6 +606,15 @@ export function upgradeAvailability(
   const p = STRINGS.palettes;
   if (hasUpgrade(world, owner, id)) {
     return { state: 'researched', reason: loc(p.alreadyResearched) };
+  }
+  // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+  // military upgrades are not researchable in peaceful worlds — the
+  // button greys out with the reason (mirrors the sim's
+  // `researchUpgrade` rejection). Keyed off `upgradeIsMilitary` (the
+  // def flag), never the visual group, so the grouping can never drift
+  // the lockout. Immutable flag — no digest impact outside peaceful.
+  if (world.peaceful === true && upgradeIsMilitary(id)) {
+    return { state: 'locked', reason: loc(p.peacefulLocked) };
   }
   if (!hasCompletedBuilding(world, owner, 'lab')) {
     return { state: 'locked', reason: loc(p.needsLab) };

@@ -105,7 +105,10 @@ import {
   LazyModelStore,
   TREE_MODEL_KEYS,
 } from '../render/lazyModels';
-import { createSession, getSkirmishOutcome, HUMAN_PLAYER_ID, type GameSession } from './session';
+import { createSession, getSkirmishOutcome, HUMAN_PLAYER_ID, AI_PLAYER_ID, type GameSession } from './session';
+// Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+// the peaceful end-screen outcome helper (pure, headless-tested).
+import { peacefulOutcome, peacefulEndCopy } from './peaceful';
 import {
   applyCameraState,
   createCameraState,
@@ -238,6 +241,13 @@ export interface GameOptions {
   saveData?: SaveFile;
   /** Campaign mission mode (Phase 2). When set, the mission drives setup. */
   campaign?: CampaignGameOptions;
+  /**
+   * Peaceful skirmish (grand-expansion Phase 8, workstream B,
+   * 2026-09-30): forwarded to `SessionOptions.peaceful` — no military,
+   * the rival plays peacefully, and the peaceful victory owns the
+   * outcome. Defaults to false.
+   */
+  peaceful?: boolean;
 }
 
 /** Placement modes entered from the HUD train/build panels. */
@@ -396,6 +406,10 @@ export async function startGame(
     mapPreset: opts.mapPreset,
     snapshot: opts.saveData?.snapshot,
     campaignMission: opts.campaign?.mission,
+    // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+    // the skirmish setup's peaceful toggle (main.ts) reaches the sim
+    // here. Restored saves carry the snapshot's own flag.
+    peaceful: opts.peaceful,
   });
   // A loaded game resumes exactly where it was saved — including its
   // cheated marker, which is honest metadata, not sim state.
@@ -1510,16 +1524,40 @@ class GameController {
    *
    * Defeat takes precedence on mutual elimination (see getSkirmishOutcome):
    * the player must survive their victory to claim it.
+   *
+   * Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
+   * peaceful worlds take the builder's path instead — the peaceful
+   * victory owns the outcome (`peacefulOutcome` in ui/peaceful.ts): the
+   * player wins by reaching 8,000 housed residents with a non-negative
+   * treasury, and the RIVAL can win first (an AI city that hits the
+   * target first is the peaceful defeat). A same-tick tie goes to the
+   * player. Both use the existing end-screen overlay with peaceful copy.
    */
   private maybeShowConquestOutcome(): void {
     if (this.disposed || this.victoryShown || this.defeatShown) return;
     if (!this.session.hasRival) return;
-    // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): conquest is
-    // bypassed in peaceful worlds — the peaceful victory UI panel is
-    // the sibling workstream's. (getSkirmishOutcome already returns
-    // null for peaceful worlds; this is an explicit, readable guard so
-    // the conquest path can never be re-entered for peaceful games.)
-    if (this.session.world.peaceful === true) return;
+    if (this.session.world.peaceful === true) {
+      const outcome = peacefulOutcome(
+        this.session.world,
+        HUMAN_PLAYER_ID,
+        AI_PLAYER_ID,
+      );
+      if (outcome !== null) {
+        const copy = peacefulEndCopy(
+          this.session.world,
+          outcome === 'victory' ? HUMAN_PLAYER_ID : AI_PLAYER_ID,
+          outcome,
+        );
+        if (outcome === 'victory') {
+          this.victoryShown = true;
+          this.endScreen.showVictory(copy.title, copy.detail);
+        } else {
+          this.defeatShown = true;
+          this.endScreen.showDefeat(copy.title, copy.detail);
+        }
+      }
+      return;
+    }
     const outcome = getSkirmishOutcome(this.session.world);
     if (outcome === 'victory') {
       this.victoryShown = true;
