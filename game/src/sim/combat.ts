@@ -45,6 +45,9 @@ import type { World } from './world';
 import type { SimSystem } from './tick';
 import { TICK_DT } from './tick';
 import type { CommandQueue } from './commands';
+// Phase 3 logistics: death releases the unit's in-flight depot
+// reservation (value import — the release logic lives in commands.ts).
+import { releaseUnitReservation } from './commands';
 import {
   findUnit,
   clearUnitOrder,
@@ -266,6 +269,9 @@ function fireWeapon(world: World, attacker: UnitRecord, def: UnitDef, target: Un
 export function killUnit(world: World, unit: UnitRecord): void {
   const idx = world.units.indexOf(unit);
   if (idx >= 0) world.units.splice(idx, 1);
+  // Phase 3 logistics: a dead unit's in-flight depot reservation returns
+  // to the depot's available pool (release is idempotent).
+  releaseUnitReservation(world, unit);
   // Cancel pathfinding requests (the coordinator keys them by unit id).
   const pf = world.pathfinding;
   pf.queue = pf.queue.filter((r) => r.unitId !== unit.id);

@@ -553,6 +553,17 @@ export interface UnitRecord {
    */
   resupplyDepotId?: number;
   /**
+   * Phase 3 logistics: the exact amounts (in depot-stock units) this unit
+   * reserved at its `resupplyDepotId` when the `resupply` command applied
+   * (see commands.ts). Released — subtracted back from the depot's
+   * `reservedAmmo`/`reservedFuel` — on fulfillment, timeout, death, or
+   * depot demolition. Stored per unit (not recomputed) so concurrent
+   * reservations release exactly what they took (AD6 lesson). Optional;
+   * reads use `?? 0` (AD9 — the `reservedAmmo` precedent, no version bump).
+   */
+  resupplyReservedAmmo?: number;
+  resupplyReservedFuel?: number;
+  /**
    * Phase 3 logistics: live cargo-hold levels (see
    * `cargoFuelCapacity`/`cargoAmmoCapacity` on the def). Spawn EMPTY —
    * cargo is loaded at depots, never conjured. Legacy v6 saves decode to
@@ -602,6 +613,11 @@ export function spawnUnit(world: World, kind: string, owner: number, x: number, 
     // for others and must be loaded at a depot — never conjured.
     cargoFuel: 0,
     cargoAmmo: 0,
+    // Phase 3 resupply linkage: no reservation on spawn (the ledger
+    // starts at zero, like the cargo holds above).
+    resupplyDepotId: 0,
+    resupplyReservedAmmo: 0,
+    resupplyReservedFuel: 0,
   };
   world.nextId += 1;
   world.units.push(record);

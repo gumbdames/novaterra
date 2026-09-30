@@ -90,7 +90,9 @@ export function canonicalizeWorld(world: World): string {
     // Phase 3 logistics stocks (integers; legacy decode default 0).
     out += `${b.ammoStock ?? 0},${b.fuelStock ?? 0},`;
     // Phase 3 resupply reservations (legacy decode default 0).
-    out += `${b.reservedAmmo ?? 0},${b.reservedFuel ?? 0};`;
+    out += `${b.reservedAmmo ?? 0},${b.reservedFuel ?? 0},`;
+    // Workstream M: meltdown outage state (legacy decode default 0).
+    out += `${b.meltdownUntilTick ?? 0};`;
   }
   out += '|players:';
   for (const p of world.city.players) {
@@ -116,8 +118,11 @@ export function canonicalizeWorld(world: World): string {
     const svc = u.supplyServices ?? { repair: true, rearm: true, refuel: true };
     out += `${canonicalNumber(u.fuel ?? 0)},${canonicalNumber(u.ammo ?? 0)},`;
     out += `${svc.repair ? 1 : 0}${svc.rearm ? 1 : 0}${svc.refuel ? 1 : 0},`;
-    // Phase 3 resupply linkage (0 = none).
-    out += `${u.resupplyDepotId ?? 0};`;
+    // Phase 3 resupply linkage (0 = none) + the exact reserved amounts
+    // (workstream 3: per-unit reservation ledger — released exactly on
+    // fulfill/timeout/death/demolish; floats via canonicalNumber).
+    out += `${u.resupplyDepotId ?? 0},`;
+    out += `${canonicalNumber(u.resupplyReservedAmmo ?? 0)},${canonicalNumber(u.resupplyReservedFuel ?? 0)},`;
     // Phase 3 cargo holds (floats via canonicalNumber; legacy decode 0).
     // Behavior-affecting ⇒ digest-covered (PLAN §11).
     out += `${canonicalNumber(u.cargoFuel ?? 0)},${canonicalNumber(u.cargoAmmo ?? 0)};`;
@@ -154,6 +159,9 @@ export function canonicalizeWorld(world: World): string {
       ? `${canonicalNumber(p.navalWater.x)},${canonicalNumber(p.navalWater.z)},`
       : '-,';
     out += `${p.seenSubmarine ? 1 : 0},`;
+    // Phase 3 logistics (workstream 3): virtual depot stocks. Behavior-
+    // affecting (they refill AI units) ⇒ digest-covered (PLAN §11).
+    out += `vls=${canonicalNumber(p.virtualAmmoStock ?? 0)},${canonicalNumber(p.virtualFuelStock ?? 0)},`;
     // Personality (per-match seeded playstyle): covered so same-seed
     // replays digest identically and different seeds digest differently.
     const pers = p.personality;

@@ -318,7 +318,13 @@ describe('virtual construction', () => {
     runTicks(ctx, 120 * 6 + 2);
     const ai = ctx.world.ai.players[0]!;
     expect(ai.virtualBuildings.completed).toEqual([]);
-    expect(ai.virtualBuildings.constructing).toBeNull();
+    // Phase 3 logistics (2026-09-30): the slot may hold a logistics depot
+    // (the citizen trains tanks → ≥4 fuel consumers → fuelDepot), but never
+    // a production building — the no-duplication invariant is about the
+    // production path, and the one-at-a-time slot is still respected.
+    const constructing = ai.virtualBuildings.constructing?.kind ?? null;
+    expect(['barracks', 'warFactory', 'lab']).not.toContain(constructing);
+    expect(constructing === null || constructing === 'fuelDepot' || constructing === 'ordnanceDepot').toBe(true);
     // ...but the gated units are still trainable via the real buildings.
     expect(canTrain(ctx.world, 1, 'tank')).toBe(true);
   });

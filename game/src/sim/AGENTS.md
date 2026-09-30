@@ -12,13 +12,21 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `initCity` from `city.ts`).
 - `tick.ts` — 30 Hz accumulator driver, fixed system registration order.
 - `commands.ts` — tick-aligned queue, `{ validate, apply }` specs,
-  validate-at-enqueue-AND-apply, loud rejections.
+  validate-at-enqueue-AND-apply, loud rejections. Value-imports `city.ts`
+  (`BUILDING_DEFS`, `cellCenterWorld` — deferred use inside command bodies
+  only); the reverse edge is forbidden, see `city.ts` below.
 - `city.ts` — city grid, roads, zones, buildings, players, placement
   validation, growth. Registers `buildRoad`, `paintZone`,
   `placeBuilding`, `demolish`, `setTaxRate`. Imports `World` type-only —
   this is what breaks the `world.ts` ⇄ `city.ts` cycle (`city.ts` takes
   `createRngBank` directly from `rng.ts` instead of `rngBank` from
-  `world.ts`).
+  `world.ts`). Additionally `city.ts` must NEVER take a static value
+  import of `commands.ts`: the city→commands→movement→pathfinding chain
+  evaluates pathfinding while city is still initializing, so
+  `GRID_CELLS` comes out NaN under the SSR transform (caught 2026-09-30
+  by sim.ai-soak). Demolish's resupply-reservation release is inlined in
+  city.ts for exactly this reason — it mirrors `releaseDepotReservations`
+  in commands.ts, keep the two in sync.
 - `economy.ts` — the 1 Hz economy system (`createEconomySystem`),
   fixed-rate market (`marketTrade`), tax collection. Pure w.r.t.
   rendering.

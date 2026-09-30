@@ -40,6 +40,13 @@
 
 import type { World } from './world';
 import { despawnEntity, findEntity, spawnEntity } from './world';
+import type { TerrainData } from './terrain';
+import { isWater } from './terrain';
+import { findUnit, UNIT_DEFS } from './units';
+import type { UnitKind, UnitRecord } from './units';
+import { BUILDING_DEFS, cellCenterWorld } from './city';
+import type { BuildingRecord } from './city';
+import { orderMoveTo } from './movement';
 
 /** A player/AI intent. Plain data — safe to log, replay, and serialize. */
 export interface Command {
@@ -242,4 +249,246 @@ const despawnSpec: CommandSpec = {
 export function registerCoreCommands(queue: CommandQueue): void {
   queue.register('spawn', spawnSpec);
   queue.register('despawn', despawnSpec);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 logistics commands (workstream 3): `resupply`, `resupplyTimeout`,
+// `setSupplyToggles`.
+//
+// A `resupply` order is a depot-stock reservation, not a physical convoy:
+// at apply time (the single atomic point) the unit's need is computed,
+// clamped to the depot's AVAILABLE stock (stock − reserved), added to the
+// depot's reserved totals, and the unit is routed to the depot with the
+// shared move internals (`orderMoveTo` — no duplicated pathfinding). The
+// production workstream's refill aura fulfills the reservation on arrival;
+// a self-scheduled `resupplyTimeout` (60 s) releases it if the unit never
+// gets there. Death (`killUnit`, combat.ts) and demolition (city.ts)
+// release through the helpers below.
+// ---------------------------------------------------------------------------
+
+/** Reservation hold: 60 s at 30 Hz before an unfulfilled resupply releases. */
+export const RESUPPLY_TIMEOUT_TICKS = 1800;
+
+function findDepotBuilding(world: World, depotId: number): BuildingRecord | undefined {
+  return world.city.buildings.find((b) => b.id === depotId);
+}
+
+/** The validated, fully-computed outcome of a `resupply` order. */
+interface ResupplyPlan {
+  unit: UnitRecord;
+  depot: BuildingRecord;
+  /** Depot world position — the route target. */
+  x: number;
+  z: number;
+  /** Amounts to reserve (clamped to available stock). */
+  ammoReserve: number;
+  fuelReserve: number;
+}
+
+/**
+ * Pure shared validate+compute for `resupply` (the AD6 validate≡apply
+ * lesson): the enqueue-time validate and the apply-time re-validate both
+ * run THIS function, so they agree by construction. Returns the rejection
+ * reason, or the plan the apply must execute verbatim.
+ */
+function computeResupply(
+  world: World,
+  t: TerrainData,
+  unitId: unknown,
+  depotId: unknown,
+  owner: unknown,
+): ResupplyPlan | string {
+  if (typeof unitId !== 'number' || !Number.isInteger(unitId) || unitId <= 0) {
+    return 'resupply: payload.unitId must be a positive integer';
+  }
+  if (typeof depotId !== 'number' || !Number.isInteger(depotId) || depotId <= 0) {
+    return 'resupply: payload.depotId must be a positive integer';
+  }
+  if (typeof owner !== 'number' || !Number.isInteger(owner)) {
+    return 'resupply: payload.owner must be an integer';
+  }
+  const unit = findUnit(world, unitId);
+  if (!unit) return `resupply: no unit with id ${unitId}`;
+  if (unit.owner !== owner) return `resupply: unit ${unitId} is not owned by player ${owner}`;
+  const depot = findDepotBuilding(world, depotId);
+  if (!depot) return `resupply: no building with id ${depotId}`;
+  if (depot.owner !== owner) return `resupply: depot ${depotId} is not owned by player ${owner}`;
+  if (depot.progress < 1) return `resupply: depot ${depotId} is still under construction`;
+  const bdef = BUILDING_DEFS[depot.kind];
+  if (!bdef || !(bdef.reloadPoint || bdef.ammoStorage || bdef.fuelStorage)) {
+    return `resupply: building ${depotId} (${depot.kind}) is not a supply depot`;
+  }
+  const udef = UNIT_DEFS[unit.kind as UnitKind] ?? UNIT_DEFS.engineer;
+  // Nuclear-fuel units never need fuel (exempt); untracked kinds need nothing.
+  const fuelCap = udef.fuelType === 'fossil' ? (udef.fuelCapacity ?? 0) : 0;
+  const ammoCap = udef.ammoCapacity ?? 0;
+  const fuelNeed = fuelCap > 0 ? Math.max(0, fuelCap - unit.fuel) : 0;
+  const ammoNeed = ammoCap > 0 ? Math.max(0, ammoCap - unit.ammo) : 0;
+  if (fuelNeed <= 0 && ammoNeed <= 0) {
+    return `resupply: unit ${unitId} (${unit.kind}) needs no supply (fuel and ammo full)`;
+  }
+  // Availability = stock − reserved, crediting back this unit's own live
+  // reservation at THIS depot: apply releases it first, so validate must
+  // see the identical pool (same-tick re-issue agrees by construction).
+  const ownAmmo = unit.resupplyDepotId === depotId ? (unit.resupplyReservedAmmo ?? 0) : 0;
+  const ownFuel = unit.resupplyDepotId === depotId ? (unit.resupplyReservedFuel ?? 0) : 0;
+  const ammoAvail = Math.max(0, (depot.ammoStock ?? 0) - (depot.reservedAmmo ?? 0) + ownAmmo);
+  const fuelAvail = Math.max(0, (depot.fuelStock ?? 0) - (depot.reservedFuel ?? 0) + ownFuel);
+  const ammoReserve = Math.min(ammoNeed, ammoAvail);
+  const fuelReserve = Math.min(fuelNeed, fuelAvail);
+  // A real need must get real stock: otherwise this is the contention
+  // loser and the rejection is loud (the second unit gets the remainder,
+  // or this rejection — never a silent zero-reservation).
+  if ((ammoNeed <= 0 || ammoReserve <= 0) && (fuelNeed <= 0 || fuelReserve <= 0)) {
+    return `resupply: depot ${depotId} has no available ammo or fuel for unit ${unitId}`;
+  }
+  const x = cellCenterWorld(depot.cx);
+  const z = cellCenterWorld(depot.cz);
+  const water = isWater(t, x, z);
+  if (unit.domain === 'land' && water) {
+    return `resupply: depot ${depotId} is on water (land units cannot reach it)`;
+  }
+  if (unit.domain === 'sea' && !water) {
+    return `resupply: depot ${depotId} is on land (sea units cannot resupply there)`;
+  }
+  return { unit, depot, x, z, ammoReserve, fuelReserve };
+}
+
+/**
+ * Release one unit's in-flight depot reservation back into the depot's
+ * available pool and clear the unit-side linkage. Idempotent: a unit with
+ * no reservation — or whose depot is already gone — is a no-op. Called
+ * from `killUnit` (combat.ts), the `resupplyTimeout` apply, and the
+ * `resupply` apply itself (re-issue / retarget).
+ */
+export function releaseUnitReservation(world: World, unit: UnitRecord): void {
+  const depotId = unit.resupplyDepotId ?? 0;
+  if (depotId <= 0) return;
+  const depot = findDepotBuilding(world, depotId);
+  if (depot) {
+    depot.reservedAmmo = Math.max(0, (depot.reservedAmmo ?? 0) - (unit.resupplyReservedAmmo ?? 0));
+    depot.reservedFuel = Math.max(0, (depot.reservedFuel ?? 0) - (unit.resupplyReservedFuel ?? 0));
+  }
+  unit.resupplyDepotId = 0;
+  unit.resupplyReservedAmmo = 0;
+  unit.resupplyReservedFuel = 0;
+}
+
+/**
+ * Release every in-flight reservation against a depot that is going away
+ * (demolished). The depot's stocks vanish with it, so there is nothing to
+ * credit back — only the unit-side linkage is cleared. Called from the
+ * `demolish` command (city.ts). Id-ordered, deterministic.
+ */
+export function releaseDepotReservations(world: World, depotId: number): void {
+  for (const u of world.units) {
+    if ((u.resupplyDepotId ?? 0) === depotId) {
+      u.resupplyDepotId = 0;
+      u.resupplyReservedAmmo = 0;
+      u.resupplyReservedFuel = 0;
+    }
+  }
+}
+
+/** Register the Phase 3 logistics command kinds on a fresh queue. */
+export function registerLogisticsCommands(queue: CommandQueue, t: TerrainData): void {
+  // Self-scheduled cleanup, enqueued by the `resupply` apply. Never
+  // rejects at enqueue (only the resupply apply enqueues it, always
+  // well-formed) and never goes stale at apply: a dead, fulfilled, or
+  // retargeted unit is a no-op, not an error — a firing timeout can never
+  // break the tick.
+  queue.register('resupplyTimeout', {
+    validate(cmd): string | null {
+      const unitId = cmd.payload['unitId'];
+      const depotId = cmd.payload['depotId'];
+      if (typeof unitId !== 'number' || !Number.isInteger(unitId) || unitId <= 0) {
+        return 'resupplyTimeout: payload.unitId must be a positive integer';
+      }
+      if (typeof depotId !== 'number' || !Number.isInteger(depotId) || depotId <= 0) {
+        return 'resupplyTimeout: payload.depotId must be a positive integer';
+      }
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const unitId = cmd.payload['unitId'] as number;
+      const depotId = cmd.payload['depotId'] as number;
+      const unit = findUnit(world, unitId);
+      if (!unit || (unit.resupplyDepotId ?? 0) !== depotId) return 'stale';
+      releaseUnitReservation(world, unit);
+      return 'released';
+    },
+  });
+
+  queue.register('resupply', {
+    validate(cmd, world): string | null {
+      const plan = computeResupply(world, t, cmd.payload['unitId'], cmd.payload['depotId'], cmd.payload['owner']);
+      return typeof plan === 'string' ? plan : null;
+    },
+    apply(cmd, world): unknown {
+      const plan = computeResupply(world, t, cmd.payload['unitId'], cmd.payload['depotId'], cmd.payload['owner']);
+      if (typeof plan === 'string') throw new CommandRejectedError(plan);
+      const { unit, depot, x, z, ammoReserve, fuelReserve } = plan;
+      const alreadyGuarded = (unit.resupplyDepotId ?? 0) === depot.id;
+      // Release any previous reservation first (re-issue and retarget both
+      // land here) — validate credited it back, so apply sees the pool
+      // validate saw. This is the single atomic point (AD6).
+      releaseUnitReservation(world, unit);
+      depot.reservedAmmo = (depot.reservedAmmo ?? 0) + ammoReserve;
+      depot.reservedFuel = (depot.reservedFuel ?? 0) + fuelReserve;
+      unit.resupplyDepotId = depot.id;
+      unit.resupplyReservedAmmo = ammoReserve;
+      unit.resupplyReservedFuel = fuelReserve;
+      // Route via the shared move internals (no duplicated pathfinding).
+      orderMoveTo(world, unit, x, z);
+      // Self-scheduled timeout: 60 s to reach the depot. Skipped when the
+      // unit already held THIS depot's reservation — the original timeout
+      // still guards it, and re-issuing must not extend the hold forever.
+      if (!alreadyGuarded) {
+        queue.enqueue(world, {
+          kind: 'resupplyTimeout',
+          tick: world.tick + RESUPPLY_TIMEOUT_TICKS,
+          issuer: cmd.issuer,
+          payload: { unitId: unit.id, depotId: depot.id },
+        });
+      }
+      return { unit: unit.id, depot: depot.id, ammo: ammoReserve, fuel: fuelReserve };
+    },
+  });
+
+  queue.register('setSupplyToggles', {
+    validate(cmd, world): string | null {
+      const unitId = cmd.payload['unitId'];
+      const owner = cmd.payload['owner'];
+      if (typeof unitId !== 'number' || !Number.isInteger(unitId) || unitId <= 0) {
+        return 'setSupplyToggles: payload.unitId must be a positive integer';
+      }
+      if (typeof owner !== 'number' || !Number.isInteger(owner)) {
+        return 'setSupplyToggles: payload.owner must be an integer';
+      }
+      const unit = findUnit(world, unitId);
+      if (!unit) return `setSupplyToggles: no unit with id ${unitId}`;
+      if (unit.owner !== owner) return `setSupplyToggles: unit ${unitId} is not owned by player ${owner}`;
+      // A supply kind is a kind with cargo capacity — read from the def
+      // (supplyTruck / fuelTruck / hauler carry fuel/ammo for others).
+      const def = UNIT_DEFS[unit.kind as UnitKind];
+      if (!def || ((def.cargoFuelCapacity ?? 0) <= 0 && (def.cargoAmmoCapacity ?? 0) <= 0)) {
+        return `setSupplyToggles: unit ${unitId} (${unit.kind}) is not a supply unit (no cargo capacity)`;
+      }
+      for (const key of ['repair', 'rearm', 'refuel'] as const) {
+        if (typeof cmd.payload[key] !== 'boolean') {
+          return `setSupplyToggles: payload.${key} must be a boolean`;
+        }
+      }
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const unit = findUnit(world, cmd.payload['unitId'] as number) as UnitRecord;
+      unit.supplyServices = {
+        repair: cmd.payload['repair'] as boolean,
+        rearm: cmd.payload['rearm'] as boolean,
+        refuel: cmd.payload['refuel'] as boolean,
+      };
+      return unit.id;
+    },
+  });
 }

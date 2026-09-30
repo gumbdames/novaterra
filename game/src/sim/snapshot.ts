@@ -137,6 +137,9 @@ function copyBuilding(b: BuildingRecord): BuildingRecord {
     // Phase 3 resupply reservations (0 = none reserved). ?? 0 keeps v6.
     reservedAmmo: b.reservedAmmo ?? 0,
     reservedFuel: b.reservedFuel ?? 0,
+    // Workstream M: attack-triggered meltdown state. ?? 0 = no meltdown
+    // (legacy saves never had one — no version bump, stays v6).
+    meltdownUntilTick: b.meltdownUntilTick ?? 0,
   };
 }
 
@@ -189,6 +192,9 @@ function copyUnit(u: UnitRecord): UnitRecord {
     supplyServices: u.supplyServices ? { ...u.supplyServices } : undefined,
     // Phase 3 resupply linkage (0 = none). ?? 0 keeps v6 decoding.
     resupplyDepotId: u.resupplyDepotId ?? 0,
+    // Phase 3 per-unit reservation ledger (workstream 3). ?? 0 keeps v6.
+    resupplyReservedAmmo: u.resupplyReservedAmmo ?? 0,
+    resupplyReservedFuel: u.resupplyReservedFuel ?? 0,
     // Phase 3 cargo holds. ?? 0 so legacy v6 saves decode to empty holds
     // — no version bump, stays v6 (AD9, same precedent as fuel/ammo).
     cargoFuel: u.cargoFuel ?? 0,

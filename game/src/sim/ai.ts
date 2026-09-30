@@ -312,6 +312,17 @@ export interface AIPlayerState {
     completed: BuildingKind[];
     constructing: { kind: BuildingKind; readyTick: number } | null;
   };
+  /**
+   * Phase 3 logistics (workstream 3): abstract supply stocks yielded by
+   * completed virtual depots. The AI owns no physical buildings in
+   * 0.1 Alpha (all virtual), so its depots are virtual too — these stocks
+   * are the virtual-depot abstraction its consumer units draw top-ups
+   * from (thinkLogistics), exactly as `creditVirtualEconomy` credits
+   * virtual-building output. Plain data — snapshotted + digested
+   * (missing decodes to 0, the AD9 precedent).
+   */
+  virtualAmmoStock?: number;
+  virtualFuelStock?: number;
   /** Water scouting result: found by probe spawns, never by maphack. */
   navalStatus: AINavalStatus;
   /** Index into the deterministic naval probe ring. */
@@ -368,6 +379,11 @@ export function addAIPlayer(
     navalProbeIndex: 0,
     navalWater: null,
     seenSubmarine: false,
+    // Phase 3 logistics (workstream 3): virtual depot stocks start empty.
+    // Initialized here (not just in decode) so a fresh AI player deep-equals
+    // its own save/load round trip (net_saveload).
+    virtualAmmoStock: 0,
+    virtualFuelStock: 0,
     personality,
   });
 }
@@ -636,6 +652,214 @@ function thinkUtilityConnections(world: World, ai: AIPlayerState): void {
   // future physical-builder work described above.
   void world;
   void ai;
+}
+
+// ---------------------------------------------------------------------------
+// Phase 3 logistics (workstream 3): virtual depots, truck ratios,
+// abstract resupply, ammo-dry retreats.
+//
+// Honest abstraction statement: the Classic AI owns NO physical buildings
+// in 0.1 Alpha — every production building is virtual (a kind name in
+// `ai.virtualBuildings.completed`, no footprint, no grid position). So the
+// AI cannot issue physical `resupply` orders (there is no depot on the map
+// to route to) and its trucks never physically shuttle. Instead:
+//  - completed virtual ordnance/fuel depots yield ABSTRACT stocks
+//    (`virtualAmmoStock` / `virtualFuelStock`, credited per think);
+//  - the AI's consumer units draw top-ups from those stocks at think
+//    cadence (thinkAbstractResupply) — the same virtual-building
+//    abstraction as `creditVirtualEconomy`, which credits virtual
+//    building output into the AI's resources;
+//  - supply/fuel trucks are still trained at the documented ratios (they
+//    count toward the army cap and get role-specialized toggles via the
+//    real `setSupplyToggles` command) — they are the visible logistics
+//    tail whose work the abstraction stands in for.
+// This is the automated layer the Phase 3 plan calls for ("logistics via
+// the automated layer (no physical builder required)"). The human
+// player's path — physical depots, reservations, the refill aura — is the
+// real one; the AI's never touches the map. No RNG in any of it;
+// id-ordered iteration throughout.
+// ---------------------------------------------------------------------------
+
+/**
+ * The AI starts depot-building once it fields this many consumers of one
+ * supply type: 4 = a real squad (an MLRS section, a tank platoon), not a
+ * stray or two — below that the build slot isn't worth it.
+ */
+export const LOGISTICS_CONSUMER_THRESHOLD = 4;
+/** One supply truck per this many ammo consumers (rounded up). */
+const SUPPLY_TRUCK_RATIO = 6;
+/** One fuel truck per this many fuel consumers (rounded up). */
+const FUEL_TRUCK_RATIO = 6;
+/**
+ * Abstract stock yielded per think by one completed virtual depot.
+ * Balance placeholders until the production workstream's physical depot
+ * rates land, sized with slack for a full section at full burn: 6 MLRS
+ * firing nonstop spend ~6 ammo per 60-tick think; 6 tanks moving nonstop
+ * burn ~1.8 fuel per think (0.15/s) — 12/24 covers both with headroom
+ * for larger armies without ever starving in the soak.
+ */
+const VIRTUAL_AMMO_PER_THINK = 12;
+const VIRTUAL_FUEL_PER_THINK = 24;
+
+/**
+ * Virtually construct a logistics depot through the same one-at-a-time
+ * virtual-building path as production buildings: full cost upfront, online
+ * after buildSeconds × 30 ticks, completing in thinkConstruction. No-op
+ * when already held (real or virtual), when another construction is in
+ * flight, when the def is absent, or when the age gate isn't met.
+ */
+function thinkVirtualDepot(world: World, ai: AIPlayerState, kind: BuildingKind): void {
+  if (hasProductionBuilding(world, ai.owner, kind)) return;
+  const vb = ai.virtualBuildings;
+  if (vb.constructing) return;
+  const def = BUILDING_DEFS[kind];
+  if (!def) return;
+  if (!isBuildingAgeMet(world.ages.age, def.minAge)) return;
+  const player = getPlayer(world.city, ai.owner);
+  if (!player) return;
+  if (player.funds < def.costFunds || player.materials < def.costMaterials) return;
+  // Pay the full cost upfront (the virtual-construction precedent).
+  player.funds -= def.costFunds;
+  player.materials -= def.costMaterials;
+  vb.constructing = { kind, readyTick: world.tick + def.buildSeconds * 30 };
+}
+
+/**
+ * Train the logistics tail: 1 supply truck per 6 ammo consumers, 1 fuel
+ * truck per 6 fuel consumers (rounded up), within the army cap. Trucks
+ * already fielded get role-specialized service toggles through the real
+ * `setSupplyToggles` command (supply trucks: repair+rearm; fuel trucks:
+ * refuel only) — idempotent, skipped once set.
+ */
+function thinkSupplyTrucks(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  ammoConsumers: number,
+  fuelConsumers: number,
+): void {
+  const counts = countUnits(world, ai.owner);
+  const n = totalUnits(world, ai.owner);
+  const cap = AI_MAX_UNITS[ai.difficulty];
+  const wantSupply = Math.ceil(ammoConsumers / SUPPLY_TRUCK_RATIO);
+  const wantFuel = Math.ceil(fuelConsumers / FUEL_TRUCK_RATIO);
+  if ((counts.get('supplyTruck') ?? 0) < wantSupply && n < cap && canTrain(world, ai.owner, 'supplyTruck')) {
+    const p = spawnPoint(ai, 'supplyTruck', n);
+    spawn(world, queue, ai.owner, 'supplyTruck', p.x, p.z);
+    ai.builtCounts['supplyTruck'] = (ai.builtCounts['supplyTruck'] ?? 0) + 1;
+  } else if ((counts.get('fuelTruck') ?? 0) < wantFuel && n < cap && canTrain(world, ai.owner, 'fuelTruck')) {
+    const p = spawnPoint(ai, 'fuelTruck', n);
+    spawn(world, queue, ai.owner, 'fuelTruck', p.x, p.z);
+    ai.builtCounts['fuelTruck'] = (ai.builtCounts['fuelTruck'] ?? 0) + 1;
+  }
+  // Role-specialize via the real command (rejections — e.g. the truck
+  // died between think and apply — are swallowed by issue()).
+  for (const u of world.units) {
+    if (u.owner !== ai.owner || u.hp <= 0) continue;
+    if (u.supplyServices !== undefined) continue;
+    if (u.kind === 'supplyTruck') {
+      issue(world, queue, 'setSupplyToggles', {
+        unitId: u.id, owner: ai.owner, repair: true, rearm: true, refuel: false,
+      });
+    } else if (u.kind === 'fuelTruck') {
+      issue(world, queue, 'setSupplyToggles', {
+        unitId: u.id, owner: ai.owner, repair: false, rearm: false, refuel: true,
+      });
+    }
+  }
+}
+
+/**
+ * Abstract resupply: consumer units draw top-ups from the AI's virtual
+ * depot stocks (id order). This is the one sanctioned exception to "the
+ * AI never mutates world state directly" besides its own `world.ai`
+ * record and the virtual-economy credit: it does exactly what the
+ * production workstream's refill aura does for physical depots, for an AI
+ * that has no physical depots to route to. No RNG.
+ */
+function thinkAbstractResupply(world: World, ai: AIPlayerState): void {
+  let ammoStock = ai.virtualAmmoStock ?? 0;
+  let fuelStock = ai.virtualFuelStock ?? 0;
+  if (ammoStock <= 0 && fuelStock <= 0) return;
+  for (const u of world.units) {
+    if (u.owner !== ai.owner || u.hp <= 0) continue;
+    const def = UNIT_DEFS[u.kind as UnitKind];
+    if (!def) continue;
+    if (ammoStock > 0 && (def.ammoCapacity ?? 0) > 0 && u.ammo < (def.ammoCapacity as number)) {
+      const take = Math.min((def.ammoCapacity as number) - u.ammo, ammoStock);
+      u.ammo += take;
+      ammoStock -= take;
+    }
+    if (
+      fuelStock > 0 &&
+      def.fuelType === 'fossil' &&
+      (def.fuelCapacity ?? 0) > 0 &&
+      u.fuel < (def.fuelCapacity as number)
+    ) {
+      const take = Math.min((def.fuelCapacity as number) - u.fuel, fuelStock);
+      u.fuel += take;
+      fuelStock -= take;
+    }
+  }
+  ai.virtualAmmoStock = ammoStock;
+  ai.virtualFuelStock = fuelStock;
+}
+
+/**
+ * Ammo-dry retreats: magazine units at 0 ammo break off and fall back
+ * toward the base instead of chasing enemies they cannot shoot. Called
+ * from the combat thinks (citizen, commander — general/marshal inherit
+ * via thinkCommander). Units already holding (idle, no target) stay put.
+ * No RNG; id-ordered.
+ */
+function thinkAmmoRetreats(world: World, queue: CommandQueue, ai: AIPlayerState): void {
+  for (const u of world.units) {
+    if (u.owner !== ai.owner || u.hp <= 0) continue;
+    const def = UNIT_DEFS[u.kind as UnitKind];
+    if (!def || (def.ammoCapacity ?? 0) <= 0) continue;
+    if (u.ammo > 0) continue;
+    if (u.chasing || u.targetId !== 0) {
+      moveTo(world, queue, ai.owner, u.id, ai.baseX, ai.baseZ);
+    }
+  }
+}
+
+/**
+ * Per-think logistics: depot construction, truck ratios, abstract
+ * resupply, ammo-dry retreats. Called from thinkCitizen and
+ * thinkCommander (general/marshal inherit); cadet never calls it —
+ * cadet fields rifles only, which track neither fuel nor ammo.
+ */
+function thinkLogistics(world: World, queue: CommandQueue, ai: AIPlayerState): void {
+  let ammoConsumers = 0;
+  let fuelConsumers = 0;
+  for (const u of world.units) {
+    if (u.owner !== ai.owner || u.hp <= 0) continue;
+    const def = UNIT_DEFS[u.kind as UnitKind];
+    if (!def) continue;
+    if ((def.ammoCapacity ?? 0) > 0) ammoConsumers++;
+    if (def.fuelType === 'fossil' && (def.fuelCapacity ?? 0) > 0) fuelConsumers++;
+  }
+  // Virtual depot construction (one-at-a-time path, shared with
+  // production buildings). ordnanceDepot is industry-gated; fuelDepot is
+  // foundation — the age check inside thinkVirtualDepot handles it.
+  if (ammoConsumers >= LOGISTICS_CONSUMER_THRESHOLD) {
+    thinkVirtualDepot(world, ai, 'ordnanceDepot');
+  }
+  if (fuelConsumers >= LOGISTICS_CONSUMER_THRESHOLD) {
+    thinkVirtualDepot(world, ai, 'fuelDepot');
+  }
+  // Completed virtual depots yield abstract stocks each think.
+  const completed = ai.virtualBuildings.completed;
+  if (completed.includes('ordnanceDepot')) {
+    ai.virtualAmmoStock = (ai.virtualAmmoStock ?? 0) + VIRTUAL_AMMO_PER_THINK;
+  }
+  if (completed.includes('fuelDepot')) {
+    ai.virtualFuelStock = (ai.virtualFuelStock ?? 0) + VIRTUAL_FUEL_PER_THINK;
+  }
+  thinkSupplyTrucks(world, queue, ai, ammoConsumers, fuelConsumers);
+  thinkAbstractResupply(world, ai);
+  thinkAmmoRetreats(world, queue, ai);
 }
 
 /**
@@ -1060,6 +1284,10 @@ function thinkCitizen(
   // Production: one unit per think, counters then base mix.
   thinkProduction(world, queue, ai, counts, n, visible);
 
+  // Phase 3 logistics (workstream 3): virtual depots, truck ratios,
+  // abstract resupply, ammo-dry retreats.
+  thinkLogistics(world, queue, ai);
+
   // Attack: order all combat units to attack the nearest visible enemy.
   // (Personality may stagger new attack orders to every other think.)
   if (visible.length > 0 && attacksThisThink(world, ai)) {
@@ -1079,6 +1307,9 @@ function thinkCitizen(
       if (u.owner !== ai.owner || u.hp <= 0) continue;
       const def = UNIT_DEFS[u.kind as UnitKind];
       if (def.damage <= 0) continue; // unarmed (hauler, transport, medics)
+      // Dry magazines don't get new attack orders — they fall back in
+      // thinkAmmoRetreats instead (they can't shoot anyway).
+      if ((def.ammoCapacity ?? 0) > 0 && u.ammo <= 0) continue;
       // Skip units whose weapons can't engage this target's domain
       // (e.g. tanks can't target air) — the attackUnit command would reject.
       if (!canTarget(def, nearest)) continue;
@@ -1109,6 +1340,10 @@ function thinkCommander(
   const visible = getVisibleEnemies(world, ai.owner);
   thinkUpkeep(world, ai, visible);
   thinkResearch(world, queue, ai, counts);
+
+  // Phase 3 logistics (workstream 3): virtual depots, truck ratios,
+  // abstract resupply, ammo-dry retreats.
+  thinkLogistics(world, queue, ai);
 
   // --- Scouting: keep one scout probing outward waypoints. At the
   // information age the awacs replaces the drone (spec §7.2).
@@ -1244,6 +1479,9 @@ function thinkCommander(
       const def = UNIT_DEFS[u.kind as UnitKind];
       if (def.damage <= 0) continue;
       if (u.kind === 'drone' || u.kind === 'awacs') continue; // scouts don't fight
+      // Dry magazines don't get new attack orders — they fall back in
+      // thinkAmmoRetreats instead (they can't shoot anyway).
+      if ((def.ammoCapacity ?? 0) > 0 && u.ammo <= 0) continue;
       if (u.targetId === nearest.id && u.chasing) continue;
       // Fighters prefer air targets; others take the nearest.
       const targetIsAir = UNIT_DEFS[nearest.kind as UnitKind].domain === 'air';
@@ -1546,6 +1784,10 @@ export function encodeAIState(ai: AIState): unknown {
       navalProbeIndex: p.navalProbeIndex ?? 0,
       navalWater: p.navalWater ? { x: p.navalWater.x, z: p.navalWater.z } : null,
       seenSubmarine: p.seenSubmarine ?? false,
+      // Phase 3 logistics (workstream 3): virtual depot stocks. ?? 0 so
+      // pre-logistics snapshots decode to empty — no version bump (AD9).
+      virtualAmmoStock: p.virtualAmmoStock ?? 0,
+      virtualFuelStock: p.virtualFuelStock ?? 0,
       personality: encodePersonality(p.personality ?? NEUTRAL_PERSONALITY),
       builtCounts: Object.keys(p.builtCounts).sort().reduce<Record<string, number>>(
         (acc, k) => {
@@ -1580,6 +1822,8 @@ export function decodeAIState(data: unknown): AIState {
       navalProbeIndex?: number;
       navalWater?: { x: number; z: number } | null;
       seenSubmarine?: boolean;
+      virtualAmmoStock?: number;
+      virtualFuelStock?: number;
       personality?: unknown;
     }[];
   };
@@ -1607,6 +1851,10 @@ export function decodeAIState(data: unknown): AIState {
       navalProbeIndex: p.navalProbeIndex ?? 0,
       navalWater: p.navalWater ? { x: p.navalWater.x, z: p.navalWater.z } : null,
       seenSubmarine: p.seenSubmarine ?? false,
+      // Phase 3 logistics (workstream 3): ?? 0 keeps pre-logistics saves
+      // loading with empty virtual stocks — no version bump (AD9).
+      virtualAmmoStock: p.virtualAmmoStock ?? 0,
+      virtualFuelStock: p.virtualFuelStock ?? 0,
       personality: decodePersonality(p.personality),
     })),
   };

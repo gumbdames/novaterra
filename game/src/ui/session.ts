@@ -65,6 +65,7 @@ import {
   registerMovementCommands,
 } from '../sim/movement';
 import { createCombatSystem, registerCombatCommands } from '../sim/combat';
+import { registerLogisticsCommands } from '../sim/commands';
 import { registerAgeCommands } from '../sim/ages';
 import { registerCheatCommands } from '../sim/cheats';
 import { addAIPlayer, AI_MAX_UNITS, createAISystem, type AIDifficulty } from '../sim/ai';
@@ -301,6 +302,8 @@ export function createSession(options: SessionOptions): GameSession {
   registerUnitCommands(queue, terrain);
   registerMovementCommands(queue, terrain);
   registerCombatCommands(queue);
+  // Phase 3 logistics (workstream 3): resupply + supply toggles.
+  registerLogisticsCommands(queue, terrain);
   registerAgeCommands(queue);
   registerCheatCommands(queue);
   registerDelegationCommands(queue);
