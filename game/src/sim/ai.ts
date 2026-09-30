@@ -102,6 +102,7 @@ import type { RngBank } from './rng';
 import { canTarget } from './combat';
 import { isUnitAvailableForAge, getSightBonus, AGE_PROGRESSION } from './ages';
 import { effectiveSight, hasUpgrade, registerUpgradeCommands, UPGRADE_DEFS, type UpgradeId } from './upgrades';
+import { vetSightMult } from './veterancy';
 import {
   getPlayer,
   hasProductionBuilding,
@@ -383,12 +384,15 @@ export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
   const seen = new Set<number>();
   // Signals Grid (Connectivity age) grants +sight to all units; upgrade
   // effects (Drone Optics, Advanced Avionics, Sonar Suite) stack on top.
+  // Veterancy (Phase 1) multiplies the unit's own sight — the Signals
+  // Grid bonus is a network effect and stays flat.
   const sightBonus = getSightBonus(world);
   for (const e of world.units) {
     if (e.owner === owner || e.hp <= 0) continue;
     for (const o of own) {
       const def = UNIT_DEFS[o.kind as UnitKind];
-      const sight = effectiveSight(world, owner, def) + sightBonus;
+      // (?? 0: hand-built records without the field count as Recruit.)
+      const sight = effectiveSight(world, owner, def) * vetSightMult(o.vetLevel ?? 0) + sightBonus;
       const dx = e.x - o.x;
       const dz = e.z - o.z;
       // Compare squared distances; sight is in world units.

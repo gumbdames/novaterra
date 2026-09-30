@@ -39,7 +39,8 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   units (engineer, rifles, hauler, drone, transport, patrolBoat,
   transportShip, fishingBoat) have no requirement. Movement state
   (`path`, `fieldId`, `destX/Z`, `arriveX/Z`) and combat state (`domain`,
-  `hp`, `cooldownLeft`, `targetId`, `chasing`) live here too.
+  `hp`, `cooldownLeft`, `targetId`, `chasing`) live here too, plus
+  veterancy state (`xp`, `vetLevel` — see `veterancy.ts`).
 - `combat.ts` — deterministic combat resolution: `canTarget` (domain
   checks), `damageMultiplier` (armor counters, vsAir, command auras,
   upgrade hooks), nearest-target acquisition with stable-id tiebreaks
@@ -49,6 +50,11 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   Command Ship (+25%, radius 24, sea attackers only) — definition-driven,
   never stacking. Combat Medics heal friendly living land units in
   radius 12 at 2 HP/s (4 HP/s with Field Medicine). No RNG — fully deterministic.
+  Veterancy (Phase 1): `damageMultiplier` and `fireWeapon` apply the
+  attacker's level bonuses (+10% damage/sight per level, −10% reload per
+  level min 1 tick); kills credit XP in id order before `killUnit`
+  removal; Elite units regenerate 2 hp/s; the medic heal cap is the
+  veterancy-adjusted max HP.
 - `ai.ts` — Classic AI, five difficulties (cadet/citizen/commander/general/
   marshal). Seeded per-match personalities (same seed ⇒ identical play;
   different seeds ⇒ different playstyles at the same tier), fair (only
@@ -128,6 +134,17 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   Avionics, Sonar Suite), `units.ts` spawn HP (Field Medicine), and
   `economy.ts` (Precision Manufacturing, Vertical Farming, Free Trade).
   Not registered in `ui/session.ts` — UI wires `registerUpgradeCommands`.
+- `veterancy.ts` — unit veterancy (grand-expansion Phase 1, pure: no
+  imports from combat/city, so no cycles). `UnitRecord.xp` grows on
+  kills (`xpForKillValue = trainFunds + trainMaterials`), `vetLevel`
+  derives from cumulative thresholds (200/500/1000 → Regular/Veteran/
+  Elite). `awardKillXp` credits the killer in combat's id-order pass;
+  a maxed killer's award splits among friendly living non-maxed units
+  within 40 (id order, floor shares, remainder to lowest ids; lost with
+  no allies). Bonuses: damage/sight ×(1+0.10L), cooldown ×(1−0.10L)
+  min 1 tick, maxHp ×(1+0.15·max(0,L−1)), Elite +2 hp/s regen.
+  `spawnUnit` graduates armed units to Regular with a completed
+  Military Academy (unarmed units exempt). Death erases everything.
 - `pathfinding.ts` — deterministic 8-direction A* (octile heuristic,
   corner-cut prevention, water blocking, roads ×0.5) + chunked Dijkstra
   flow fields with early exit + the time-sliced coordinator

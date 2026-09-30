@@ -193,6 +193,8 @@ export const BuildingKind = {
   // production buildings (military tech tree made physical) + economy.
   BARRACKS: 'barracks',
   WAR_FACTORY: 'warFactory',
+  /** Phase 1 (veterancy): trains armed units to Regular on spawn. */
+  MILITARY_ACADEMY: 'militaryAcademy',
   AIRFIELD: 'airfield',
   NAVAL_YARD: 'navalYard',
   RADAR_STATION: 'radarStation',
@@ -244,6 +246,14 @@ export interface BuildingDef {
   taxBasePerSec: number;
   /** Minimum age required to place this building (spec §6). */
   minAge: Age;
+  /**
+   * Production building the owner must have completed (progress >= 1) to
+   * place this kind. Undefined = no prerequisite. Enforced in
+   * `placeBuilding` validation (real or AI-virtually-constructed, via
+   * `hasProductionBuilding`). First use: Military Academy requires a
+   * completed Barracks.
+   */
+  requiredBuilding?: BuildingKind;
 }
 
 export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
@@ -350,6 +360,14 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: { manpower: 0.8 }, input: {}, population: 0, taxBasePerSec: 4.0,
     minAge: 'foundation',
+  },
+  militaryAcademy: {
+    kind: 'militaryAcademy', name: 'Military Academy', zone: ZoneType.INDUSTRIAL,
+    footprintW: 3, footprintH: 3, costFunds: 600, costMaterials: 200,
+    buildSeconds: 30, upkeepFundsPerSec: 0.8,
+    powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 4.0,
+    minAge: 'foundation', requiredBuilding: 'barracks',
   },
   warFactory: {
     kind: 'warFactory', name: 'War Factory', zone: ZoneType.INDUSTRIAL,
@@ -481,6 +499,7 @@ export const BUILDING_DEF_LIST: BuildingDef[] = [
   BUILDING_DEFS.waterPump,
   BUILDING_DEFS.apartment,
   BUILDING_DEFS.factory,
+  BUILDING_DEFS.militaryAcademy,
   BUILDING_DEFS.lab,
   BUILDING_DEFS.powerPlant,
 ];
@@ -802,13 +821,16 @@ export function growthDesirability(taxRate: number, powerHeadroom: number, water
   return 0.55 * taxFactor * powerFactor * waterFactor;
 }
 
-/** Cheapest def for a zone the player can afford, or undefined. */
-function affordableDefForZone(city: CityState, zone: ZoneType, owner: number): BuildingDef | undefined {
+/** Cheapest def for a zone the player can afford AND has unlocked, or undefined. */
+function affordableDefForZone(world: World, zone: ZoneType, owner: number): BuildingDef | undefined {
+  const city = world.city;
   const player = getPlayer(city, owner) as PlayerState;
   for (const def of BUILDING_DEF_LIST) {
-    if (def.zone === zone && player.funds >= def.costFunds && player.materials >= def.costMaterials) {
-      return def;
-    }
+    if (def.zone !== zone || player.funds < def.costFunds || player.materials < def.costMaterials) continue;
+    // Prerequisite buildings (e.g. Military Academy needs a Barracks)
+    // gate auto-growth exactly like manual placement.
+    if (def.requiredBuilding && !hasProductionBuilding(world, owner, def.requiredBuilding)) continue;
+    return def;
   }
   return undefined;
 }
@@ -833,7 +855,7 @@ function tryAutoDevelop(t: TerrainData, world: World, owner: number, powerHeadro
     // or without roads; the desirability roll below is the only filter.
     const desirability = growthDesirability(player.taxRates[zrec.zone] as number, powerHeadroom, waterHeadroom);
     if (bank.next('city') >= desirability) continue;
-    const def = affordableDefForZone(city, zrec.zone, owner);
+    const def = affordableDefForZone(world, zrec.zone, owner);
     if (!def) return false; // broke: can't afford anything in this zone
     // Anchor the footprint so it covers the sampled cell; scan origins
     // deterministically and take the first legal placement.
@@ -1068,6 +1090,12 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       const bdef = BUILDING_DEFS[kind];
       if (!isBuildingAgeMet(world.ages.age, bdef.minAge)) {
         return `placeBuilding: ${bdef.name} requires the ${bdef.minAge} age`;
+      }
+      // Prerequisite building (e.g. Military Academy requires a completed
+      // Barracks) — real or AI-virtually-constructed, like unit training.
+      if (bdef.requiredBuilding && !hasProductionBuilding(world, owner as number, bdef.requiredBuilding)) {
+        const need = BUILDING_DEFS[bdef.requiredBuilding]?.name ?? bdef.requiredBuilding;
+        return `placeBuilding: ${bdef.name} requires a completed ${need}`;
       }
       if (facing < 0 || facing > 3) return 'placeBuilding: facing must be 0..3';
       return validatePlacement(t, world.city, { kind, owner, cx, cz, facing: facing as 0 | 1 | 2 | 3 });

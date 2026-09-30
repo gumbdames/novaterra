@@ -99,7 +99,7 @@ export function canonicalizeWorld(world: World): string {
     out += `${canonicalNumber(u.speed)},${u.state},${u.failReason ?? ''},`;
     out += `${canonicalNumber(u.destX)},${canonicalNumber(u.destZ)},`;
     out += `${canonicalNumber(u.arriveX)},${canonicalNumber(u.arriveZ)},`;
-    out += `${u.path.join('.')},${u.pathAt},${u.fieldId};`;
+    out += `${u.path.join('.')},${u.pathAt},${u.fieldId},${u.xp ?? 0},${u.vetLevel ?? 0};`;
   }
   // Pathfinding: queues in FIFO order, fields in creation order; dirs are
   // small ints so they join cheaply. The active build's dist array is

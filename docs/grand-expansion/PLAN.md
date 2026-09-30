@@ -510,6 +510,40 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   fields, AI-vs-AI soak (XP accrues, no crashes).
 - **Budget delta:** +1 building key (~80 KB).
 - **AI work:** none required (later: Elite retreat threshold).
+- **Status: SIM WORKSTREAM COMPLETE (2026-09-30, 0.1 Alpha); render/UI
+  workstream (chevron views, academy icon/palette/model) in progress
+  with a sibling worker.** Delivered in `game/src/sim/`:
+  - New pure module `veterancy.ts`: `VET_MAX_LEVEL = 3`, thresholds
+    200/500/1000, ranks Recruit/Regular/Veteran/Elite,
+    `xpForKillValue = trainFunds + trainMaterials`, `awardKillXp`
+    (id-ordered, deterministic overflow: floor shares by id, remainder
+    to lowest ids, lost with no allies), and the bonus helpers
+    (damage ×(1+0.10L), sight ×(1+0.10L), cooldown ×(1−0.10L) min 1
+    tick, maxHp ×(1+0.15·max(0,L−1)), Elite +2 hp/s regen).
+  - `units.ts`: `UnitRecord.xp/vetLevel`; `spawnUnit` graduates armed
+    units to Regular (200 XP) with a completed Military Academy.
+  - `combat.ts`: kill crediting before `killUnit` removal (id order
+    kept), vet damage/cooldown in `damageMultiplier`/`fireWeapon`,
+    vet-aware heal cap, Elite regen.
+  - `ai.ts`: `getVisibleEnemies` multiplies the unit's own sight by the
+    vet bonus (Signals Grid bonus stays flat).
+  - `city.ts`: `militaryAcademy` building def (Industrial 3×3,
+    600/200, 30s, upkeep 0.8, power 2, water 1, requires completed
+    barracks, foundation) + new optional `BuildingDef.requiredBuilding`
+    enforced in `placeBuilding` validation and auto-growth.
+  - `snapshot.ts`/`digest.ts`: vet fields covered; legacy v6 decodes to
+    0 (no version bump, stays v6).
+  - Civilian pillar: no new fields — buildings already level 1→3 at
+    +25% output/level (`economy.ts` `runLevels`/`levelMult`); documented
+    in `docs/GAME_MECHANICS.md`.
+  - Tests: `game/tests/sim.veterancy.test.ts` (29 tests: thresholds,
+    kill awards, id-order crediting, overflow splits, death erases,
+    academy gating, snapshot/digest round-trips, determinism). Full
+    suite: sim lane green; `sim.roster-expansion` building count
+    updated 28→29.
+  - Note: the "academy produces Veteran units" line above meant
+    "promoted above Recruit" loosely — the locked rule is Regular
+    (200 XP / level 1), per the coordinator's numbers.
 
 ### Phase 2 — Utility networks (XL)
 - **Goal:** flood-fill connectivity, lines/pipes, plant ladder,

@@ -162,6 +162,9 @@ function copyUnit(u: UnitRecord): UnitRecord {
     destX: u.destX, destZ: u.destZ, arriveX: u.arriveX, arriveZ: u.arriveZ,
     path: [...u.path], pathAt: u.pathAt,
     fieldId: u.fieldId,
+    // Phase 1 veterancy. ?? 0 so legacy v6 saves (which lack these
+    // fields) decode to Recruit — no version bump, stays v6.
+    xp: u.xp ?? 0, vetLevel: u.vetLevel ?? 0,
   };
 }
 

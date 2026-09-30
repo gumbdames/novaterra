@@ -406,6 +406,18 @@ export interface UnitRecord {
   pathAt: number;
   /** Flow-field id the unit follows (0 = none). See `pathfinding.ts`. */
   fieldId: number;
+  /**
+   * Veterancy (grand-expansion Phase 1): cumulative combat experience,
+   * earned by landing killing blows (`awardKillXp` in `veterancy.ts`).
+   * `vetLevel` derives from XP thresholds (200/500/1000 → Regular /
+   * Veteran / Elite) and gates damage, sight, reload, max-hp, and regen
+   * bonuses. A completed Military Academy trains armed units to Regular
+   * (200 XP) on spawn. Death erases everything — nothing here persists
+   * from a dead unit.
+   */
+  xp: number;
+  /** Veterancy level 0..3 (see `vetLevelForXp` in `veterancy.ts`). */
+  vetLevel: number;
 }
 
 /** Spawn a unit into the world. Returns the new record. Caller validates. */
@@ -435,9 +447,22 @@ export function spawnUnit(world: World, kind: string, owner: number, x: number, 
     path: [],
     pathAt: 0,
     fieldId: 0,
+    xp: 0,
+    vetLevel: 0,
   };
   world.nextId += 1;
   world.units.push(record);
+  // Veterancy (Phase 1): an armed unit trained while its owner has a
+  // completed Military Academy graduates as Regular — spawn XP 200, the
+  // first threshold in veterancy.ts (hardcoded to keep this module from
+  // importing veterancy.ts; the constant lives there). Unarmed units
+  // (haulers, medics, transports) get no bonus — there is nothing to
+  // drill them in. `hasProductionBuilding` covers real and AI-virtual
+  // academies, like every other production gate in this file.
+  if (def.damage > 0 && hasProductionBuilding(world, owner, 'militaryAcademy')) {
+    record.xp = 200;
+    record.vetLevel = 1;
+  }
   return record;
 }
 

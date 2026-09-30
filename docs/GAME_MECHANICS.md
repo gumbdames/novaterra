@@ -169,6 +169,38 @@ Ships can only be placed on water and can only fight on water — they
 can't attack land targets, and tanks can't shoot back at them. On
 water-heavy maps, the navy decides the game.
 
+## Veterancy
+
+Units that survive combat get better at it. Every kill earns the killer
+experience points (XP) equal to the destroyed unit's training cost —
+killing a Rifles squad (60 funds) is worth 60 XP, killing a tank
+(400 funds + 60 materials) is worth 460 XP. XP thresholds promote the
+unit through four ranks:
+
+- **Recruit** (0 XP) — fresh off the line.
+- **Regular** (200 XP) — +10% damage, +10% sight, reloads 10% faster.
+- **Veteran** (500 XP) — +20% damage, +20% sight, reloads 20% faster,
+  +15% max health.
+- **Elite** (1000 XP) — +30% damage, +30% sight, reloads 30% faster,
+  +30% max health, and regenerates 2 health per second.
+
+Build a **Military Academy** (industrial zone, needs a completed
+Barracks first: 600 funds + 200 materials, 30 seconds to build) and
+every armed unit you train graduates as a Regular instead of a
+Recruit. Unarmed units — haulers, medics, transports — don't benefit;
+there's nothing to drill them in.
+
+An Elite unit can't learn any more itself, so its kill XP spills over
+to nearby friendly troops that still can: units within 40 meters split
+it evenly (leftovers go to the lowest-numbered units first). With no
+eligible allies nearby, the XP is simply lost. And death erases
+everything — a replacement starts over as a Recruit.
+
+Your buildings progress too, in their own way: a thriving, powered,
+supplied building slowly develops from level 1 to level 3, producing
+25% more per level. Crews earn their chevrons in battle; buildings earn
+theirs by thriving.
+
 ## Upgrades
 
 Build a **Research Lab** (the **University** supercharges your

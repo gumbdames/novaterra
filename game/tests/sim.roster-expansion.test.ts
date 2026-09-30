@@ -413,9 +413,9 @@ describe('roster definitions (§2)', () => {
   });
 });
 
-describe('building definitions (§3)', () => {
-  it('has all 16 new buildings with exact spec costs', () => {
-    expect(Object.keys(BUILDING_DEFS)).toHaveLength(28);
+describe('building definitions (§3 + Phase 1)', () => {
+  it('has all 16 new buildings with exact spec costs, plus the Phase 1 Military Academy', () => {
+    expect(Object.keys(BUILDING_DEFS)).toHaveLength(29);
     expect(BUILDING_DEFS.barracks).toMatchObject({
       costFunds: 700, costMaterials: 250, buildSeconds: 40, minAge: 'foundation',
     });

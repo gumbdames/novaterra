@@ -57,7 +57,6 @@ import {
 import {
   hasUpgrade,
   effectiveRange,
-  effectiveMaxHp,
   effectiveHealPerSec,
   AP_ROUNDS_KINDS,
   AP_ROUNDS_VS_HEAVY_MULT,
@@ -66,6 +65,14 @@ import {
   SONAR_KINDS,
   SONAR_VS_MEDIUM_MULT,
 } from './upgrades';
+import {
+  awardKillXp,
+  vetCooldownTicks,
+  vetDamageMult,
+  vetAdjustedMaxHp,
+  VET_MAX_LEVEL,
+  VET_ELITE_REGEN_PER_SEC,
+} from './veterancy';
 import { orderMoveTo } from './movement';
 import { MAP_HALF_SIZE } from './city';
 
@@ -123,8 +130,9 @@ function auraSources(world: World): AuraSource[] {
 
 /**
  * Damage multiplier for one shot: armor-class counter, the vsAir bonus
- * for flying targets, command auras, and upgrade effects (AP Rounds,
- * Advanced Avionics, Sonar Suite). All deterministic — no randomness.
+ * for flying targets, command auras, upgrade effects (AP Rounds,
+ * Advanced Avionics, Sonar Suite), and the attacker's veterancy level
+ * (Phase 1: +10% damage per level). All deterministic — no randomness.
  */
 export function damageMultiplier(
   world: World,
@@ -175,6 +183,12 @@ export function damageMultiplier(
       break;
     }
   }
+  // Veterancy (Phase 1): experienced crews hit harder. vetLevel 0
+  // multiplies by exactly 1.0, so legacy behavior is unchanged. The
+  // ?? 0 tolerates hand-built records (tests) that predate the field —
+  // real records always carry it (spawnUnit) and legacy saves decode it
+  // (snapshot.ts).
+  mult *= vetDamageMult(attacker.vetLevel ?? 0);
   return mult;
 }
 
@@ -204,16 +218,20 @@ export function acquireTarget(world: World, unit: UnitRecord, def: UnitDef): Uni
 /** Apply one shot from attacker to target. Returns true if the target died. */
 function fireWeapon(world: World, attacker: UnitRecord, def: UnitDef, target: UnitRecord): boolean {
   const mult = damageMultiplier(world, attacker, def, target);
+  // Veteran crews reload faster (Phase 1) — the weapon cooldown already
+  // reflects the attacker's level here and in the shield-absorbed path.
+  // (?? 0: see the damageMultiplier note above.)
+  const cooldown = vetCooldownTicks(def, attacker.vetLevel ?? 0);
   // Phase 3: an active Aegis shield blocks all damage to the owner's units.
   // (Reads world.superweapons directly — importing superweapons.ts here
   // would cycle, since the storm system needs combat's killUnit.)
   const sw = world.superweapons.players.find((p) => p.owner === target.owner);
   if (sw && world.tick < sw.aegis.activeUntil) {
-    attacker.cooldownLeft = def.cooldownTicks;
+    attacker.cooldownLeft = cooldown;
     return false; // shield absorbs the shot
   }
   target.hp -= def.damage * mult;
-  attacker.cooldownLeft = def.cooldownTicks;
+  attacker.cooldownLeft = cooldown;
   return target.hp <= 0;
 }
 
@@ -264,7 +282,9 @@ function applyHealAuras(world: World): void {
       if (u.hp <= 0 || u.owner !== medic.owner || u.domain !== 'land') continue;
       const udef = UNIT_DEFS[u.kind as UnitKind];
       if (!udef) continue;
-      const maxHp = effectiveMaxHp(world, u.owner, udef);
+      // Heal cap is veterancy-aware (Phase 1): Veteran+ units are tougher
+      // and medics can fill the bonus hp too.
+      const maxHp = vetAdjustedMaxHp(world, u);
       if (u.hp >= maxHp) continue;
       const d = Math.hypot(u.x - medic.x, u.z - medic.z);
       if (d <= radius) {
@@ -287,9 +307,21 @@ export function createCombatSystem(): SimSystem {
   return (world: World) => {
     for (const u of world.units) {
       if (u.cooldownLeft > 0) u.cooldownLeft -= 1;
+      // Elite (VET_MAX_LEVEL) regen (Phase 1): living Elite units regrow
+      // 2 hp/s up to their veterancy-adjusted max. Deterministic,
+      // float-safe: identical inputs produce identical hp.
+      // (?? 0: hand-built records without the field never regen.)
+      if ((u.vetLevel ?? 0) >= VET_MAX_LEVEL && u.hp > 0) {
+        const maxHp = vetAdjustedMaxHp(world, u);
+        if (u.hp < maxHp) {
+          u.hp = Math.min(maxHp, u.hp + VET_ELITE_REGEN_PER_SEC * TICK_DT);
+        }
+      }
     }
     applyHealAuras(world);
-    // Snapshot the roster: killUnit mutates world.units mid-loop.
+    // Snapshot the roster: killUnit mutates world.units mid-loop. Id order
+    // (ascending) is the determinism contract — XP kill crediting happens
+    // in this same pass, so kills credit in id order too.
     const roster = [...world.units].sort((a, b) => a.id - b.id);
     const dead: UnitRecord[] = [];
     for (const u of roster) {
@@ -329,6 +361,9 @@ export function createCombatSystem(): SimSystem {
       const range = effectiveRange(world, u.owner, def);
       if (d <= range && d >= def.minRange && canTarget(def, target)) {
         if (fireWeapon(world, u, def, target) && !dead.includes(target)) {
+          // Kill crediting (Phase 1): award XP BEFORE killUnit removes the
+          // target below — the target record still exists here.
+          awardKillXp(world, u, UNIT_DEFS[target.kind as UnitKind]);
           dead.push(target);
         }
       } else if (u.chasing) {
