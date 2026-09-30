@@ -35,7 +35,10 @@ more water means more naval fighting) → pick your **rival**:
 ## Mouse
 
 - **Left-click** — select a unit or building.
-- **Drag left-click** — select many units at once.
+- **Left-drag** — pan the map: grab and drag it (only when no build tool
+  is armed — with a tool armed, dragging belongs to the tool).
+- **Middle-drag** — orbit the camera: drag sideways to turn, up/down to tilt.
+- **Screen edges** — rest the pointer at any screen edge to pan that way.
 - **Shift + left-click** — add/remove one unit.
 - **Right-click ground** — move your selected units there.
 - **Right-click enemy** — attack it (only if your units can hit it).

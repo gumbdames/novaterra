@@ -25,12 +25,22 @@
  *    PerspectiveCamera at the state. Render-side only.
  *
  * Controls (wired by ui/game.ts):
- *  - pan: WASD/arrows, edge pan, middle-mouse drag
+ *  - pan: WASD/arrows, edge pan (all four screen edges), left-drag
+ *    grab-pan when no placement tool is active
  *  - zoom: mouse wheel (distance 30..400)
- *  - rotate: Q/E keys, right-mouse drag (yaw); pitch fixed at a readable
- *    RTS angle with slight wheel-independent tilt limits
+ *  - rotate: Q/E keys, middle-mouse drag orbits (horizontal = yaw,
+ *    vertical = pitch, clamped to the pitch band below); right-drag is
+ *    not a camera gesture (right-click cancels placement / orders)
+ *  - tilt: R/F keys adjust pitch inside the same clamped band
  *  - target clamped to the map bounds; smoothing applied by the caller
  *    (the state itself is exact — smoothing lives in the frame loop).
+ *
+ * Gesture ownership (the airtight rule, enforced by game.ts):
+ *  - A primary-button press snapshots `pressDragKind(button,
+ *    placementActive)` at press time and the gesture keeps that meaning
+ *    until release: 'pan' grabs the map, 'place' belongs to the armed
+ *    tool. Arming or cancelling a tool mid-gesture never flips a gesture
+ *    already in flight.
  *
  * The pure half is safe under Node/vitest; only `applyCameraState` needs
  * three.js (imported type-only, so the module still imports headless).
@@ -99,6 +109,139 @@ export function tiltCamera(state: CameraState, dPitch: number): CameraState {
     ...state,
     pitch: Math.min(CAMERA_MAX_PITCH, Math.max(CAMERA_MIN_PITCH, state.pitch + dPitch)),
   };
+}
+
+/** Screen-edge zone (client px) that triggers edge pan. */
+export const EDGE_PAN_PX = 10;
+
+/** Radians of orbit per pixel of middle-drag: ~1250px for a full turn. */
+export const ORBIT_YAW_PER_PX = 0.005;
+/** Radians of pitch per pixel of middle-drag (clamped to the pitch band). */
+export const ORBIT_PITCH_PER_PX = 0.005;
+
+/** Input for the pure edge-pan direction computation. */
+export interface EdgePanInput {
+  /** Pointer position in client px. */
+  pointerX: number;
+  pointerY: number;
+  /** Viewport size in client px. */
+  viewWidth: number;
+  viewHeight: number;
+  /** Current camera yaw (radians) — pan axes are yaw-aware. */
+  yaw: number;
+}
+
+/**
+ * Edge-pan direction from pointer proximity to a screen edge. Returns the
+ * world-space pan direction (unnormalized; `{x: 0, z: 0}` when the pointer
+ * is not inside the edge zone). Screen-up pans along the camera forward
+ * vector, screen-left against the camera right vector — the same axes the
+ * WASD/arrows key pan uses. Pure: the controller feeds it the pointer
+ * position every frame; the 10px default matches the shipped feel.
+ */
+export function edgePanVector(p: EdgePanInput, edgePx: number = EDGE_PAN_PX): { x: number; z: number } {
+  if (
+    !Number.isFinite(p.pointerX) || !Number.isFinite(p.pointerY) ||
+    !Number.isFinite(p.viewWidth) || !Number.isFinite(p.viewHeight) ||
+    !Number.isFinite(p.yaw) || !Number.isFinite(edgePx) || edgePx < 0
+  ) {
+    return { x: 0, z: 0 };
+  }
+  const forward = { x: -Math.sin(p.yaw), z: -Math.cos(p.yaw) };
+  const right = { x: Math.cos(p.yaw), z: -Math.sin(p.yaw) };
+  let fx = 0;
+  let fz = 0;
+  if (p.pointerX < edgePx) { fx -= right.x; fz -= right.z; }
+  if (p.pointerX > p.viewWidth - edgePx) { fx += right.x; fz += right.z; }
+  if (p.pointerY < edgePx) { fx += forward.x; fz += forward.z; }
+  if (p.pointerY > p.viewHeight - edgePx) { fx -= forward.x; fz -= forward.z; }
+  return { x: fx, z: fz };
+}
+
+/**
+ * World units per screen pixel at the camera target plane, from the
+ * camera distance, vertical field of view (radians) and viewport height
+ * (px). The left-drag grab-pan scales pointer travel by this so the map
+ * follows the pointer 1:1 at the target. Returns 0 for degenerate input
+ * (the pan then no-ops instead of exploding).
+ */
+export function worldPerPixelAtTarget(
+  distance: number,
+  fovRadians: number,
+  viewportHeightPx: number,
+): number {
+  if (
+    !Number.isFinite(distance) || !Number.isFinite(fovRadians) ||
+    !Number.isFinite(viewportHeightPx) ||
+    distance <= 0 || fovRadians <= 0 || viewportHeightPx <= 0
+  ) {
+    return 0;
+  }
+  return (2 * distance * Math.tan(fovRadians / 2)) / viewportHeightPx;
+}
+
+/**
+ * Grab-and-drag pan: convert a screen-space pointer delta (px, +x right,
+ * +y down) into a world-space target pan. The map follows the pointer —
+ * dragging right moves the target screen-left, dragging down moves it
+ * screen-up — using the same yaw-aware axes as the key/edge pan.
+ * Non-positive or non-finite scale leaves the state unchanged.
+ */
+export function panDragTarget(
+  state: CameraState,
+  dxPx: number,
+  dyPx: number,
+  worldPerPixel: number,
+): CameraState {
+  if (
+    !Number.isFinite(dxPx) || !Number.isFinite(dyPx) ||
+    !Number.isFinite(worldPerPixel) || worldPerPixel <= 0
+  ) {
+    return state;
+  }
+  const right = { x: Math.cos(state.yaw), z: -Math.sin(state.yaw) };
+  const forward = { x: -Math.sin(state.yaw), z: -Math.cos(state.yaw) };
+  return panCamera(
+    state,
+    -right.x * dxPx * worldPerPixel + forward.x * dyPx * worldPerPixel,
+    -right.z * dxPx * worldPerPixel + forward.z * dyPx * worldPerPixel,
+  );
+}
+
+/**
+ * Middle-drag orbit: horizontal pointer travel yaws the camera, vertical
+ * travel pitches it (grab semantics — drag right to swing the view right,
+ * drag down to tilt toward top-down). Pitch stays inside the readable
+ * [CAMERA_MIN_PITCH, CAMERA_MAX_PITCH] band via tiltCamera.
+ */
+export function orbitDrag(state: CameraState, dxPx: number, dyPx: number): CameraState {
+  if (!Number.isFinite(dxPx) || !Number.isFinite(dyPx)) return state;
+  return tiltCamera(
+    rotateCamera(state, dxPx * ORBIT_YAW_PER_PX),
+    dyPx * ORBIT_PITCH_PER_PX,
+  );
+}
+
+/** What a primary-button press on the canvas means. */
+export type PressDragKind = 'pan' | 'place' | 'ignore';
+
+/**
+ * Decide what a canvas press means, from the press-time inputs only:
+ *  - 'ignore': not the primary button — the controller owns those
+ *    presses (middle = orbit, right = cancel / context order).
+ *  - 'place': a placement tool is armed — the drag belongs to the tool
+ *    (road/line/pipe drag-paint, zone rectangle, train/build
+ *    place-at-release).
+ *  - 'pan': no tool armed — the drag grab-pans the map.
+ *
+ * The controller snapshots this at pointerdown and never re-evaluates
+ * mid-gesture: arming or cancelling a tool while a drag is in flight
+ * cannot flip the gesture's meaning (a pan never emits a placement, a
+ * placement drag never pans).
+ */
+export function pressDragKind(button: number, placementActive: boolean): PressDragKind {
+  if (button !== 0) return 'ignore';
+  return placementActive ? 'place' : 'pan';
 }
 
 /** Clamp target inside the map and pitch/distance into range. */

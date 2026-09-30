@@ -15,11 +15,15 @@
  */
 
 /**
- * NOVATERRA — camera controller tests (Phase 1, step 9).
+ * NOVATERRA — camera controller tests (Phase 1, step 9; workstream V).
  *
  * The camera state transitions are pure functions: pan/zoom/rotate/tilt
- * and clamping to the map bounds. The three.js seam (`applyCameraState`)
- * is not tested here (needs a GPU/DOM).
+ * and clamping to the map bounds. Workstream V adds the gesture mapping
+ * layer, also pure: edge-pan direction (all four screen edges),
+ * left-drag grab-pan (screen px -> world, yaw-aware), middle-drag orbit
+ * (yaw + clamped pitch), the drag pixel scale, and the press-time
+ * pan-vs-placement disambiguation rule. The three.js seam
+ * (`applyCameraState`) is not tested here (needs a GPU/DOM).
  */
 import { describe, expect, it } from 'vitest';
 import {
@@ -29,9 +33,17 @@ import {
   CAMERA_MIN_PITCH,
   clampCameraState,
   createCameraState,
+  EDGE_PAN_PX,
+  edgePanVector,
+  ORBIT_PITCH_PER_PX,
+  ORBIT_YAW_PER_PX,
+  orbitDrag,
   panCamera,
+  panDragTarget,
+  pressDragKind,
   rotateCamera,
   tiltCamera,
+  worldPerPixelAtTarget,
   zoomCamera,
 } from '../src/ui/camera';
 import { MAP_HALF_SIZE } from '../src/sim/city';
@@ -116,5 +128,139 @@ describe('camera state', () => {
     expect(clamped.yaw).toBeGreaterThanOrEqual(0);
     expect(clamped.yaw).toBeLessThan(2 * Math.PI);
     expect(clamped.pitch).toBe(CAMERA_MAX_PITCH);
+  });
+});
+
+describe('edge pan vector (workstream V)', () => {
+  const view = { viewWidth: 1280, viewHeight: 800, yaw: 0 };
+
+  it('pans all four screen edges at yaw 0', () => {
+    // yaw 0: forward = (0,-1) [screen up], right = (1,0) [screen right].
+    expect(edgePanVector({ ...view, pointerX: 640, pointerY: 5 })).toEqual({ x: 0, z: -1 });
+    expect(edgePanVector({ ...view, pointerX: 640, pointerY: 795 })).toEqual({ x: 0, z: 1 });
+    expect(edgePanVector({ ...view, pointerX: 5, pointerY: 400 })).toEqual({ x: -1, z: 0 });
+    expect(edgePanVector({ ...view, pointerX: 1275, pointerY: 400 })).toEqual({ x: 1, z: 0 });
+  });
+
+  it('combines at corners and stays idle in the middle', () => {
+    expect(edgePanVector({ ...view, pointerX: 5, pointerY: 5 })).toEqual({ x: -1, z: -1 });
+    expect(edgePanVector({ ...view, pointerX: 640, pointerY: 400 })).toEqual({ x: 0, z: 0 });
+    // Just outside the zone: strict inequality, like the shipped behavior.
+    expect(edgePanVector({ ...view, pointerX: EDGE_PAN_PX, pointerY: 400 })).toEqual({ x: 0, z: 0 });
+    expect(edgePanVector({ ...view, pointerX: 640, pointerY: 800 - EDGE_PAN_PX })).toEqual({ x: 0, z: 0 });
+  });
+
+  it('rotates the pan axes with yaw', () => {
+    // yaw PI/2: forward = (-1,0), right = (0,-1).
+    const v = { viewWidth: 1280, viewHeight: 800, yaw: Math.PI / 2 };
+    const top = edgePanVector({ ...v, pointerX: 640, pointerY: 5 });
+    expect(top.x).toBeCloseTo(-1, 10);
+    expect(top.z).toBeCloseTo(0, 10);
+    const left = edgePanVector({ ...v, pointerX: 5, pointerY: 400 });
+    expect(left.x).toBeCloseTo(0, 10);
+    expect(left.z).toBeCloseTo(1, 10);
+  });
+
+  it('returns zero for non-finite input', () => {
+    expect(edgePanVector({ ...view, pointerX: NaN, pointerY: 5 })).toEqual({ x: 0, z: 0 });
+    expect(edgePanVector({ ...view, pointerX: 5, pointerY: 5, yaw: Infinity })).toEqual({ x: 0, z: 0 });
+  });
+});
+
+describe('drag pixel scale (workstream V)', () => {
+  it('matches the perspective projection at the target', () => {
+    // distance 150, fov 55deg, 800px viewport:
+    // 2 * 150 * tan(55deg/2) / 800 ~= 0.1952 world units per px.
+    const wpp = worldPerPixelAtTarget(150, (55 * Math.PI) / 180, 800);
+    expect(wpp).toBeCloseTo(0.1952, 4);
+    // Closer zoom = finer control; taller viewport = finer control.
+    expect(worldPerPixelAtTarget(75, (55 * Math.PI) / 180, 800)).toBeCloseTo(wpp / 2, 10);
+  });
+
+  it('returns 0 for degenerate input instead of exploding', () => {
+    expect(worldPerPixelAtTarget(0, 1, 800)).toBe(0);
+    expect(worldPerPixelAtTarget(150, 1, 0)).toBe(0);
+    expect(worldPerPixelAtTarget(NaN, 1, 800)).toBe(0);
+    expect(worldPerPixelAtTarget(150, -1, 800)).toBe(0);
+  });
+});
+
+describe('left-drag grab pan (workstream V)', () => {
+  it('moves the map with the pointer at yaw 0', () => {
+    const s = createCameraState();
+    // Drag right: map follows right, target moves screen-left (-X).
+    const r = panDragTarget(s, 100, 0, 0.5);
+    expect(r.targetX).toBeCloseTo(-50, 10);
+    expect(r.targetZ).toBeCloseTo(0, 10);
+    // Drag down: map follows down, target moves screen-up (-Z at yaw 0).
+    const d = panDragTarget(s, 0, 100, 0.5);
+    expect(d.targetX).toBeCloseTo(0, 10);
+    expect(d.targetZ).toBeCloseTo(-50, 10);
+  });
+
+  it('stays yaw-aware when rotated', () => {
+    // yaw PI/2: screen-right is -Z, so dragging right moves target +Z.
+    const s = { ...createCameraState(), yaw: Math.PI / 2 };
+    const r = panDragTarget(s, 100, 0, 0.5);
+    expect(r.targetX).toBeCloseTo(0, 10);
+    expect(r.targetZ).toBeCloseTo(50, 10);
+  });
+
+  it('clamps to the map bounds and ignores bad scale', () => {
+    const s = createCameraState();
+    const far = panDragTarget(s, 100000, 0, 1);
+    expect(far.targetX).toBe(-(MAP_HALF_SIZE - 4));
+    expect(panDragTarget(s, 100, 0, 0)).toBe(s);
+    expect(panDragTarget(s, 100, 0, -1)).toBe(s);
+    expect(panDragTarget(s, NaN, 0, 0.5)).toBe(s);
+    expect(panDragTarget(s, 0, 0, 0.5)).toEqual(s);
+  });
+
+  it('does not mutate the input state', () => {
+    const s = createCameraState();
+    panDragTarget(s, 100, 100, 0.5);
+    expect(s.targetX).toBe(0);
+    expect(s.targetZ).toBe(0);
+  });
+});
+
+describe('middle-drag orbit (workstream V)', () => {
+  it('maps horizontal drag to yaw and vertical drag to pitch', () => {
+    const s = createCameraState();
+    const o = orbitDrag(s, 200, 100);
+    expect(o.yaw).toBeCloseTo(200 * ORBIT_YAW_PER_PX, 10);
+    // pitch 0.9 + 100 * 0.005 = 1.4 -> clamped to CAMERA_MAX_PITCH.
+    expect(o.pitch).toBe(CAMERA_MAX_PITCH);
+    const up = orbitDrag(s, 0, -20);
+    expect(up.yaw).toBeCloseTo(0, 10);
+    expect(up.pitch).toBeCloseTo(0.9 - 20 * ORBIT_PITCH_PER_PX, 10);
+  });
+
+  it('clamps pitch to the readable band', () => {
+    const s = createCameraState();
+    expect(orbitDrag(s, 0, 100000).pitch).toBe(CAMERA_MAX_PITCH);
+    expect(orbitDrag(s, 0, -100000).pitch).toBe(CAMERA_MIN_PITCH);
+  });
+
+  it('wraps yaw and ignores non-finite input', () => {
+    const s = createCameraState();
+    const wrapped = orbitDrag(s, -200, 0);
+    expect(wrapped.yaw).toBeCloseTo(2 * Math.PI - 200 * ORBIT_YAW_PER_PX, 10);
+    expect(orbitDrag(s, NaN, 0)).toBe(s);
+    expect(orbitDrag(s, 0, Infinity)).toBe(s);
+  });
+});
+
+describe('press-time drag disambiguation (workstream V)', () => {
+  it('pans when no tool is armed, places when one is', () => {
+    expect(pressDragKind(0, false)).toBe('pan');
+    expect(pressDragKind(0, true)).toBe('place');
+  });
+
+  it('ignores non-primary buttons (middle = orbit, right = cancel/order)', () => {
+    expect(pressDragKind(1, false)).toBe('ignore');
+    expect(pressDragKind(1, true)).toBe('ignore');
+    expect(pressDragKind(2, false)).toBe('ignore');
+    expect(pressDragKind(2, true)).toBe('ignore');
   });
 });

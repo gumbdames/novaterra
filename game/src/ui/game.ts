@@ -21,9 +21,10 @@
  *  - Own one skirmish session: renderer, daylight scene (terrain + water +
  *    lights), camera controller, entity renderer, HUD, pause menu, advisor
  *    refresh, and the fixed-timestep loop (`driver.step` + render).
- *  - Input: left-click select, drag box-select, right-click context orders
- *    (move / attack), S stop, Space pause, Esc deselect/cancel, WASD+arrows
- *    / edge / middle-drag pan, wheel zoom, Q/E / right-drag rotate.
+ *  - Input: left-click select, left-drag grab-pan (no tool armed),
+ *    right-click context orders (move / attack), S stop, Space pause,
+ *    Esc deselect/cancel, WASD+arrows / edge pan, wheel zoom,
+ *    Q/E rotate, middle-drag orbit (yaw + pitch).
  *  - Placement modes: train-unit (click map), road (drag cells), zone
  *    (drag rect), building (click cell), demolish (click cell).
  *  - Every player intent becomes a sim command via ui/orders.ts builders
@@ -73,11 +74,17 @@ import { createSession, getSkirmishOutcome, HUMAN_PLAYER_ID, type GameSession } 
 import {
   applyCameraState,
   createCameraState,
+  edgePanVector,
+  orbitDrag,
   panCamera,
+  panDragTarget,
+  pressDragKind,
   rotateCamera,
   tiltCamera,
+  worldPerPixelAtTarget,
   zoomCamera,
   type CameraState,
+  type PressDragKind,
 } from './camera';
 import {
   boxSelectUnits,
@@ -190,9 +197,12 @@ type PlacementMode =
   | null;
 
 const ADVISOR_REFRESH_MS = 2000;
-const EDGE_PAN_PX = 10;
-const EDGE_PAN_SPEED = 220; // world units/sec
+// Edge-pan zone width lives in ui/camera.ts (EDGE_PAN_PX) next to the pure
+// edgePanVector the frame loop feeds — single source of truth.
 const KEY_PAN_SPEED = 260;
+/** Game camera vertical field of view (degrees) — shared by the camera
+ *  setup and the drag-pan pixel scale. */
+const GAME_FOV_DEG = 55;
 /** Autosave cadence: 5 game-minutes at 30 ticks/sec. */
 const AUTOSAVE_TICKS = 30 * 60 * 5;
 const CLICK_TOLERANCE = 4; // world units for click-pick
@@ -241,7 +251,7 @@ export async function startGame(
   // the sun/hemi lights stay the key light.
   applyEnvironmentLighting(scene);
   const camera = new THREE.PerspectiveCamera(
-    55,
+    GAME_FOV_DEG,
     window.innerWidth / window.innerHeight,
     0.5,
     4000,
@@ -454,6 +464,19 @@ class GameController {
   private readonly raycaster = new THREE.Raycaster();
   private readonly groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
   private dragStart: { x: number; y: number } | null = null;
+  /**
+   * What the in-flight primary-button gesture means, snapshotted at
+   * pointerdown via pressDragKind() and never re-evaluated mid-gesture:
+   * 'pan' grab-pans the map (no tool was armed), 'place' belongs to the
+   * armed placement tool. Arming or cancelling a tool while a drag is in
+   * flight cannot flip the gesture's meaning. Null when no primary drag
+   * is in flight.
+   */
+  private leftDragKind: PressDragKind | null = null;
+  /** Last pointer position of the in-flight pan drag (for move deltas). */
+  private panLast: { x: number; y: number } | null = null;
+  /** Last pointer position of the in-flight middle-drag orbit. */
+  private orbitLast: { x: number; y: number } | null = null;
   /** Combat/building polling state for SFX + adaptive music. */
   private lastMusicUpdate = 0;
   private lastShotSfx = 0;
@@ -1231,6 +1254,23 @@ class GameController {
   }
 
   /**
+   * Cancel the armed placement tool AND abort any in-flight placement
+   * gesture (network drag-paint, drag rectangle) so a cancelled tool can
+   * never emit an order when the pointer is released. Camera gestures
+   * (pan / orbit) are untouched — cancelling a tool is not cancelling
+   * the camera.
+   */
+  private cancelPlacement(): void {
+    this.placement = null;
+    this.networkDrag = null;
+    if (this.dragRect) {
+      this.dragRect.remove();
+      this.dragRect = null;
+    }
+    this.hud.toast('Cancelled.');
+  }
+
+  /**
    * Carry out a placement resolution: enqueue the order, or toast the
    * hint with an error cue. Nothing fails silently.
    */
@@ -1303,6 +1343,14 @@ class GameController {
       }
       if (e.button === 0) {
         this.dragStart = { x: e.clientX, y: e.clientY };
+        // Gesture ownership is snapshotted at press time and never changes
+        // mid-gesture (ui/camera.ts pressDragKind): with no placement tool
+        // armed the drag grab-pans the map; with a tool armed the drag
+        // belongs to the tool (network drag-paint / zone rect /
+        // place-at-release). Arming or cancelling a tool while the button
+        // is held cannot flip the gesture.
+        this.leftDragKind = pressDragKind(e.button, this.placement !== null);
+        this.panLast = { x: e.clientX, y: e.clientY };
         // Linear-network tools (road today): a press starts a drag-paint
         // gesture that accumulates cells until pointerup; a plain click
         // releases with zero cells and falls through to the click resolver.
@@ -1318,11 +1366,17 @@ class GameController {
                 owner: HUMAN_PLAYER_ID,
                 gridWidth: CITY_GRID_CELLS,
               });
+      } else if (e.button === 1) {
+        // Middle-drag orbits the camera (yaw + pitch); preventDefault here
+        // and on mousedown stops the browser's middle-click autoscroll.
+        e.preventDefault();
+        this.orbitLast = { x: e.clientX, y: e.clientY };
       } else if (e.button === 2) {
         // Right-click cancels placement, else issues a context order.
+        // Cancelling also aborts an in-flight placement gesture so a
+        // cancelled tool can never emit an order on pointerup.
         if (this.placement) {
-          this.placement = null;
-          this.hud.toast('Cancelled.');
+          this.cancelPlacement();
         } else {
           const ndc = this.toNDC(e);
           const p = this.groundPoint(ndc.x, ndc.y);
@@ -1330,39 +1384,96 @@ class GameController {
         }
       }
     });
+    // Suppress middle-click autoscroll on the canvas (the pointerdown
+    // preventDefault above covers most browsers; this covers the rest).
+    on(this.canvas, 'mousedown', (e) => {
+      if (e.button === 1) e.preventDefault();
+    });
     on(this.canvas, 'pointermove', (e) => {
-      this.mouseClient = { x: e.clientX, y: e.clientY };
-      if (this.dragStart && e.buttons === 1) {
-        const dx = e.clientX - this.dragStart.x;
-        const dy = e.clientY - this.dragStart.y;
-        // No selection rectangle while linear-network drag-painting: the
-        // gesture belongs to the network tool, not to box-select.
-        if (Math.hypot(dx, dy) > 6 && !this.dragRect && !this.networkDrag) {
-          this.dragRect = document.createElement('div');
-          this.dragRect.className = 'select-rect';
-          this.container.appendChild(this.dragRect);
+      // Middle-drag orbit: horizontal travel yaws, vertical travel pitches.
+      if (this.orbitLast && e.buttons & 4) {
+        const dx = e.clientX - this.orbitLast.x;
+        const dy = e.clientY - this.orbitLast.y;
+        this.orbitLast = { x: e.clientX, y: e.clientY };
+        if (dx !== 0 || dy !== 0) {
+          this.cameraState = orbitDrag(this.cameraState, dx, dy);
+          applyCameraState(this.camera, this.cameraState);
         }
-        if (this.dragRect) {
-          const left = Math.min(e.clientX, this.dragStart.x);
-          const top = Math.min(e.clientY, this.dragStart.y);
-          this.dragRect.style.left = `${left}px`;
-          this.dragRect.style.top = `${top}px`;
-          this.dragRect.style.width = `${Math.abs(dx)}px`;
-          this.dragRect.style.height = `${Math.abs(dy)}px`;
+      }
+      if (this.dragStart && e.buttons & 1) {
+        if (this.leftDragKind === 'pan') {
+          // No tool armed: grab-pan the map. Screen travel becomes
+          // world-space target travel (yaw-aware), scaled so the map
+          // follows the pointer 1:1 at the target plane.
+          const last = this.panLast ?? this.dragStart;
+          const dx = e.clientX - last.x;
+          const dy = e.clientY - last.y;
+          this.panLast = { x: e.clientX, y: e.clientY };
+          if (dx !== 0 || dy !== 0) {
+            const wpp = worldPerPixelAtTarget(
+              this.cameraState.distance,
+              (GAME_FOV_DEG * Math.PI) / 180,
+              this.canvas.clientHeight || window.innerHeight,
+            );
+            this.cameraState = panDragTarget(this.cameraState, dx, dy, wpp);
+            applyCameraState(this.camera, this.cameraState);
+          }
+        } else if (this.leftDragKind === 'place') {
+          const dx = e.clientX - this.dragStart.x;
+          const dy = e.clientY - this.dragStart.y;
+          // No selection rectangle while linear-network drag-painting: the
+          // gesture belongs to the network tool, not to box-select.
+          if (Math.hypot(dx, dy) > 6 && !this.dragRect && !this.networkDrag) {
+            this.dragRect = document.createElement('div');
+            this.dragRect.className = 'select-rect';
+            this.container.appendChild(this.dragRect);
+          }
+          if (this.dragRect) {
+            const left = Math.min(e.clientX, this.dragStart.x);
+            const top = Math.min(e.clientY, this.dragStart.y);
+            this.dragRect.style.left = `${left}px`;
+            this.dragRect.style.top = `${top}px`;
+            this.dragRect.style.width = `${Math.abs(dx)}px`;
+            this.dragRect.style.height = `${Math.abs(dy)}px`;
+          }
         }
       }
       // Linear-network drag: accumulate cells while painting with the tool
       // (gap-filled so fast drags don't leave holes).
-      if (this.networkDrag?.isActive && e.buttons === 1) {
+      if (this.networkDrag?.isActive && e.buttons & 1) {
         const ndc = this.toNDC(e);
         const p = this.groundPoint(ndc.x, ndc.y);
         const cell = p ? this.worldToCell(p.x, p.z) : null;
         if (cell) this.networkDrag.addCell(cell);
       }
     });
+    // Edge pan needs the pointer even over HUD panels: the canvas never
+    // sees pointermove while the pointer is above the top bar / selection
+    // panel (they are pointer-events:auto siblings), which used to starve
+    // the top/bottom edge zones. Tracked on window instead.
+    on(window, 'pointermove', (e) => {
+      this.mouseClient = { x: e.clientX, y: e.clientY };
+    });
+    // A parked pointer outside the window must not keep edge-panning:
+    // leaving the document clears the tracked position (mouseout with no
+    // relatedTarget fires on document when the pointer exits the window).
+    const docMouseOut = (e: MouseEvent): void => {
+      if (!e.relatedTarget) this.mouseClient = null;
+    };
+    document.addEventListener('mouseout', docMouseOut);
+    this.removeListeners.push(() => document.removeEventListener('mouseout', docMouseOut));
     on(window, 'pointerup', (e) => {
+      // Middle-drag ends here: it never selects or places.
+      if (e.button === 1) {
+        this.orbitLast = null;
+        return;
+      }
       const start = this.dragStart;
       this.dragStart = null;
+      // The gesture's meaning was snapshotted at pointerdown; consume it.
+      const kind = this.leftDragKind;
+      this.leftDragKind = null;
+      this.panLast = null;
       // Click-vs-drag is anchored on the press (pointer/pointer.ts): a press
       // that started on the canvas counts as a click even when the release
       // target isn't the canvas (synthetic events, sub-pixel HUD-edge drift).
@@ -1380,9 +1491,20 @@ class GameController {
           x: e.clientX,
           y: e.clientY,
           targetIsCanvas: e.target === this.canvas,
+          leftDragKind: kind,
           hadNetworkDrag: this.networkDrag !== null,
           hadDragRect: this.dragRect !== null,
         });
+      }
+      if (kind === 'pan') {
+        // Grab-pan gesture: the drag already moved the map; a clean click
+        // still selects (resolved against the current placement, if any).
+        // It never places, never box-selects.
+        if (gesture === 'click') {
+          const ndc = this.toNDC(e);
+          this.handleLeftClick(ndc.x, ndc.y, e.shiftKey);
+        }
+        return;
       }
       // Linear-network drag-paint finishes here, before the box-select path:
       // a network gesture must never silently become a unit selection.
@@ -1442,10 +1564,8 @@ class GameController {
       }
       if (k === 'escape') {
         if (this.pauseMenu.visible) this.setPaused(false);
-        else if (this.placement) {
-          this.placement = null;
-          this.hud.toast('Cancelled.');
-        } else this.selection = clearSelection();
+        else if (this.placement) this.cancelPlacement();
+        else this.selection = clearSelection();
         return;
       }
       if (k === 's' && !e.repeat) {
@@ -1457,7 +1577,12 @@ class GameController {
     on(window, 'keyup', (e) => {
       this.keys.delete(e.key.toLowerCase());
     });
-    on(window, 'blur', () => this.keys.clear());
+    on(window, 'blur', () => {
+      this.keys.clear();
+      // A parked pointer position must not keep edge-panning while the
+      // window is not focused.
+      this.mouseClient = null;
+    });
 
     // --- resize ---
     on(window, 'resize', () => {
@@ -1524,13 +1649,20 @@ class GameController {
     if (k.has('arrowdown')) { fx -= forward.x; fz -= forward.z; }
     if (k.has('a') || k.has('arrowleft')) { fx -= right.x; fz -= right.z; }
     if (k.has('d') || k.has('arrowright')) { fx += right.x; fz += right.z; }
-    // Edge pan: pointer near a screen edge pans that way.
+    // Edge pan: pointer near a screen edge pans that way. The vector is
+    // the pure edgePanVector (ui/camera.ts) — same yaw-aware axes as the
+    // key pan. mouseClient is tracked on window (not just the canvas) so
+    // HUD panels overlapping an edge cannot starve the edge zone.
     if (this.mouseClient) {
-      const { x, y } = this.mouseClient;
-      if (x < EDGE_PAN_PX) { fx -= right.x; fz -= right.z; }
-      if (x > window.innerWidth - EDGE_PAN_PX) { fx += right.x; fz += right.z; }
-      if (y < EDGE_PAN_PX) { fx += forward.x; fz += forward.z; }
-      if (y > window.innerHeight - EDGE_PAN_PX) { fx -= forward.x; fz -= forward.z; }
+      const v = edgePanVector({
+        pointerX: this.mouseClient.x,
+        pointerY: this.mouseClient.y,
+        viewWidth: window.innerWidth,
+        viewHeight: window.innerHeight,
+        yaw,
+      });
+      fx += v.x;
+      fz += v.z;
     }
     if (k.has('q')) this.cameraState = rotateCamera(this.cameraState, 1.6 * dtSec);
     if (k.has('e')) this.cameraState = rotateCamera(this.cameraState, -1.6 * dtSec);
