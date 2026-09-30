@@ -63,6 +63,8 @@ import {
   cellCenterWorld,
   CELL_WORLD_SIZE,
   cellCoords,
+  CITY_GRID_CELLS,
+  footprintCells,
   type BuildingKind,
   type BuildingRecord,
   type ZoneType,
@@ -91,6 +93,16 @@ import {
 import { surfaceRoughnessTexture } from './surfaceTextures';
 import { ChevronOverlay } from './chevrons';
 import { ZoneOverlay } from './zoneOverlay';
+// Phase 2 (utilities): the always-on network runs + the toggleable
+// diagnostic overlay. ui/utilities.ts is a pure contract module (no DOM,
+// no three.js) — safe to import from the render layer.
+import { NetworkOverlay } from './networks';
+import { UtilityOverlay } from './utilityOverlay';
+import {
+  cityPowerLines,
+  cityPipes,
+  utilityOverlayData,
+} from '../ui/utilities';
 import {
   groundYAt,
   unitHoverY,
@@ -236,6 +248,22 @@ export type ModelSource =
   kindergarten: { type: 'glb', pieces: [piece('kindergarten')] },
   college: { type: 'glb', pieces: [piece('college')] },
   monument: { type: 'procedural' },
+  // Grand-expansion Phase 2 (utilities, 2026-09-30): the 12 new utility
+  // buildings — procedural-first (AD12: zero boot-download growth).
+  // NOT in game/src/render/models.ts MODEL_PATHS (no GLB weight added).
+  coalPlant: { type: 'procedural' },
+  gasPlant: { type: 'procedural' },
+  windFarm: { type: 'procedural' },
+  hydroDam: { type: 'procedural' },
+  geothermalPlant: { type: 'procedural' },
+  fusionPlant: { type: 'procedural' },
+  waterWell: { type: 'procedural' },
+  waterTower: { type: 'procedural' },
+  waterTreatment: { type: 'procedural' },
+  reservoir: { type: 'procedural' },
+  powerSubstation: { type: 'procedural' },
+  pumpingStation: { type: 'procedural' },
+  batteryStation: { type: 'procedural' },
 };
 
 /**
@@ -555,6 +583,36 @@ export function buildingHeightFor(kind: BuildingKind): number {
       return 4;
     case 'monument':
       return 10;
+    // Grand-expansion Phase 2 (utilities): heights for the 12 new kinds.
+    // These case labels are outside the current BuildingKind union — legal
+    // (unreachable-but-valid string cases) until the sim's BuildingKind
+    // grows them, at which point they take effect with no code change.
+    case 'coalPlant':
+      return 9;
+    case 'gasPlant':
+      return 4;
+    case 'windFarm':
+      return 9;
+    case 'hydroDam':
+      return 8;
+    case 'geothermalPlant':
+      return 4;
+    case 'fusionPlant':
+      return 5;
+    case 'waterWell':
+      return 7;
+    case 'waterTower':
+      return 11;
+    case 'waterTreatment':
+      return 3;
+    case 'reservoir':
+      return 4;
+    case 'powerSubstation':
+      return 6;
+    case 'pumpingStation':
+      return 4;
+    case 'batteryStation':
+      return 3;
     default:
       return 4;
   }
@@ -714,6 +772,14 @@ export class EntityRenderer {
   private readonly chevrons: ChevronOverlay;
   // Workstream Z: zone-tint ground decals (visible by default).
   private readonly zoneOverlay: ZoneOverlay;
+  /**
+   * Phase 2 (utilities): the always-on network runs (poles/pipes —
+   * visible whenever built, like roads) and the toggleable diagnostic
+   * overlay (coverage tints + diag markers, off by default).
+   */
+  private readonly networkOverlay: NetworkOverlay;
+  private readonly utilityOverlay: UtilityOverlay;
+  private utilityOverlayVisible = false;
   /** Live superweapon FX views, keyed by fx identity. */
   private readonly superweaponFx = new Map<string, SuperweaponFxView>();
   // ---- shared model assets (one copy per kind, never disposed per view) ----
@@ -812,6 +878,10 @@ export class EntityRenderer {
     this.barTexture = new THREE.CanvasTexture(c);
     this.chevrons = new ChevronOverlay(scene);
     this.zoneOverlay = new ZoneOverlay(scene);
+    // Phase 2 (utilities): network runs render always; the diagnostic
+    // overlay starts hidden (top-bar toggle flips it).
+    this.networkOverlay = new NetworkOverlay(scene);
+    this.utilityOverlay = new UtilityOverlay(scene);
   }
 
   /** Create/update/remove meshes to match the world. Render-side only. */
@@ -821,6 +891,8 @@ export class EntityRenderer {
     this.syncBuildings(world);
     this.syncRoads(world);
     this.syncZoneOverlay(world);
+    this.syncNetworks(world);
+    this.syncUtilityOverlay(world);
     this.syncSuperweaponFx(world);
     this.syncChevrons(world);
     this.instancer?.endFrame(this.camera ?? undefined);
@@ -916,6 +988,63 @@ export class EntityRenderer {
     const heightFn =
       t === null ? undefined : (x: number, z: number): number => heightAt(t, x, z);
     this.zoneOverlay.sync(world.city.zones, heightFn);
+  }
+
+  /**
+   * Phase 2 (utilities): the always-on network runs. Reads the sim's
+   * `city.powerLines` / `city.pipes` defensively (empty pre-sim) — the
+   * overlay rebuilds only when the cell digests change.
+   */
+  private syncNetworks(world: World): void {
+    const t = this.terrain;
+    const heightFn =
+      t === null ? undefined : (x: number, z: number): number => heightAt(t, x, z);
+    this.networkOverlay.sync(
+      cityPowerLines(world),
+      cityPipes(world),
+      CELL_WORLD_SIZE,
+      heightFn,
+    );
+  }
+
+  /**
+   * Phase 2 (utilities): the toggleable diagnostic overlay. Skipped
+   * entirely while hidden (the digest would no-op anyway, but the
+   * billboard pass is worth skipping).
+   */
+  private syncUtilityOverlay(world: World): void {
+    if (!this.utilityOverlayVisible) return;
+    const t = this.terrain;
+    const heightFn =
+      t === null ? undefined : (x: number, z: number): number => heightAt(t, x, z);
+    const data = utilityOverlayData(
+      world,
+      (cell) => {
+        const { cx, cz } = cellCoords(cell);
+        return { x: cellCenterWorld(cx), z: cellCenterWorld(cz) };
+      },
+      (b) => {
+        const def = BUILDING_DEFS[b.kind as BuildingKind];
+        return def !== undefined
+          ? footprintCells(b.cx, b.cz, def.footprintW, def.footprintH)
+          : [b.cz * CITY_GRID_CELLS + b.cx];
+      },
+    );
+    this.utilityOverlay.sync(data, {
+      cellSize: CELL_WORLD_SIZE,
+      heightFn,
+      camera: this.camera ?? undefined,
+      buildingTop: (kind) => this.modelTopForKind(kind),
+    });
+  }
+
+  /**
+   * Phase 2 (utilities): toggle the diagnostic overlay (the network runs
+   * stay always-on). Called by the controller from the top-bar button.
+   */
+  setUtilityOverlayVisible(visible: boolean): void {
+    this.utilityOverlayVisible = visible;
+    this.utilityOverlay.setVisible(visible);
   }
 
   /**
@@ -1057,6 +1186,8 @@ export class EntityRenderer {
     this.barTexture.dispose();
     this.chevrons.dispose();
     this.zoneOverlay.dispose();
+    this.networkOverlay.dispose();
+    this.utilityOverlay.dispose();
     // Shared per-kind assets (never per-view): release once here.
     for (const m of this.proceduralCache.values()) {
       for (const g of m.geometries) g.dispose();

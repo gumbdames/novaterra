@@ -159,7 +159,8 @@ const UNIT_ICONS: Record<UnitKind, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Buildings — 30 glyphs, one per BuildingKind.
+// Buildings — one glyph per BuildingKind (44 after the Phase 2 utility
+// expansion; tsc enforces that every kind appears here exactly once).
 // ---------------------------------------------------------------------------
 
 /** Every BuildingKind must appear here exactly once (tsc enforces it). */
@@ -258,14 +259,79 @@ const BUILDING_ICONS: Record<BuildingKind, string> = {
   stormArray:
     '<path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10Z"/>' +
     '<path d="M13 12.5 10 17.5h2.6L11.4 21" fill="currentColor" stroke="none"/>',
+  // Grand-expansion Phase 2: the 13 utility buildings.
+  // Coal plant: turbine hall + twin banded chimneys.
+  coalPlant:
+    '<path d="M3 21v-8h11v8"/><path d="M14 21V8l1.8-4.5h2.4L20 8v13"/>' +
+    '<path d="M5.5 21V9l1.6-4h2.2L11 9v12"/><path d="M15.2 6h3.6M6.6 6.5h3.2"/>',
+  // Gas plant: horizontal tanks + a short stack.
+  gasPlant:
+    '<rect x="3" y="11" width="10" height="5" rx="2.5"/><rect x="3" y="16.5" width="10" height="4.5" rx="2.2"/>' +
+    '<path d="M16 8h3v13"/><path d="M16 8c.6 4-.6 8-2 11"/>',
+  // Wind farm: three turbines (tower + 3-blade rotor).
+  windFarm:
+    '<path d="M6 21v-9M18 21v-9"/><path d="M6 12 3.5 8M6 12l2.5-4M6 12v-4.5"/>' +
+    '<path d="M18 12l-2.5-4M18 12l2.5-4M18 12V7.5"/><path d="M12 21v-6"/>' +
+    '<path d="M12 15l-2-3.2M12 15l2-3.2M12 15v-3.6"/>',
+  // Hydro dam: dam wall + spillway gates + gatehouse towers.
+  hydroDam:
+    '<path d="M3 8h18v13H3Z"/><path d="M3 8c6 2.5 12 2.5 18 0v3c-6 2.5-12 2.5-18 0Z"/>' +
+    '<path d="M7 8V4.5h2.5V8M14.5 8V4.5H17V8"/><path d="M9 13.5v4M15 13.5v4"/>',
+  // Geothermal plant: steam vents + pipe manifold.
+  geothermalPlant:
+    '<path d="M6 21V12l1.2-3h3.6L12 12v9"/><path d="M13 21v-7l1-2.5h3L18 14v7"/>' +
+    '<path d="M3 21h18"/><path d="M8 5.5c-1-1.5 1-2.5 0-4M11 5.5c-1-1.5 1-2.5 0-4"/>',
+  // Fusion plant: domed hall with a tokamak torus inside.
+  fusionPlant:
+    '<path d="M4 21v-6a8 8 0 0 1 16 0v6"/><ellipse cx="12" cy="13.5" rx="4.5" ry="1.8"/>' +
+    '<path d="M12 8.5V5.5"/><circle cx="12" cy="13.5" r="1" fill="currentColor" stroke="none"/>',
+  // Water well: A-frame derrick + pump house.
+  waterWell:
+    '<path d="M8 21 11 6h2l3 15"/><path d="M9.2 16h5.6M10 11.5h4"/>' +
+    '<path d="M11 6V3.5"/><rect x="14.5" y="15" width="6" height="6"/>',
+  // Water tower: tank on four legs.
+  waterTower:
+    '<ellipse cx="12" cy="8" rx="6.5" ry="2.6"/><path d="M5.5 8v5.5c0 1.4 2.9 2.6 6.5 2.6s6.5-1.2 6.5-2.6V8"/>' +
+    '<path d="M8 16.5 6.5 21M16 16.5l1.5 4.5M10.5 16.8 10 21M13.5 16.8l.5 4.2"/>',
+  // Water treatment: clarifier basins + control hut.
+  waterTreatment:
+    '<ellipse cx="8" cy="14" rx="5" ry="2.2"/><path d="M3 14v4c0 1.2 2.2 2.2 5 2.2s5-1 5-2.2v-4"/>' +
+    '<ellipse cx="17" cy="15.5" rx="4" ry="1.8"/><path d="M13 15.5v3.4c0 1 1.8 1.8 4 1.8s4-.8 4-1.8v-3.4"/>' +
+    '<rect x="10.5" y="4" width="4" height="4"/>',
+  // Reservoir: wide low basin ring with water.
+  reservoir:
+    '<ellipse cx="12" cy="10" rx="9" ry="3.4"/><path d="M3 10v7c0 1.9 4 3.4 9 3.4s9-1.5 9-3.4v-7"/>' +
+    '<ellipse cx="12" cy="10" rx="6.5" ry="2.2"/>',
+  // Power substation: transformer boxes + busbar gantry.
+  powerSubstation:
+    '<rect x="4" y="14" width="4.5" height="7"/><rect x="9.5" y="14" width="4.5" height="7"/>' +
+    '<path d="M5 14v-3M7.5 14v-3M11.5 14v-3"/><path d="M4 8.5h12"/>' +
+    '<path d="M16 21V9M20 21V9M16 9h4"/>',
+  // Pumping station: pump house with large pipes running out.
+  pumpingStation:
+    '<rect x="4" y="9" width="9" height="12"/><path d="M13 12h4a3 3 0 0 1 3 3v6"/>' +
+    '<path d="M13 16.5h3.2a2.2 2.2 0 0 1 2.2 2.2V21"/><path d="M6.5 9V5.5h4V9"/>',
+  // Battery station: cabinet racks + inverter container.
+  batteryStation:
+    '<rect x="3" y="6" width="7" height="15" rx="1"/><path d="M3 11h7M3 16h7"/>' +
+    '<rect x="12" y="10" width="9" height="11" rx="1"/><path d="M12 15h9"/>' +
+    '<path d="M5 8.5h3M14.5 12.5h4"/>',
 };
 
 // ---------------------------------------------------------------------------
 // Build-palette tools (road / zones / demolish).
 // ---------------------------------------------------------------------------
 
-/** The five non-building tools in the build palette's tool row. */
-export type PaletteToolIcon = 'road' | 'zoneR' | 'zoneC' | 'zoneI' | 'demolish';
+/** The build-palette tools (road / zones / demolish / Phase 2 networks). */
+export type PaletteToolIcon =
+  | 'road'
+  | 'zoneR'
+  | 'zoneC'
+  | 'zoneI'
+  | 'demolish'
+  // Phase 2 (utilities): drag-paint network tools.
+  | 'powerLine'
+  | 'waterPipe';
 
 const TOOL_ICONS: Record<PaletteToolIcon, string> = {
   road: '<path d="M9 2.5v19M15 2.5v19"/><path d="M12 5.5v3M12 10.5v3M12 15.5v3"/>',
@@ -280,6 +346,14 @@ const TOOL_ICONS: Record<PaletteToolIcon, string> = {
     '<circle cx="12" cy="12" r="2.6"/>' +
     '<path d="M12 6.8v2M12 15.2v2M6.8 12h2M15.2 12h2M8.3 8.3l1.4 1.4M14.3 14.3l1.4 1.4M15.7 8.3l-1.4 1.4M9.7 14.3l-1.4 1.4"/>',
   demolish: '<rect x="12" y="2.5" width="9.5" height="6" rx="1.5"/><path d="M13.5 8 4.5 20.5"/>',
+  // Power line: pylon with a sagging wire run.
+  powerLine:
+    '<path d="M7 21V7M5 10h4M5.8 13h2.4"/><path d="M17 21V7M15 10h4M15.8 13h2.4"/>' +
+    '<path d="M7 7c3.5 2.5 6.5 2.5 10 0"/>',
+  // Water pipe: a pipe run with a valve wheel.
+  waterPipe:
+    '<path d="M3 14h8a4 4 0 0 1 4-4V7"/><path d="M15 7v8"/>' +
+    '<circle cx="18.5" cy="17.5" r="2.5"/><path d="M18.5 15v5M16 17.5h5"/>',
 };
 
 // ---------------------------------------------------------------------------
@@ -313,6 +387,8 @@ const MENU_ICONS: Record<MenuIconKey, string> = {
     '<path d="M9 20.5v-6h6v6"/>',
   exit:
     '<path d="M14 4.5H6v15h8"/><path d="M11 12h10"/><path d="M17.5 8.5 21 12l-3.5 3.5"/>',
+
+
 };
 
 // ---------------------------------------------------------------------------
@@ -329,7 +405,7 @@ export function buildingIcon(kind: BuildingKind): string {
   return svg(BUILDING_ICONS[kind]);
 }
 
-/** Inline SVG for a build-palette tool (road / zones / demolish). */
+/** Inline SVG for a build-palette tool (road / zones / demolish / networks). */
 export function toolIcon(tool: PaletteToolIcon): string {
   return svg(TOOL_ICONS[tool]);
 }

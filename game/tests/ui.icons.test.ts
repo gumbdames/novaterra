@@ -77,9 +77,9 @@ describe('unit icons', () => {
 });
 
 describe('building icons', () => {
-  it('covers all 31 building kinds (28 + Phase 1 militaryAcademy + Workstream Z education pair)', () => {
+  it('covers all 44 building kinds (31 + grand-expansion Phase 2 utility set)', () => {
     const kinds = Object.values(BuildingKind);
-    expect(kinds).toHaveLength(31);
+    expect(kinds).toHaveLength(44);
     for (const kind of kinds) {
       expectValidIcon(buildingIcon(kind as (typeof kinds)[number]));
     }
@@ -88,16 +88,40 @@ describe('building icons', () => {
   it('gives every building a distinct glyph', () => {
     const kinds = Object.values(BuildingKind);
     const glyphs = new Set(kinds.map((k) => buildingIcon(k)));
-    expect(glyphs.size).toBe(31);
+    expect(glyphs.size).toBe(44);
+  });
+
+  it('gives each of the 13 Phase 2 utility buildings a valid, distinct glyph', () => {
+    const utility = [
+      'coalPlant', 'gasPlant', 'windFarm', 'hydroDam',
+      'geothermalPlant', 'fusionPlant', 'waterWell', 'waterTower',
+      'waterTreatment', 'reservoir', 'powerSubstation', 'pumpingStation',
+      'batteryStation',
+    ] as const;
+    const glyphs = new Set<string>();
+    for (const kind of utility) {
+      const g = buildingIcon(kind);
+      expectValidIcon(g);
+      expect(glyphs.has(g), `${kind}: glyph reused`).toBe(false);
+      glyphs.add(g);
+    }
   });
 });
 
 describe('tool icons', () => {
-  it('covers the five build-palette tools', () => {
-    const tools: PaletteToolIcon[] = ['road', 'zoneR', 'zoneC', 'zoneI', 'demolish'];
+  it('covers the seven build-palette tools', () => {
+    const tools: PaletteToolIcon[] = [
+      'road', 'zoneR', 'zoneC', 'zoneI', 'demolish',
+      // Grand-expansion Phase 2: utility network tools.
+      'powerLine', 'waterPipe',
+    ];
     for (const tool of tools) {
       expectValidIcon(toolIcon(tool));
     }
+  });
+
+  it('gives the two network tools distinct glyphs', () => {
+    expect(toolIcon('powerLine')).not.toBe(toolIcon('waterPipe'));
   });
 });
 

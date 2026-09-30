@@ -212,6 +212,11 @@ describe('procedural gap models', () => {
     // NOVATERRA roster expansion
     'apc', 'mlrs', 'fighterBomber', 'attackHeli',
     'submarine', 'frigate', 'carrier', 'quarry', 'monument',
+    // Grand-expansion Phase 2 (utilities): the 12 new utility buildings.
+    'coalPlant', 'gasPlant', 'windFarm', 'hydroDam',
+    'geothermalPlant', 'fusionPlant', 'waterWell', 'waterTower',
+    'waterTreatment', 'reservoir', 'powerSubstation', 'pumpingStation',
+    'batteryStation',
   ];
   // Warships rest at the waterline (keel below y=0) instead of on the ground.
   const waterlineKinds = new Set(['destroyer', 'submarine', 'frigate', 'carrier']);

@@ -97,6 +97,8 @@ export type BuildTabId =
   | 'commerce'
   | 'industry'
   | 'utilities'
+  | 'power'
+  | 'waterNet'
   | 'navalAir'
   | 'special';
 
@@ -105,7 +107,7 @@ export interface BuildTab {
   kinds: readonly BuildingKind[];
 }
 
-/** 30 buildings across 7 tabs. Every building kind appears in exactly one. */
+/** 44 buildings across 9 tabs. Every building kind appears in exactly one. */
 export const BUILD_TABS: readonly BuildTab[] = [
   { id: 'housing', kinds: ['house', 'apartment'] },
   // Workstream Z (2026-09-30): the civic tab — the four education
@@ -134,6 +136,27 @@ export const BUILD_TABS: readonly BuildTab[] = [
     id: 'utilities',
     kinds: ['powerPlant', 'solarFarm', 'nuclearPlant', 'waterPump', 'desalination'],
   },
+  // Grand-expansion Phase 2 (2026-09-30): the 13 new utility buildings —
+  // the six power plants plus the power-network pieces (substation,
+  // battery) under Power; the water sources plus the pumping station
+  // under Water — next to the classic utilities tab.
+  {
+    id: 'power',
+    kinds: [
+      'coalPlant',
+      'gasPlant',
+      'windFarm',
+      'hydroDam',
+      'geothermalPlant',
+      'fusionPlant',
+      'powerSubstation',
+      'batteryStation',
+    ],
+  },
+  {
+    id: 'waterNet',
+    kinds: ['waterWell', 'waterTower', 'waterTreatment', 'reservoir', 'pumpingStation'],
+  },
   {
     id: 'navalAir',
     kinds: ['shipyard', 'navalYard', 'airfield', 'radarStation'],
@@ -141,14 +164,14 @@ export const BUILD_TABS: readonly BuildTab[] = [
   { id: 'special', kinds: ['monument', 'aegisControl', 'stormArray'] },
 ];
 
-export type UpgradeGroupId = 'military' | 'economy';
+export type UpgradeGroupId = 'military' | 'economy' | 'infrastructure';
 
 export interface UpgradeGroup {
   id: UpgradeGroupId;
   ids: readonly UpgradeId[];
 }
 
-/** 12 upgrades in 2 research groups. */
+/** 18 upgrades in 3 research groups. */
 export const UPGRADE_GROUPS: readonly UpgradeGroup[] = [
   {
     id: 'military',
@@ -166,6 +189,19 @@ export const UPGRADE_GROUPS: readonly UpgradeGroup[] = [
   {
     id: 'economy',
     ids: ['precisionManufacturing', 'smartGrid', 'verticalFarming', 'freeTrade'],
+  },
+  // Grand-expansion Phase 2 (2026-09-30): the utility research ladder —
+  // its own group so the military/economy pins keep their meaning.
+  {
+    id: 'infrastructure',
+    ids: [
+      'combustionTech',
+      'advancedNuclear',
+      'fusionResearch',
+      'groundwaterSurvey',
+      'desalinationTech',
+      'gridStorage',
+    ],
   },
 ];
 

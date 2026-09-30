@@ -61,7 +61,6 @@ import { STRINGS, loc, fillLoc, type LocalizedString } from './strings';
 import { vetXpLine } from './veterancy';
 import {
   TRAIN_TABS,
-  BUILD_TABS,
   UPGRADE_GROUPS,
   unitName,
   buildingName,
@@ -87,14 +86,30 @@ import {
 } from './icons';
 import { HUMAN_PLAYER_ID } from './session';
 import { selectionDigest as paletteDigest } from './paletteDigest';
+import {
+  allBuildTabs,
+  buildingUtilityLine,
+  formatUtilityBuildCost,
+  isUtilityBuildingKind,
+  utilityBuildingAvailability,
+  utilityBuildingName,
+  utilityBuildTooltip,
+  type UtilityBuildTabId,
+} from './utilities';
 
 /** Build-palette tools the HUD can request. */
 export type BuildTool =
   | 'road'
+  // Phase 2 (utilities): drag-paint network tools.
+  | 'powerLine'
+  | 'waterPipe'
   | 'zoneR'
   | 'zoneC'
   | 'zoneI'
   | `building:${BuildingKind}`
+  // Phase 2 (utilities): new sim building kinds arm with the same
+  // 'building:<kind>' shape once the sim's BuildingKind union grows.
+  | `building:${string}`
   | 'demolish';
 
 /** Actions the HUD delegates to the game controller. */
@@ -110,6 +125,8 @@ export interface HUDActions {
   /** Cancel any placement/construction mode. */
   onCancelPlacement(): void;
   onAdvanceAge(program: string): void;
+  /** Phase 2 (utilities): toggle the utility-network overlay. */
+  onToggleUtilityOverlay(): void;
   /** Phase 3: fire the Aegis shield. */
   onFireAegis(): void;
   /** Phase 3: enter Storm targeting mode (click map). */
@@ -173,6 +190,8 @@ export class HUD {
   private currentAge: string = 'foundation';
   private readonly pauseBtn: HTMLButtonElement;
   private readonly speedBtns: HTMLButtonElement[] = [];
+  /** Phase 2 (utilities): overlay toggle, flipped write-on-change. */
+  private readonly utilOverlayBtn: HTMLButtonElement;
   private readonly advisorPanel: HTMLElement;
   private readonly advisorList: HTMLElement;
   private readonly selectionPanel: HTMLElement;
@@ -183,7 +202,7 @@ export class HUD {
   private lastAdvisorKey = '';
   /** Active palette tabs (persist across the per-tick panel rebuilds). */
   private trainTab: TrainTabId = 'infantry';
-  private buildTab: BuildTabId = 'housing';
+  private buildTab: BuildTabId | UtilityBuildTabId = 'housing';
   /**
    * Set by tab switches / research clicks so the selection panel rebuilds
    * even when the sim tick hasn't advanced (e.g. while paused).
@@ -245,6 +264,20 @@ export class HUD {
     this.pauseBtn.textContent = s.pause;
     this.pauseBtn.addEventListener('click', () => actions.onPauseToggle());
     this.topbar.append(this.pauseBtn);
+
+    // Phase 2 (utilities): overlay toggle — network runs, coverage tints
+    // and diagnosis markers. Top bar is built once (write-on-change, per
+    // the topbar branch's noDigestReason), so the toggle reuses that
+    // pattern: it flips its own 'active' class via
+    // setUtilityOverlayActive below, never rebuilt per frame.
+    this.utilOverlayBtn = document.createElement('button');
+    this.utilOverlayBtn.className = 'hud-util';
+    this.utilOverlayBtn.title = loc(STRINGS.utilities.overlayLegend);
+    this.utilOverlayBtn.innerHTML =
+      toolIcon('powerLine') + toolIcon('waterPipe');
+    this.utilOverlayBtn.append(document.createTextNode(loc(STRINGS.utilities.overlayToggle)));
+    this.utilOverlayBtn.addEventListener('click', () => actions.onToggleUtilityOverlay());
+    this.topbar.append(this.utilOverlayBtn);
 
     const menuBtn = document.createElement('button');
     menuBtn.className = 'hud-menu-btn';
@@ -430,6 +463,14 @@ export class HUD {
     this.updateSelection(world, selection);
   }
 
+  /**
+   * Phase 2 (utilities): flip the overlay toggle's active state
+   * (write-on-change — the button is never rebuilt).
+   */
+  setUtilityOverlayActive(active: boolean): void {
+    this.utilOverlayBtn.classList.toggle('active', active);
+  }
+
   /** Show the two National Program choices (called by the age button). */
   private onAgeButton(): void {
     const s = STRINGS.hud;
@@ -549,6 +590,10 @@ export class HUD {
       );
       // Crew training level (economy.ts levels thriving buildings 1→3).
       panel.append(el('div', 'sel-unit', fillLoc(sel.levelLine, { level: b.level })));
+      // Phase 2 (utilities): power/water diagnosis for the selected
+      // building — reuses the 'sel-unit' class so no new DOM class is
+      // introduced; digest-covered by the bu: segment.
+      panel.append(el('div', 'sel-unit', buildingUtilityLine(b)));
       // A completed Research Lab opens the research panel (spec §8).
       if (b.kind === 'lab' && b.owner === HUMAN_PLAYER_ID && b.progress >= 1) {
         this.appendResearchPanel(panel, world);
@@ -605,6 +650,18 @@ export class HUD {
       return b;
     };
     toolsRow.append(makeToolButton('road', loc(p.toolRoad), 'road'));
+    // Phase 2 (utilities): the drag-paint network tools sit together in a
+    // "Networks" group, next to the road tool they share a gesture with.
+    const netGroup = el('div', 'palette-zones');
+    netGroup.append(el('div', 'palette-section-title', loc(p.toolSectionNetworks)));
+    const netTools = [
+      { tool: 'powerLine', label: loc(p.toolPowerLine), icon: 'powerLine' },
+      { tool: 'waterPipe', label: loc(p.toolWaterPipe), icon: 'waterPipe' },
+    ] as const;
+    for (const { tool, label, icon } of netTools) {
+      netGroup.append(makeToolButton(tool, label, icon));
+    }
+    toolsRow.append(netGroup);
     const zoneGroup = el('div', 'palette-zones');
     zoneGroup.append(el('div', 'palette-section-title', loc(p.toolSectionZoning)));
     const zoneTools = [
@@ -618,23 +675,30 @@ export class HUD {
     toolsRow.append(zoneGroup);
     toolsRow.append(makeToolButton('demolish', loc(p.toolDemolish), 'demolish'));
     wrap.append(toolsRow);
-    wrap.append(this.buildTabBar(BUILD_TABS, STRINGS.buildingTabs, this.buildTab, (id) => {
-      this.buildTab = id as BuildTabId;
+    wrap.append(this.buildTabBar(allBuildTabs(), STRINGS.buildingTabs, this.buildTab, (id) => {
+      this.buildTab = id as BuildTabId | UtilityBuildTabId;
     }));
     const grid = el('div', 'palette-grid');
-    const tab = BUILD_TABS.find((t) => t.id === this.buildTab) ?? BUILD_TABS[0]!;
+    const tab = allBuildTabs().find((t) => t.id === this.buildTab) ?? allBuildTabs()[0]!;
     for (const kind of tab.kinds) {
-      // Unavailable buildings grey out with a tooltip reason (age gate,
-      // then affordability). The navalYard coast rule rides in the
-      // tooltip since it is placement-time, not palette-time.
-      const avail = buildingAvailability(world, HUMAN_PLAYER_ID, kind);
+      // Phase 2 (utilities): the new kinds live in ui/utilities.ts until
+      // the sim registers them in BUILDING_DEFS — same visible greyed-out
+      // rule, honest "not yet available" reason instead of silent failure.
+      const isUtility = isUtilityBuildingKind(kind);
+      const avail = isUtility
+        ? utilityBuildingAvailability(world, HUMAN_PLAYER_ID, kind)
+        : buildingAvailability(world, HUMAN_PLAYER_ID, kind as BuildingKind);
       const b = document.createElement('button');
       b.className = `build-btn${avail.ok ? '' : ' locked'}`;
       b.disabled = !avail.ok;
-      b.prepend(iconSpan(buildingIcon(kind)));
-      b.append(el('div', 'palette-name', buildingName(kind)));
-      b.append(el('div', 'palette-cost', formatBuildCost(kind)));
-      const tip = buildTooltip(kind);
+      b.prepend(iconSpan(buildingIcon(kind as BuildingKind)));
+      b.append(el('div', 'palette-name', isUtility ? utilityBuildingName(kind) : buildingName(kind as BuildingKind)));
+      b.append(
+        el('div', 'palette-cost', isUtility ? formatUtilityBuildCost(kind) : formatBuildCost(kind as BuildingKind)),
+      );
+      const tip = isUtility
+        ? utilityBuildTooltip(world, HUMAN_PLAYER_ID, kind)
+        : buildTooltip(kind as BuildingKind);
       b.title = avail.reason !== '' ? `${tip}\n${avail.reason}` : tip;
       b.addEventListener('click', () => this.actions.onBuildTool(`building:${kind}`));
       grid.append(b);

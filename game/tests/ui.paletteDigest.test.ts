@@ -115,6 +115,25 @@ describe('selectionDigest', () => {
     expect(offline).toContain(`bs:lab:${HUMAN_PLAYER_ID}:0:1`);
   });
 
+  it('tracks the selected building utility diagnosis (bu: segment)', () => {
+    // Grand-expansion Phase 2: the selection panel's Power/Water line
+    // repaints when a building's diag changes — the digest carries it.
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const lab = giveCompletedLab(session);
+    const sel = { unitIds: [], buildingId: lab.id };
+    const base = selectionDigest(world, sel, 'infantry', 'housing');
+    expect(base).toContain('bu:');
+    lab.powerDiag = 'shortage';
+    const changed = selectionDigest(world, sel, 'infantry', 'housing');
+    expect(changed).not.toBe(base);
+    expect(changed).toContain('bu:shortage:ok');
+    lab.waterDiag = 'disconnected';
+    expect(selectionDigest(world, sel, 'infantry', 'housing')).toContain(
+      'bu:shortage:disconnected',
+    );
+  });
+
   it('covers the selected building owner (the lab research panel is owner-gated)', () => {
     const session = createSession({ seed: 4242 });
     const world = session.world;

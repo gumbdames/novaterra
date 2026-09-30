@@ -347,6 +347,20 @@ export const STRINGS = {
     monument: { en: 'Monument' },
     aegisControl: { en: 'Aegis Control' },
     stormArray: { en: 'Storm Array' },
+    // Grand-expansion Phase 2 (2026-09-30): the 13 utility buildings.
+    coalPlant: { en: 'Coal Plant' },
+    gasPlant: { en: 'Gas Plant' },
+    windFarm: { en: 'Wind Farm' },
+    hydroDam: { en: 'Hydro Dam' },
+    geothermalPlant: { en: 'Geothermal Plant' },
+    fusionPlant: { en: 'Fusion Plant' },
+    waterWell: { en: 'Water Well' },
+    waterTower: { en: 'Water Tower' },
+    waterTreatment: { en: 'Water Treatment' },
+    reservoir: { en: 'Reservoir' },
+    powerSubstation: { en: 'Power Substation' },
+    pumpingStation: { en: 'Pumping Station' },
+    batteryStation: { en: 'Battery Station' },
   } as Record<BuildingKind, LocalizedString>,
   /** Train-palette tab names (spec §8). */
   unitTabs: {
@@ -365,11 +379,16 @@ export const STRINGS = {
     utilities: { en: 'Utilities' },
     navalAir: { en: 'Naval & Air' },
     special: { en: 'Special' },
+    // Phase 2 (utilities): extra tabs for the new plant/water roster.
+    power: { en: 'Power' },
+    waterNet: { en: 'Water' },
   } as Record<string, LocalizedString>,
   /** Research-panel upgrade group names. */
   upgradeGroups: {
     military: { en: 'Military' },
     economy: { en: 'Economy' },
+    // Grand-expansion Phase 2 (2026-09-30): the utility research ladder.
+    infrastructure: { en: 'Infrastructure' },
   } as Record<string, LocalizedString>,
   /** Localized age names for lock reasons ("requires the Industry age"). */
   ageNames: {
@@ -432,7 +451,51 @@ export const STRINGS = {
       name: { en: 'Free Trade Policy' },
       effect: { en: 'Markets and shops earn more funds' },
     },
+    // Grand-expansion Phase 2 (2026-09-30): the utility research ladder.
+    combustionTech: {
+      name: { en: 'Combustion Tech' },
+      effect: { en: 'Unlocks the Coal Plant and Gas Plant' },
+    },
+    advancedNuclear: {
+      name: { en: 'Advanced Nuclear' },
+      effect: { en: 'Nuclear meltdowns 4× rarer; unlocks Fusion Research' },
+    },
+    fusionResearch: {
+      name: { en: 'Fusion Research' },
+      effect: { en: 'Unlocks the Fusion Plant' },
+    },
+    groundwaterSurvey: {
+      name: { en: 'Groundwater Survey' },
+      effect: { en: 'Unlocks the Water Well' },
+    },
+    desalinationTech: {
+      name: { en: 'Desalination Tech' },
+      effect: { en: 'Desalination Plant water output ×1.5' },
+    },
+    gridStorage: {
+      name: { en: 'Grid Storage' },
+      effect: { en: 'Unlocks the Water Tower, Reservoir, and Battery Station' },
+    },
   } as Record<UpgradeId, { name: LocalizedString; effect: LocalizedString }>,
+  /** Utility networks (grand-expansion Phase 2). English-only. */
+  utilities: {
+    /** Overlay toggle label (top bar). */
+    overlayToggle: { en: 'Utilities' },
+    /** Diagnosis names for the selection panel. */
+    powerLabel: { en: 'Power' },
+    waterLabel: { en: 'Water' },
+    diagOk: { en: 'OK' },
+    diagShortage: { en: 'Shortage' },
+    diagDisconnected: { en: 'Disconnected' },
+    /** Shown on palette entries whose sim def has not landed yet. */
+    notYetAvailable: { en: 'Requires the Phase 2 utility sim (not yet active)' },
+    /** Hint for the drag-paint network tools (click paints one cell). */
+    dragHint: { en: 'Drag on the map to run a line; click paints one cell.' },
+    /** Overlay legend (title attribute of the toggle). */
+    overlayLegend: {
+      en: 'Show utility networks: yellow = power lines, blue = water pipes. Red icon = disconnected, amber = shortage, flag = stranded plant, purple ring = fouled water source.',
+    },
+  },
   /** Tabbed palettes, research panel, placement hints — all en-only. */
   palettes: {
     trainTitle: { en: 'Train' },
@@ -440,11 +503,16 @@ export const STRINGS = {
     researchTitle: { en: 'Research' },
     researchVerb: { en: 'Research' },
     toolRoad: { en: 'Road' },
+    // Phase 2 (utilities): drag-paint network tools.
+    toolPowerLine: { en: 'Power line' },
+    toolWaterPipe: { en: 'Water pipe' },
     // Workstream Z (2026-09-30): zone tools say what they paint.
     toolZoneR: { en: 'Zone: Homes' },
     toolZoneC: { en: 'Zone: Shops' },
     toolZoneI: { en: 'Zone: Industry' },
     toolSectionZoning: { en: 'Zoning' },
+    // Phase 2 (utilities): the drag-paint network tools sit together.
+    toolSectionNetworks: { en: 'Networks' },
     toolDemolish: { en: 'Demolish' },
     cancelPlacement: { en: 'Cancel (Esc)' },
     placeLandHint: { en: 'Click the map to place' },

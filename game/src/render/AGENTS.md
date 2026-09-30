@@ -84,14 +84,22 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 
 ## Procedural gap models (`render/proceduralModels.ts`, 0.1 Alpha)
 
-- 17 entity kinds have no CC0 source: artillery (wheeled howitzer),
+- 30 entity kinds have no CC0 source: artillery (wheeled howitzer),
   aa (missile truck), fighter (jet), transport (helicopter), drone
   (quadcopter), destroyer (warship, keel below the waterline),
   mediaCenter (lattice broadcast tower), stormArray (dish), apc (6×6
   armored carrier), mlrs (elevating 12-tube rocket pod), fighterBomber
   (strike jet), attackHeli (tandem gunship), submarine (teardrop hull,
   keel below the waterline), frigate (compact warship), carrier
-  (flat-top), quarry (terraced rock face), monument (obelisk). Each
+  (flat-top), quarry (terraced rock face), monument (obelisk), plus the
+  13 grand-expansion Phase 2 utility buildings: coalPlant (cooling-tower
+  hall), gasPlant (turbine hall + stacks), windFarm (three turbines),
+  hydroDam (arched dam wall + powerhouse), geothermalPlant (vent stacks
+  + pipe manifold), fusionPlant (domed hall + tokamak torus ring),
+  waterWell (A-frame derrick + pump house), waterTower (tank on legs),
+  waterTreatment (clarifier basins), reservoir (embanked basin),
+  powerSubstation (transformer yard), pumpingStation (pump hall),
+  batteryStation (container batteries). Each
   builder is a detailed smooth (never blocky) composite;
   `PROCEDURAL_KINDS` / `buildProceduralModel(kind)` is the registry.
   Builders rest at y=0 (destroyer / submarine / frigate / carrier
@@ -218,6 +226,48 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   in `dispose()`. Tested in `tests/render.zoneOverlay.test.ts`
   (13 tests).
 
+## Utility networks (`render/networks.ts`, 0.1 Alpha)
+
+- Grand-expansion Phase 2: the visible power lines and water pipes.
+  Pure builders, Node-testable: `buildPowerLineGeometry(cells, …)` →
+  `{ poles, wires }` (wood poles with crossarms + sagging catenary wire
+  runs between consecutive poles) and `buildPipeGeometry(cells, …)` (one
+  merged ground-hugging pipe ribbon + valve boxes). Corners drape on the
+  terrain via the same `heightAt` callback the roads use; without it the
+  geometry stays flat (headless path). `networkDigest(cells)` is the
+  FNV-1a rebuild key (order-independent).
+- `NetworkOverlay` owns the merged meshes and rebuilds ONLY when a digest
+  changes — static almost every frame. Rendered always-on like roads
+  (players read the network at a glance); the toggle-able diagnosis tints
+  live in `utilityOverlay.ts`. Owned by `EntityRenderer`: constructed in
+  its constructor, synced in `sync()` from `world.city.powerLines` /
+  `world.city.pipes`, disposed in `dispose()`. Tested in
+  `tests/render.networks.test.ts`.
+
+## Utility diagnosis overlay (`render/utilityOverlay.ts`, 0.1 Alpha)
+
+- Grand-expansion Phase 2: the toggle-able diagnosis layer (topbar
+  "Utilities" button). Three translucent ground tint decals (green =
+  power-served cells, blue = water-served cells, purple = fouled-source
+  cells) built by the pure `buildTintDecalGeometry` (+0.12 terrain offset —
+  above the zone decals' +0.05 and the road ribbons' +0.08, so the
+  diagnosis layer always reads) plus four
+  instanced billboard marker sprites (red disconnected / amber shortage /
+  orange stranded-producer / purple fouled) rasterized canvas-free via
+  the pure `utilityMarkerPixels` (deterministic 64×64 SDF sprites, same
+  kind ⇒ byte-identical pixels, pinned by test).
+- `utilityOverlayDigest(data)` is the FNV-1a rebuild key over served /
+  fouled cells + markers (the line/pipe cells are NOT in the digest —
+  `NetworkOverlay` renders those). `UtilityOverlay.sync(data, opts)`
+  rebuilds tints + marker lists only on digest change and billboards the
+  markers every sync. Marker instanced meshes are created lazily — an
+  empty scene keeps zero marker meshes instead of four empty ones (this
+  keeps the instancing draw-call counts honest). Owned by
+  `EntityRenderer`: constructed in its constructor, synced in `sync()`
+  from `ui/utilities.ts` `utilityOverlayData(world, …)`, toggled by
+  `setUtilityOverlayVisible(v)`, disposed in `dispose()`. Tested in
+  `tests/render.utilityOverlay.test.ts`.
+
 ## Entity rendering conventions (`render/entities.ts`, 0.1 Alpha)
 
 - `EntityRenderer` is a read-only view: `sync(world)` diffs the world
@@ -284,6 +334,14 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   art. Pinned by `tests/render.entities.test.ts` (10 tests).
 - Roads: ribbon + dash meshes rebuilt when the road digest changes (FNV
   over cell indices, not just the count).
+- Utility overlays (grand-expansion Phase 2): `EntityRenderer` owns a
+  `NetworkOverlay` (always-on power-line / water-pipe meshes, rebuilt on
+  digest change) and a `UtilityOverlay` (toggle-able diagnosis tints +
+  markers) — both constructed in the constructor, synced at the end of
+  `sync()` from `world.city.powerLines` / `world.city.pipes` and
+  `ui/utilities.ts` `utilityOverlayData(…)`, toggled via
+  `setUtilityOverlayVisible(v)`, disposed in `dispose()`. See
+  "Utility networks" / "Utility diagnosis overlay" above.
 - `dispose()` releases per-view objects and every SHARED asset the
   renderer owns (procedural cache, prop cache, placeholder templates,
   stripe/pennant/road/FX assets) exactly once — but never the

@@ -55,8 +55,8 @@ more water means more naval fighting) → pick your **rival**:
 
 The bottom-left panel has two tabs: **Train** (units) and **Build**
 (buildings and zones). Train is split into **Infantry, Armor, Air,
-Navy**; Build into **Housing, Commerce, Industry, Utilities, Naval &
-Air, Special**.
+Navy**; Build into **Housing, Civic, Commerce, Industry, Utilities,
+Power, Water, Naval & Air, Special**.
 
 Every unit button shows its cost in **funds + materials + manpower**;
 every building shows **funds + materials**. Items you can't use yet
@@ -71,9 +71,23 @@ cell must touch water). Pick a unit, then click open ground (or water
 for ships) to train it.
 
 **Research:** build a **Research Lab** (Commerce tab), then select it
-to open the research panel — 12 upgrades in **Military** and
-**Economy** groups, each with its cost and effect shown. Research one
-at a time; researched upgrades are marked ✓.
+to open the research panel — 18 upgrades in **Military**, **Economy**,
+and **Infrastructure** groups, each with its cost and effect shown.
+Research one at a time; researched upgrades are marked ✓.
+
+## Power and water
+
+Buildings need **power** and **water** to run at full strength. Build
+generators on the **Power** tab (coal, gas, wind, hydro, geothermal,
+fusion — each age unlocks stronger plants, researched in the
+Infrastructure group) and water sources on the **Water** tab (wells,
+towers, treatment plants, reservoirs). **Power lines** and **water
+pipes** (the tools row, drag to paint) connect distant buildings to a
+plant — without a connection, a building shows **Disconnected**; when a
+plant can't meet demand it shows **Shortage**. Select any building to
+see its Power/Water status, or hit the **Utilities** button in the top
+bar for the full overlay: green = powered areas, blue = watered areas,
+and marker flags over buildings in trouble.
 
 ## Money and ages
 

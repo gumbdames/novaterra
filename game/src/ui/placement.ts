@@ -34,8 +34,10 @@ import type { BuildTool } from './hud';
 import {
   buildDemolishOrder,
   buildPlaceBuildingOrder,
+  buildPowerLineOrder,
   buildRoadOrder,
   buildTrainOrder,
+  buildWaterPipeOrder,
   type OrderIntent,
 } from './orders';
 import { STRINGS } from './strings';
@@ -74,6 +76,20 @@ export function resolveBuildToolClick(
     return {
       kind: 'order',
       intent: buildRoadOrder(owner, [cell.cz * CITY_GRID_CELLS + cell.cx]),
+    };
+  }
+  // Phase 2 (utilities): network tools paint the single clicked cell —
+  // same as roads, the sim command lands with the Phase 2 sim workstream.
+  if (tool === 'powerLine') {
+    return {
+      kind: 'order',
+      intent: buildPowerLineOrder(owner, [cell.cz * CITY_GRID_CELLS + cell.cx]),
+    };
+  }
+  if (tool === 'waterPipe') {
+    return {
+      kind: 'order',
+      intent: buildWaterPipeOrder(owner, [cell.cz * CITY_GRID_CELLS + cell.cx]),
     };
   }
   if (tool === 'demolish') {

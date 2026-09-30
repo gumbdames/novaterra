@@ -196,7 +196,7 @@ describe('research groups', () => {
     }
   });
 
-  it('groups are Military (8) and Economy (4)', () => {
+  it('groups are Military (8), Economy (4), and Infrastructure (6)', () => {
     const byId = new Map(UPGRADE_GROUPS.map((g) => [g.id, [...g.ids]]));
     expect(byId.get('military')).toHaveLength(8);
     expect(byId.get('economy')).toEqual([
@@ -204,6 +204,15 @@ describe('research groups', () => {
       'smartGrid',
       'verticalFarming',
       'freeTrade',
+    ]);
+    // Grand-expansion Phase 2: the utility research ladder.
+    expect(byId.get('infrastructure')).toEqual([
+      'combustionTech',
+      'advancedNuclear',
+      'fusionResearch',
+      'groundwaterSurvey',
+      'desalinationTech',
+      'gridStorage',
     ]);
   });
 });

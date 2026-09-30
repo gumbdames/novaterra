@@ -53,20 +53,34 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   button nodes stay stable across frames (recreating them every sim tick
   broke real clicks: pointerdown + pointerup landed on different nodes and
   no click event ever fired). TRAIN palette has 4 tabs (Infantry / Armor / Air / Navy),
-  BUILD palette has 7 tabs (Housing / Civic / Commerce / Industry /
-  Utilities / Naval & Air / Special) — the spec groupings plus the
-  Workstream Z civic tab (education buildings), see `palettes.ts`.
+  BUILD palette has 9 tabs (Housing / Civic / Commerce / Industry /
+  Utilities / Power / Water / Naval & Air / Special) — the spec groupings
+  plus the Workstream Z civic tab (education buildings), plus the Phase 2
+  utility tabs (the 13 new power/water buildings), see `palettes.ts`.
   Unavailable entries stay visible but disabled, with tooltip reasons
   (age, production building, cost, manpower, Naval Yard coast rule).
   Train buttons show funds + materials + manpower cost; build buttons
   show funds + materials. Selecting a completed Research Lab (or owning
   one with nothing selected) opens the research panel: all 12 upgrades
-  in Military / Economy groups with one-line effects, cost, researched
-  checkmark, and disabled reasons. Selected military units show a
-  veterancy line (Phase 1: rank + ▲ chevrons + XP progress, e.g.
-  "Veteran ▲▲ · 320/500 XP" via `ui/veterancy.ts`); selected buildings
-  show their crew training level ("Level 2/3", from economy.ts). Both
-  are digest-covered (`uv:` / `bl:` segments, AD11).
+  in Military / Economy / Infrastructure groups with one-line effects, cost,
+  researched checkmark, and disabled reasons (the Phase 2 Infrastructure
+  group is the utility research ladder: combustion → advanced nuclear →
+  fusion, groundwater survey, desalination tech, grid storage). Selected
+  military units show a veterancy line (Phase 1: rank + ▲ chevrons + XP
+  progress, e.g. "Veteran ▲▲ · 320/500 XP" via `ui/veterancy.ts`); selected
+  buildings show their crew training level ("Level 2/3", from economy.ts)
+  AND a Phase 2 power/water diagnosis line ("Power: Shortage", "Water:
+  Disconnected" — from the sim's `powerDiag`/`waterDiag`). All are
+  digest-covered (`uv:` / `bl:` / `bu:` segments, AD11).
+  Topbar (Phase 2): a "Utilities" toggle shows the utility overlay —
+  served-power / served-water / fouled-source tint decals plus marker
+  sprites over disconnected / shortage / stranded / fouled buildings
+  (see `render/utilityOverlay.ts`). The power lines and water pipes
+  themselves render always-on like roads (see `render/networks.ts`).
+  Tools row (Phase 2): "Power line" and "Water pipe" drag-paint tools ride
+  the generic `linearNetworkDrag.ts` pipeline (see "Adding a
+  linear-network kind" below) and emit `buildPowerLine` / `buildPipe`
+  orders via `orders.ts`.
 - `paletteDigest.ts` — **selection-panel content digest (pure, tested,
   `tests/ui.paletteDigest.test.ts`).** `hud.ts` rebuilds the selection
   panel only when this digest changes: it covers everything the panel
@@ -98,12 +112,26 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `buildResearchUpgradeOrder(owner, upgrade)` for the research panel.
 - `palettes.ts` — headless-safe palette data + availability logic for
   the tabbed TRAIN/BUILD palettes and the research panel: `TRAIN_TABS`
-  (4 tabs, 28 units), `BUILD_TABS` (7 tabs, 30 buildings),
-  `UPGRADE_GROUPS` (military 8 / economy 4), `unitAvailability` /
+  (4 tabs, 28 units), `BUILD_TABS` (9 tabs, 44 buildings),
+  `UPGRADE_GROUPS` (military 8 / economy 4 / infrastructure 6), `unitAvailability` /
   `buildingAvailability` / `upgradeAvailability` (ready | reason), cost
   formatters, and the
   Naval Yard coast-rule tooltip. Availability mirrors sim validation
   (age gate, production-building gate, affordability, manpower).
+- `utilities.ts` — **Phase 2 utility contract module (pure, tested,
+  `tests/ui.utilities.test.ts`).** The UI/render boundary for the sim's
+  utility networks: the 13-building roster (`UTILITY_BUILDING_KINDS`),
+  English names, diagnosis readers (`buildingPowerDiag` /
+  `buildingWaterDiag` — the sim's `powerDiag`/`waterDiag` fields with a
+  `powered`/`watered` fallback), producer sets derived from the sim's
+  `BUILDING_DEFS` (`POWER_PRODUCER_KINDS` / `WATER_PRODUCER_KINDS`),
+  `isStrandedPlant` (mirrors the sim's disconnected-producer rule), the
+  two utility build tabs (derived from `BUILD_TABS` — never a second copy
+  of the kind lists), `allBuildTabs()` (the canonical tab list hud.ts
+  renders), and `utilityOverlayData(world, …)` — the read-only per-frame
+  view the `UtilityOverlay` renders (served/fouled tint cells + marker
+  list). Reads every sim field defensively (empty pre-sim → empty view),
+  never writes sim state.
 - `linearNetworkDrag.ts` — **generic linear-network gesture pipeline (pure,
   tested, `tests/ui.linearNetworkDrag.test.ts`).** One drag-paint pipeline
   shared by every linear network tool: road today, power lines / water pipes
@@ -144,9 +172,10 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `icons.ts` — **hand-drawn inline SVG icon set (pure, tested,
   `tests/ui.icons.test.ts`).** Every button shows icon AND text (user
   directive 2026-09-30) — icons are `aria-hidden`, never icon-only.
-  `unitIcon` / `buildingIcon` cover all 28 units + 30 buildings
+  `unitIcon` / `buildingIcon` cover all 28 units + 44 buildings
   (`Record<UnitKind, string>` so a missing glyph is a compile error);
-  `toolIcon` for the build tools row; `mapIcon(waterFraction)` for the
+  `toolIcon` for the build tools row (incl. the Phase 2 powerLine /
+  waterPipe tools); `mapIcon(waterFraction)` for the
   8 map presets (5 terrain buckets); `difficultyIcon` (1–5 rank
   chevrons); `menuIcon` for skirmish/load/missions/settings/back/
   resume/save/exit. 24×24 viewBox, `stroke="currentColor"` so button
@@ -173,8 +202,8 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `LocalizedString` (`{en}` — the localization indirection, kept as the
   extension point), module-level language
   state (`setUiLanguage` / `getUiLanguage` / `loc` / `fillLoc`). Covers
-  all 28 unit names, 28 building names, palette/upgrade tab names, the
-  12 upgrade names + one-line effects, cost labels, and lock reasons.
+  all 28 unit names, 44 building names, palette/upgrade tab names, the
+  18 upgrade names + one-line effects, cost labels, and lock reasons.
   Legacy Phase 3 strings are still English-only; they were never localized.
 - Audio: `game.ts` owns an `AudioEngine` (see `src/audio/AGENTS.md`) —
   unlocked on first pointer/key gesture, `updateMusic(world, playerId)`
@@ -217,13 +246,18 @@ extended to severity+title+detail on 2026-09-30 so it cannot go stale.)
 
 ## Adding a linear-network kind (Phase 2/4)
 
-Power lines, water pipes (Phase 2) and rail (Phase 4) reuse the road tool's
-drag gesture through `linearNetworkDrag.ts` — do not copy the pipeline.
-Steps: (1) extend the `LinearNetworkKind` union; (2) add the order builder in
-`orders.ts` and wire it into the pipeline's `buildNetworkOrder` switch; (3)
-map the kind to its build tool in the pipeline's `toolForKind` switch; (4)
-extend `networkKindForTool` with the new tool string; (5) add unit tests for
-the new kind (accumulation, order payload, click resolution). The two
+Power lines and water pipes (Phase 2, done) — and rail (Phase 4) later —
+reuse the road tool's drag gesture through `linearNetworkDrag.ts`: do not
+copy the pipeline. `LinearNetworkKind` is `'road' | 'powerLine' |
+'waterPipe'`; `orders.ts` has `buildPowerLineOrder` / `buildWaterPipeOrder`
+(emitting `buildPowerLine` / `buildPipe` commands); `toolForKind` maps the
+kinds to the `powerLine` / `waterPipe` build tools; `networkKindForTool`
+starts a drag for those tool strings. Steps for a NEW kind: (1) extend the
+`LinearNetworkKind` union; (2) add the order builder in `orders.ts` and
+wire it into the pipeline's `buildNetworkOrder` switch; (3) map the kind
+to its build tool in the pipeline's `toolForKind` switch; (4) extend
+`networkKindForTool` with the new tool string; (5) add unit tests for the
+new kind (accumulation, order payload, click resolution). The two
 switches are exhaustive with no default arm, so the compiler fails after
 step 1 until steps 2–3 are done — a new kind can never silently fall
 through. The controller wiring in `game.ts` (`bindInput`) is already

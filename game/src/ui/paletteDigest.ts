@@ -49,7 +49,6 @@ import { UNIT_DEFS, type UnitKind } from '../sim/units';
 import type { Selection } from './selection';
 import {
   TRAIN_TABS,
-  BUILD_TABS,
   UPGRADE_GROUPS,
   unitAvailability,
   buildingAvailability,
@@ -57,6 +56,14 @@ import {
   playerHasCompletedLab,
 } from './palettes';
 import { HUMAN_PLAYER_ID } from './session';
+import {
+  allBuildTabs,
+  buildingPowerDiag,
+  buildingWaterDiag,
+  isUtilityBuildingKind,
+  utilityBuildingAvailability,
+} from './utilities';
+import type { BuildingKind } from '../sim/city';
 
 /**
  * Digest of the selection panel's dynamic content. Stable when nothing
@@ -104,6 +111,12 @@ export function selectionDigest(
       `bs:${b.kind}:${b.owner}:${b.operational ? 1 : 0}:${b.progress >= 1 ? 1 : 0}`,
     );
     parts.push(`bl:${b.level ?? 1}`);
+    // Phase 2 (utilities): the panel renders the power/water diagnosis
+    // line for every selected building, so the digest must move when
+    // either diagnosis does. Always emitted (pre-sim fallback is the
+    // legacy powered/watered flags), so the branch's representative
+    // state covers it.
+    parts.push(`bu:${buildingPowerDiag(b)}:${buildingWaterDiag(b)}`);
   } else {
     // No selection: the train/build palettes render the active tab's
     // buttons; only each button's availability can move per tick.
@@ -111,9 +124,14 @@ export function selectionDigest(
     for (const kind of trainTabDef.kinds) {
       parts.push(`ta:${kind}:${unitAvailability(world, HUMAN_PLAYER_ID, kind).ok ? 1 : 0}`);
     }
-    const buildTabDef = BUILD_TABS.find((t) => t.id === buildTab) ?? BUILD_TABS[0]!;
+    const buildTabDef = allBuildTabs().find((t) => t.id === buildTab) ?? allBuildTabs()[0]!;
     for (const kind of buildTabDef.kinds) {
-      parts.push(`ba:${kind}:${buildingAvailability(world, HUMAN_PLAYER_ID, kind).ok ? 1 : 0}`);
+      // Phase 2 (utilities): the new kinds digest through their own
+      // availability mirror until the sim registers them.
+      const ok = isUtilityBuildingKind(kind)
+        ? utilityBuildingAvailability(world, HUMAN_PLAYER_ID, kind).ok
+        : buildingAvailability(world, HUMAN_PLAYER_ID, kind as BuildingKind).ok;
+      parts.push(`ba:${kind}:${ok ? 1 : 0}`);
     }
   }
   // The research panel is listed whenever the player owns a completed
@@ -192,13 +210,16 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'hud-spacer',
       'hud-speed',
       'hud-pause',
+      'hud-util',
       'hud-menu-btn',
     ],
     digestLabels: [],
     noDigestReason:
       'Built once in the constructor; per-frame updates are write-on-change ' +
       'text/property writes (setText) — nodes are never rebuilt, so no digest ' +
-      'segment is needed. Invariant: never rebuild topbar DOM (the click-bug pattern).',
+      'segment is needed. The utilities-overlay toggle (hud-util, Phase 2) ' +
+      'flips its own active class on click via setUtilityOverlayActive. ' +
+      'Invariant: never rebuild topbar DOM (the click-bug pattern).',
   },
   {
     id: 'advisor',
@@ -234,7 +255,9 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     id: 'selection-building',
     renderedIn: 'updateSelection',
     domClasses: ['sel-title', 'sel-unit'],
-    digestLabels: ['b:', 'bs:', 'bl:'],
+    // bu: power/water diagnosis line (Phase 2 utilities; the panel renders
+    // it for every selected building via buildingUtilityLine).
+    digestLabels: ['b:', 'bs:', 'bl:', 'bu:'],
   },
   {
     id: 'train-palette',

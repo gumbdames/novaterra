@@ -38,7 +38,7 @@ import {
   resolveNetworkToolClick,
   type LinearNetworkDragOptions,
 } from '../src/ui/linearNetworkDrag';
-import { buildRoadOrder } from '../src/ui/orders';
+import { buildRoadOrder, buildPowerLineOrder, buildWaterPipeOrder } from '../src/ui/orders';
 import { CITY_GRID_CELLS } from '../src/sim/city';
 import type { CellRef } from '../src/ui/placement';
 
@@ -53,6 +53,71 @@ function drag(partial?: Partial<LinearNetworkDragOptions>): LinearNetworkDrag {
     ...partial,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Grand-expansion Phase 2: the two utility network kinds ride the same
+// gesture pipeline as roads (ui/AGENTS.md "Adding a linear-network kind").
+// ---------------------------------------------------------------------------
+
+describe('networkKindForTool (Phase 2 utility tools)', () => {
+  it("maps the powerLine tool to the 'powerLine' network kind", () => {
+    expect(networkKindForTool('powerLine')).toBe('powerLine');
+  });
+
+  it("maps the waterPipe tool to the 'waterPipe' network kind", () => {
+    expect(networkKindForTool('waterPipe')).toBe('waterPipe');
+  });
+});
+
+describe('utility network drags emit the right orders', () => {
+  it('a powerLine drag emits a buildPowerLine order', () => {
+    const d = drag({ kind: 'powerLine' });
+    d.addCell(cell(4, 4));
+    d.addCell(cell(5, 4));
+    const outcome = d.finish('drag');
+    expect(outcome).toEqual({
+      action: 'order',
+      intent: buildPowerLineOrder(OWNER, [idx(4, 4), idx(5, 4)]),
+    });
+    if (outcome.action === 'order') {
+      expect(outcome.intent.kind).toBe('buildPowerLine');
+    }
+  });
+
+  it('a waterPipe drag emits a buildPipe order', () => {
+    const d = drag({ kind: 'waterPipe' });
+    d.addCell(cell(4, 4));
+    d.addCell(cell(5, 4));
+    const outcome = d.finish('drag');
+    expect(outcome).toEqual({
+      action: 'order',
+      intent: buildWaterPipeOrder(OWNER, [idx(4, 4), idx(5, 4)]),
+    });
+    if (outcome.action === 'order') {
+      expect(outcome.intent.kind).toBe('buildPipe');
+    }
+  });
+
+  it('utility clicks fall through to click handling with the right kind', () => {
+    const d = drag({ kind: 'powerLine' });
+    expect(d.finish('click')).toEqual({ action: 'click', kind: 'powerLine', owner: OWNER });
+    const e = drag({ kind: 'waterPipe' });
+    expect(e.finish('click')).toEqual({ action: 'click', kind: 'waterPipe', owner: OWNER });
+  });
+
+  it('resolves single-cell clicks into the right single-cell orders', () => {
+    // The click resolver uses the real city grid (CITY_GRID_CELLS), not the
+    // pipeline's test grid — it runs on the controller's picked cell.
+    expect(resolveNetworkToolClick('powerLine', OWNER, cell(2, 3))).toEqual({
+      kind: 'order',
+      intent: buildPowerLineOrder(OWNER, [3 * CITY_GRID_CELLS + 2]),
+    });
+    expect(resolveNetworkToolClick('waterPipe', OWNER, cell(2, 3))).toEqual({
+      kind: 'order',
+      intent: buildWaterPipeOrder(OWNER, [3 * CITY_GRID_CELLS + 2]),
+    });
+  });
+});
 
 function cell(cx: number, cz: number): CellRef {
   return { cx, cz };

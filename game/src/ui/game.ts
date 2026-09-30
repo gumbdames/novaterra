@@ -117,6 +117,7 @@ import {
   type PlacementResolution,
 } from './placement';
 import { classifyPointerUp } from './pointer';
+import { networkToolHint } from './utilities';
 import {
   LinearNetworkDrag,
   networkKindForTool,
@@ -439,6 +440,8 @@ class GameController {
   private placement: PlacementMode = null;
   private paused = false;
   private speed = 1;
+  /** Phase 2 (utilities): utility-network overlay visibility. */
+  private utilityOverlayVisible = false;
   private advisorItems: AdvisorItem[] = [];
   private lastAdvisorRefresh = 0;
   private readonly keys = new Set<string>();
@@ -541,13 +544,24 @@ class GameController {
       },
       onBuildTool: (tool) => {
         this.placement = { kind: 'build', tool };
-        this.hud.toast(loc(STRINGS.palettes.buildToast));
+        // Phase 2 (utilities): network tools say what they paint.
+        this.hud.toast(
+          tool === 'powerLine' || tool === 'waterPipe'
+            ? `${loc(STRINGS.palettes.buildToast)} ${networkToolHint()}`
+            : loc(STRINGS.palettes.buildToast),
+        );
       },
       onCancelPlacement: () => {
         this.placement = null;
       },
       onResearchUpgrade: (id) => this.enqueue(buildResearchUpgradeOrder(HUMAN_PLAYER_ID, id)),
       onAdvanceAge: (program) => this.issueAdvanceAge(program),
+      // Phase 2 (utilities): the utility-network overlay toggle.
+      onToggleUtilityOverlay: () => {
+        this.utilityOverlayVisible = !this.utilityOverlayVisible;
+        this.entities.setUtilityOverlayVisible(this.utilityOverlayVisible);
+        this.hud.setUtilityOverlayActive(this.utilityOverlayVisible);
+      },
       // Phase 3: superweapons, specialization, trade, delegation.
       onFireAegis: () => this.issueOrder(buildFireAegisOrder(HUMAN_PLAYER_ID)),
       onStormTarget: () => {

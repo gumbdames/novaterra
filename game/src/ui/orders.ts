@@ -141,6 +141,30 @@ export function buildDemolishOrder(owner: number, cx: number, cz: number): Order
   };
 }
 
+/**
+ * Phase 2 (utilities): paint a power line run. The sim's `buildPowerLine`
+ * command is committed by the Phase 2 sim workstream — until then the
+ * command is rejected at enqueue with a loud toast (never silent).
+ */
+export function buildPowerLineOrder(owner: number, cells: readonly number[]): OrderIntent {
+  return {
+    kind: 'buildPowerLine',
+    payload: { owner, cells: [...cells] },
+  };
+}
+
+/**
+ * Phase 2 (utilities): paint a water pipe run. Same enqueue story as
+ * `buildPowerLineOrder` — the sim's `buildPipe` command lands with the
+ * Phase 2 sim workstream.
+ */
+export function buildWaterPipeOrder(owner: number, cells: readonly number[]): OrderIntent {
+  return {
+    kind: 'buildPipe',
+    payload: { owner, cells: [...cells] },
+  };
+}
+
 /** HUD age button: advance to Connectivity with a National Program. */
 export function buildAdvanceAgeOrder(
   owner: number,

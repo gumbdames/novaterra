@@ -29,11 +29,13 @@ import {
   buildDemolishOrder,
   buildMoveOrder,
   buildPlaceBuildingOrder,
+  buildPowerLineOrder,
   buildResearchUpgradeOrder,
   buildRoadOrder,
   buildSetTaxRateOrder,
   buildStopOrders,
   buildTrainOrder,
+  buildWaterPipeOrder,
   buildZoneOrder,
 } from '../src/ui/orders';
 
@@ -84,6 +86,25 @@ describe('order builders', () => {
     const cells = [1, 2, 3];
     const cmd = buildRoadOrder(0, cells);
     expect(cmd.kind).toBe('buildRoad');
+    expect(cmd.payload).toEqual({ owner: 0, cells: [1, 2, 3] });
+    cells.push(4);
+    expect((cmd.payload as { cells: number[] }).cells).toEqual([1, 2, 3]);
+  });
+
+  // Grand-expansion Phase 2: the two utility network order builders.
+  it('power line → buildPowerLine with copied cells', () => {
+    const cells = [1, 2, 3];
+    const cmd = buildPowerLineOrder(0, cells);
+    expect(cmd.kind).toBe('buildPowerLine');
+    expect(cmd.payload).toEqual({ owner: 0, cells: [1, 2, 3] });
+    cells.push(4);
+    expect((cmd.payload as { cells: number[] }).cells).toEqual([1, 2, 3]);
+  });
+
+  it('water pipe → buildPipe with copied cells', () => {
+    const cells = [1, 2, 3];
+    const cmd = buildWaterPipeOrder(0, cells);
+    expect(cmd.kind).toBe('buildPipe');
     expect(cmd.payload).toEqual({ owner: 0, cells: [1, 2, 3] });
     cells.push(4);
     expect((cmd.payload as { cells: number[] }).cells).toEqual([1, 2, 3]);

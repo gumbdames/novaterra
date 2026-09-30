@@ -18,7 +18,7 @@
  * NOVATERRA — render/proceduralModels.ts — procedural 3D models for the
  * entities no CC0 GLB covers (0.1 Alpha).
  *
- * Purpose: detailed, NON-cube procedural builders for the 17 gap kinds in
+ * Purpose: detailed, NON-cube procedural builders for the gap kinds in
  * the entity→model mapping (see docs/research/real-models.md §2): the
  * military units artillery / aa / fighter / transport / drone /
  * destroyer / apc / mlrs / fighterBomber / attackHeli / submarine /
@@ -1049,10 +1049,300 @@ export function buildHospitalCross(): LoadedModel {
 }
 
 // ---------------------------------------------------------------------------
+// Phase 2 (utilities): the 13 new utility buildings. Each gets a distinct
+// silhouette so they never read as reskins: cooling towers ≠ chimneys ≠
+// turbines ≠ the dam wall ≠ dishes. All rest at y=0.
+// ---------------------------------------------------------------------------
+
+/** Coal plant: turbine hall + twin banded chimneys (vs powerPlant's single stack). */
+export function buildCoalPlant(): LoadedModel {
+  const b = new ModelBuilder();
+  const brick = smat('brickRed');
+  const concrete = smat('concrete');
+  const band = smat('paintedMetal', { color: 0xd8332a });
+  // Turbine hall.
+  b.add(new THREE.BoxGeometry(7, 3, 4.5), brick, tr(-0.5, 1.5, 0));
+  b.add(new THREE.BoxGeometry(7.4, 0.4, 4.9), concrete, tr(-0.5, 3.2, 0));
+  // Twin tapered chimneys with red/white bands.
+  for (const zx of [-2.2, 2.2]) {
+    b.add(new THREE.CylinderGeometry(0.7, 1.0, 8.5, 12), concrete, tr(3.2, 4.25, zx));
+    b.add(new THREE.CylinderGeometry(0.78, 0.84, 1.1, 12), band, tr(3.2, 7.6, zx));
+    b.add(new THREE.CylinderGeometry(0.72, 0.75, 0.5, 12), concrete, tr(3.2, 8.35, zx));
+  }
+  // Coal conveyor gallery to the hall.
+  b.add(new THREE.BoxGeometry(4, 0.8, 1.2), concrete, tr(-5.5, 2.2, 0, 0, 0, 0.35));
+  return b.build();
+}
+
+/** Gas plant: horizontal pressure tanks on cradles + a short stack. */
+export function buildGasPlant(): LoadedModel {
+  const b = new ModelBuilder();
+  const tank = smat('paintedMetal', { color: 0xc8ccd2 });
+  const frame = smat('gunmetal');
+  for (const [zi, yi] of [[-2.4, 1.5], [0, 1.5], [2.4, 1.5]] as const) {
+    b.add(new THREE.CylinderGeometry(1.3, 1.3, 5, 14), tank, tr(0, yi, zi, Math.PI / 2, 0, 0));
+    b.add(new THREE.SphereGeometry(1.3, 14, 10), tank, tr(-2.5, yi, zi));
+    b.add(new THREE.SphereGeometry(1.3, 14, 10), tank, tr(2.5, yi, zi));
+    // Cradle legs.
+    for (const xi of [-1.6, 1.6]) {
+      b.add(new THREE.BoxGeometry(0.3, 1.1, 0.3), frame, tr(xi, 0.55, zi - 0.7));
+      b.add(new THREE.BoxGeometry(0.3, 1.1, 0.3), frame, tr(xi, 0.55, zi + 0.7));
+    }
+  }
+  // Short stack + control hut.
+  b.add(new THREE.CylinderGeometry(0.45, 0.6, 4.5, 10), frame, tr(4, 2.25, 0));
+  b.add(new THREE.BoxGeometry(2.5, 2.2, 3), smat('concrete'), tr(-4.5, 1.1, 0));
+  return b.build();
+}
+
+/** Wind farm: three turbines (tower + nacelle + 3-blade rotor, static). */
+export function buildWindFarm(): LoadedModel {
+  const b = new ModelBuilder();
+  const tower = smat('paintedMetal', { color: 0xe8eaec });
+  const blade = smat('paintedMetal', { color: 0xd8dbde });
+  for (const [xi, zi, ry] of [[-4, -2, 0.4], [0, 2.5, -0.3], [4, -2, 0.9]] as const) {
+    b.add(new THREE.CylinderGeometry(0.28, 0.5, 7, 8), tower, tr(xi, 3.5, zi));
+    b.add(new THREE.BoxGeometry(0.7, 0.7, 1.6), tower, tr(xi, 7, zi, 0, ry, 0));
+    // Rotor hub + 3 blades in the rotor plane (normal = nacelle axis).
+    const hubX = xi + Math.sin(ry) * 0.9;
+    const hubZ = zi + Math.cos(ry) * 0.9;
+    b.add(new THREE.SphereGeometry(0.32, 8, 8), blade, tr(hubX, 7, hubZ));
+    // In-plane axes: world-up and the horizontal perpendicular.
+    const hAxis = new THREE.Vector3(Math.cos(ry), 0, -Math.sin(ry));
+    const up = new THREE.Vector3(0, 1, 0);
+    for (let k = 0; k < 3; k++) {
+      const a = (k * 2 * Math.PI) / 3;
+      const dir = hAxis.clone().multiplyScalar(Math.cos(a)).addScaledVector(up, Math.sin(a));
+      const center = new THREE.Vector3(hubX, 7, hubZ).addScaledVector(dir, 1.9);
+      const quat = new THREE.Quaternion().setFromUnitVectors(up, dir.clone().normalize());
+      const m = new THREE.Matrix4().compose(center, quat, new THREE.Vector3(1, 1, 1));
+      b.add(new THREE.BoxGeometry(0.55, 3.6, 0.1), blade, m);
+    }
+  }
+  return b.build();
+}
+
+/** Hydro dam: arched dam wall + spillway gates + gatehouse towers. */
+export function buildHydroDam(): LoadedModel {
+  const b = new ModelBuilder();
+  const concrete = smat('concrete');
+  const dark = smat('gunmetal');
+  // Dam wall in 3 angled segments (slight arch), trapezoidal profile.
+  for (const [xi, ry] of [[-3.2, 0.18], [0, 0], [3.2, -0.18]] as const) {
+    const wall = new THREE.BoxGeometry(3.6, 5, 2.2);
+    // Taper the top: scale x by profile via a second box is overkill —
+    // shear the geometry instead.
+    const pos = wall.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      if (pos.getY(i) > 0) pos.setX(i, pos.getX(i) * 0.72);
+    }
+    wall.computeVertexNormals();
+    b.add(wall, concrete, tr(xi, 2.5, 0, 0, ry, 0));
+  }
+  // Spillway gates (dark recesses on the downstream face).
+  for (const xi of [-2.2, 0, 2.2]) {
+    b.add(new THREE.BoxGeometry(1.4, 2.6, 0.3), dark, tr(xi, 1.6, 1.15));
+  }
+  // Gatehouse towers.
+  for (const xi of [-4.6, 4.6]) {
+    b.add(new THREE.BoxGeometry(1.6, 7, 1.6), concrete, tr(xi, 3.5, 0));
+    b.add(new THREE.BoxGeometry(2, 0.5, 2), dark, tr(xi, 7.2, 0));
+  }
+  return b.build();
+}
+
+/** Geothermal plant: steam vents + pipe manifold + small hall. */
+export function buildGeothermalPlant(): LoadedModel {
+  const b = new ModelBuilder();
+  const concrete = smat('concrete');
+  const pipe = smat('paintedMetal', { color: 0x9aa0a6 });
+  // Three short fat vent stacks (lathe cones).
+  for (const xi of [-3, 0, 3]) {
+    const profile = [
+      new THREE.Vector2(1.1, 0),
+      new THREE.Vector2(0.95, 1.2),
+      new THREE.Vector2(0.8, 2.4),
+      new THREE.Vector2(0.9, 2.8),
+    ];
+    b.add(new THREE.LatheGeometry(profile, 14), concrete, tr(xi, 0, -1.5));
+    b.add(new THREE.CircleGeometry(0.75, 14), smat('gunmetal'), tr(xi, 2.55, -1.5, -Math.PI / 2, 0, 0));
+  }
+  // Pipe manifold feeding the hall.
+  b.add(new THREE.CylinderGeometry(0.35, 0.35, 8.5, 10), pipe, tr(0, 0.5, 0.6, Math.PI / 2, 0, 0));
+  for (const xi of [-3, 0, 3]) {
+    // Riser pipes leaning toward the vent stacks (kept short so the tilted
+    // ends stay above the ground plane).
+    b.add(new THREE.CylinderGeometry(0.3, 0.3, 1.8, 10), pipe, tr(xi, 1.1, -0.4, 0.5, 0, 0));
+  }
+  b.add(new THREE.BoxGeometry(4, 2.6, 3), concrete, tr(0, 1.3, 3.2));
+  return b.build();
+}
+
+/** Fusion plant: domed hall with a tokamak torus ring around it + annex. */
+export function buildFusionPlant(): LoadedModel {
+  const b = new ModelBuilder();
+  const dome = smat('paintedMetal', { color: 0xb9c2cc });
+  const ring = smat('gunmetal', { color: 0x8a94a0 });
+  const glow = pmat(0x66ccff, { emissive: 0x2288cc, emissiveIntensity: 1.4 });
+  // Faceted dome.
+  b.add(new THREE.SphereGeometry(3.6, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), dome, tr(0, 0, 0));
+  // Tokamak ring girdling the dome + glowing core peeking at the crown.
+  b.add(new THREE.TorusGeometry(3.9, 0.35, 8, 24), ring, tr(0, 1.4, 0, Math.PI / 2, 0, 0));
+  b.add(new THREE.SphereGeometry(0.7, 10, 8), glow, tr(0, 3.7, 0));
+  // Annex + vents.
+  b.add(new THREE.BoxGeometry(3, 2, 2.5), smat('concrete'), tr(4.5, 1, 0));
+  for (const xi of [-1.2, 1.2]) {
+    b.add(new THREE.CylinderGeometry(0.3, 0.3, 1.6, 8), ring, tr(xi, 0.8, 3.4));
+  }
+  return b.build();
+}
+
+/** Water well: A-frame derrick + pump house. */
+export function buildWaterWell(): LoadedModel {
+  const b = new ModelBuilder();
+  const steel = smat('gunmetal');
+  const hut = smat('concrete');
+  // Four angled legs (lifted so the splayed feet rest on the ground).
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+    const leg = new THREE.BoxGeometry(0.28, 6.4, 0.28);
+    const m = new THREE.Matrix4().makeRotationZ(sx * 0.18).multiply(new THREE.Matrix4().makeRotationX(-sz * 0.18));
+    leg.applyMatrix4(m);
+    b.add(leg, steel, tr(sx * 1.1, 3.25, sz * 1.1));
+  }
+  // Cross braces + crown.
+  b.add(new THREE.BoxGeometry(2.6, 0.22, 0.22), steel, tr(0, 2.4, -1.05));
+  b.add(new THREE.BoxGeometry(2.6, 0.22, 0.22), steel, tr(0, 2.4, 1.05));
+  b.add(new THREE.BoxGeometry(1.4, 0.5, 1.4), steel, tr(0, 6.2, 0));
+  // Pump house.
+  b.add(new THREE.BoxGeometry(2.6, 2.2, 2.2), hut, tr(3, 1.1, 0));
+  b.add(new THREE.CylinderGeometry(0.25, 0.25, 3.4, 8), steel, tr(1.2, 0.5, 0, 0, 0, Math.PI / 2));
+  return b.build();
+}
+
+/** Water tower: tank on four legs with a cone roof. */
+export function buildWaterTower(): LoadedModel {
+  const b = new ModelBuilder();
+  const tank = smat('paintedMetal', { color: 0xdde3e8 });
+  const steel = smat('gunmetal');
+  for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]] as const) {
+    const leg = new THREE.CylinderGeometry(0.18, 0.24, 6, 8);
+    const m = new THREE.Matrix4().makeRotationZ(sx * 0.12).multiply(new THREE.Matrix4().makeRotationX(-sz * 0.12));
+    leg.applyMatrix4(m);
+    b.add(leg, steel, tr(sx * 1.5, 3, sz * 1.5));
+  }
+  b.add(new THREE.BoxGeometry(3.4, 0.25, 3.4), steel, tr(0, 5.9, 0));
+  // Tank + cone roof.
+  b.add(new THREE.CylinderGeometry(2.3, 2.3, 2.6, 16), tank, tr(0, 7.3, 0));
+  b.add(new THREE.ConeGeometry(2.6, 1.4, 16), smat('paintedMetal', { color: 0x9aa4ae }), tr(0, 9.3, 0));
+  b.add(new THREE.CylinderGeometry(0.2, 0.2, 1.2, 8), steel, tr(0, 10.2, 0));
+  return b.build();
+}
+
+/** Water treatment: clarifier basins (open rings + water discs) + hut. */
+export function buildWaterTreatment(): LoadedModel {
+  const b = new ModelBuilder();
+  const concrete = smat('concrete');
+  const water = smat('glassBlue', { color: 0x2e86a8 });
+  const positions: Array<[number, number]> = [[-2.6, -1.4], [2.6, -1.4], [0, 2.6]];
+  for (const [xi, zi] of positions) {
+    // Ring wall (open cylinder) + water disc + center pier.
+    b.add(new THREE.CylinderGeometry(1.9, 1.9, 1.2, 16, 1, true), concrete, tr(xi, 0.6, zi));
+    b.add(new THREE.TorusGeometry(1.9, 0.12, 8, 16), concrete, tr(xi, 1.2, zi, Math.PI / 2, 0, 0));
+    b.add(new THREE.CircleGeometry(1.78, 16), water, tr(xi, 0.95, zi, -Math.PI / 2, 0, 0));
+    b.add(new THREE.CylinderGeometry(0.2, 0.2, 1.4, 8), concrete, tr(xi, 1.1, zi));
+  }
+  // Control hut + connecting pipe.
+  b.add(new THREE.BoxGeometry(3, 2.4, 2.4), concrete, tr(-4.6, 1.2, 2.6));
+  b.add(new THREE.CylinderGeometry(0.28, 0.28, 6, 10), smat('gunmetal'), tr(-1, 0.4, 1.6, Math.PI / 2, 0, 1.1));
+  return b.build();
+}
+
+/** Reservoir: wide low basin ring with a water disc — no buildings. */
+export function buildReservoir(): LoadedModel {
+  const b = new ModelBuilder();
+  const concrete = smat('concrete');
+  const water = smat('glassBlue', { color: 0x2e86a8 });
+  b.add(new THREE.CylinderGeometry(4.2, 4.4, 1.4, 24, 1, true), concrete, tr(0, 0.7, 0));
+  b.add(new THREE.TorusGeometry(4.2, 0.18, 8, 24), concrete, tr(0, 1.4, 0, Math.PI / 2, 0, 0));
+  b.add(new THREE.CircleGeometry(4.05, 24), water, tr(0, 1.0, 0, -Math.PI / 2, 0, 0));
+  // Outlet tower.
+  b.add(new THREE.CylinderGeometry(0.7, 0.9, 3, 10), concrete, tr(0, 1.5, 0));
+  b.add(new THREE.ConeGeometry(0.9, 0.7, 10), smat('gunmetal'), tr(0, 3.3, 0));
+  return b.build();
+}
+
+/** Power substation: transformers with fins + busbar gantry + insulators. */
+export function buildPowerSubstation(): LoadedModel {
+  const b = new ModelBuilder();
+  const box = smat('paintedMetal', { color: 0x7d8894 });
+  const frame = smat('gunmetal');
+  // Two transformer boxes with cooling fins.
+  for (const xi of [-2.2, 2.2]) {
+    b.add(new THREE.BoxGeometry(2.6, 2.2, 1.8), box, tr(xi, 1.1, 0));
+    for (let f = 0; f < 5; f++) {
+      b.add(new THREE.BoxGeometry(0.12, 1.8, 1.6), frame, tr(xi - 1.2 + f * 0.6, 1.1, 0));
+    }
+    // Insulator stacks on top.
+    for (const zi of [-0.6, 0.6]) {
+      b.add(new THREE.CylinderGeometry(0.12, 0.16, 1.2, 6), smat('concrete'), tr(xi, 2.8, zi));
+    }
+  }
+  // Busbar gantry: A-frame legs + horizontal beams.
+  for (const xi of [-4, 4]) {
+    for (const zi of [-1.6, 1.6]) {
+      const leg = new THREE.BoxGeometry(0.25, 5.4, 0.25);
+      leg.applyMatrix4(new THREE.Matrix4().makeRotationX(zi > 0 ? -0.15 : 0.15));
+      b.add(leg, frame, tr(xi, 2.7, zi));
+    }
+  }
+  for (const zi of [-1.6, 1.6]) {
+    b.add(new THREE.BoxGeometry(8.4, 0.25, 0.25), frame, tr(0, 5.3, zi));
+  }
+  return b.build();
+}
+
+/** Pumping station: pump house with large pipes running out. */
+export function buildPumpingStation(): LoadedModel {
+  const b = new ModelBuilder();
+  const hut = smat('brickRed');
+  const pipe = smat('paintedMetal', { color: 0x5b7a8c });
+  b.add(new THREE.BoxGeometry(3.4, 2.6, 3), hut, tr(0, 1.3, -1));
+  b.add(new THREE.BoxGeometry(3.8, 0.35, 3.4), smat('concrete'), tr(0, 2.8, -1));
+  // Two large pipes running out of the house, with valve wheels.
+  for (const zi of [-1.8, -0.2]) {
+    b.add(new THREE.CylinderGeometry(0.5, 0.5, 4.5, 12), pipe, tr(0, 0.6, zi + 3.2, Math.PI / 2, 0, 0));
+    b.add(new THREE.TorusGeometry(0.45, 0.09, 8, 14), smat('gunmetal'), tr(0, 1.6, zi + 2.2, 0, 0, 0));
+    b.add(new THREE.CylinderGeometry(0.08, 0.08, 0.7, 6), smat('gunmetal'), tr(0, 1.25, zi + 2.2));
+  }
+  return b.build();
+}
+
+/** Battery station: cabinet racks + inverter container. */
+export function buildBatteryStation(): LoadedModel {
+  const b = new ModelBuilder();
+  const cabinet = smat('paintedMetal', { color: 0x3f5a36 });
+  const container = smat('paintedMetal', { color: 0xb0b6bc });
+  const glow = pmat(0x7dff9a, { emissive: 0x1d7a33, emissiveIntensity: 1.2 });
+  // Two rows of battery cabinets with status lights.
+  for (const zi of [-1.8, 1.8]) {
+    for (const xi of [-3, -1, 1, 3]) {
+      b.add(new THREE.BoxGeometry(1.6, 2.4, 1.4), cabinet, tr(xi, 1.2, zi));
+      b.add(new THREE.BoxGeometry(0.18, 0.18, 0.1), glow, tr(xi + 0.5, 2.1, zi + 0.72));
+    }
+  }
+  // Inverter container.
+  b.add(new THREE.BoxGeometry(3.2, 2.6, 2.2), container, tr(0, 1.3, -4.2));
+  for (let f = 0; f < 4; f++) {
+    b.add(new THREE.BoxGeometry(0.14, 2.2, 2), smat('gunmetal'), tr(-1.2 + f * 0.8, 1.3, -4.2));
+  }
+  return b.build();
+}
+
+// ---------------------------------------------------------------------------
 // Public dispatch
 // ---------------------------------------------------------------------------
 
-/** The 17 gap kinds with procedural builders (see module header). */
+/** The gap kinds with procedural builders (see module header). */
 export const PROCEDURAL_KINDS = [
   'artillery',
   'aa',
@@ -1072,6 +1362,20 @@ export const PROCEDURAL_KINDS = [
   'carrier',
   'quarry',
   'monument',
+  // Grand-expansion Phase 2 (utilities): the 13 new utility buildings.
+  'coalPlant',
+  'gasPlant',
+  'windFarm',
+  'hydroDam',
+  'geothermalPlant',
+  'fusionPlant',
+  'waterWell',
+  'waterTower',
+  'waterTreatment',
+  'reservoir',
+  'powerSubstation',
+  'pumpingStation',
+  'batteryStation',
 ] as const;
 
 export type ProceduralKind = (typeof PROCEDURAL_KINDS)[number];
@@ -1116,6 +1420,33 @@ export function buildProceduralModel(kind: string): LoadedModel | undefined {
       return buildQuarry();
     case 'monument':
       return buildMonument();
+    // Phase 2 (utilities): the 13 new utility buildings.
+    case 'coalPlant':
+      return buildCoalPlant();
+    case 'gasPlant':
+      return buildGasPlant();
+    case 'windFarm':
+      return buildWindFarm();
+    case 'hydroDam':
+      return buildHydroDam();
+    case 'geothermalPlant':
+      return buildGeothermalPlant();
+    case 'fusionPlant':
+      return buildFusionPlant();
+    case 'waterWell':
+      return buildWaterWell();
+    case 'waterTower':
+      return buildWaterTower();
+    case 'waterTreatment':
+      return buildWaterTreatment();
+    case 'reservoir':
+      return buildReservoir();
+    case 'powerSubstation':
+      return buildPowerSubstation();
+    case 'pumpingStation':
+      return buildPumpingStation();
+    case 'batteryStation':
+      return buildBatteryStation();
     default:
       return undefined;
   }

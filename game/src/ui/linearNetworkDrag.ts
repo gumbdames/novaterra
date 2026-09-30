@@ -67,7 +67,7 @@
  * Headless-safe: no DOM, no three.js. Fully unit-tested.
  */
 
-import { buildRoadOrder, type OrderIntent } from './orders';
+import { buildRoadOrder, buildPowerLineOrder, buildWaterPipeOrder, type OrderIntent } from './orders';
 import {
   resolveBuildToolClick,
   type CellRef,
@@ -80,7 +80,7 @@ import type { BuildTool } from './hud';
  * Linear network kinds that share the drag-paint gesture. Phase 2 adds
  * 'powerLine' | 'waterPipe'; Phase 4 adds 'rail'.
  */
-export type LinearNetworkKind = 'road';
+export type LinearNetworkKind = 'road' | 'powerLine' | 'waterPipe';
 
 export interface LinearNetworkDragOptions {
   /** Which network is being painted. */
@@ -116,7 +116,10 @@ export type LinearNetworkDragOutcome =
  * pointerdown to decide whether a press starts a network drag.
  */
 export function networkKindForTool(tool: string): LinearNetworkKind | null {
-  return tool === 'road' ? 'road' : null;
+  if (tool === 'road') return 'road';
+  if (tool === 'powerLine') return 'powerLine';
+  if (tool === 'waterPipe') return 'waterPipe';
+  return null;
 }
 
 /** Map a network kind to its build-tool string (for the click resolver). */
@@ -124,6 +127,10 @@ function toolForKind(kind: LinearNetworkKind): BuildTool {
   switch (kind) {
     case 'road':
       return 'road';
+    case 'powerLine':
+      return 'powerLine';
+    case 'waterPipe':
+      return 'waterPipe';
     default: {
       // Exhaustive: adding a LinearNetworkKind forces a mapping here.
       const _exhaustive: never = kind;
@@ -143,6 +150,10 @@ function buildNetworkOrder(
   switch (kind) {
     case 'road':
       return buildRoadOrder(owner, cells);
+    case 'powerLine':
+      return buildPowerLineOrder(owner, cells);
+    case 'waterPipe':
+      return buildWaterPipeOrder(owner, cells);
     default: {
       // Exhaustive: adding a LinearNetworkKind forces an order builder here.
       const _exhaustive: never = kind;
