@@ -3,20 +3,44 @@
 **A 3D city-builder × RTS hybrid for the browser** — build cities and run the
 economy, wage war or play skirmishes, and advance your nation through ages of
 new technology. Set in the modern world of 2026. You are the President:
-found cities, grow the economy, research through the ages, command armies on land,
-sea and air — or play a fully peaceful game with war disabled.
+found cities, grow the economy, research through the ages, command armies on
+land, sea and air — or play a fully peaceful game with war disabled.
+
+**Version:** 0.1 Alpha (this name stays until announced otherwise).
 
 - **Play:** https://gumbdames.github.io/novaterra/ (deploys from `main`)
-- **Status:** Phase 0 research complete; Phase 1 (core engine + skirmish MVP) scoped in `docs/PLAN.md`, awaiting go-ahead
-- **Working title:** NOVATERRA (proposed — see `docs/research/game-design.md`)
-- **Design docs:** `docs/` · **Research notes:** `docs/research/`
+- **Status:** the grand expansion is underway. Phases 0–2 complete and live;
+  Phase 3 (logistics) in progress. See the live plan:
+  [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
+
+## What the game has today (0.1 Alpha)
+
+- City building with visible zoning, terrain-following roads, and
+  power/water utility networks you drag-paint across the map
+- 40+ buildings and 28 units across land, sea, and air, with tech ages
+- Unit veterancy (Recruit → Elite), a Military Academy, education and civic
+  systems, desirability and land value, civilian migration
+- Missile/fuel logistics, storage, and map-edge trade
+- 5 Classic AI rivals with per-match personalities, 5 difficulties, skirmish
+  maps, deterministic simulation (seeded replays and saves)
+
+## Documentation map
+
+| Doc | What it is |
+|---|---|
+| [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md) | **The live plan** — 10-phase grand expansion, current statuses |
+| [`docs/grand-expansion/RESEARCH.md`](docs/grand-expansion/RESEARCH.md) | Research synthesis behind the plan |
+| [`docs/GAME_MECHANICS.md`](docs/GAME_MECHANICS.md) | How the game works (player-facing, kept current) |
+| [`docs/HOW_TO_PLAY.md`](docs/HOW_TO_PLAY.md) | Controls and getting started |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Locked architecture |
+| [`docs/I18N.md`](docs/I18N.md) | English-only today, structured for later languages |
+| [`docs/PLAN.md`](docs/PLAN.md) | Original pre-expansion plan (superseded by the grand-expansion plan) |
+| [`docs/research/`](docs/research/) | Research notes from each workstream |
 
 ## Repo layout
 
 | Path | What lives here |
 |---|---|
-| `docs/` | Plans, architecture, design docs, player docs |
-| `docs/research/` | Research notes from each workstream (kept current) |
 | `game/` | The game itself (engine, sim, UI, assets, audio) |
 | `game/src/` | TypeScript source, organized by module |
 | `game/src/sim/` | Deterministic simulation (economy, combat, AI) |
@@ -25,6 +49,7 @@ sea and air — or play a fully peaceful game with war disabled.
 | `game/src/audio/` | Adaptive music + SFX |
 | `game/assets/` | Art/audio assets and the asset manifest |
 | `game/tests/` | Automated tests (unit + headless sim) |
+| `docs/` | Plans, architecture, design docs, player docs |
 | `tools/` | Build, map and asset tooling |
 
 ## Working conventions
@@ -32,22 +57,15 @@ sea and air — or play a fully peaceful game with war disabled.
 Read `AGENTS.md` before touching anything in this repo. The short version:
 
 - **Docs stay current.** Every `.md`, comment and doc is updated continuously as
-  work progresses — research notes, plans, architecture, player docs.
+  work progresses — research notes, plans, architecture, player docs, **and this
+  README** (including the status line and phase statuses above). Every phase
+  completion refreshes them; stale status lines are treated as bugs.
 - **Quality bar:** no bugs, flowing gameplay, great mechanics, 60fps. Nothing
-  ships untested (see `docs/TESTING.md` once written).
+  ships untested.
 - **No secrets in the repo.** Ever. Tokens are used transiently via environment
   variables and never written to disk or committed.
 - **Performance is a feature.** The sim is fixed-timestep and decoupled from
   rendering; hot paths are profiled, not guessed.
-
-## Roadmap (summary)
-
-- **Phase 0** — Deep research: tech stack, sim architecture, audio, game design
-- **Phase 1** — Core engine + skirmish mode (economy, ages, combat, maps)
-- **Phase 2** — 8 story missions
-- **Phase 3** — Chain of command depth, polish, mobile/touch if it earns it
-
-Full detail: [`docs/PLAN.md`](docs/PLAN.md).
 
 ## License
 

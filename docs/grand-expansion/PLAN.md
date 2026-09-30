@@ -161,8 +161,8 @@ Power plants — `coalPlant` (cheap, strong, polluting), `gasPlant`
 `hydroDam` (terrain-gated: river/coast adjacency), `geothermalPlant`
 (late, steady), `fusionPlant` (ascendance research, ultimate).
 Existing `powerPlant` (oil burner), `solarFarm` (day-only), and
-`nuclearPlant` (mighty, expensive, tiny seeded meltdown risk, needs a
-water hookup) stay.
+`nuclearPlant` (mighty, expensive, needs a water hookup — meltdowns only
+when attacked, never at random; user correction 2026-09-30) stay.
 
 Water — `waterWell` (cheap, low output), `waterPump` (exists),
 `desalination` (exists; seawater-adjacent, needs power, 2× output),
@@ -510,9 +510,10 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   fields, AI-vs-AI soak (XP accrues, no crashes).
 - **Budget delta:** +1 building key (~80 KB).
 - **AI work:** none required (later: Elite retreat threshold).
-- **Status: SIM WORKSTREAM COMPLETE (2026-09-30, 0.1 Alpha); render/UI
-  workstream (chevron views, academy icon/palette/model) in progress
-  with a sibling worker.** Delivered in `game/src/sim/`:
+- **Status: COMPLETE (2026-09-30, 0.1 Alpha).** Shipped on `main`
+  (`5611673`, `8c59f03`, `ba5db2a`) and live on GitHub Pages. Workstream Z
+  (zone overlay, education ladder, zone-tool clarity) landed alongside it
+  (`55dab62`). Full suite 1011/1011 green at sign-off. Delivered in `game/src/sim/`:
   - New pure module `veterancy.ts`: `VET_MAX_LEVEL = 3`, thresholds
     200/500/1000, ranks Recruit/Regular/Veteran/Elite,
     `xpForKillValue = trainFunds + trainMaterials`, `awardKillXp`
@@ -577,6 +578,9 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   `docs/GAME_MECHANICS.md`.
 
 ### Phase 2 — Utility networks (XL)
+- **Status: COMPLETE (2026-09-30, 0.1 Alpha).** Shipped on `main`
+  (`75e9c28`, `355fd0c`, `4c266d7`, `721363d`) and live on GitHub Pages.
+  Full suite 1148/1148 green at sign-off.
 - **Goal:** flood-fill connectivity, lines/pipes, plant ladder,
   storage, zone servicing, map-edge trade.
 - **Contents:** S1 (§4) + §3.1 roster + utility overlay UI +
@@ -624,7 +628,13 @@ delta → AI work.** Step gate (§0) applies to every step inside.
     was ever marked reached — caught by tests, fixed; (2) new
     buildings start `powered`/`watered` = true (1-tick bootstrap) so
     the cross-utility hooks (nuclear needs water, desalination needs
-    power) can prime on a fresh grid.
+    power) can prime on a fresh grid; (3) user correction 2026-09-30,
+    landed alongside Phase 3: meltdowns are ATTACK-TRIGGERED ONLY — the
+    per-tick seeded random trigger was removed. A Storm Engine strike on
+    a nuclear plant rolls a seeded 1/20 (1/80 with Advanced Nuclear); a
+    hit takes the plant offline for 180 s (`meltdownUntilTick`,
+    snapshot/digest-safe). When unit-vs-building combat lands, it must
+    call `attackMeltdownRoll` from its building-damage path too.
   - **Render/UI verdict (2026-09-30, 0.1 Alpha):** shipped and verified
     against the landed sim contract — 13 procedural building models
     (`render/proceduralModels.ts`), Power/Water build tabs
@@ -662,6 +672,9 @@ delta → AI work.** Step gate (§0) applies to every step inside.
     all local, not pushed.
 
 ### Phase 3 — Logistics chains (L; XL only if physical road/rail freight)
+- **Status: IN PROGRESS (2026-09-30, 0.1 Alpha)** — plus workstreams M
+  (attack-triggered meltdowns only), W (desirability, land value,
+  migration, library + park) and the marina-desirability hook for Phase 4.
 - **Goal:** ammo/fuel as a tempo constraint; supply trucks, depots,
   missile/fuel chains; nuclear exemption.
 - **Contents:** S2 (§4) + §3.2 roster + logistics overlay + resupply
@@ -692,6 +705,14 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   from Phase 0 should be live by here.
 - **AI work:** AI uses road classes for its own growth; later: AI
   civilian routes.
+- **Desirability hook (do not forget):** Phase 3's desirability system
+  counts `waterfrontAmenity` building flags within radius for the
+  water-proximity/land-value driver. When the `marina` building kind
+  lands here, set `waterfrontAmenity: true` on its def — no
+  desirability code changes needed; marinas then raise nearby land
+  value automatically (user request 2026-09-30: marinas and beaches
+  must raise desirability; beaches/shoreline are already covered by
+  the water-proximity driver).
 
 ### Phase 5 — Airports + airline (M–L)
 - **Goal:** airport zones, capability-gated tiers, hangars, civilian

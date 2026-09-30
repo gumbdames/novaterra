@@ -39,7 +39,10 @@ Each numbered step in `docs/PLAN.md` counts as done only when ALL of these hold:
    smoke tests, don't assume. "It worked before my change" is proven by
    re-running, never by memory.
 4. Docs touched by the step are updated (plan status, architecture if it
-   changed, player docs if mechanics changed).
+   changed, player docs if mechanics changed) — and the repo-level status
+   is refreshed too: `README.md`'s status line and feature list, plus the
+   `Status:` lines of the affected phases in `docs/grand-expansion/PLAN.md`.
+   A stale status line anywhere is a bug, fixed in the same change.
 5. The step is committed with a clear message; `main` stays deployable.
 
 If any check fails, the step is not done — fix it before starting the next
