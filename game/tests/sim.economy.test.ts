@@ -123,15 +123,24 @@ function runEconomySeconds(ctx: Ctx, seconds: number): void {
 // Reference city: a sensible powered city should run resource-positive.
 // ---------------------------------------------------------------------------
 
-/** Scripted reference city: 4 houses, shop, factory, farm, plant, pump. */
+/** Scripted reference city: 4 houses, shop, factory, farm, plant, pump.
+ * Zones are painted snug around the scripted footprints, so
+ * auto-development has no room: this scenario measures pure resource
+ * flow, not growth (growth has its own tests, and since 2026-09-30 it no
+ * longer needs roads — a big open zone here would develop freely and
+ * swamp the flow measurements). */
 function buildReferenceCity(ctx: Ctx, taxRate: number): void {
   const { cx, cz } = findLandRect(ctx.terrain, 44, 16);
   const rz = cz + 7;
   enqueue(ctx, [
     { kind: 'buildRoad', issuer: 'p', payload: { owner: 0, cells: roadCells(cx, rz, 44) } },
-    { kind: 'paintZone', issuer: 'p', payload: { owner: 0, zone: ZoneType.RESIDENTIAL, x0: cx, z0: cz + 4, x1: cx + 21, z1: cz + 6 } },
-    { kind: 'paintZone', issuer: 'p', payload: { owner: 0, zone: ZoneType.COMMERCIAL, x0: cx, z0: cz + 8, x1: cx + 21, z1: cz + 10 } },
-    { kind: 'paintZone', issuer: 'p', payload: { owner: 0, zone: ZoneType.INDUSTRIAL, x0: cx + 24, z0: cz + 4, x1: cx + 43, z1: cz + 10 } },
+    { kind: 'paintZone', issuer: 'p', payload: { owner: 0, zone: ZoneType.RESIDENTIAL, x0: cx + 0, z0: cz + 5, x1: cx + 1, z1: cz + 6 } },
+    { kind: 'paintZone', issuer: 'p', payload: { owner: 0, zone: ZoneType.RESIDENTIAL, x0: cx + 3, z0: cz + 5, x1: cx + 4, z1: cz + 6 } },
+    { kind: 'paintZone', issuer: 'p', payload: { owner: 0, zone: ZoneType.RESIDENTIAL, x0: cx + 6, z0: cz + 5, x1: cx + 7, z1: cz + 6 } },
+    { kind: 'paintZone', issuer: 'p', payload: { owner: 0, zone: ZoneType.RESIDENTIAL, x0: cx + 9, z0: cz + 5, x1: cx + 10, z1: cz + 6 } },
+    { kind: 'paintZone', issuer: 'p', payload: { owner: 0, zone: ZoneType.COMMERCIAL, x0: cx + 0, z0: cz + 8, x1: cx + 1, z1: cz + 9 } },
+    { kind: 'paintZone', issuer: 'p', payload: { owner: 0, zone: ZoneType.INDUSTRIAL, x0: cx + 24, z0: cz + 4, x1: cx + 26, z1: cz + 6 } },
+    { kind: 'paintZone', issuer: 'p', payload: { owner: 0, zone: ZoneType.INDUSTRIAL, x0: cx + 28, z0: cz + 8, x1: cx + 30, z1: cz + 10 } },
   ]);
   runTicks(ctx, 1);
   enqueue(ctx, [
@@ -286,6 +295,20 @@ describe('auto-development', () => {
     ctx.world.city.players[0]!.funds = 100000;
     ctx.world.city.players[0]!.materials = 100000;
     runTicks(ctx, 7200); // 240 s of growth pulses
+    expect(ctx.world.city.buildings.length).toBeGreaterThan(0);
+  });
+
+  it('zoned houses auto-develop with no roads at all (user directive 2026-09-30)', () => {
+    const ctx = setup(57);
+    const { cx, cz } = findLandRect(ctx.terrain, 20, 8);
+    enqueue(ctx, [
+      { kind: 'paintZone', issuer: 'p', payload: { owner: 0, zone: ZoneType.RESIDENTIAL, x0: cx, z0: cz, x1: cx + 19, z1: cz + 7 } },
+    ]);
+    runTicks(ctx, 1);
+    ctx.world.city.players[0]!.funds = 100000;
+    ctx.world.city.players[0]!.materials = 100000;
+    runTicks(ctx, 7200); // 240 s of growth pulses
+    expect(ctx.world.city.roads).toHaveLength(0);
     expect(ctx.world.city.buildings.length).toBeGreaterThan(0);
   });
 });

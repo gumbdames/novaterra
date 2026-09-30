@@ -147,8 +147,9 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 ## City/economy conventions
 - All rates in `BUILDING_DEFS` are **per sim-second**; the economy system
   advances them once per 30 ticks (`ECONOMY_TICKS`).
-- Utility allocation is id-ordered and per-player; providers (plants,
-  pumps) must be road-adjacent to count.
+- Utility allocation is id-ordered and per-player; every completed
+  plant/pump contributes supply (no road requirement since 2026-09-30 —
+  user directive: roads are optional).
 - Growth draws only from the `'city'` RNG stream.
 - Balance numbers in `BUILDING_DEFS` / `MARKET_PRICES` are Phase 1
   engineering choices — tune them, but keep the tests' reference-city

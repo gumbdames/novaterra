@@ -30,7 +30,6 @@ import {
   cellIsWater,
   footprintCells,
   inBounds,
-  isRoadAdjacent,
   areRoadsConnected,
   placeBuilding,
   registerCityCommands,
@@ -241,7 +240,7 @@ describe('building placement rules', () => {
     return { kind: 'placeBuilding', issuer: 'p', payload: { ...p } };
   }
 
-  it('places a house on zoned road-adjacent land, deducting costs', () => {
+  it('places a house on zoned land, deducting costs', () => {
     const ctx = setup();
     const block = residentialBlock(ctx);
     const fundsBefore = ctx.world.city.players[0]!.funds;
@@ -264,7 +263,7 @@ describe('building placement rules', () => {
     ).toThrow(/water/);
   });
 
-  it('rejects building away from roads', () => {
+  it('places a building away from roads (roads are optional)', () => {
     const ctx = setup();
     const { cx, cz } = findLandRect(ctx.terrain, 6, 6);
     enqueue(ctx, [{
@@ -272,9 +271,12 @@ describe('building placement rules', () => {
       payload: { owner: 0, zone: ZoneType.RESIDENTIAL, x0: cx, z0: cz, x1: cx + 5, z1: cz + 5 },
     }]);
     runTicks(ctx, 1);
-    expect(() =>
-      ctx.queue.enqueue(ctx.world, placeCmd({ kind: 'house', owner: 0, cx: cx + 2, cz: cz + 2, facing: 0 })),
-    ).toThrow(/road/);
+    // No roads on the map at all — the house must still place.
+    expect(ctx.world.city.roads).toHaveLength(0);
+    enqueue(ctx, [placeCmd({ kind: 'house', owner: 0, cx: cx + 2, cz: cz + 2, facing: 0 })]);
+    runTicks(ctx, 1);
+    expect(ctx.world.city.buildings).toHaveLength(1);
+    expect(ctx.world.city.buildings[0]!.kind).toBe('house');
   });
 
   it('rejects overlapping footprints', () => {
@@ -294,7 +296,7 @@ describe('building placement rules', () => {
     expect(() =>
       ctx.queue.enqueue(ctx.world, placeCmd({ kind: 'factory', owner: 0, cx: block.cx, cz: block.cz, facing: 0 })),
     ).toThrow(/industrial/);
-    // Power plant is a utility: no zone needed, just land + road.
+    // Power plant is a utility: no zone needed, just land.
     enqueue(ctx, [placeCmd({ kind: 'powerPlant', owner: 0, cx: block.cx + 4, cz: block.cz, facing: 0 })]);
     runTicks(ctx, 1);
     expect(ctx.world.city.buildings).toHaveLength(1);
@@ -309,15 +311,6 @@ describe('building placement rules', () => {
     ).toThrow(/cannot afford/);
   });
 
-  it('isRoadAdjacent detects orthogonal adjacency only', () => {
-    const ctx = setup();
-    const { cx, cz } = findLandRect(ctx.terrain, 8, 4);
-    enqueue(ctx, [{ kind: 'buildRoad', issuer: 'p', payload: { owner: 0, cells: [cellIndex(cx, cz)] } }]);
-    runTicks(ctx, 1);
-    expect(isRoadAdjacent(ctx.world.city, cx + 1, cz, 1, 1)).toBe(true);
-    expect(isRoadAdjacent(ctx.world.city, cx + 1, cz + 1, 1, 1)).toBe(false); // diagonal doesn't count
-    expect(isRoadAdjacent(ctx.world.city, cx + 2, cz, 1, 1)).toBe(false);
-  });
 });
 
 describe('demolish', () => {
@@ -386,7 +379,12 @@ describe('power and water allocation', () => {
     enqueue(ctx, bldgs);
     // Construction: longest build here is 60 s (power plant); run 70 s.
     runTicks(ctx, 70 * 30);
-    const houses = ctx.world.city.buildings.filter((b) => b.kind === 'house');
+    // Growth may have added buildings on top (roads no longer gate it) —
+    // the scripted 30 are the first 30 houses by id (plant + pump are 1..2).
+    const houses = ctx.world.city.buildings
+      .filter((b) => b.kind === 'house')
+      .sort((a, b) => a.id - b.id)
+      .slice(0, 30);
     expect(houses).toHaveLength(30);
     const powered = houses.filter((b) => b.powered);
     const unpowered = houses.filter((b) => !b.powered);
@@ -400,18 +398,17 @@ describe('power and water allocation', () => {
     expect(watered).toHaveLength(23);
   });
 
-  it('a plant off the road network contributes no supply', () => {
+  it('a plant supplies power even when nothing touches a road', () => {
     const ctx = setup();
     const { cx, cz } = findLandRect(ctx.terrain, 12, 8);
-    // Plant placed far from any road.
+    // Plant placed with no roads anywhere on the map.
     const plant = placeBuilding(ctx.world.city, { kind: 'powerPlant', owner: 0, cx, cz, facing: 0 });
     plant.progress = 1;
     const house = placeBuilding(ctx.world.city, { kind: 'house', owner: 0, cx: cx + 5, cz, facing: 0 });
     house.progress = 1;
-    // Road adjacent to the house only.
-    enqueue(ctx, [{ kind: 'buildRoad', issuer: 'p', payload: { owner: 0, cells: roadCells(cx + 5, cz + 2, 2) } }]);
     runTicks(ctx, 30);
-    expect(house.powered).toBe(false);
+    expect(ctx.world.city.roads).toHaveLength(0);
+    expect(house.powered).toBe(true);
   });
 });
 

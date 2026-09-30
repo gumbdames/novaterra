@@ -58,7 +58,6 @@ import {
   UTILITY_ZONE,
   ZoneType,
   getPlayer,
-  isRoadAdjacent,
   runGrowth,
   type BuildingRecord,
   type CitySpecialization,
@@ -175,14 +174,14 @@ function allocateUtilities(world: World, city: CityState): UtilityAllocation {
     }
     player.funds -= charged;
 
-    // 3. Power: supply from road-adjacent plants, demand in id order.
+    // 3. Power: supply from every completed, funded plant — no road
+    // requirement (user directive 2026-09-30). Demand in id order.
     // Smart Grid raises plant supply (powerPlant 25->35, solarFarm
     // 15->20, nuclearPlant 60->75).
     let powerSupply = 0;
     for (const b of completed) {
       const def = BUILDING_DEFS[b.kind];
-      if (def.powerSupply > 0 && funded.has(b.id) &&
-          isRoadAdjacent(city, b.cx, b.cz, def.footprintW, def.footprintH)) {
+      if (def.powerSupply > 0 && funded.has(b.id)) {
         powerSupply += effectivePowerSupply(world, b.owner, b.kind, def.powerSupply);
       }
     }
@@ -198,12 +197,11 @@ function allocateUtilities(world: World, city: CityState): UtilityAllocation {
         poweredSet.add(b.id);
       }
     }
-    // 4. Water: same shape.
+    // 4. Water: same shape — every completed, funded pump counts.
     let waterSupply = 0;
     for (const b of completed) {
       const def = BUILDING_DEFS[b.kind];
-      if (def.waterSupply > 0 && funded.has(b.id) &&
-          isRoadAdjacent(city, b.cx, b.cz, def.footprintW, def.footprintH)) {
+      if (def.waterSupply > 0 && funded.has(b.id)) {
         waterSupply += def.waterSupply;
       }
     }

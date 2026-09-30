@@ -156,9 +156,10 @@ they never mutate sim state.
   grid (256×256 cells, 2 world units/cell). Roads: 5 Funds + 2 Materials
   per cell, paved cells kept sorted, 4-way connectivity BFS. Zones
   (residential/commercial/industrial) painted as rects at 1 Fund/cell;
-  buildings validate zone match + road adjacency + land-only + no overlap
-  at enqueue AND at apply; demolition refunds nothing and frees the
-  footprint. 8-building roster (Phase 1): House (2×2, 120₣/40⛏, 10 s,
+  buildings validate zone match + land-only + no overlap at enqueue AND
+  at apply (roads are optional since 2026-09-30 — user directive: no
+  building or service may require one); demolition refunds nothing and
+  frees the footprint. 8-building roster (Phase 1): House (2×2, 120₣/40⛏, 10 s,
   0.15₣/s upkeep, 6 pop), Apartment (3×3, 450₣/160⛏, 30 s, 0.7₣/s, 30
   pop), Shop (2×2, 220₣/70⛏, 15 s, 0.4₣/s, +1.2₣/s income), Research Lab
   (2×2, 650₣/220⛏, 45 s, 1.2₣/s, +0.4🔬/s), Factory (3×3, 550₣/220⛏,
@@ -169,7 +170,7 @@ they never mutate sim state.
   locked design. Economy runs once per sim-second inside the tick, fixed
   order per player: construction → upkeep funding (newest-first shutdown
   on shortfall) → power/water capacity pools allocated in building-id
-  order (providers must be road-adjacent; unpowered ×0.25 output,
+  order (every completed plant/pump contributes supply; unpowered ×0.25
   unwatered ×0.25) → production/consumption (starved inputs = idle) →
   food (0.02/pop/s; shortage stalls growth) → taxes every 60 s
   (rate × taxBase × 60 s, utilities exempt) → building levels 1→3

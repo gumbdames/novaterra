@@ -23,17 +23,19 @@
  *    units per cell): roads are paved cells, zones are painted cells,
  *    buildings occupy footprint rectangles. Everything is plain data on
  *    `World.city`, so snapshots and the digest cover the whole city.
- *  - Placement rules (land only, road adjacency, zone matching, no
- *    overlaps, affordability) are enforced by command validation — at
- *    enqueue AND at apply time.
- *  - Power/water is a Phase-1 capacity-pool model: plants/pumps that sit on
- *    the road network contribute supply; buildings draw demand in id order
+ *  - Placement rules (land only, zone matching, no overlaps,
+ *    affordability) are enforced by command validation — at enqueue AND
+ *    at apply time. Roads are purely optional: they cost money and will
+ *    serve a future traffic system, but no building or service requires
+ *    one (user directive 2026-09-30).
+ *  - Power/water is a Phase-1 capacity-pool model: every completed
+ *    plant/pump contributes supply; buildings draw demand in id order
  *    until supply runs out. Unpowered/unwatered buildings still run, at a
  *    steep 25% output factor each (documented below). A true
  *    connected-component flow simulation is deferred (see D11).
- *  - Growth: zoned, road-adjacent cells auto-develop when the economy
- *    allows, with a desirability check the player steers via tax rates and
- *    utility headroom.
+ *  - Growth: zoned cells auto-develop when the economy allows, with a
+ *    desirability check the player steers via tax rates and utility
+ *    headroom.
  *
  * Key invariants:
  *  - `roads` is always sorted ascending; `zones` is always sorted by cell.
@@ -667,25 +669,6 @@ export function isCoastal(t: TerrainData, cx: number, cz: number, w: number, h: 
   return false;
 }
 
-/** True when any footprint cell is orthogonally adjacent to a road cell. */
-export function isRoadAdjacent(city: CityState, cx: number, cz: number, w: number, h: number): boolean {
-  for (let dz = 0; dz < h; dz++) {
-    for (let dx = 0; dx < w; dx++) {
-      const nx = cx + dx;
-      const nz = cz + dz;
-      if (
-        (inBounds(nx + 1, nz) && sortedHas(city.roads, cellIndex(nx + 1, nz))) ||
-        (inBounds(nx - 1, nz) && sortedHas(city.roads, cellIndex(nx - 1, nz))) ||
-        (inBounds(nx, nz + 1) && sortedHas(city.roads, cellIndex(nx, nz + 1))) ||
-        (inBounds(nx, nz - 1) && sortedHas(city.roads, cellIndex(nx, nz - 1)))
-      ) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 /**
  * Road connectivity: are two cells linked through paved cells (4-way)?
  * BFS over the road set — for later traffic/service systems.
@@ -758,9 +741,8 @@ export function validatePlacement(t: TerrainData, city: CityState, p: Placement)
       }
     }
   }
-  if (!isRoadAdjacent(city, p.cx, p.cz, def.footprintW, def.footprintH)) {
-    return `${def.name}: must be adjacent to a road`;
-  }
+  // Roads are optional (user directive 2026-09-30): buildings place
+  // wherever otherwise legal, and plants/pumps supply without them.
   // Roster expansion: the naval yard is coastal construction — at least one
   // footprint cell must touch water (makes coastline valuable).
   if (p.kind === 'navalYard' && !isCoastal(t, p.cx, p.cz, def.footprintW, def.footprintH)) {
@@ -847,7 +829,8 @@ function tryAutoDevelop(t: TerrainData, world: World, owner: number, powerHeadro
     const zrec = city.zones[zi] as { cell: number; zone: ZoneType };
     const { cx, cz } = cellCoords(zrec.cell);
     if (buildingAtCell(city, zrec.cell) || sortedHas(city.roads, zrec.cell)) continue;
-    if (!isRoadAdjacent(city, cx, cz, 1, 1)) continue;
+    // No road gate (user directive 2026-09-30): zoned houses develop with
+    // or without roads; the desirability roll below is the only filter.
     const desirability = growthDesirability(player.taxRates[zrec.zone] as number, powerHeadroom, waterHeadroom);
     if (bank.next('city') >= desirability) continue;
     const def = affordableDefForZone(city, zrec.zone, owner);

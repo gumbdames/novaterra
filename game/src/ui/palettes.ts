@@ -253,9 +253,9 @@ export function unitAvailability(
 
 /**
  * Palette-side availability for a building: age gate first, then
- * affordability. Placement-time rules (the navalYard coast rule, zone
- * and road adjacency) are validated by the sim at placeBuilding time
- * and surface in the button tooltip instead.
+ * affordability. Placement-time rules (the navalYard coast rule and zone
+ * matching) are validated by the sim at placeBuilding time and surface in
+ * the button tooltip instead.
  */
 export function buildingAvailability(
   world: World,

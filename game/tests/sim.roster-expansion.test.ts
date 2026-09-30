@@ -37,7 +37,6 @@ import {
   registerCityCommands,
   getPlayer,
   cellIsWater,
-  cellIndex,
 } from '../src/sim/city';
 import { generateTerrain, MERIDIAN_PLAINS, isWater, type TerrainData } from '../src/sim/terrain';
 import {
@@ -273,14 +272,6 @@ function findCoastalFootprint(
   return null;
 }
 
-/** Push a road ring adjacent to a footprint so isRoadAdjacent passes. */
-function addRoadRing(ctx: Ctx, cx: number, cz: number, w: number, h: number): void {
-  for (let x = cx - 1; x <= cx + w; x += 1) {
-    ctx.world.city.roads.push(cellIndex(x, cz - 1), cellIndex(x, cz + h));
-  }
-  ctx.world.city.roads.sort((a, b) => a - b);
-}
-
 describe('roster definitions (§2)', () => {
   it('has exactly the 28 unit kinds from the spec table', () => {
     expect(UNIT_KINDS).toHaveLength(28);
@@ -454,8 +445,12 @@ describe('building definitions (§3)', () => {
     ctx.world.ages.age = 'foundation';
     expect(rejectionReason(ctx, 'placeBuilding', p)).toMatch(/connectivity/i);
     ctx.world.ages.age = 'connectivity';
-    // The exact placement may fail on terrain/roads; the age gate passed.
-    expect(rejectionReason(ctx, 'placeBuilding', p)).not.toMatch(/connectivity/i);
+    // The age gate passed: the placement now either lands or fails on a
+    // non-age rule (terrain/zone/etc.) — never on the age gate. (Since
+    // 2026-09-30 there is no road-adjacency rule left to reject it, so a
+    // null reason — successful placement — is the common case.)
+    const reason = rejectionReason(ctx, 'placeBuilding', p);
+    if (reason !== null) expect(reason).not.toMatch(/connectivity/i);
   });
 });
 
@@ -560,7 +555,6 @@ describe('naval yard coastal placement — mechanic 3 (§5.3)', () => {
     ctx.world.ages.age = 'industry';
     const spot = findInlandFootprint(ctx.terrain, 5, 4);
     expect(spot, 'expected an inland 5x4 footprint on the test map').not.toBeNull();
-    addRoadRing(ctx, spot!.cx, spot!.cz, 5, 4);
     expect(
       rejectionReason(ctx, 'placeBuilding', {
         kind: 'navalYard', owner: 0, cx: spot!.cx, cz: spot!.cz, facing: 0,
@@ -573,7 +567,6 @@ describe('naval yard coastal placement — mechanic 3 (§5.3)', () => {
     ctx.world.ages.age = 'industry';
     const spot = findCoastalFootprint(ctx.terrain, 5, 4);
     expect(spot, 'expected a coastal 5x4 footprint on the test map').not.toBeNull();
-    addRoadRing(ctx, spot!.cx, spot!.cz, 5, 4);
     const reason = rejectionReason(ctx, 'placeBuilding', {
       kind: 'navalYard', owner: 0, cx: spot!.cx, cz: spot!.cz, facing: 0,
     });

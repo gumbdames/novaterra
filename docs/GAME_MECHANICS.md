@@ -6,8 +6,9 @@
 
 ## Building your city
 
-- **Roads** connect everything. Buildings must touch a road to work.
-  Roads cost 5 Funds + 2 Materials per tile.
+- **Roads** are optional — paved at 5 Funds + 2 Materials per tile for
+  looks and future traffic systems. Buildings place, grow, and run
+  with or without them.
 - **Zones** decide what goes where. Paint residential, commercial, or
   industrial zones (1 Fund per tile), then place matching buildings on
   them. Power plants and water pumps fit anywhere.

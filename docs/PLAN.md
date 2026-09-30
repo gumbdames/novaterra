@@ -65,7 +65,10 @@ fun in 30–60 minute sessions. Build order:
    headroom). Fixed-rate market with ±20% spread (round trips lose value);
    per-zone tax rates 0–100%. Snapshot v2 + city digest. 36 new tests,
    131/131 green; typecheck/build green; AGPL stamps verified. All exact
-   numbers are Phase 1 engineering choices, not locked design.)
+   numbers are Phase 1 engineering choices, not locked design.
+   UPDATE 2026-09-30 (user directive): the road-adjacency requirement was
+   removed everywhere — placement validation, auto-development, and
+   power/water supply no longer need roads; roads are optional only.)
 6. Time-sliced pathfinding + movement; hand-rolled ECS vs apecs measurement — **COMPLETE 2026-09-28**
    (`game/src/sim/units.ts`: stable-id unit store, `civilian` 6 u/s /
    `soldier` 8 u/s placeholders for the step-7 roster, `spawnUnit`;
