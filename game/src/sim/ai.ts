@@ -825,6 +825,42 @@ function thinkAmmoRetreats(world: World, queue: CommandQueue, ai: AIPlayerState)
 }
 
 /**
+ * Phase 4 transport (S7, grand expansion): the civilian-transport AI
+ * hook — deliberately a NO-OP in 0.1 Alpha. PLAN §6 requires every new
+ * unit/building to ship with its AI entry in the same change; when the
+ * entry is "the AI doesn't touch this", it is documented here instead
+ * of left silent.
+ *
+ * Why the Classic AI ignores the whole transport roster:
+ * - The Classic AI is a MILITARY rival (cadet…marshal). Buses, trams,
+ *   passenger/freight trains and ferries are civilian fare/freight
+ *   movers with no combat role (targets 'none') — training them would
+ *   burn army-cap slots for zero military value.
+ * - PLAN §6 defers the civilian AI trader rival ("transport/airline/
+ *   peaceful: civilian AI trader rival is a later feature"). The think
+ *   function that will actually run civilian transit belongs to that
+ *   future rival, not to this one.
+ * - The AI owns no physical buildings, roads or rails in 0.1 Alpha
+ *   (all virtual), so it cannot lay the networks civilian transport
+ *   needs. railStation / busDepot / ferryTerminal / marina stay off
+ *   CONSTRUCTION_PRIORITY for the same reason — and so do the seven
+ *   tiered transit stops/stations (busStop, taxiStand, tramStop,
+ *   ferryPier, neighborhoodStation, centralStation,
+ *   airportInterchange): they are civilian passenger infrastructure
+ *   with no military value, and the AI has no passengers to serve.
+ * - `canTrain` already auto-skips the gated kinds (bus/tram need a
+ *   busDepot, trains a railStation, ferries a ferryTerminal), so the
+ *   production composition code needs no changes to stay safe.
+ *
+ * Exported so tests can pin the no-op (world digest unchanged across a
+ * think with transport units AND transit stops present).
+ */
+export function thinkCivilianTransport(world: World, ai: AIPlayerState): void {
+  void world;
+  void ai;
+}
+
+/**
  * Per-think logistics: depot construction, truck ratios, abstract
  * resupply, ammo-dry retreats. Called from thinkCitizen and
  * thinkCommander (general/marshal inherit); cadet never calls it —
@@ -1260,6 +1296,9 @@ function thinkCadet(
   const p = spawnPoint(ai, 'rifles', n);
   spawn(world, queue, ai.owner, 'rifles', p.x, p.z);
   ai.builtCounts['rifles'] = (ai.builtCounts['rifles'] ?? 0) + 1;
+  // Phase 4 transport (S7): civilian-transport AI hook — a documented
+  // no-op in 0.1 Alpha (see thinkCivilianTransport).
+  thinkCivilianTransport(world, ai);
 }
 
 /** Shared per-think bookkeeping: construction, sub sightings. */
@@ -1287,6 +1326,10 @@ function thinkCitizen(
   // Phase 3 logistics (workstream 3): virtual depots, truck ratios,
   // abstract resupply, ammo-dry retreats.
   thinkLogistics(world, queue, ai);
+
+  // Phase 4 transport (S7): civilian-transport AI hook — a documented
+  // no-op in 0.1 Alpha (see thinkCivilianTransport).
+  thinkCivilianTransport(world, ai);
 
   // Attack: order all combat units to attack the nearest visible enemy.
   // (Personality may stagger new attack orders to every other think.)
@@ -1344,6 +1387,10 @@ function thinkCommander(
   // Phase 3 logistics (workstream 3): virtual depots, truck ratios,
   // abstract resupply, ammo-dry retreats.
   thinkLogistics(world, queue, ai);
+
+  // Phase 4 transport (S7): civilian-transport AI hook — a documented
+  // no-op in 0.1 Alpha (see thinkCivilianTransport).
+  thinkCivilianTransport(world, ai);
 
   // --- Scouting: keep one scout probing outward waypoints. At the
   // information age the awacs replaces the drone (spec §7.2).

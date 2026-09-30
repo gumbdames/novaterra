@@ -63,8 +63,8 @@ function expectValidIcon(markup: string): void {
 }
 
 describe('unit icons', () => {
-  it('covers all 30 unit kinds', () => {
-    expect(UNIT_KINDS).toHaveLength(30);
+  it('covers all 35 unit kinds', () => {
+    expect(UNIT_KINDS).toHaveLength(35);
     for (const kind of UNIT_KINDS) {
       expectValidIcon(unitIcon(kind as UnitKind));
     }
@@ -72,14 +72,14 @@ describe('unit icons', () => {
 
   it('gives every unit a distinct glyph', () => {
     const glyphs = new Set(UNIT_KINDS.map((k) => unitIcon(k as UnitKind)));
-    expect(glyphs.size).toBe(30);
+    expect(glyphs.size).toBe(35);
   });
 });
 
 describe('building icons', () => {
-  it('covers all 55 building kinds (31 + grand-expansion Phase 2 utility set + Phase 3 logistics set + workstream W civic amenities + workstream P civic parking)', () => {
+  it('covers all 67 building kinds (31 + grand-expansion Phase 2 utility set + Phase 3 logistics set + workstream W civic amenities + workstream P civic parking + Phase 4 transport hubs + tiered transit stops)', () => {
     const kinds = Object.values(BuildingKind);
-    expect(kinds).toHaveLength(55);
+    expect(kinds).toHaveLength(67);
     for (const kind of kinds) {
       expectValidIcon(buildingIcon(kind as (typeof kinds)[number]));
     }
@@ -88,7 +88,7 @@ describe('building icons', () => {
   it('gives every building a distinct glyph', () => {
     const kinds = Object.values(BuildingKind);
     const glyphs = new Set(kinds.map((k) => buildingIcon(k)));
-    expect(glyphs.size).toBe(55);
+    expect(glyphs.size).toBe(67);
   });
 
   it('gives each of the 13 Phase 2 utility buildings a valid, distinct glyph', () => {

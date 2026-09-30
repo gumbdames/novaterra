@@ -273,8 +273,8 @@ function findCoastalFootprint(
 }
 
 describe('roster definitions (§2)', () => {
-  it('has exactly the 30 unit kinds (28 + Phase 3 workstream 3 supplyTruck/fuelTruck)', () => {
-    expect(UNIT_KINDS).toHaveLength(30);
+  it('has exactly the 35 unit kinds (28 + Phase 3 workstream 3 supplyTruck/fuelTruck + Phase 4 S7 civilian transports)', () => {
+    expect(UNIT_KINDS).toHaveLength(35);
     const expected = [
       'engineer', 'rifles', 'spectre', 'sniperTeam', 'combatMedic',
       'tank', 'apc', 'tankDestroyer', 'artillery', 'mlrs', 'aa',
@@ -284,6 +284,8 @@ describe('roster definitions (§2)', () => {
       'hq', 'hauler',
       // Phase 3 workstream 3 (2026-09-30): the supply-chain trucks.
       'supplyTruck', 'fuelTruck',
+      // Phase 4 S7 (2026-09-30): the civilian transports.
+      'passengerTrain', 'freightTrain', 'bus', 'tram', 'ferry',
     ];
     expect([...UNIT_KINDS].sort()).toEqual([...expected].sort());
   });
@@ -426,7 +428,12 @@ describe('building definitions (§3 + Phase 1 + Workstream Z)', () => {
     // Workstream W (2026-09-30): +2 civic amenities (library, park) → 53.
     // Workstream P (ambient city life, 2026-09-30): +2 civic parking
     // buildings (parkingLot, parkingGarage) → 55.
-    expect(Object.keys(BUILDING_DEFS)).toHaveLength(55);
+    // Phase 4 S7 (2026-09-30): +5 transport hubs
+    // (railStation, busDepot, ferryTerminal, marina, marinaLarge) → 60.
+    // Phase 4 tiered transit (2026-09-30): +7 stops/stations
+    // (busStop, taxiStand, tramStop, ferryPier, neighborhoodStation,
+    // centralStation, airportInterchange) → 67.
+    expect(Object.keys(BUILDING_DEFS)).toHaveLength(67);
     expect(BUILDING_DEFS.barracks).toMatchObject({
       costFunds: 700, costMaterials: 250, buildSeconds: 40, minAge: 'foundation',
     });
@@ -1058,15 +1065,15 @@ describe('upgrade effects (§4)', () => {
   });
 });
 
-describe('snapshot v6 + canonical digest (§9)', () => {
-  it('round-trips upgrades through a v6 snapshot', () => {
+describe('snapshot v7 + canonical digest (§9)', () => {
+  it('round-trips upgrades through a v7 snapshot', () => {
     const ctx = setupRich();
     const at = findLandNear(ctx.terrain, 0, 0);
     spawnNow(ctx, 'tank', 0, at.x, at.z);
     ctx.world.upgrades[0] = ['apRounds', 'engineTuning'];
     ctx.world.upgrades[1] = ['droneOptics'];
     const snap = takeSnapshot(ctx.world);
-    expect(snap.version).toBe(6);
+    expect(snap.version).toBe(7); // Phase 4 transport: road/rail classes
     const world2 = restoreSnapshot(snap);
     expect(world2.upgrades).toEqual({ 0: ['apRounds', 'engineTuning'], 1: ['droneOptics'] });
     expect(digestWorld(world2)).toBe(digestWorld(ctx.world));

@@ -446,8 +446,10 @@ function buildSide(
   cellToRegion: Map<number, number>,
 ): UtilitySideModel {
   // 1. Conductor tiles: roads + lines/pipes + substation/pumping footprints.
+  // Phase 4 (S7): roads are RoadCell[] now — project to cells (every
+  // road class conducts, like before; still sorted by cell).
   const conductors = mergeSorted([
-    city.roads,
+    city.roads.map((r) => r.cell),
     utility === 'power' ? city.powerLines : city.pipes,
     conductorFootprints(city, utility),
   ]);

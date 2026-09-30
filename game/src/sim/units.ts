@@ -86,6 +86,13 @@ export const UNIT_KINDS = [
   'carrier',
   'commandShip',
   'fishingBoat',
+  // Phase 4 transport (S7, 2026-09-30): civilian transports — fare/freight
+  // earners gated by their network (see `transitEarnings`, `railBound`).
+  'passengerTrain',
+  'freightTrain',
+  'bus',
+  'tram',
+  'ferry',
 ] as const;
 export type UnitKind = (typeof UNIT_KINDS)[number];
 
@@ -189,6 +196,20 @@ export interface UnitDef {
    */
   cargoFuelCapacity?: number;
   cargoAmmoCapacity?: number;
+  /**
+   * Phase 4 transport (S7). Civilian earnings rate in funds per
+   * sim-second, paid by `runTransportEarnings` (economy.ts) ONLY while
+   * the unit is on its network (see `isOnTransportNetwork` in city.ts).
+   * Set on exactly the TRANSIT_EARNER_KINDS — the transport test pins
+   * the two lists equal.
+   */
+  transitEarnings?: number;
+  /**
+   * Phase 4 transport (S7). When true the unit is rail-bound: it
+   * steers along rail cells via the dedicated BFS router (rail.ts) and
+   * never uses flow fields. Trains only.
+   */
+  railBound?: boolean;
   /**
    * Command aura: friendly attackers of `auraDomain` (or any domain when
    * undefined) within this radius get +`auraBonus` damage. Generalizes the
@@ -467,11 +488,82 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     harvest: { food: 0.6 },
     fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil', // 400 s; workboat tank
   },
+  // ------------------------------------------------------------------
+  // Phase 4 transport (S7, grand expansion): civilian transports.
+  // All unarmed (targets 'none') — they earn fares/freight while on
+  // their network instead of fighting. The Classic AI never trains
+  // them (documented no-op hook `thinkCivilianTransport` in ai.ts).
+  // ------------------------------------------------------------------
+  passengerTrain: {
+    kind: 'passengerTrain', name: 'Passenger Train', domain: 'land', hp: 260, speed: 14, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'industry',
+    // Needs a station to run from (rail gate).
+    requiredBuilding: 'railStation',
+    manpowerCost: 2, trainFunds: 900, trainMaterials: 250,
+    fuelCapacity: 200, fuelPerSecond: 0.2, fuelType: 'fossil', // 1000 s; diesel consist
+    railBound: true,
+    transitEarnings: 1.2,
+  },
+  freightTrain: {
+    kind: 'freightTrain', name: 'Freight Train', domain: 'land', hp: 320, speed: 10, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 18, minAge: 'industry',
+    requiredBuilding: 'railStation',
+    manpowerCost: 2, trainFunds: 800, trainMaterials: 300,
+    fuelCapacity: 220, fuelPerSecond: 0.2, fuelType: 'fossil', // 1100 s; heavy haul
+    railBound: true,
+    transitEarnings: 1.0,
+  },
+  bus: {
+    kind: 'bus', name: 'Bus', domain: 'land', hp: 100, speed: 9, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 16, minAge: 'connectivity',
+    requiredBuilding: 'busDepot',
+    manpowerCost: 1, trainFunds: 200, trainMaterials: 60,
+    fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil', // 400 s city tank
+    transitEarnings: 0.5,
+  },
+  tram: {
+    kind: 'tram', name: 'Tram', domain: 'land', hp: 120, speed: 7, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 16, minAge: 'connectivity',
+    requiredBuilding: 'busDepot',
+    manpowerCost: 1, trainFunds: 250, trainMaterials: 80,
+    // Diesel abstraction (like supplyTruck's 'fossil'): the streetcar
+    // fleet refuels at the depot through the same logistics chain.
+    fuelCapacity: 80, fuelPerSecond: 0.15, fuelType: 'fossil', // 533 s
+    transitEarnings: 0.6,
+  },
+  ferry: {
+    kind: 'ferry', name: 'Ferry', domain: 'sea', hp: 220, speed: 11, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'connectivity',
+    requiredBuilding: 'ferryTerminal',
+    manpowerCost: 2, trainFunds: 400, trainMaterials: 140,
+    fuelCapacity: 120, fuelPerSecond: 0.2, fuelType: 'fossil', // 600 s crossing tank
+    transitEarnings: 0.8,
+  },
 };
 
+/**
+ * Phase 4 transport (S7). A ferry's shipping lane: the two world-space
+ * endpoints it shuttles between. Plain data — snapshot()/digest()
+ * cover it verbatim (see `copyUnit`, `canonicalUnit`).
+ */
+export interface FerryRoute {
+  /** Endpoint A: world (x, z). */
+  ax: number;
+  az: number;
+  /** Endpoint B: world (x, z). */
+  bx: number;
+  bz: number;
+  /** The endpoint the ferry is currently heading TO. */
+  leg: 'a' | 'b';
+}
+
 /** A mobile unit. Plain data — snapshot()/digest() cover it verbatim. */
-export interface UnitRecord {
-  /** Stable id from `world.nextId`. Never reused. */
+export interface UnitRecord {  /** Stable id from `world.nextId`. Never reused. */
   id: number;
   /** Kind tag, one of UNIT_KINDS. */
   kind: string;
@@ -521,6 +613,15 @@ export interface UnitRecord {
   pathAt: number;
   /** Flow-field id the unit follows (0 = none). See `pathfinding.ts`. */
   fieldId: number;
+  /**
+   * Phase 4 transport (S7). The ferry's shipping lane: two world-space
+   * endpoints it shuttles between, set by `setFerryRoute`. `leg` is the
+   * endpoint it is currently heading TO ('a' = heading to a, 'b' =
+   * heading to b). Undefined = no route (manual orders only). This IS
+   * the ferry's "network" for `isOnTransportNetwork` and the earnings
+   * gate; snapshotted and digested verbatim.
+   */
+  route?: FerryRoute;
   /**
    * Veterancy (grand-expansion Phase 1): cumulative combat experience,
    * earned by landing killing blows (`awardKillXp` in `veterancy.ts`).
@@ -804,4 +905,66 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
       return unit.id;
     },
   });
+
+  /**
+   * Phase 4 transport (S7): assign a ferry its shipping lane. Both
+   * endpoints must be water (inside the map); the route starts idle
+   * with leg 'a' — the ferry loop (movement.ts) flips to 'b' and
+   * dispatches on the next tick, so the ferry always sails to B first
+   * after a fresh route. Re-issuing replaces the old route; a manual
+   * moveUnit is a detour (the loop resumes when the ferry idles).
+   */
+  queue.register('setFerryRoute', {
+    validate(cmd, world): string | null {
+      const unitId = cmd.payload['unitId'];
+      if (typeof unitId !== 'number' || !Number.isInteger(unitId)) {
+        return 'setFerryRoute: payload.unitId must be an integer';
+      }
+      const unit = world.units.find((u) => u.id === unitId);
+      if (!unit) return `setFerryRoute: no unit with id ${unitId}`;
+      const owner = cmd.payload['owner'];
+      if (typeof owner !== 'number' || unit.owner !== owner) {
+        return `setFerryRoute: unit ${unitId} is not owned by player ${owner}`;
+      }
+      if (unit.kind !== 'ferry') return `setFerryRoute: unit ${unitId} is a ${unit.kind}, not a ferry`;
+      const ax = cmd.payload['ax'];
+      const az = cmd.payload['az'];
+      const bx = cmd.payload['bx'];
+      const bz = cmd.payload['bz'];
+      for (const [k, v] of [['ax', ax], ['az', az], ['bx', bx], ['bz', bz]] as const) {
+        if (typeof v !== 'number' || !Number.isFinite(v)) return `setFerryRoute: payload.${k} must be a finite number`;
+        if (Math.abs(v) > MAP_HALF_SIZE) return `setFerryRoute: endpoint ${k}=${v} is outside the map`;
+      }
+      if (!isWater(t, ax as number, az as number)) return 'setFerryRoute: endpoint A must be water';
+      if (!isWater(t, bx as number, bz as number)) return 'setFerryRoute: endpoint B must be water';
+      if (ax === bx && az === bz) return 'setFerryRoute: endpoints A and B must differ';
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const unit = world.units.find((u) => u.id === (cmd.payload['unitId'] as number)) as UnitRecord;
+      unit.route = {
+        ax: cmd.payload['ax'] as number,
+        az: cmd.payload['az'] as number,
+        bx: cmd.payload['bx'] as number,
+        bz: cmd.payload['bz'] as number,
+        leg: 'a',
+      };
+      // Become idle so the ferry loop picks the route up next tick
+      // (unless it is mid-order — then it finishes the manual detour
+      // first and the loop resumes after).
+      if (unit.state === 'failed') {
+        unit.state = 'idle';
+        unit.failReason = null;
+      }
+      return unit.id;
+    },
+  });
+}
+
+/**
+ * Phase 4 transport (S7): is this unit kind rail-bound (steers along
+ * rail cells via rail.ts instead of flow fields / open steering)?
+ */
+export function isRailBound(kind: string): boolean {
+  return (UNIT_DEFS[kind as UnitKind]?.railBound ?? false) === true;
 }

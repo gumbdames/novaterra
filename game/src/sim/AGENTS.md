@@ -29,7 +29,12 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   in commands.ts, keep the two in sync.
 - `economy.ts` — the 1 Hz economy system (`createEconomySystem`),
   fixed-rate market (`marketTrade`), tax collection. Pure w.r.t.
-  rendering.
+  rendering. Phase 4: `runTransportEarnings` (on-network civilian
+  transports pay `transitEarnings`), `runRidershipIncome` (completed,
+  operational transit stops pay `ridershipIncome`), `recomputeOccupancy`
+  (per-building residents/workers; runs after construction + utility
+  allocation, before the population recount which sums residents —
+  `generateManpower` stays last of the population chain).
 - `utilityNetworks.ts` — (grand-expansion Phase 2) the derived utility
   topology: integer-BFS flood fill over conductors (roads ∪ power
   lines/pipes ∪ substation/pumping-station footprints) per player per
@@ -63,15 +68,18 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   city→commands→movement→pathfinding (the NaN-GRID_CELLS SSR trap,
   2026-09-30); do not add new city→commands edges.
 - `digest.ts` — FNV-1a canonical encoding, including full city state.
-- `snapshot.ts` — versioned snapshots (v6: per-player researched upgrades;
-  v5 snapshots still load with empty upgrades).
+- `snapshot.ts` — versioned snapshots (v7: road classes as
+  `RoadCell[]` (v6 `number[]` migrates to `paved`), the rail layer,
+  ferry routes on units; v6 still loads, v5 with empty upgrades).
 - `terrain.ts` — seeded mapgen (not snapshotted); `spatial.ts` — hash grid.
 - `units.ts` — `UnitRecord` store (stable ids, owner/kind/speed/state),
-  `spawnUnit` command. The 28-unit roster (13 land: engineer, rifles,
-  tank, artillery, aa, hauler, spectre, hq, sniperTeam, combatMedic, apc,
-  tankDestroyer, mlrs; 6 air: fighter, transport, drone, fighterBomber,
-  attackHeli, awacs; 9 sea: patrolBoat, transportShip, fishingBoat,
-  missileBoat, destroyer, frigate, submarine, carrier, commandShip) with
+  `spawnUnit` command. The 35-unit roster (19 land: engineer, rifles,
+  tank, artillery, aa, hauler, supplyTruck, fuelTruck, spectre, hq,
+  sniperTeam, combatMedic, apc, tankDestroyer, mlrs, passengerTrain,
+  freightTrain, bus, tram; 6 air: fighter, transport, drone,
+  fighterBomber, attackHeli, awacs; 10 sea: patrolBoat, destroyer,
+  transportShip, missileBoat, frigate, submarine, carrier, commandShip,
+  fishingBoat, ferry) with
   combat stats (`UnitDef`: hp, speed, armor, damage, range,
   minRange, targets, vsArmor/vsAir multipliers, sight). Training costs
   (`trainFunds`/`trainMaterials`) are deducted at spawn; gated units
@@ -167,7 +175,7 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   (`getSightBonus`, applied in `ai.ts` `getVisibleEnemies`). `UnitDef`
   carries `minAge`; fighter requires Connectivity (gated in `spawnUnit`
   validation).
-- `upgrades.ts` — the 12 researchable upgrades (roster expansion, Phase 4).
+- `upgrades.ts` — the 19 researchable upgrades (roster expansion, Phase 4).
   `UpgradeDef`: cost (funds + research), `minAge`, building prerequisites
   (Advanced Avionics needs airfield AND radarStation). `researchUpgrade`
   command: completed lab required; age/prereq/affordability/duplicates

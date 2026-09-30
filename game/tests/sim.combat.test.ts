@@ -155,7 +155,7 @@ function advanceToConnectivity(ctx: Ctx, owner = 0): void {
 }
 
 describe('roster', () => {
-  it('has exactly the 30 kinds (15 land + 6 air + 9 sea: Phase 3 workstream 3 added the land-domain supplyTruck/fuelTruck)', () => {
+  it('has exactly the 35 kinds (19 land + 6 air + 10 sea: Phase 4 added 4 land + 1 sea transports)', () => {
     const kinds = Object.keys(UNIT_DEFS).sort();
     expect(kinds).toEqual(
       [
@@ -169,14 +169,16 @@ describe('roster', () => {
         'fishingBoat',
         // Phase 3 workstream 3 (2026-09-30): the supply-chain trucks.
         'supplyTruck', 'fuelTruck',
+        // Phase 4 (S7, 2026-09-30): civilian transport units.
+        'bus', 'tram', 'passengerTrain', 'freightTrain', 'ferry',
       ].sort(),
     );
     const land = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'land');
     const air = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'air');
     const sea = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'sea');
-    expect(land).toHaveLength(15);
+    expect(land).toHaveLength(19);
     expect(air).toHaveLength(6);
-    expect(sea).toHaveLength(9);
+    expect(sea).toHaveLength(10);
   });
 
   it('spawns with full hp, zero cooldown, no target', () => {

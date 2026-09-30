@@ -145,7 +145,7 @@ describe('logistics roster (Phase 3 workstream 2)', () => {
     expect(defs.fuelDepot.fuelStorage).toBe(250);
   });
 
-  it('marks exactly the 9 reload points', () => {
+  it('marks exactly the 12 reload points (9 Phase 3 + 3 Phase 4 transport hubs)', () => {
     const reloadPoints = (Object.keys(BUILDING_DEFS) as BuildingKind[]).filter(
       (k) => BUILDING_DEFS[k].reloadPoint,
     );
@@ -153,12 +153,15 @@ describe('logistics roster (Phase 3 workstream 2)', () => {
       [
         'airfield',
         'barracks',
+        'busDepot',
+        'ferryTerminal',
         'fuelDepot',
         'missilePlant',
         'missileSilo',
         'munitionsFactory',
         'navalYard',
         'ordnanceDepot',
+        'railStation',
         'warFactory',
       ].sort(),
     );

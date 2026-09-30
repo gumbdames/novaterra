@@ -61,11 +61,13 @@ import type { TerrainData } from './terrain';
 import { isWater } from './terrain';
 import type { World } from './world';
 import { rngBank } from './world';
+import { fnv1a32 } from './digest';
 import type { CommandQueue, CommandSpec } from './commands';
 import type { Age } from './ages';
 import {
   cellDesirability,
   getDesirabilityModel,
+  landValueTier,
   migrationPull,
 } from './desirability';
 
@@ -140,6 +142,184 @@ function sortedInsert(sorted: number[], value: number): void {
     else hi = mid;
   }
   if (sorted[lo] !== value) sorted.splice(lo, 0, value);
+}
+
+// ---------------------------------------------------------------------------
+// Phase 4 transport (S7, grand expansion): road classes + rail layer.
+// ---------------------------------------------------------------------------
+
+/**
+ * Road classes, cheapest → best (PLAN §3.4 order). A road cell's class
+ * sets its build cost and its movement-cost factor in `cellMoveCost`
+ * (pathfinding.ts) — the class's speed factor expressed as a cost, so
+ * the flow-field A* routes fast traffic onto better roads.
+ */
+export type RoadClass = 'dirt' | 'country' | 'paved' | 'highway';
+
+/** Upgrade order for `upgradeRoad` (index compare = strictly better). */
+export const ROAD_CLASS_ORDER: readonly RoadClass[] = ['dirt', 'country', 'paved', 'highway'];
+
+/** One road cell: its grid index plus its class. Sorted by `cell`. */
+export interface RoadCell {
+  cell: number;
+  cls: RoadClass;
+}
+
+/**
+ * Per-class build cost and movement factor. `moveCost` is the
+ * `cellMoveCost` factor for entering the cell (lower = faster):
+ *  - dirt 1.0 — no faster than open ground; the cheap way to mark a
+ *    route (and every road class still conducts power/water, so dirt
+ *    doubles as the cheapest utility conductor).
+ *  - country 0.75 — a mild upgrade for rural links.
+ *  - paved 0.5 — the legacy flat road: ROAD_COST (5 funds + 2
+ *    materials) and the old ROAD_COST_FACTOR (0.5) ARE paved's stats,
+ *    so the v6→v7 migration (default class `paved`) is
+ *    behavior-preserving.
+ *  - highway 0.35 — ~43% faster than paved at 2× the build cost, the
+ *    endgame logistics corridor.
+ */
+export const ROAD_CLASS_STATS: Record<
+  RoadClass,
+  { costFunds: number; costMaterials: number; moveCost: number }
+> = {
+  dirt: { costFunds: 2, costMaterials: 1, moveCost: 1.0 },
+  country: { costFunds: 4, costMaterials: 2, moveCost: 0.75 },
+  paved: { costFunds: 5, costMaterials: 2, moveCost: 0.5 },
+  highway: { costFunds: 10, costMaterials: 5, moveCost: 0.35 },
+};
+
+/**
+ * Rail track classes, cheapest → best (PLAN §3.4 order). Unlike roads
+ * (whose class is a movement COST), a track class is a train SPEED
+ * factor: the same train runs faster on better track
+ * (`trainTrackFactor` in rail.ts). This is the "train quality gated by
+ * track class" mechanic — standard → electric → high-speed.
+ */
+export type TrackClass = 'standard' | 'electric' | 'high-speed';
+
+/** One rail cell: its grid index plus its track class. Sorted by `cell`. */
+export interface RailCell {
+  cell: number;
+  cls: TrackClass;
+}
+
+/**
+ * Per-class rail build cost and train speed factor:
+ *  - standard 1.0 — diesel roadbed, the baseline.
+ *  - electric 1.4 — catenary; +40% train speed.
+ *  - high-speed 1.9 — slab track, near-double speed: the reason to
+ *    upgrade a busy main line (see `upgradeRail`… — 0.1 Alpha ships
+ *    buildRail only; rail upgrades arrive with the bridges/tunnels
+ *    tool, PLAN §3.4).
+ * Rail is pricier than road per cell: a dedicated corridor, not a
+ * shared street.
+ */
+export const TRACK_CLASS_STATS: Record<
+  TrackClass,
+  { costFunds: number; costMaterials: number; speedFactor: number }
+> = {
+  standard: { costFunds: 8, costMaterials: 4, speedFactor: 1.0 },
+  electric: { costFunds: 14, costMaterials: 8, speedFactor: 1.4 },
+  'high-speed': { costFunds: 25, costMaterials: 15, speedFactor: 1.9 },
+};
+
+/** Binary search for a cell in a sorted RoadCell[]. */
+export function roadSortedHas(roads: RoadCell[], cell: number): boolean {
+  let lo = 0;
+  let hi = roads.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const v = (roads[mid] as RoadCell).cell;
+    if (v === cell) return true;
+    if (v < cell) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return false;
+}
+
+/** Insert a RoadCell keeping the array sorted by cell. No-op if the cell is present. */
+export function roadSortedInsert(roads: RoadCell[], rec: RoadCell): void {
+  let lo = 0;
+  let hi = roads.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((roads[mid] as RoadCell).cell < rec.cell) lo = mid + 1;
+    else hi = mid;
+  }
+  if ((roads[lo] as RoadCell | undefined)?.cell !== rec.cell) roads.splice(lo, 0, rec);
+}
+
+/** The road class at a cell, or undefined when the cell has no road. */
+export function roadClassAt(roads: RoadCell[], cell: number): RoadClass | undefined {
+  let lo = 0;
+  let hi = roads.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const r = roads[mid] as RoadCell;
+    if (r.cell === cell) return r.cls;
+    if (r.cell < cell) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return undefined;
+}
+
+/** Binary search for a cell in a sorted RailCell[]. */
+export function railSortedHas(rails: RailCell[], cell: number): boolean {
+  let lo = 0;
+  let hi = rails.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const v = (rails[mid] as RailCell).cell;
+    if (v === cell) return true;
+    if (v < cell) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return false;
+}
+
+/** Insert a RailCell keeping the array sorted by cell. No-op if the cell is present. */
+export function railSortedInsert(rails: RailCell[], rec: RailCell): void {
+  let lo = 0;
+  let hi = rails.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((rails[mid] as RailCell).cell < rec.cell) lo = mid + 1;
+    else hi = mid;
+  }
+  if ((rails[lo] as RailCell | undefined)?.cell !== rec.cell) rails.splice(lo, 0, rec);
+}
+
+/** The track class at a cell, or undefined when the cell has no rail. */
+export function railClassAt(rails: RailCell[], cell: number): TrackClass | undefined {
+  let lo = 0;
+  let hi = rails.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const r = rails[mid] as RailCell;
+    if (r.cell === cell) return r.cls;
+    if (r.cell < cell) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return undefined;
+}
+
+/**
+ * v6→v7 snapshot migration for roads (PLAN §4 S7, AD9).
+ *
+ * v6 stored `roads: number[]` — every cell implicitly a paved road at
+ * the old flat cost (5 funds + 2 materials, moveCost 0.5). v7 stores
+ * `RoadCell[]` `{cell, cls}`.
+ *
+ * Default class: 'paved'. This is the behavior-preserving choice: the
+ * old ROAD_COST_FUNDS/MATERIALS and the old ROAD_COST_FACTOR ARE
+ * paved's stats (see ROAD_CLASS_STATS), so pathfinding costs, build
+ * costs, and utility conduction are identical before and after
+ * migration. Sorted order is preserved (map is order-preserving).
+ * Pinned by game/tests/sim.transport.test.ts.
+ */
+export function migrateRoadsV6ToV7(roads: number[]): RoadCell[] {
+  return roads.map((cell) => ({ cell, cls: 'paved' as RoadClass }));
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +451,31 @@ export const BuildingKind = {
   // get a small land-value boost.
   PARKING_LOT: 'parkingLot',
   PARKING_GARAGE: 'parkingGarage',
+  // Phase 4 transport (S7, 2026-09-30): civilian transport hubs. The
+  // railStation / busDepot / ferryTerminal are reload points (fuel) for
+  // the matching transport units, exactly like the navalYard is for
+  // ships; ferryTerminal and both marinas use the coastal rule
+  // (validatePlacement) and the marinas plug into the desirability
+  // amenity table as waterfront leisure.
+  RAIL_STATION: 'railStation',
+  BUS_DEPOT: 'busDepot',
+  FERRY_TERMINAL: 'ferryTerminal',
+  MARINA: 'marina',
+  MARINA_LARGE: 'marinaLarge',
+  // Phase 4 tiered transit stops/stations (2026-09-30): placeable
+  // passenger stops, no route/schedule micromanagement. Four small
+  // single-mode stops (bus/taxi/tram/boat), then the multi-mode
+  // neighborhood station, the train+subway central station, and the
+  // all-modes airport interchange (airportLink: true — the Phase 5
+  // airport-zone hook). Each def carries servedModes; the desirability
+  // amenity rows and ridership income scale with the tier.
+  BUS_STOP: 'busStop',
+  TAXI_STAND: 'taxiStand',
+  TRAM_STOP: 'tramStop',
+  FERRY_PIER: 'ferryPier',
+  NEIGHBORHOOD_STATION: 'neighborhoodStation',
+  CENTRAL_STATION: 'centralStation',
+  AIRPORT_INTERCHANGE: 'airportInterchange',
 } as const;
 export type BuildingKind = (typeof BuildingKind)[keyof typeof BuildingKind];
 
@@ -382,10 +587,12 @@ export interface BuildingDef {
    * airfield, navalYard — valid resupply-order targets; their stocks
    * arrive via the supply-truck chain), the two ammo producers
    * (munitionsFactory, missilePlant — units resupply at the factory
-   * gate from the producer's own stock), and the three purpose-built
-   * depots (missileSilo, ordnanceDepot, fuelDepot). No port-like
-   * building exists in 0.1 Alpha — civilian ports/military harbors
-   * join this list when they land (Phases 5–6).
+   * gate from the producer's own stock), the three purpose-built
+   * depots (missileSilo, ordnanceDepot, fuelDepot), and the three
+   * Phase 4 transport hubs (railStation, busDepot, ferryTerminal —
+   * fuel only, stocked by the supply-truck chain via fuelStorage). No
+   * port-like building exists in 0.1 Alpha — civilian ports/military
+   * harbors join this list when they land (Phases 5–6).
    */
   reloadPoint?: boolean;
   /**
@@ -397,6 +604,42 @@ export interface BuildingDef {
    * needed then — the amenity scan already keys off this flag.
    */
   waterfrontAmenity?: boolean;
+  /**
+   * Phase 4 occupancy (2026-09-30): workforce capacity — how many
+   * people can work here. Unset/0 = nobody works here (housing,
+   * unstaffed street furniture). The economy tick fills jobs from the
+   * owner's population in building-id order (`recomputeOccupancy` in
+   * economy.ts); the per-building headcount lives on the record
+   * (`workers`), the cap here on the def. Read via `buildingOccupancy`.
+   */
+  jobs?: number;
+  /**
+   * Phase 4 tiered transit stops/stations (2026-09-30). The transit
+   * modes this building serves (`TransitMode`) — the ambient hook
+   * `transitStopsForMode` matches buildings to vehicles through this
+   * list, and workstream P's decorative transit pauses vehicles at
+   * stops serving their mode. Only the seven stop/station kinds set
+   * this; depots/terminals (railStation, busDepot, ferryTerminal) are
+   * production/reload buildings, not passenger stops.
+   */
+  servedModes?: TransitMode[];
+  /**
+   * Phase 4 tiered transit (2026-09-30): Phase 5 hook. When true,
+   * Phase 5's airport zones treat this building as their
+   * ground-transport interchange. Only airportInterchange sets it;
+   * Phase 5 reads the flag — no Phase 5 code exists in 0.1 Alpha.
+   */
+  airportLink?: boolean;
+  /**
+   * Phase 4 tiered transit (2026-09-30): ridership income, funds/sec,
+   * paid to the owner's treasury once per economy tick for each
+   * completed, operational stop/station (`runRidershipIncome` in
+   * economy.ts — the runHarvest shape). Deliberately flat per tier
+   * (no passenger simulation): the population side of the story is
+   * already told by the desirability amenity rows these buildings
+   * also carry.
+   */
+  ridershipIncome?: number;
 }
 
 export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
@@ -423,6 +666,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
     output: { funds: 1.8 }, input: { goods: 0.5 }, population: 0, taxBasePerSec: 6.0,
     minAge: 'foundation',
+    jobs: 4,
   },
   lab: {
     kind: 'lab', name: 'Research Lab', zone: ZoneType.COMMERCIAL,
@@ -431,6 +675,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: { research: 0.4 }, input: {}, population: 0, taxBasePerSec: 6.0,
     minAge: 'foundation',
+    jobs: 20,
   },
   factory: {
     kind: 'factory', name: 'Factory', zone: ZoneType.INDUSTRIAL,
@@ -439,6 +684,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 5, powerSupply: 0, waterDemand: 3, waterSupply: 0,
     output: { materials: 2.5, goods: 1.5 }, input: { fuel: 0.4 }, population: 0, taxBasePerSec: 8.0,
     minAge: 'foundation',
+    jobs: 25,
   },
   farm: {
     kind: 'farm', name: 'Farm', zone: ZoneType.INDUSTRIAL,
@@ -447,6 +693,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 1, powerSupply: 0, waterDemand: 4, waterSupply: 0,
     output: { food: 3.0 }, input: {}, population: 0, taxBasePerSec: 2.5,
     minAge: 'foundation',
+    jobs: 10,
   },
   powerPlant: {
     kind: 'powerPlant', name: 'Power Plant', zone: UTILITY_ZONE,
@@ -457,6 +704,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     minAge: 'foundation',
     // Phase 2: the oil burner fouls adjacent water sources (like coal/gas).
     fouling: true,
+    jobs: 12,
   },
   waterPump: {
     kind: 'waterPump', name: 'Water Pump', zone: UTILITY_ZONE,
@@ -467,6 +715,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     minAge: 'foundation',
     // Phase 2: industrial neighbors can foul this source (halved output).
     foulable: true,
+    jobs: 4,
   },
   mediaCenter: {
     kind: 'mediaCenter', name: 'Media Center', zone: ZoneType.COMMERCIAL,
@@ -475,6 +724,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 4, powerSupply: 0, waterDemand: 1, waterSupply: 0,
     output: { influence: 0.8 }, input: {}, population: 0, taxBasePerSec: 7.0,
     minAge: 'foundation',
+    jobs: 15,
   },
   shipyard: {
     kind: 'shipyard', name: 'Shipyard', zone: UTILITY_ZONE,
@@ -483,6 +733,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 4.0,
     minAge: 'foundation',
+    jobs: 20,
   },
   aegisControl: {
     kind: 'aegisControl', name: 'Aegis Control', zone: UTILITY_ZONE,
@@ -491,6 +742,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 10, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 6.0,
     minAge: 'ascendance',
+    jobs: 10,
   },
   stormArray: {
     kind: 'stormArray', name: 'Storm Array', zone: UTILITY_ZONE,
@@ -499,6 +751,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 12, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 6.0,
     minAge: 'ascendance',
+    jobs: 8,
   },
   barracks: {
     kind: 'barracks', name: 'Barracks', zone: ZoneType.INDUSTRIAL,
@@ -510,6 +763,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     // Phase 3: army bases are reload points — units resupply here
     // (stocks arrive via the supply-truck chain; see reloadPoint doc).
     reloadPoint: true,
+    jobs: 30,
   },
   militaryAcademy: {
     kind: 'militaryAcademy', name: 'Military Academy', zone: ZoneType.INDUSTRIAL,
@@ -518,6 +772,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 4.0,
     minAge: 'foundation', requiredBuilding: 'barracks',
+    jobs: 15,
   },
   warFactory: {
     kind: 'warFactory', name: 'War Factory', zone: ZoneType.INDUSTRIAL,
@@ -528,6 +783,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     minAge: 'foundation',
     // Phase 3: army bases are reload points (see barracks note).
     reloadPoint: true,
+    jobs: 30,
   },
   airfield: {
     kind: 'airfield', name: 'Airfield', zone: UTILITY_ZONE,
@@ -539,6 +795,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     // Phase 3: the airport is a reload point for aircraft (and any
     // land unit parked on the field).
     reloadPoint: true,
+    jobs: 20,
   },
   navalYard: {
     kind: 'navalYard', name: 'Naval Yard', zone: UTILITY_ZONE,
@@ -549,6 +806,158 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     minAge: 'industry',
     // Phase 3: the naval base is a reload point for ships.
     reloadPoint: true,
+    jobs: 25,
+  },
+  // Phase 4 transport (S7, grand expansion): civilian transport hubs.
+  railStation: {
+    kind: 'railStation', name: 'Rail Station', zone: ZoneType.COMMERCIAL,
+    footprintW: 3, footprintH: 3, costFunds: 600, costMaterials: 200,
+    buildSeconds: 45, upkeepFundsPerSec: 0.6,
+    powerDemand: 3, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 3.0,
+    minAge: 'industry',
+    // Rail hub: the train reload point (fuel) and the anchor the rail
+    // router routes between (see rail.ts stationRailCells). fuelStorage
+    // so the supply-truck chain stocks it (Phase 3 precedent).
+    fuelStorage: 120,
+    reloadPoint: true,
+    jobs: 25,
+  },
+  busDepot: {
+    kind: 'busDepot', name: 'Bus Depot', zone: ZoneType.INDUSTRIAL,
+    footprintW: 3, footprintH: 2, costFunds: 350, costMaterials: 120,
+    buildSeconds: 35, upkeepFundsPerSec: 0.4,
+    powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'connectivity',
+    // Bus/tram reload point (fuel); fuelStorage so the supply-truck
+    // chain stocks it.
+    fuelStorage: 120,
+    reloadPoint: true,
+    jobs: 15,
+  },
+  ferryTerminal: {
+    kind: 'ferryTerminal', name: 'Ferry Terminal', zone: ZoneType.COMMERCIAL,
+    footprintW: 3, footprintH: 3, costFunds: 500, costMaterials: 180,
+    buildSeconds: 40, upkeepFundsPerSec: 0.5,
+    powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.5,
+    minAge: 'connectivity',
+    // Coastal (validatePlacement). Ferry reload point (fuel);
+    // fuelStorage so the supply-truck chain stocks it.
+    fuelStorage: 120,
+    reloadPoint: true,
+    jobs: 20,
+  },
+  marina: {
+    kind: 'marina', name: 'Marina', zone: ZoneType.COMMERCIAL,
+    footprintW: 2, footprintH: 2, costFunds: 300, costMaterials: 100,
+    buildSeconds: 30, upkeepFundsPerSec: 0.3,
+    powerDemand: 1, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'connectivity',
+    // Coastal (validatePlacement). Waterfront amenity: nearby houses and
+    // shops gain desirability via the desirability.ts amenity table —
+    // no desirability-code changes needed (the hook reads this flag).
+    waterfrontAmenity: true,
+    jobs: 6,
+  },
+  marinaLarge: {
+    kind: 'marinaLarge', name: 'Grand Marina', zone: ZoneType.COMMERCIAL,
+    footprintW: 4, footprintH: 4, costFunds: 900, costMaterials: 350,
+    buildSeconds: 60, upkeepFundsPerSec: 0.9,
+    powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 5.0,
+    minAge: 'information',
+    // Coastal (validatePlacement). Bigger waterfront amenity footprint.
+    waterfrontAmenity: true,
+    jobs: 15,
+  },
+  // Phase 4 tiered transit stops/stations (2026-09-30): placeable
+  // passenger stops — no routes, no schedules, no micromanagement.
+  // The four small stops are 1×1 street furniture on UTILITY_ZONE
+  // (anywhere on land, like the Phase 2 network buildings); the three
+  // stations are commercial-zone buildings. Tiers scale in cost,
+  // servedModes, desirability amenity rows (see AMENITY_TABLE), and
+  // ridershipIncome (funds/sec, runRidershipIncome in economy.ts).
+  busStop: {
+    kind: 'busStop', name: 'Bus Stop', zone: UTILITY_ZONE,
+    footprintW: 1, footprintH: 1, costFunds: 40, costMaterials: 10,
+    buildSeconds: 10, upkeepFundsPerSec: 0.05,
+    powerDemand: 0, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 0.2,
+    minAge: 'connectivity',
+    servedModes: ['bus'],
+    ridershipIncome: 0.08,
+  },
+  taxiStand: {
+    kind: 'taxiStand', name: 'Taxi Stand', zone: UTILITY_ZONE,
+    footprintW: 1, footprintH: 1, costFunds: 40, costMaterials: 10,
+    buildSeconds: 10, upkeepFundsPerSec: 0.05,
+    powerDemand: 0, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 0.2,
+    minAge: 'connectivity',
+    servedModes: ['taxi'],
+    ridershipIncome: 0.08,
+  },
+  tramStop: {
+    kind: 'tramStop', name: 'Tram Stop', zone: UTILITY_ZONE,
+    footprintW: 1, footprintH: 1, costFunds: 50, costMaterials: 15,
+    buildSeconds: 12, upkeepFundsPerSec: 0.06,
+    powerDemand: 0, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 0.2,
+    minAge: 'connectivity',
+    servedModes: ['tram'],
+    ridershipIncome: 0.10,
+  },
+  ferryPier: {
+    kind: 'ferryPier', name: 'Ferry Pier', zone: UTILITY_ZONE,
+    footprintW: 2, footprintH: 2, costFunds: 120, costMaterials: 40,
+    buildSeconds: 20, upkeepFundsPerSec: 0.15,
+    powerDemand: 0, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 0.5,
+    minAge: 'connectivity',
+    // Coastal (validatePlacement) — same rule as ferryTerminal/marina.
+    servedModes: ['boat'],
+    ridershipIncome: 0.22,
+  },
+  neighborhoodStation: {
+    kind: 'neighborhoodStation', name: 'Neighborhood Station', zone: ZoneType.COMMERCIAL,
+    footprintW: 2, footprintH: 2, costFunds: 250, costMaterials: 80,
+    buildSeconds: 30, upkeepFundsPerSec: 0.3,
+    powerDemand: 1, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 1.5,
+    minAge: 'connectivity',
+    // The three street modes in one building.
+    servedModes: ['bus', 'taxi', 'tram'],
+    ridershipIncome: 0.45,
+    jobs: 10,
+  },
+  centralStation: {
+    kind: 'centralStation', name: 'Central Station', zone: ZoneType.COMMERCIAL,
+    footprintW: 4, footprintH: 3, costFunds: 800, costMaterials: 300,
+    buildSeconds: 60, upkeepFundsPerSec: 0.8,
+    powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 4.0,
+    minAge: 'industry',
+    // Trains join here; subway is listed now but the subway vehicle
+    // arrives in a later phase (see the TransitMode doc).
+    servedModes: ['bus', 'taxi', 'tram', 'train', 'subway'],
+    ridershipIncome: 1.2,
+    jobs: 40,
+  },
+  airportInterchange: {
+    kind: 'airportInterchange', name: 'Airport Interchange', zone: ZoneType.COMMERCIAL,
+    footprintW: 4, footprintH: 4, costFunds: 1200, costMaterials: 450,
+    buildSeconds: 80, upkeepFundsPerSec: 1.2,
+    powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 6.0,
+    minAge: 'information',
+    // All modes, and the Phase 5 hook: airport zones read airportLink.
+    servedModes: ['bus', 'taxi', 'tram', 'train', 'subway', 'boat', 'air'],
+    airportLink: true,
+    ridershipIncome: 1.8,
+    jobs: 60,
   },
   radarStation: {
     kind: 'radarStation', name: 'Radar Station', zone: UTILITY_ZONE,
@@ -557,6 +966,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 3, powerSupply: 0, waterDemand: 1, waterSupply: 0,
     output: { research: 0.5 }, input: {}, population: 0, taxBasePerSec: 3.0,
     minAge: 'connectivity',
+    jobs: 8,
   },
   quarry: {
     kind: 'quarry', name: 'Quarry', zone: ZoneType.INDUSTRIAL,
@@ -565,6 +975,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
     output: { materials: 2.0 }, input: {}, population: 0, taxBasePerSec: 3.0,
     minAge: 'foundation',
+    jobs: 15,
   },
   oilRefinery: {
     kind: 'oilRefinery', name: 'Oil Refinery', zone: ZoneType.INDUSTRIAL,
@@ -573,6 +984,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 4, powerSupply: 0, waterDemand: 3, waterSupply: 0,
     output: { fuel: 1.5 }, input: { materials: 0.3 }, population: 0, taxBasePerSec: 6.0,
     minAge: 'connectivity',
+    jobs: 20,
   },
   recyclingCenter: {
     kind: 'recyclingCenter', name: 'Recycling Center', zone: ZoneType.INDUSTRIAL,
@@ -581,6 +993,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: { materials: 1.0 }, input: { goods: 0.5 }, population: 0, taxBasePerSec: 4.0,
     minAge: 'connectivity',
+    jobs: 12,
   },
   market: {
     kind: 'market', name: 'Market', zone: ZoneType.COMMERCIAL,
@@ -589,6 +1002,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: { funds: 2.5 }, input: { food: 0.5, goods: 0.5 }, population: 0, taxBasePerSec: 10.0,
     minAge: 'connectivity',
+    jobs: 12,
   },
   solarFarm: {
     kind: 'solarFarm', name: 'Solar Farm', zone: UTILITY_ZONE,
@@ -597,6 +1011,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 0, powerSupply: 15, waterDemand: 1, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
     minAge: 'connectivity',
+    jobs: 4,
   },
   nuclearPlant: {
     kind: 'nuclearPlant', name: 'Nuclear Plant', zone: UTILITY_ZONE,
@@ -605,6 +1020,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 0, powerSupply: 60, waterDemand: 6, waterSupply: 0,
     output: {}, input: { fuel: 0.5 }, population: 0, taxBasePerSec: 8.0,
     minAge: 'industry',
+    jobs: 15,
   },
   desalination: {
     kind: 'desalination', name: 'Desalination Plant', zone: UTILITY_ZONE,
@@ -613,6 +1029,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 6, powerSupply: 0, waterDemand: 0, waterSupply: 40,
     output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
     minAge: 'industry',
+    jobs: 8,
   },
   hospital: {
     kind: 'hospital', name: 'Hospital', zone: ZoneType.COMMERCIAL,
@@ -621,6 +1038,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 4, powerSupply: 0, waterDemand: 3, waterSupply: 0,
     output: { manpower: 0.4 }, input: {}, population: 0, taxBasePerSec: 5.0,
     minAge: 'connectivity',
+    jobs: 30,
   },
   university: {
     kind: 'university', name: 'University', zone: UTILITY_ZONE,
@@ -629,6 +1047,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 5, powerSupply: 0, waterDemand: 3, waterSupply: 0,
     output: { research: 1.0 }, input: {}, population: 0, taxBasePerSec: 8.0,
     minAge: 'connectivity',
+    jobs: 25,
   },
   school: {
     kind: 'school', name: 'School', zone: UTILITY_ZONE,
@@ -637,6 +1056,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
     output: { research: 0.25 }, input: {}, population: 0, taxBasePerSec: 2.0,
     minAge: 'foundation',
+    jobs: 12,
   },
   // Workstream Z (2026-09-30): the education research ladder. Kindergarten
   // (0.1/s) < school (0.25/s) < college (0.5/s) < university (1.0/s).
@@ -649,6 +1069,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 1, powerSupply: 0, waterDemand: 1, waterSupply: 0,
     output: { research: 0.1 }, input: {}, population: 0, taxBasePerSec: 1.0,
     minAge: 'foundation',
+    jobs: 6,
   },
   college: {
     kind: 'college', name: 'College', zone: UTILITY_ZONE,
@@ -657,6 +1078,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: { research: 0.5 }, input: {}, population: 0, taxBasePerSec: 3.0,
     minAge: 'foundation',
+    jobs: 18,
   },
   // Workstream W (2026-09-30): civic amenities. Library and park are
   // placeable anywhere on land (UTILITY_ZONE, like the education
@@ -670,6 +1092,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
     output: { research: 0.15 }, input: {}, population: 0, taxBasePerSec: 1.5,
     minAge: 'foundation',
+    jobs: 6,
   },
   park: {
     kind: 'park', name: 'Park', zone: UTILITY_ZONE,
@@ -678,6 +1101,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 0, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 0.5,
     minAge: 'foundation',
+    jobs: 2,
   },
   // Workstream P (ambient city life, 2026-09-30): civic parking.
   // Placeable anywhere on land (UTILITY_ZONE, like park/library); each
@@ -694,6 +1118,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 1.0,
     minAge: 'foundation',
+    jobs: 1,
   },
   parkingGarage: {
     kind: 'parkingGarage', name: 'Parking Garage', zone: UTILITY_ZONE,
@@ -702,6 +1127,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 3, powerSupply: 0, waterDemand: 0, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 2.5,
     minAge: 'foundation',
+    jobs: 2,
   },
   monument: {
     kind: 'monument', name: 'Monument', zone: UTILITY_ZONE,
@@ -710,6 +1136,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: { influence: 1.0 }, input: {}, population: 0, taxBasePerSec: 6.0,
     minAge: 'information',
+    jobs: 2,
   },
   // ------------------------------------------------------------------
   // Phase 2 (grand expansion, 2026-09-30): the utility plant ladder.
@@ -731,6 +1158,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 0, powerSupply: 30, waterDemand: 3, waterSupply: 0,
     output: {}, input: { fuel: 0.8 }, population: 0, taxBasePerSec: 3.0,
     minAge: 'industry', requiredUpgrade: 'combustionTech', fouling: true,
+    jobs: 10,
   },
   gasPlant: {
     kind: 'gasPlant', name: 'Gas Plant', zone: UTILITY_ZONE,
@@ -739,6 +1167,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 0, powerSupply: 35, waterDemand: 2, waterSupply: 0,
     output: {}, input: { fuel: 1.0 }, population: 0, taxBasePerSec: 3.5,
     minAge: 'industry', requiredUpgrade: 'combustionTech', fouling: true,
+    jobs: 10,
   },
   windFarm: {
     kind: 'windFarm', name: 'Wind Farm', zone: UTILITY_ZONE,
@@ -747,6 +1176,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 0, powerSupply: 8, waterDemand: 0, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 1.5,
     minAge: 'connectivity',
+    jobs: 8,
   },
   hydroDam: {
     kind: 'hydroDam', name: 'Hydro Dam', zone: UTILITY_ZONE,
@@ -755,6 +1185,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 0, powerSupply: 45, waterDemand: 0, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 4.0,
     minAge: 'industry',
+    jobs: 10,
   },
   geothermalPlant: {
     kind: 'geothermalPlant', name: 'Geothermal Plant', zone: UTILITY_ZONE,
@@ -763,6 +1194,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 0, powerSupply: 40, waterDemand: 2, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 5.0,
     minAge: 'information',
+    jobs: 10,
   },
   fusionPlant: {
     kind: 'fusionPlant', name: 'Fusion Plant', zone: UTILITY_ZONE,
@@ -771,6 +1203,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 0, powerSupply: 120, waterDemand: 4, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 8.0,
     minAge: 'ascendance', requiredUpgrade: 'fusionResearch',
+    jobs: 12,
   },
   waterWell: {
     kind: 'waterWell', name: 'Water Well', zone: UTILITY_ZONE,
@@ -779,6 +1212,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 10,
     output: {}, input: {}, population: 0, taxBasePerSec: 1.0,
     minAge: 'foundation', requiredUpgrade: 'groundwaterSurvey', foulable: true,
+    jobs: 2,
   },
   waterTower: {
     kind: 'waterTower', name: 'Water Tower', zone: UTILITY_ZONE,
@@ -788,6 +1222,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: {}, input: {}, population: 0, taxBasePerSec: 1.0,
     minAge: 'connectivity', requiredUpgrade: 'gridStorage',
     storageKind: 'water', storageCapacity: 200,
+    jobs: 2,
   },
   waterTreatment: {
     kind: 'waterTreatment', name: 'Water Treatment Plant', zone: UTILITY_ZONE,
@@ -796,6 +1231,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 5, powerSupply: 0, waterDemand: 0, waterSupply: 20,
     output: {}, input: {}, population: 0, taxBasePerSec: 2.5,
     minAge: 'industry',
+    jobs: 8,
   },
   reservoir: {
     kind: 'reservoir', name: 'Reservoir', zone: UTILITY_ZONE,
@@ -805,6 +1241,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
     minAge: 'industry', requiredUpgrade: 'gridStorage',
     storageKind: 'water', storageCapacity: 800,
+    jobs: 3,
   },
   powerSubstation: {
     kind: 'powerSubstation', name: 'Power Substation', zone: UTILITY_ZONE,
@@ -813,6 +1250,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 1.0,
     minAge: 'connectivity', conductsPower: true,
+    jobs: 3,
   },
   pumpingStation: {
     kind: 'pumpingStation', name: 'Pumping Station', zone: UTILITY_ZONE,
@@ -821,6 +1259,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 1.0,
     minAge: 'connectivity', conductsWater: true,
+    jobs: 3,
   },
   batteryStation: {
     kind: 'batteryStation', name: 'Battery Station', zone: UTILITY_ZONE,
@@ -830,6 +1269,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: {}, input: {}, population: 0, taxBasePerSec: 1.0,
     minAge: 'connectivity', requiredUpgrade: 'gridStorage',
     storageKind: 'power', storageCapacity: 300,
+    jobs: 2,
   },
   // ------------------------------------------------------------------
   // Phase 3 (grand expansion): the logistics roster (PLAN §3.2).
@@ -870,6 +1310,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
     output: { fuel: 0.6 }, input: {}, population: 0, taxBasePerSec: 1.0,
     minAge: 'foundation',
+    jobs: 6,
   },
   oilRig: {
     kind: 'oilRig', name: 'Offshore Oil Rig', zone: UTILITY_ZONE,
@@ -879,6 +1320,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: { fuel: 2.5 }, input: { materials: 0.2 }, population: 0,
     taxBasePerSec: 4.0,
     minAge: 'industry',
+    jobs: 12,
   },
   munitionsFactory: {
     kind: 'munitionsFactory', name: 'Munitions Factory', zone: ZoneType.INDUSTRIAL,
@@ -889,6 +1331,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     taxBasePerSec: 6.0,
     minAge: 'industry',
     ammoProduction: 2.0, ammoStorage: 60, reloadPoint: true,
+    jobs: 20,
   },
   missilePlant: {
     kind: 'missilePlant', name: 'Missile Plant', zone: ZoneType.INDUSTRIAL,
@@ -899,6 +1342,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     taxBasePerSec: 8.0,
     minAge: 'industry', requiredBuilding: 'munitionsFactory',
     ammoProduction: 5.0, ammoStorage: 100, reloadPoint: true,
+    jobs: 25,
   },
   missileSilo: {
     kind: 'missileSilo', name: 'Missile Silo', zone: UTILITY_ZONE,
@@ -908,6 +1352,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: {}, input: {}, population: 0, taxBasePerSec: 3.0,
     minAge: 'industry',
     ammoStorage: 400, reloadPoint: true,
+    jobs: 6,
   },
   ordnanceDepot: {
     kind: 'ordnanceDepot', name: 'Ordnance Depot', zone: UTILITY_ZONE,
@@ -917,6 +1362,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
     minAge: 'industry',
     ammoStorage: 150, reloadPoint: true,
+    jobs: 8,
   },
   fuelDepot: {
     kind: 'fuelDepot', name: 'Fuel Depot', zone: UTILITY_ZONE,
@@ -926,6 +1372,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
     minAge: 'foundation',
     fuelStorage: 250, reloadPoint: true,
+    jobs: 6,
   },
 };
 
@@ -946,7 +1393,7 @@ export const BUILDING_DEF_LIST: BuildingDef[] = [
 export const UTILITY_PENALTY = 0.25;
 /** Food eaten per resident per sim-second. */
 export const FOOD_PER_POP_PER_SEC = 0.02;
-/** Road cost per cell. */
+/** Road cost per cell (the `paved` class — see ROAD_CLASS_STATS). */
 export const ROAD_COST_FUNDS = 5;
 export const ROAD_COST_MATERIALS = 2;
 /** Zone paint cost per cell. */
@@ -1021,6 +1468,30 @@ export interface BuildingRecord {
    */
   reservedAmmo?: number;
   reservedFuel?: number;
+  /**
+   * Phase 4 occupancy (2026-09-30): people living/working here right
+   * now. Recomputed every economy tick by `recomputeOccupancy`
+   * (economy.ts) — never simulated per-individual:
+   * `residents` = def.population when completed (progress >= 1),
+   * `workers` = filled jobs (id-order from the owner's population).
+   * Optional so pre-Phase-4 record literals keep compiling; every read
+   * uses `?? 0` (AD9 — the veterancy precedent). Snapshotted and
+   * digest-covered (the selection panel refreshes on digest change).
+   */
+  residents?: number;
+  workers?: number;
+  /**
+   * Phase 4 building variety (2026-09-30): visual variant 0..3 and
+   * size tier 1..3, assigned at placement from a pure hash of
+   * (worldSeed, anchorCell, kind) — same seed + same cell = same
+   * street, no RNG draws. The render worker maps variant → alternate
+   * facade/props through the lazy-loading pipeline (variant model keys
+   * are NEVER in the boot set — see the contract on
+   * BUILDING_VARIANT_COUNT). Optional for AD9 (`?? 0` / `?? 1`);
+   * snapshotted and digest-covered.
+   */
+  variant?: number;
+  sizeTier?: 1 | 2 | 3;
 }
 
 /** One player's stockpiles and policy. */
@@ -1049,8 +1520,19 @@ export interface PlayerState {
 
 /** The whole city. Lives on `World.city`; snapshotted and digested. */
 export interface CityState {
-  /** Paved cells, sorted ascending. */
-  roads: number[];
+  /**
+   * Phase 4 (S7): road cells with their class, sorted by cell.
+   * `{cell, cls}` with cls ∈ dirt | country | paved | highway.
+   * v6 snapshots carry `number[]` — see `migrateRoadsV6ToV7`.
+   */
+  roads: RoadCell[];
+  /**
+   * Phase 4 (S7): rail cells with their track class, sorted by cell.
+   * `{cell, cls}` with cls ∈ standard | electric | high-speed.
+   * New in v7 — legacy saves decode to [] (AD9 additive).
+   * Rails are NOT utility conductors (roads/lines/pipes are).
+   */
+  rails: RailCell[];
   /**
    * Phase 2: power-line cells, sorted ascending. Conduct power; the
    * long-hop tool for plant→grid hookup and reaching far zones.
@@ -1111,10 +1593,11 @@ function createPlayer(id: number, name: string): PlayerState {
   };
 }
 
-/** Fresh city: no roads, no zones, two players (0 = human, 1 = AI rival). */
+/** Fresh city: no roads, no rails, no zones, two players (0 = human, 1 = AI rival). */
 export function initCity(): CityState {
   return {
     roads: [],
+    rails: [],
     powerLines: [],
     pipes: [],
     utilityEpoch: 0,
@@ -1210,7 +1693,7 @@ export function isCoastal(t: TerrainData, cx: number, cz: number, w: number, h: 
  * BFS over the road set — for later traffic/service systems.
  */
 export function areRoadsConnected(city: CityState, a: number, b: number): boolean {
-  if (!sortedHas(city.roads, a) || !sortedHas(city.roads, b)) return false;
+  if (!roadSortedHas(city.roads, a) || !roadSortedHas(city.roads, b)) return false;
   if (a === b) return true;
   const visited = new Set<number>([a]);
   const queue: number[] = [a];
@@ -1227,7 +1710,7 @@ export function areRoadsConnected(city: CityState, a: number, b: number): boolea
       if (!inBounds(nx, nz)) continue;
       const n = cellIndex(nx, nz);
       if (n === b) return true;
-      if (!visited.has(n) && sortedHas(city.roads, n)) {
+      if (!visited.has(n) && roadSortedHas(city.roads, n)) {
         visited.add(n);
         queue.push(n);
       }
@@ -1266,7 +1749,7 @@ export function validatePlacement(t: TerrainData, city: CityState, p: Placement)
   for (const cell of cells) {
     const { cx, cz } = cellCoords(cell);
     if (cellIsWater(t, cx, cz)) return `${def.name}: cannot build on water`;
-    if (sortedHas(city.roads, cell)) return `${def.name}: footprint overlaps a road`;
+    if (roadSortedHas(city.roads, cell)) return `${def.name}: footprint overlaps a road`;
     const other = buildingAtCell(city, cell);
     if (other) return `${def.name}: footprint overlaps building #${other.id}`;
     if (def.zone !== UTILITY_ZONE) {
@@ -1295,6 +1778,15 @@ export function validatePlacement(t: TerrainData, city: CityState, p: Placement)
   if (p.kind === 'oilRig' && !isCoastal(t, p.cx, p.cz, def.footprintW, def.footprintH)) {
     return `${def.name}: must be built adjacent to water (offshore)`;
   }
+  // Phase 4 (S7): ferries need a shoreline terminal and marinas are
+  // waterfront leisure — the navalYard isCoastal precedent. Tiered
+  // transit (2026-09-30): the ferry pier is the small coastal stop.
+  if (
+    (p.kind === 'ferryTerminal' || p.kind === 'marina' || p.kind === 'marinaLarge' || p.kind === 'ferryPier') &&
+    !isCoastal(t, p.cx, p.cz, def.footprintW, def.footprintH)
+  ) {
+    return `${def.name}: must be built on the coast (adjacent to water)`;
+  }
   const player = getPlayer(city, p.owner) as PlayerState;
   if (player.funds < def.costFunds || player.materials < def.costMaterials) {
     return `${def.name}: cannot afford (needs ${def.costFunds} funds + ${def.costMaterials} materials)`;
@@ -1302,8 +1794,30 @@ export function validatePlacement(t: TerrainData, city: CityState, p: Placement)
   return null;
 }
 
+/**
+ * Phase 4 building variety (2026-09-30): visual variants per building
+ * kind. The render worker resolves `variant` through the existing
+ * lazy model pipeline (e.g. a `${kind}_v${variant}` key); variant keys
+ * are resolved on demand and MUST NOT be added to the boot set — the
+ * model budget stays flat (same lazy cache, no new downloads at
+ * startup). The sim only stores the index.
+ */
+export const BUILDING_VARIANT_COUNT = 4;
+/** Size tiers: 1 = small, 2 = medium, 3 = large (within-kind scale). */
+export const BUILDING_SIZE_TIERS = 3;
+
+/**
+ * Phase 4 building variety (2026-09-30): pure variant/size selection.
+ * FNV-1a over (seed, anchorCell, kind, salt) — deterministic, no RNG
+ * stream consumed, stable across save/load (seed and cell are
+ * snapshot-stable). Different salts decorrelate variant from sizeTier.
+ */
+export function buildingVariantSeed(seed: number, cell: number, kind: string, salt: string): number {
+  return fnv1a32(`${seed >>> 0}:${cell}:${kind}:${salt}`);
+}
+
 /** Place a validated building. Deducts costs, creates the record. */
-export function placeBuilding(city: CityState, p: Placement): BuildingRecord {
+export function placeBuilding(city: CityState, p: Placement, seed = 0): BuildingRecord {
   const player = getPlayer(city, p.owner) as PlayerState;
   const def = BUILDING_DEFS[p.kind];
   player.funds -= def.costFunds;
@@ -1334,6 +1848,13 @@ export function placeBuilding(city: CityState, p: Placement): BuildingRecord {
     // producer stocks and shuttles fuel from the owner's stockpile.
     ammoStock: 0,
     fuelStock: 0,
+    // Phase 4 building variety: hash-picked at placement (see
+    // buildingVariantSeed). Occupancy starts at zero; the first
+    // economy tick fills residents/workers.
+    variant: buildingVariantSeed(seed, cellIndex(p.cx, p.cz), p.kind, 'variant') % BUILDING_VARIANT_COUNT,
+    sizeTier: (buildingVariantSeed(seed, cellIndex(p.cx, p.cz), p.kind, 'size') % BUILDING_SIZE_TIERS + 1) as 1 | 2 | 3,
+    residents: 0,
+    workers: 0,
   };
   city.nextBuildingId += 1;
   city.buildings.push(record);
@@ -1385,19 +1906,259 @@ export function educationGrowthBonus(world: World, owner: number): number {
   return Math.min(0.25, 0.05 * count);
 }
 
-/** Cheapest def for a zone the player can afford AND has unlocked, or undefined. */
-function affordableDefForZone(world: World, zone: ZoneType, owner: number): BuildingDef | undefined {
+// ---------------------------------------------------------------------------
+// Phase 4 transport (S7): the civilian transport network check.
+// ---------------------------------------------------------------------------
+
+/**
+ * Phase 4 tiered transit stops/stations (2026-09-30). The modes a
+ * stop/station building can serve, via the def's `servedModes` list.
+ * `subway` is a first-class mode in the data model NOW, but the subway
+ * vehicle itself arrives in a later phase — centralStation and
+ * airportInterchange already list it so their defs never change when
+ * the vehicle lands. `boat` is the ferry mode; `air` is the airport
+ * link (Phase 5 airport zones read `airportLink`, not this).
+ */
+export type TransitMode = 'bus' | 'taxi' | 'tram' | 'train' | 'subway' | 'boat' | 'air';
+
+/** All transit modes, in UI-display order. */
+export const TRANSIT_MODES: readonly TransitMode[] = [
+  'bus', 'taxi', 'tram', 'train', 'subway', 'boat', 'air',
+];
+
+/**
+ * Which transit mode each civilian transport UNIT drives. The ambient
+ * hook (`transitStopsForMode`) is keyed by mode; the render side maps
+ * a vehicle to its mode through this table instead of hard-coding it.
+ */
+export const TRANSIT_MODE_BY_UNIT_KIND: Record<string, TransitMode> = {
+  bus: 'bus',
+  tram: 'tram',
+  passengerTrain: 'train',
+  freightTrain: 'train',
+  ferry: 'boat',
+};
+
+/**
+ * Kind strings of the civilian transport units (mirrors the defs with
+ * `transitEarnings` in units.ts — the transport test pins the two lists
+ * equal). Kind strings, not UnitDef values, because city.ts must not
+ * value-import units.ts (the documented import-cycle trap in
+ * sim/AGENTS.md).
+ */
+export const TRANSIT_EARNER_KINDS: readonly string[] = [
+  'bus', 'tram', 'passengerTrain', 'freightTrain', 'ferry',
+];
+
+/** Growth desirability per on-network transit unit, and the cap. */
+export const TRANSIT_GROWTH_PER_UNIT = 0.03;
+export const TRANSIT_GROWTH_CAP = 0.15;
+
+/**
+ * Grid cell index for a world position. Mirrors
+ * pathfinding.worldToCell (including the clamp); city.ts owns its copy
+ * so the network check stays cycle-free.
+ */
+function cellAtWorld(x: number, z: number): number {
+  const cx = Math.floor((x + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+  const cz = Math.floor((z + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+  const qx = Math.min(Math.max(cx, 0), CITY_GRID_CELLS - 1);
+  const qz = Math.min(Math.max(cz, 0), CITY_GRID_CELLS - 1);
+  return cellIndex(qx, qz);
+}
+
+/**
+ * Phase 4 (S7): is this civilian transport unit ON its network right
+ * now? A pure function of current position — no stored flag, so it
+ * can never go stale and needs no digest coverage:
+ *  - bus/tram: standing on a road cell (any class).
+ *  - passengerTrain/freightTrain: standing on a rail cell (any class).
+ *  - ferry: has a set route (`setFerryRoute`) — its "network" is the
+ *    shipping lane it shuttles.
+ *
+ * Gates BOTH civilian earnings (runTransportEarnings in economy.ts)
+ * and the growth bonus (transitGrowthBonus below) — a bus parked in a
+ * field earns nothing and attracts nobody.
+ */
+export function isOnTransportNetwork(
+  city: CityState,
+  kind: string,
+  x: number,
+  z: number,
+  hasRoute: boolean,
+): boolean {
+  if (kind === 'bus' || kind === 'tram') {
+    return roadSortedHas(city.roads, cellAtWorld(x, z));
+  }
+  if (kind === 'passengerTrain' || kind === 'freightTrain') {
+    return railSortedHas(city.rails, cellAtWorld(x, z));
+  }
+  if (kind === 'ferry') return hasRoute;
+  return false;
+}
+
+/**
+ * Phase 4 (S7): the transit growth bonus feeding the zone-growth
+ * demand loop (PLAN S7 — "their fares/fees feed the growth loop").
+ * Each on-network civilian transport unit of `owner` adds
+ * TRANSIT_GROWTH_PER_UNIT to ALL zones' growth desirability, capped
+ * at TRANSIT_GROWTH_CAP (5 units saturate it). Wired into
+ * tryAutoDevelop next to the education bonus. Counts living
+ * (`hp > 0`) units only.
+ */
+export function transitGrowthBonus(world: World, owner: number): number {
+  let count = 0;
+  for (const u of world.units) {
+    if (u.owner !== owner || u.hp <= 0) continue;
+    if (!TRANSIT_EARNER_KINDS.includes(u.kind)) continue;
+    if (isOnTransportNetwork(world.city, u.kind, u.x, u.z, u.route !== undefined)) count++;
+  }
+  return Math.min(TRANSIT_GROWTH_CAP, TRANSIT_GROWTH_PER_UNIT * count);
+}
+
+/**
+ * Phase 4 (S7): nearest completed, operational railStation of `owner`
+ * to the world position (x, z), or undefined. Footprint-center
+ * distance; id-order tiebreak (buildings are id-ordered), so
+ * deterministic. Used by the train branch of orderMoveTo to snap a
+ * destination onto the rail network.
+ */
+export function nearestRailStation(
+  city: CityState,
+  x: number,
+  z: number,
+  owner: number,
+): BuildingRecord | undefined {
+  let best: BuildingRecord | undefined;
+  let bestD2 = Infinity;
+  for (const b of city.buildings) {
+    if (b.kind !== 'railStation' || b.owner !== owner || b.progress < 1 || !b.operational) continue;
+    const def = BUILDING_DEFS[b.kind];
+    const bx = cellCenterWorld(b.cx + (def.footprintW - 1) / 2);
+    const bz = cellCenterWorld(b.cz + (def.footprintH - 1) / 2);
+    const d2 = (bx - x) * (bx - x) + (bz - z) * (bz - z);
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = b;
+    }
+  }
+  return best;
+}
+
+/**
+ * Phase 4 tiered transit stops/stations (2026-09-30): the ambient
+ * hook for workstream P (`render/cityLife.ts`). Every completed,
+ * operational stop/station of `owner` whose def `servedModes` includes
+ * `mode`, in building-id order (buildings are id-ordered, so
+ * deterministic). Pure query — no state, nothing to snapshot or
+ * digest.
+ *
+ * The render side maps a vehicle to its mode through
+ * `TRANSIT_MODE_BY_UNIT_KIND` (bus→bus, tram→tram, trains→train,
+ * ferry→boat) and pauses the decorative vehicle at the returned
+ * stops' footprint centers (anchor (cx, cz) + the def's footprint —
+ * same center math as `nearestRailStation` above). Modes with no
+ * vehicle yet (taxi, subway, air) still return their stops: the
+ * ambient cars of a later phase will use them, and the data model
+ * never changes when the vehicle lands.
+ */
+export function transitStopsForMode(
+  world: World,
+  owner: number,
+  mode: TransitMode,
+): BuildingRecord[] {
+  const out: BuildingRecord[] = [];
+  for (const b of world.city.buildings) {
+    if (b.owner !== owner || b.progress < 1 || !b.operational) continue;
+    const def = BUILDING_DEFS[b.kind];
+    if (def.servedModes !== undefined && def.servedModes.includes(mode)) out.push(b);
+  }
+  return out;
+}
+
+/**
+ * Phase 4 occupancy (2026-09-30): how many people live/work in a
+ * building vs its maximum capacity. Read-only — the economy tick owns
+ * the numbers (`recomputeOccupancy` in economy.ts).
+ *
+ * RENDER/UI CONTRACT (selection panel): call this per selected
+ * building; `residents`/`workers` are digest-covered, so refresh the
+ * panel whenever the world digest changes. Caps come from the def
+ * (`population` = residentCap, `jobs` = workerCap); actuals from the
+ * record. Returns null for an unknown building id.
+ */
+export interface BuildingOccupancy {
+  residents: number;
+  residentCap: number;
+  workers: number;
+  workerCap: number;
+}
+
+export function buildingOccupancy(world: World, buildingId: number): BuildingOccupancy | null {
+  const b = world.city.buildings.find((x) => x.id === buildingId);
+  if (!b) return null;
+  const def = BUILDING_DEFS[b.kind];
+  return {
+    residents: b.residents ?? 0,
+    residentCap: def.population,
+    workers: b.workers ?? 0,
+    workerCap: def.jobs ?? 0,
+  };
+}
+
+/**
+ * Can `owner` afford AND build this def right now (funds, materials,
+ * prerequisite building, research gate)? Shared by the auto-grow
+ * pickers below — same rules as manual placement.
+ */
+function canAutoDevelop(world: World, owner: number, def: BuildingDef): boolean {
   const city = world.city;
   const player = getPlayer(city, owner) as PlayerState;
+  if (player.funds < def.costFunds || player.materials < def.costMaterials) return false;
+  if (def.requiredBuilding && !hasProductionBuilding(world, owner, def.requiredBuilding)) return false;
+  if (def.requiredUpgrade && !((world.upgrades[owner] ?? []) as string[]).includes(def.requiredUpgrade)) return false;
+  return true;
+}
+
+/** Cheapest def for a zone the player can afford AND has unlocked, or undefined. */
+function affordableDefForZone(world: World, zone: ZoneType, owner: number): BuildingDef | undefined {
   for (const def of BUILDING_DEF_LIST) {
-    if (def.zone !== zone || player.funds < def.costFunds || player.materials < def.costMaterials) continue;
-    // Prerequisite buildings (e.g. Military Academy needs a Barracks)
-    // gate auto-growth exactly like manual placement.
-    if (def.requiredBuilding && !hasProductionBuilding(world, owner, def.requiredBuilding)) continue;
-    // Phase 2: research-gated kinds (plant ladder) never auto-develop
-    // before their upgrade is researched — same rule as manual placement.
-    if (def.requiredUpgrade && !((world.upgrades[owner] ?? []) as string[]).includes(def.requiredUpgrade)) continue;
+    if (def.zone !== zone) continue;
+    if (!canAutoDevelop(world, owner, def)) continue;
     return def;
+  }
+  return undefined;
+}
+
+/**
+ * Phase 4 building variety (2026-09-30): desirability-driven density.
+ * Nicer cells grow dense (apartments, labs); modest cells grow modest
+ * (houses, shops). The land-value tier of the sampled cell decides —
+ * 'nice'/'prime' (desirability 51+) want density, 'low'/'modest' stay
+ * modest. Falls back down the density ladder when the dense pick is
+ * unaffordable (an apartment the treasury can't afford becomes a
+ * house). Industrial zones keep the old first-affordable rule.
+ * Deterministic: pure function of (world, cell) — no RNG consumed.
+ */
+export function densityDefForZone(
+  world: World,
+  zone: ZoneType,
+  owner: number,
+  cell: number,
+  desirModel: Parameters<typeof cellDesirability>[0],
+): BuildingDef | undefined {
+  if (zone !== ZoneType.RESIDENTIAL && zone !== ZoneType.COMMERCIAL) {
+    return affordableDefForZone(world, zone, owner);
+  }
+  const tier = landValueTier(cellDesirability(desirModel, cell));
+  const dense = tier.name === 'nice' || tier.name === 'prime';
+  const ladder: BuildingKind[] =
+    zone === ZoneType.RESIDENTIAL
+      ? dense ? ['apartment', 'house'] : ['house', 'apartment']
+      : dense ? ['lab', 'shop'] : ['shop', 'lab'];
+  for (const kind of ladder) {
+    const def = BUILDING_DEFS[kind];
+    if (canAutoDevelop(world, owner, def)) return def;
   }
   return undefined;
 }
@@ -1421,6 +2182,9 @@ function tryAutoDevelop(
   // more attractive to organic growth (computed once per pulse, not per
   // attempt — it only changes when a building completes or is demolished).
   const eduBonus = educationGrowthBonus(world, owner);
+  // Phase 4 (S7): on-network civilian transports lift ALL zones'
+  // growth demand — computed once per pulse like the education bonus.
+  const transitBonus = transitGrowthBonus(world, owner);
   // Workstream W: the derived desirability model (rebuilt only on
   // structural change — never per tick). Residential samples get a
   // migration pull toward nicer cells, with a weak affordability pull
@@ -1432,10 +2196,13 @@ function tryAutoDevelop(
     const zi = bank.intBelow('city', city.zones.length);
     const zrec = city.zones[zi] as { cell: number; zone: ZoneType };
     const { cx, cz } = cellCoords(zrec.cell);
-    if (buildingAtCell(city, zrec.cell) || sortedHas(city.roads, zrec.cell)) continue;
+    if (buildingAtCell(city, zrec.cell) || roadSortedHas(city.roads, zrec.cell)) continue;
     // No road gate (user directive 2026-09-30): zoned houses develop with
     // or without roads; the desirability roll below is the only filter.
     let desirability = growthDesirability(player.taxRates[zrec.zone] as number, powerHeadroom, waterHeadroom);
+    // Phase 4 (S7): transit bonus applies to every zone — houses near
+    // a bus line, shops by the station, factories by the freight yard.
+    desirability += transitBonus;
     // Workstream Z: education bonus applies to residential growth only.
     // Workstream W: migration — layer the desirability/land-value pulls
     // onto the existing demand loop (multiply, never replace).
@@ -1445,7 +2212,9 @@ function tryAutoDevelop(
       desirability = Math.min(1, desirability * migrationPull(d01));
     }
     if (bank.next('city') >= desirability) continue;
-    const def = affordableDefForZone(world, zrec.zone, owner);
+    // Phase 4 building variety: desirability picks the density
+    // (apartments/labs in nice areas, houses/shops in modest ones).
+    const def = densityDefForZone(world, zrec.zone, owner, zrec.cell, desirModel);
     if (!def) return false; // broke: can't afford anything in this zone
     // Anchor the footprint so it covers the sampled cell; scan origins
     // deterministically and take the first legal placement.
@@ -1453,7 +2222,9 @@ function tryAutoDevelop(
       for (let ox = cx - def.footprintW + 1; ox <= cx; ox++) {
         const placement: Placement = { kind: def.kind, owner, cx: ox, cz: oz, facing: 0 };
         if (validatePlacement(t, city, placement) === null) {
-          placeBuilding(city, placement);
+          // Phase 4 building variety: variant/sizeTier hash from the
+          // world seed + anchor cell (same seed + same cell = same look).
+          placeBuilding(city, placement, world.seed);
           return true;
         }
       }
@@ -1496,6 +2267,88 @@ function payloadCells(payload: Record<string, unknown>): number[] | null {
   return cells;
 }
 
+/** Parse a road-class payload (buildRoad/upgradeRoad). Omitted → 'paved' (legacy default). */
+function payloadRoadClass(payload: Record<string, unknown>): RoadClass | null {
+  const v = payload['cls'];
+  if (v === undefined) return 'paved';
+  if (typeof v !== 'string') return null;
+  return (ROAD_CLASS_ORDER as readonly string[]).includes(v) ? (v as RoadClass) : null;
+}
+
+/** Track-class order, cheapest → best (mirrors ROAD_CLASS_ORDER for rails). */
+export const TRACK_CLASS_ORDER: readonly TrackClass[] = ['standard', 'electric', 'high-speed'];
+
+/** Parse a track-class payload (buildRail). Omitted → 'standard'. */
+function payloadTrackClass(payload: Record<string, unknown>): TrackClass | null {
+  const v = payload['cls'];
+  if (v === undefined) return 'standard';
+  if (typeof v !== 'string') return null;
+  return (TRACK_CLASS_ORDER as readonly string[]).includes(v) ? (v as TrackClass) : null;
+}
+
+/** Binary search for a road RECORD (used when mutating `cls` in place). */
+export function findRoadRec(roads: RoadCell[], cell: number): RoadCell | undefined {
+  let lo = 0;
+  let hi = roads.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const r = roads[mid] as RoadCell;
+    if (r.cell === cell) return r;
+    if (r.cell < cell) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return undefined;
+}
+
+/** Binary search for a road record's INDEX (used by demolish). -1 when absent. */
+export function findRoadIdx(roads: RoadCell[], cell: number): number {
+  let lo = 0;
+  let hi = roads.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const v = (roads[mid] as RoadCell).cell;
+    if (v === cell) return mid;
+    if (v < cell) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return -1;
+}
+
+/** Binary search for a rail record's INDEX (used by demolish). -1 when absent. */
+export function findRailIdx(rails: RailCell[], cell: number): number {
+  let lo = 0;
+  let hi = rails.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const v = (rails[mid] as RailCell).cell;
+    if (v === cell) return mid;
+    if (v < cell) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return -1;
+}
+
+/**
+ * Validate a rail drag (buildRail): cell array ≤512, in range, no
+ * duplicates, on land (bridges are a later tool — PLAN §3.4), not on a
+ * building, not already railed. Roads are allowed (level crossings).
+ */
+function validateRailCells(t: TerrainData, city: CityState, cells: number[]): string | null {
+  if (cells.length === 0) return 'buildRail: cells must be a non-empty array';
+  if (cells.length > 512) return 'buildRail: at most 512 cells per command';
+  const seen = new Set<number>();
+  for (const cell of cells) {
+    if (cell < 0 || cell >= CITY_GRID_CELLS * CITY_GRID_CELLS) return `buildRail: cell ${cell} out of range`;
+    if (seen.has(cell)) return `buildRail: duplicate cell ${cell}`;
+    seen.add(cell);
+    const { cx, cz } = cellCoords(cell);
+    if (cellIsWater(t, cx, cz)) return `buildRail: cell ${cell} is water (bridges are not built yet)`;
+    if (buildingAtCell(city, cell)) return `buildRail: cell ${cell} has a building`;
+    if (railSortedHas(city.rails, cell)) return `buildRail: cell ${cell} already has rail`;
+  }
+  return null;
+}
+
 function payloadInt(payload: Record<string, unknown>, key: string): number | null {
   const v = payload[key];
   return typeof v === 'number' && Number.isInteger(v) ? v : null;
@@ -1521,7 +2374,7 @@ function validateRoadCells(t: TerrainData, city: CityState, cells: number[]): st
     seen.add(cell);
     const { cx, cz } = cellCoords(cell);
     if (cellIsWater(t, cx, cz)) return 'buildRoad: cannot pave water';
-    if (sortedHas(city.roads, cell)) return `buildRoad: cell ${cell} already paved`;
+    if (roadSortedHas(city.roads, cell)) return `buildRoad: cell ${cell} already paved`;
     if (buildingAtCell(city, cell)) return `buildRoad: cell ${cell} occupied by a building`;
   }
   return null;
@@ -1591,17 +2444,27 @@ export function hasProductionBuilding(world: World, owner: number, kind: Buildin
 }
 
 function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
+  /**
+   * Phase 4 (S7): buildRoad takes a class payload (`cls`, one of
+   * dirt | country | paved | highway — PLAN §3.4 order). Omitted cls
+   * defaults to 'paved', the legacy flat road, so every pre-Phase-4
+   * caller keeps its behavior and cost. Per-class cost from
+   * ROAD_CLASS_STATS; the class also sets the cellMoveCost factor.
+   */
   const buildRoad: CommandSpec = {
     validate(cmd, world): string | null {
       const owner = payloadInt(cmd.payload, 'owner');
       if (owner === null || !getPlayer(world.city, owner)) return 'buildRoad: unknown owner';
       const cells = payloadCells(cmd.payload);
       if (cells === null) return 'buildRoad: payload.cells must be an array of integers';
+      const cls = payloadRoadClass(cmd.payload);
+      if (cls === null) return `buildRoad: payload.cls must be one of ${ROAD_CLASS_ORDER.join(', ')}`;
       const reason = validateRoadCells(t, world.city, cells);
       if (reason) return reason;
       const player = getPlayer(world.city, owner) as PlayerState;
-      const costF = cells.length * ROAD_COST_FUNDS;
-      const costM = cells.length * ROAD_COST_MATERIALS;
+      const stats = ROAD_CLASS_STATS[cls];
+      const costF = cells.length * stats.costFunds;
+      const costM = cells.length * stats.costMaterials;
       if (player.funds < costF || player.materials < costM) {
         return `buildRoad: cannot afford (needs ${costF} funds + ${costM} materials)`;
       }
@@ -1610,11 +2473,115 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
     apply(cmd, world): unknown {
       const owner = payloadInt(cmd.payload, 'owner') as number;
       const cells = payloadCells(cmd.payload) as number[];
+      const cls = payloadRoadClass(cmd.payload) as RoadClass;
+      const stats = ROAD_CLASS_STATS[cls];
       const player = getPlayer(world.city, owner) as PlayerState;
-      player.funds -= cells.length * ROAD_COST_FUNDS;
-      player.materials -= cells.length * ROAD_COST_MATERIALS;
-      for (const cell of cells) sortedInsert(world.city.roads, cell);
+      player.funds -= cells.length * stats.costFunds;
+      player.materials -= cells.length * stats.costMaterials;
+      for (const cell of cells) roadSortedInsert(world.city.roads, { cell, cls });
       bumpUtilityEpoch(world.city);
+      return cells.length;
+    },
+  };
+
+  /**
+   * Phase 4 (S7): upgradeRoad changes a road cell's class IN PLACE
+   * (the sorted-by-cell order never moves — only `cls` mutates) and
+   * charges the per-cell cost DIFFERENCE between the new and old
+   * class. Strictly upward only (ROAD_CLASS_ORDER): downgrades and
+   * same-class "upgrades" reject loudly — demolition + rebuild is the
+   * downgrade path, and it is deliberately pure loss (D11).
+   */
+  const upgradeRoad: CommandSpec = {
+    validate(cmd, world): string | null {
+      const owner = payloadInt(cmd.payload, 'owner');
+      if (owner === null || !getPlayer(world.city, owner)) return 'upgradeRoad: unknown owner';
+      const cells = payloadCells(cmd.payload);
+      if (cells === null) return 'upgradeRoad: payload.cells must be an array of integers';
+      if (cells.length === 0) return 'upgradeRoad: cells must be a non-empty array';
+      if (cells.length > 512) return 'upgradeRoad: at most 512 cells per command';
+      const cls = payloadRoadClass(cmd.payload);
+      if (cls === null) return `upgradeRoad: payload.cls must be one of ${ROAD_CLASS_ORDER.join(', ')}`;
+      const newIdx = ROAD_CLASS_ORDER.indexOf(cls);
+      let costF = 0;
+      let costM = 0;
+      const seen = new Set<number>();
+      for (const cell of cells) {
+        if (cell < 0 || cell >= CITY_GRID_CELLS * CITY_GRID_CELLS) return `upgradeRoad: cell ${cell} out of range`;
+        if (seen.has(cell)) return `upgradeRoad: duplicate cell ${cell}`;
+        seen.add(cell);
+        const old = roadClassAt(world.city.roads, cell);
+        if (old === undefined) return `upgradeRoad: cell ${cell} has no road`;
+        const oldIdx = ROAD_CLASS_ORDER.indexOf(old);
+        if (newIdx <= oldIdx) {
+          return `upgradeRoad: cell ${cell} is already ${old} (cannot upgrade to ${cls})`;
+        }
+        const oldStats = ROAD_CLASS_STATS[old];
+        const newStats = ROAD_CLASS_STATS[cls];
+        costF += newStats.costFunds - oldStats.costFunds;
+        costM += newStats.costMaterials - oldStats.costMaterials;
+      }
+      const player = getPlayer(world.city, owner) as PlayerState;
+      if (player.funds < costF || player.materials < costM) {
+        return `upgradeRoad: cannot afford (needs ${costF} funds + ${costM} materials)`;
+      }
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const owner = payloadInt(cmd.payload, 'owner') as number;
+      const cells = payloadCells(cmd.payload) as number[];
+      const cls = payloadRoadClass(cmd.payload) as RoadClass;
+      const player = getPlayer(world.city, owner) as PlayerState;
+      for (const cell of cells) {
+        const rec = findRoadRec(world.city.roads, cell) as RoadCell;
+        const oldStats = ROAD_CLASS_STATS[rec.cls];
+        const newStats = ROAD_CLASS_STATS[cls];
+        player.funds -= newStats.costFunds - oldStats.costFunds;
+        player.materials -= newStats.costMaterials - oldStats.costMaterials;
+        rec.cls = cls; // in place — the cell (sort key) never changes
+      }
+      bumpUtilityEpoch(world.city);
+      return cells.length;
+    },
+  };
+
+  /**
+   * Phase 4 (S7): buildRail mirrors buildRoad — a drag-painted cell
+   * array (≤512) with a track-class payload (`cls`, one of
+   * standard | electric | high-speed; omitted defaults to 'standard').
+   * Per-class cost from TRACK_CLASS_STATS. Rails may cross roads
+   * (level crossings) but not water (bridges are a later tool, PLAN
+   * §3.4) and not buildings or existing rails. Rails are NOT utility
+   * conductors, so no epoch bump.
+   */
+  const buildRail: CommandSpec = {
+    validate(cmd, world): string | null {
+      const owner = payloadInt(cmd.payload, 'owner');
+      if (owner === null || !getPlayer(world.city, owner)) return 'buildRail: unknown owner';
+      const cells = payloadCells(cmd.payload);
+      if (cells === null) return 'buildRail: payload.cells must be an array of integers';
+      const cls = payloadTrackClass(cmd.payload);
+      if (cls === null) return `buildRail: payload.cls must be one of ${TRACK_CLASS_ORDER.join(', ')}`;
+      const reason = validateRailCells(t, world.city, cells);
+      if (reason) return reason;
+      const player = getPlayer(world.city, owner) as PlayerState;
+      const stats = TRACK_CLASS_STATS[cls];
+      const costF = cells.length * stats.costFunds;
+      const costM = cells.length * stats.costMaterials;
+      if (player.funds < costF || player.materials < costM) {
+        return `buildRail: cannot afford (needs ${costF} funds + ${costM} materials)`;
+      }
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const owner = payloadInt(cmd.payload, 'owner') as number;
+      const cells = payloadCells(cmd.payload) as number[];
+      const cls = payloadTrackClass(cmd.payload) as TrackClass;
+      const stats = TRACK_CLASS_STATS[cls];
+      const player = getPlayer(world.city, owner) as PlayerState;
+      player.funds -= cells.length * stats.costFunds;
+      player.materials -= cells.length * stats.costMaterials;
+      for (const cell of cells) railSortedInsert(world.city.rails, { cell, cls });
       return cells.length;
     },
   };
@@ -1781,7 +2748,8 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       const cx = payloadInt(cmd.payload, 'cx') as number;
       const cz = payloadInt(cmd.payload, 'cz') as number;
       const facing = (payloadInt(cmd.payload, 'facing') ?? 0) as 0 | 1 | 2 | 3;
-      return placeBuilding(world.city, { kind, owner, cx, cz, facing }).id;
+      // Phase 4 building variety: same seed contract as auto-grow.
+      return placeBuilding(world.city, { kind, owner, cx, cz, facing }, world.seed).id;
     },
   };
 
@@ -1797,7 +2765,7 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       // lines and pipes alike.
       if (
         !buildingAtCell(world.city, cell) &&
-        !sortedHas(world.city.roads, cell) &&
+        !roadSortedHas(world.city.roads, cell) &&
         !sortedHas(world.city.powerLines, cell) &&
         !sortedHas(world.city.pipes, cell)
       ) {
@@ -1831,11 +2799,17 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       }
       // demolishBuilding bumps the epoch for buildings; cell removal
       // below bumps it for conductors (Phase 2 structural changes).
-      const i = world.city.roads.indexOf(cell);
+      // Rails are not conductors (Phase 4, S7) — no epoch bump.
+      const i = findRoadIdx(world.city.roads, cell);
       if (i !== -1) {
         world.city.roads.splice(i, 1);
         bumpUtilityEpoch(world.city);
         return { removed: 'road', cell };
+      }
+      const ri = findRailIdx(world.city.rails, cell);
+      if (ri !== -1) {
+        world.city.rails.splice(ri, 1);
+        return { removed: 'rail', cell };
       }
       const li = world.city.powerLines.indexOf(cell);
       if (li !== -1) {
@@ -1892,7 +2866,7 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
     },
   };
 
-  return { buildRoad, buildPowerLine, buildPipe, paintZone, placeBuilding: placeBuildingSpec, demolish, setTaxRate, setSpecialization };
+  return { buildRoad, upgradeRoad, buildRail, buildPowerLine, buildPipe, paintZone, placeBuilding: placeBuildingSpec, demolish, setTaxRate, setSpecialization };
 }
 
 /** Register the city-building command kinds on a queue. Needs the terrain for placement rules. */

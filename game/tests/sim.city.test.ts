@@ -145,7 +145,9 @@ describe('roads', () => {
     const matsBefore = ctx.world.city.players[0]!.materials;
     enqueue(ctx, [{ kind: 'buildRoad', issuer: 'p', payload: { owner: 0, cells } }]);
     runTicks(ctx, 1);
-    expect(ctx.world.city.roads).toEqual([...cells].sort((a, b) => a - b));
+    expect(ctx.world.city.roads.map((r) => r.cell)).toEqual([...cells].sort((a, b) => a - b));
+    // Phase 4 (S7): buildRoad defaults to the paved class.
+    expect(ctx.world.city.roads.every((r) => r.cls === 'paved')).toBe(true);
     expect(ctx.world.city.players[0]!.funds).toBe(fundsBefore - 10 * 5);
     expect(ctx.world.city.players[0]!.materials).toBe(matsBefore - 10 * 2);
   });
@@ -345,10 +347,10 @@ describe('demolish', () => {
     const cell = cellIndex(cx, cz);
     enqueue(ctx, [{ kind: 'buildRoad', issuer: 'p', payload: { owner: 0, cells: [cell] } }]);
     runTicks(ctx, 1);
-    expect(ctx.world.city.roads).toContain(cell);
+    expect(ctx.world.city.roads.map((r) => r.cell)).toContain(cell);
     enqueue(ctx, [{ kind: 'demolish', issuer: 'p', payload: { cx, cz } }]);
     runTicks(ctx, 1);
-    expect(ctx.world.city.roads).not.toContain(cell);
+    expect(ctx.world.city.roads.map((r) => r.cell)).not.toContain(cell);
     expect(() =>
       ctx.queue.enqueue(ctx.world, { kind: 'demolish', issuer: 'p', payload: { cx, cz } }),
     ).toThrow(/nothing to demolish/);

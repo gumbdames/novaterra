@@ -143,8 +143,11 @@ describe('parking desirability amenities', () => {
     expect(lot).toMatchObject({ kind: 'parkingLot', radius: 8, bonus: 3 });
     expect(garage).toMatchObject({ kind: 'parkingGarage', radius: 10, bonus: 4 });
     // Deliberately below the +5/12 cultural types (convenience, not beloved).
+    // Phase 4 tiered transit: the four small stops sit at the same +3/8
+    // convenience tier as the lot (street furniture, not destinations).
+    const SMALL_STOPS = new Set(['busStop', 'taxiStand', 'tramStop', 'ferryPier']);
     for (const row of AMENITY_TABLE) {
-      if (row.kind !== 'parkingLot' && row.kind !== 'parkingGarage' && !row.waterfront) {
+      if (row.kind !== 'parkingLot' && row.kind !== 'parkingGarage' && !row.waterfront && row.kind !== undefined && !SMALL_STOPS.has(row.kind)) {
         expect(lot!.bonus).toBeLessThan(row.bonus);
         expect(garage!.bonus).toBeLessThan(row.bonus);
       }
@@ -239,11 +242,11 @@ describe('parking UI coverage', () => {
     expect(idx('parkingGarage')).toBeGreaterThan(idx('parkingLot'));
   });
 
-  it('55 building kinds across palettes, icons, strings, and defs', () => {
+  it('67 building kinds across palettes, icons, strings, and defs', () => {
     const kinds = Object.keys(BUILDING_DEFS) as BuildingKind[];
-    expect(kinds).toHaveLength(55);
+    expect(kinds).toHaveLength(67);
     const paletteKinds = new Set(BUILD_TABS.flatMap((t) => t.kinds));
-    expect(paletteKinds.size).toBe(55);
+    expect(paletteKinds.size).toBe(67);
     for (const kind of kinds) {
       expect(paletteKinds.has(kind)).toBe(true);
       expect(buildingIcon(kind)).toBeTruthy();

@@ -161,8 +161,8 @@ describe('initial state', () => {
     expect(initAges()).toEqual({ age: 'foundation', program: null, programs: {} });
   });
 
-  it('snapshot version is 6 (upgrades added by the roster expansion)', () => {
-    expect(SNAPSHOT_VERSION).toBe(6);
+  it('snapshot version is 7 (Phase 4 transport: road/rail classes)', () => {
+    expect(SNAPSHOT_VERSION).toBe(7);
   });
 });
 
@@ -340,6 +340,8 @@ describe('age-gated units', () => {
       frigate: 'industry', submarine: 'industry',
       awacs: 'information', carrier: 'information', commandShip: 'information',
       fighter: 'connectivity', transport: 'foundation',
+      bus: 'connectivity', tram: 'connectivity', ferry: 'connectivity',
+      passengerTrain: 'industry', freightTrain: 'industry',
     };
     expect(Object.keys(UNIT_DEFS).sort()).toEqual(Object.keys(expected).sort());
     for (const [kind, age] of Object.entries(expected)) {

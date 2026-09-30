@@ -57,7 +57,7 @@ import {
   heightAt,
   type TerrainData,
 } from '../src/sim/terrain';
-import { cellCenterWorld, cellIndex, CELL_WORLD_SIZE, BUILDING_DEFS, type BuildingRecord } from '../src/sim/city';
+import { cellCenterWorld, cellIndex, CELL_WORLD_SIZE, BUILDING_DEFS, type BuildingRecord, type RoadCell } from '../src/sim/city';
 import type { UnitRecord } from '../src/sim/units';
 import type { World } from '../src/sim/world';
 
@@ -117,7 +117,7 @@ function fakeBuilding(kind: string, cx: number, cz: number, owner = 0): Building
 function fakeWorld(parts: {
   units?: UnitRecord[];
   buildings?: BuildingRecord[];
-  roads?: number[];
+  roads?: RoadCell[];
 }): World {
   return {
     tick: 0,
@@ -419,7 +419,7 @@ describe('EntityRenderer terrain riding', () => {
     const cx = toCell(land.x);
     const cz = toCell(land.z);
     const roads = [cellIndex(cx, cz), cellIndex(cx + 1, cz), cellIndex(cx + 2, cz)];
-    renderer.sync(fakeWorld({ roads }));
+    renderer.sync(fakeWorld({ roads: roads.map((cell) => ({ cell, cls: 'paved' as const })) }));
     const buildings = scene.getObjectByName('buildings') as THREE.Group;
     expect(buildings.children.length).toBeGreaterThan(0);
     const ribbon = buildings.children[0] as THREE.Mesh;
@@ -446,7 +446,7 @@ describe('EntityRenderer terrain riding', () => {
     const renderer = new EntityRenderer(scene); // no opts at all
     const u = fakeUnit('tank', 'land', 10, 20);
     const b = fakeBuilding('house', 0, 0);
-    renderer.sync(fakeWorld({ units: [u], buildings: [b], roads: [cellIndex(0, 0)] }));
+    renderer.sync(fakeWorld({ units: [u], buildings: [b], roads: [{ cell: cellIndex(0, 0), cls: 'paved' }] }));
     const ug = (scene.getObjectByName('units')?.children as THREE.Group[])[0] as THREE.Group;
     const bg = (scene.getObjectByName('buildings')?.children as THREE.Group[])[0] as THREE.Group;
     expect(ug.position.y).toBe(0);

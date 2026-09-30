@@ -86,6 +86,7 @@ import {
   ZoneType,
   cellCenterWorld,
   getPlayer,
+  isOnTransportNetwork,
   runGrowth,
   type BuildingRecord,
   type CitySpecialization,
@@ -612,6 +613,57 @@ function runHarvest(world: World, city: CityState): void {
 }
 
 /**
+ * Phase 4 transport (S7, grand expansion): civilian transport
+ * earnings. Once per economy tick, after runHarvest, every living
+ * civilian transport unit (a def with `transitEarnings`) that is ON
+ * its network right now (`isOnTransportNetwork` — bus/tram on a road
+ * cell, trains on a rail cell, ferries with a set route) pays
+ * `transitEarnings` funds/sec to its owner — the fares/freight fees
+ * of PLAN S7.
+ *
+ * Pure position check, no stored flag: a bus parked in a field earns
+ * nothing the moment it leaves the road, and there is no stale state
+ * to snapshot or digest. Deterministic: world.units is id-ordered,
+ * the rate is a def constant.
+ */
+function runTransportEarnings(world: World, city: CityState): void {
+  for (const u of world.units) {
+    if (u.hp <= 0) continue;
+    const def = UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS];
+    const rate = def?.transitEarnings ?? 0;
+    if (rate <= 0) continue;
+    if (!isOnTransportNetwork(city, u.kind, u.x, u.z, u.route !== undefined)) continue;
+    const player = getPlayer(city, u.owner);
+    if (!player) continue;
+    player.funds += rate;
+  }
+}
+
+/**
+ * Phase 4 tiered transit stops/stations (2026-09-30): ridership
+ * income — the ONE extra effect the tier brief asked for (the other
+ * effect is the desirability amenity rows). Once per economy tick,
+ * after runTransportEarnings, every completed, operational stop/
+ * station (a def with `ridershipIncome`) pays its flat tier rate in
+ * funds/sec to its owner, in building-id order. Deliberately flat —
+ * no passenger simulation: fares scale with the tier, and the
+ * population side of the story is already told by the desirability
+ * rows (higher nearby land value → higher residential tax take).
+ * Deterministic: def constants, id-ordered iteration.
+ */
+function runRidershipIncome(world: World, city: CityState): void {
+  for (const b of city.buildings) {
+    if (b.progress < 1 || !b.operational) continue;
+    const def = BUILDING_DEFS[b.kind];
+    const rate = def.ridershipIncome ?? 0;
+    if (rate <= 0) continue;
+    const player = getPlayer(city, b.owner);
+    if (!player) continue;
+    player.funds += rate;
+  }
+}
+
+/**
  * Phase 3 logistics: the supply refill aura (PLAN S2 — "supply aura
  * auto-refill in runHarvest order"). Once per economy tick, after
  * production/harvest, every completed (`progress >= 1`, operational)
@@ -830,16 +882,68 @@ function runLevels(world: World): void {
   }
 }
 
-/** Recount population from completed residential buildings. */
+/**
+ * Phase 4 occupancy (2026-09-30): per-building headcounts. Runs right
+ * after construction (so newly-completed buildings move in this tick)
+ * and BEFORE recountPopulation — population is the sum of residents,
+ * not a second loop over defs.
+ *
+ * - `residents` = def.population when completed (progress >= 1), else 0.
+ *   Housing keeps everyone: residents never leave a completed home.
+ * - `workers`: each player's population is their workforce. It fills
+ *   jobs in building-id order (deterministic — city.buildings is
+ *   id-ordered) across the owner's completed, operational buildings
+ *   with `jobs > 0`, capped per building. Leftover population is the
+ *   non-working population (children, retirees) — it still counts in
+ *   `player.population` and still pays taxes.
+ *
+ * Invariants: sum(residents of owner's buildings) == player.population;
+ * sum(workers) <= player.population; workers(b) <= jobs(def).
+ * No per-individual simulation — the selection panel only needs
+ * headcounts, so headcounts are what we store.
+ */
+function recomputeOccupancy(city: CityState): void {
+  for (const b of city.buildings) {
+    const def = BUILDING_DEFS[b.kind];
+    b.residents = b.progress >= 1 ? def.population : 0;
+    b.workers = 0;
+  }
+  // Workforce pool per player = THIS tick's resident sum (fresh — the
+  // pre-recount player.population lags one tick on the first tick, when
+  // a city is founded and nobody is counted yet).
+  const residentsByOwner = new Map<number, number>();
+  for (const b of city.buildings) {
+    const r = b.residents ?? 0;
+    if (r <= 0) continue;
+    residentsByOwner.set(b.owner, (residentsByOwner.get(b.owner) ?? 0) + r);
+  }
+  for (const player of city.players) {
+    let pool = residentsByOwner.get(player.id) ?? 0;
+    if (pool <= 0) continue;
+    for (const b of city.buildings) {
+      if (pool <= 0) break;
+      if (b.owner !== player.id || b.progress < 1 || !b.operational) continue;
+      const jobs = BUILDING_DEFS[b.kind].jobs ?? 0;
+      if (jobs <= 0) continue;
+      const w = Math.min(jobs, pool);
+      b.workers = w;
+      pool -= w;
+    }
+  }
+}
+
+/**
+ * Recount population from completed residential buildings. Sums the
+ * per-building `residents` filled by recomputeOccupancy (run first) —
+ * one source of truth for who lives where.
+ */
 function recountPopulation(city: CityState): void {
   for (const player of city.players) player.population = 0;
   for (const b of city.buildings) {
-    if (b.progress < 1) continue;
-    const def = BUILDING_DEFS[b.kind];
-    if (def.population > 0) {
-      const player = getPlayer(city, b.owner);
-      if (player) player.population += def.population;
-    }
+    const r = b.residents ?? 0;
+    if (r <= 0) continue;
+    const player = getPlayer(city, b.owner);
+    if (player) player.population += r;
   }
 }
 
@@ -874,12 +978,25 @@ function economyTickIndex(world: World): number {
  */
 export function runEconomyTick(world: World, t: TerrainData): void {
   const city = world.city;
-  recountPopulation(city);
-  generateManpower(city);
   runConstruction(city);
   const { powerHeadroom, waterHeadroom } = allocateUtilities(world, city);
+  // Phase 4 occupancy (2026-09-30): after construction AND the utility
+  // allocation, so workers see this tick's operational flags (no
+  // one-tick lag); before the population recount (which sums residents)
+  // and manpower (which scales with population).
+  recomputeOccupancy(city);
+  recountPopulation(city);
+  generateManpower(city);
   runProduction(world, city);
   runHarvest(world, city);
+  // Phase 4 transport (S7): civilian fare/freight earnings ride right
+  // after harvest — same shape (living units × def rate), gated on the
+  // network check instead of always-on.
+  runTransportEarnings(world, city);
+  // Phase 4 tiered transit stops/stations (2026-09-30): ridership
+  // income — completed, operational stops pay their flat tier rate
+  // (same shape as harvest: buildings × def rate, id order).
+  runRidershipIncome(world, city);
   // Phase 3 logistics: the refill aura runs after production/harvest so
   // it sees this tick's fresh producer stocks (PLAN S2).
   runSupplyAura(world, city);

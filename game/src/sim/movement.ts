@@ -59,6 +59,9 @@ import {
   MAP_HALF_SIZE,
   cellCenterWorld,
   cellCoords,
+  BUILDING_DEFS,
+  nearestRailStation,
+  railSortedHas,
 } from './city';
 import type { CommandQueue } from './commands';
 import {
@@ -75,8 +78,9 @@ import {
   worldToCell,
 } from './pathfinding';
 import type { FlowField } from './pathfinding';
-import { clearUnitOrder, failUnitOrder, findUnit, UNIT_DEFS, supplySpeedFactor } from './units';
+import { clearUnitOrder, failUnitOrder, findUnit, UNIT_DEFS, supplySpeedFactor, isRailBound } from './units';
 import type { UnitRecord, UnitKind } from './units';
+import { findRailRoute, stationRailCells, trainTrackFactor } from './rail';
 import { createSpatialHash, shInsert, shQueryRadius } from './spatial';
 import type { SpatialHash } from './spatial';
 
@@ -309,7 +313,16 @@ function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: Uni
   const dist = Math.hypot(vx, vz);
   // Phase 3 logistics (AD3): degraded cruise speed — ×(0.7+0.3×level),
   // the speed half of the single supply curve (see moveAirUnitTick).
-  const ratedSpeed = unit.speed * supplySpeedFactor(UNIT_DEFS[unit.kind as UnitKind], unit);
+  let ratedSpeed = unit.speed * supplySpeedFactor(UNIT_DEFS[unit.kind as UnitKind], unit);
+  // Phase 4 (S7): rail-bound units run at the track class's speed
+  // factor for the rail cell they sit on (standard 1.0 / electric 1.4
+  // / high-speed 1.9 — TRACK_CLASS_STATS). This is the "train quality
+  // gated by track class" mechanic: the same train runs faster on a
+  // better main line. Applied per tick at the CURRENT cell, so a route
+  // crossing mixed classes speeds up and slows down along the way.
+  if (isRailBound(unit.kind)) {
+    ratedSpeed *= trainTrackFactor(world.city.rails, worldToCell(unit.x, unit.z));
+  }
   let speed = ratedSpeed;
   if (distFinal < SLOW_RADIUS) {
     const factor = Math.max(MIN_SLOW_FACTOR, distFinal / SLOW_RADIUS);
@@ -391,6 +404,10 @@ function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: Uni
 /** Movement system: rebuild the hash, then integrate every moving unit. */
 export function createMovementSystem(t: TerrainData): (world: World, dt: number) => void {
   return (world: World, dt: number) => {
+    // Phase 4 (S7): the ferry loop runs FIRST, in unit-id order — idle
+    // ferries with a route get dispatched before any displacement, so a
+    // ferry that just arrived re-dispatches and sails the same tick.
+    advanceFerryRoutes(world);
     // Only actively moving units separate: idle/failed/awaitingPath units
     // are parked (or stationary) and invisible to separation. Otherwise
     // already-parked units form a repulsion "wall" that newcomers can
@@ -414,6 +431,30 @@ export function createMovementSystem(t: TerrainData): (world: World, dt: number)
       burnFuelForDisplacement(unit, x0, z0, dt);
     }
   };
+}
+
+/**
+ * Phase 4 (S7): the ferry loop. An idle ferry with a route (`route`
+ * set by `setFerryRoute`) flips `leg` and dispatches to the other
+ * endpoint via the normal sea A* (orderMoveTo) — the ferry shuttles
+ * a↔b forever. Runs in unit-id order for determinism. A manual
+ * moveUnit order is a DETOUR: the ferry finishes it, idles, and the
+ * loop resumes from there. If dispatch fails (e.g. no sea path), the
+ * order fails loudly with the A* reason and the loop tries again next
+ * tick once idle.
+ */
+function advanceFerryRoutes(world: World): void {
+  const ordered = [...world.units].sort((a, b) => a.id - b.id);
+  for (const unit of ordered) {
+    if (unit.kind !== 'ferry' || unit.hp <= 0) continue;
+    if (unit.route === undefined) continue;
+    if (unit.state !== 'idle') continue;
+    const r = unit.route;
+    r.leg = r.leg === 'a' ? 'b' : 'a';
+    const tx = r.leg === 'a' ? r.ax : r.bx;
+    const tz = r.leg === 'a' ? r.az : r.bz;
+    orderMoveTo(world, unit, tx, tz);
+  }
 }
 
 /**
@@ -529,12 +570,82 @@ export function orderMoveTo(world: World, unit: UnitRecord, x: number, z: number
     unit.state = d < ARRIVAL_RADIUS ? 'idle' : 'moving';
     return;
   }
+  // Phase 4 (S7): rail-bound units (trains) never touch A*/flow fields —
+  // they steer along rail cells via the dedicated BFS router (rail.ts).
+  if (isRailBound(unit.kind)) {
+    orderTrainMoveTo(world, unit, x, z);
+    return;
+  }
   if (worldToCell(x, z) === worldToCell(unit.x, unit.z)) {
     unit.state = 'idle'; // already in the destination cell
     return;
   }
   unit.state = 'awaitingPath';
   requestPath(world, unit.id, worldToCell(x, z));
+}
+
+/**
+ * Phase 4 (S7): rail routing for trains.
+ *
+ * The destination snaps to the nearest completed, operational
+ * railStation of the train's owner within RAIL_STATION_SNAP_RADIUS
+ * world units (48) — loud failure when there is none ('no rail station
+ * near destination'). BFS starts are the rail cells in the 3×3 under
+ * the train (it is rail-bound, so it should already be on rails);
+ * 'train is off the rail network' fails loudly otherwise. The routed
+ * cells become `unit.path` (the existing waypoint steering follows
+ * them in order); the train stops at the station's footprint center.
+ */
+export const RAIL_STATION_SNAP_RADIUS = 48;
+
+export function orderTrainMoveTo(world: World, unit: UnitRecord, x: number, z: number): void {
+  const city = world.city;
+  const station = nearestRailStation(city, x, z, unit.owner);
+  const def = station === undefined ? undefined : BUILDING_DEFS[station.kind];
+  if (
+    station === undefined ||
+    def === undefined ||
+    Math.hypot(
+      cellCenterWorld(station.cx + (def.footprintW - 1) / 2) - x,
+      cellCenterWorld(station.cz + (def.footprintH - 1) / 2) - z,
+    ) > RAIL_STATION_SNAP_RADIUS
+  ) {
+    failUnitOrder(unit, 'no rail station near destination');
+    return;
+  }
+  // BFS starts: rail cells in the 3×3 around the train.
+  const tc = worldToCell(unit.x, unit.z);
+  const { cx: tcx, cz: tcz } = cellCoords(tc);
+  const starts: number[] = [];
+  for (let dz = -1; dz <= 1; dz++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      const nx = tcx + dx;
+      const nz = tcz + dz;
+      if (nx < 0 || nz < 0 || nx >= CITY_GRID_CELLS || nz >= CITY_GRID_CELLS) continue;
+      const c = nz * CITY_GRID_CELLS + nx;
+      if (railSortedHas(city.rails, c)) starts.push(c);
+    }
+  }
+  if (starts.length === 0) {
+    failUnitOrder(unit, 'train is off the rail network');
+    return;
+  }
+  const route = findRailRoute(city.rails, starts, stationRailCells(city.rails, station, def));
+  if (route === null) {
+    failUnitOrder(unit, 'no rail route');
+    return;
+  }
+  // The route cells become the waypoint path (existing steering), the
+  // destination becomes the station itself.
+  unit.path = route;
+  unit.pathAt = 0;
+  const sx = cellCenterWorld(station.cx + (def.footprintW - 1) / 2);
+  const sz = cellCenterWorld(station.cz + (def.footprintH - 1) / 2);
+  unit.destX = sx;
+  unit.destZ = sz;
+  unit.arriveX = sx;
+  unit.arriveZ = sz;
+  unit.state = 'moving';
 }
 
 /**
@@ -713,6 +824,10 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
           } else {
             seaWaitingUnits.push(unit);
           }
+        } else if (isRailBound(unit.kind)) {
+          // Phase 4 (S7): trains never join the flow field — route each
+          // one individually along the rails (loud failures per train).
+          orderTrainMoveTo(world, unit, x, z);
         } else if (worldToCell(unit.x, unit.z) === destCell) {
           unit.state = 'idle'; // already there
           atDestCount += 1;

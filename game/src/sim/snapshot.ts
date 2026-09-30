@@ -42,6 +42,8 @@ import type { EntityRecord, World } from './world';
 import { createWorld } from './world';
 import type { RngState } from './rng';
 import type { BuildingRecord, CityState, PlayerState } from './city';
+import type { RailCell, RoadCell } from './city';
+import { migrateRoadsV6ToV7 } from './city';
 import type { UnitRecord } from './units';
 import type { FieldBuild, FieldRequest, FlowField, PathfindingState, PathRequest } from './pathfinding';
 import { initPathfinding } from './pathfinding';
@@ -69,10 +71,17 @@ import { encodeUpgrades, decodeUpgrades } from './upgrades';
  *     defaults a missing personality to the neutral personality, which
  *     reproduces pre-personality behavior exactly — the step-7 precedent
  *     for AI-state additions.)
+ * v7: Road classes (roads: number[] → RoadCell[] {cell, cls}) + the rail
+ *     layer (rails: RailCell[]) + ferry routes on units (Phase 4
+ *     transport, S7). v5/v6 snapshots still load: v6 roads migrate to
+ *     the behavior-preserving default class 'paved' (see
+ *     migrateRoadsV6ToV7 — the old flat cost and moveCost ARE paved's
+ *     stats), rails default to [], ferry routes default to undefined
+ *     (the AD9 additive precedent).
  */
-export const SNAPSHOT_VERSION = 6;
+export const SNAPSHOT_VERSION = 7;
 
-/** Oldest snapshot version that still loads (pre-v6 gains empty upgrades). */
+/** Oldest snapshot version that still loads (pre-v7 gains paved roads + empty rails). */
 export const OLDEST_SUPPORTED_SNAPSHOT_VERSION = 5;
 
 /** Plain-data snapshot of the world at a tick boundary. */
@@ -140,6 +149,13 @@ function copyBuilding(b: BuildingRecord): BuildingRecord {
     // Workstream M: attack-triggered meltdown state. ?? 0 = no meltdown
     // (legacy saves never had one — no version bump, stays v6).
     meltdownUntilTick: b.meltdownUntilTick ?? 0,
+    // Phase 4 occupancy + variety (2026-09-30). AD9 ?? defaults: legacy
+    // v6/v7 saves decode to empty buildings with the default look —
+    // no version bump (the veterancy ?? 0 precedent).
+    residents: b.residents ?? 0,
+    workers: b.workers ?? 0,
+    variant: b.variant ?? 0,
+    sizeTier: b.sizeTier ?? 1,
   };
 }
 
@@ -154,9 +170,33 @@ function copyPlayer(p: PlayerState): PlayerState {
   };
 }
 
+/**
+ * Deep-copy road cells, migrating legacy v6 snapshots (roads:
+ * number[]) to v7 RoadCells via migrateRoadsV6ToV7. v7 input copies
+ * verbatim. Defensive against hand-built/legacy shapes — never throws.
+ */
+function copyRoads(roads: unknown): RoadCell[] {
+  if (!Array.isArray(roads)) return [];
+  if (roads.length > 0 && typeof roads[0] === 'number') {
+    return migrateRoadsV6ToV7(roads as number[]);
+  }
+  return (roads as RoadCell[]).map((r) => ({ cell: r.cell, cls: r.cls }));
+}
+
+/** Deep-copy rail cells; legacy (v6) snapshots lack the field → []. */
+function copyRails(rails: unknown): RailCell[] {
+  if (!Array.isArray(rails)) return [];
+  return (rails as RailCell[]).map((r) => ({ cell: r.cell, cls: r.cls }));
+}
+
 function copyCity(city: CityState): CityState {
   return {
-    roads: [...city.roads],
+    // Phase 4 (S7, v7): roads carry a class now. v6 snapshots store
+    // number[] — migrate every cell to 'paved' (behavior-preserving:
+    // the old flat cost/moveCost ARE paved's stats). rails is new in
+    // v7 — legacy saves decode to [] (AD9 additive).
+    roads: copyRoads(city.roads as unknown),
+    rails: copyRails(city.rails as unknown),
     // Phase 2: utility conductors. ?? [] / ?? 0 so legacy v6 saves
     // decode to "no lines/pipes, epoch zero" — no version bump, stays v6.
     powerLines: [...(city.powerLines ?? [])],
@@ -199,6 +239,10 @@ function copyUnit(u: UnitRecord): UnitRecord {
     // — no version bump, stays v6 (AD9, same precedent as fuel/ammo).
     cargoFuel: u.cargoFuel ?? 0,
     cargoAmmo: u.cargoAmmo ?? 0,
+    // Phase 4 (S7, v7): the ferry's shipping lane. Undefined for legacy
+    // saves and non-ferry units (AD9 additive — no bump needed for this
+    // field alone; it rides the v7 roads/rails bump).
+    route: u.route ? { ...u.route } : undefined,
   };
 }
 
@@ -269,14 +313,16 @@ export function takeSnapshot(world: World): Snapshot {
 
 /**
  * Rebuild a world from a snapshot. The result shares no references with the
- * snapshot. Throws SnapshotVersionError on version mismatch. v5 snapshots
- * still load: per the spec, old saves default upgrades to {}.
+ * snapshot. Throws SnapshotVersionError on version mismatch. v5/v6
+ * snapshots still load: per the spec, old saves default upgrades to {},
+ * v6 roads migrate to paved RoadCells (migrateRoadsV6ToV7), rails
+ * default to [], and ferry routes default to undefined.
  */
 export function restoreSnapshot(snap: Snapshot): World {
   if (snap === null || typeof snap !== 'object') {
     throw new SnapshotVersionError(SNAPSHOT_VERSION, snap);
   }
-  if (snap.version !== SNAPSHOT_VERSION && snap.version !== 5) {
+  if (snap.version !== SNAPSHOT_VERSION && snap.version !== 6 && snap.version !== 5) {
     throw new SnapshotVersionError(SNAPSHOT_VERSION, snap.version);
   }
   const world = createWorld(snap.seed);

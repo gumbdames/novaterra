@@ -614,7 +614,7 @@ describe('migration', () => {
 // ---------------------------------------------------------------------------
 
 describe('snapshot/digest contract', () => {
-  it('stays v6: desirability is derived, never snapshotted', () => {
+  it('stays v7: desirability is derived, never snapshotted', () => {
     const ctx = setup(40);
     const { cx, cz } = findLandRect(ctx.terrain, 10, 10);
     paintResidential(ctx.world.city, cx, cz, cx + 5, cz + 5);
@@ -625,7 +625,7 @@ describe('snapshot/digest contract', () => {
     getDesirabilityModel(ctx.terrain, ctx.world);
     const after = takeSnapshot(ctx.world);
     expect(before.version).toBe(SNAPSHOT_VERSION);
-    expect(after.version).toBe(6);
+    expect(after.version).toBe(7);
     expect(JSON.stringify(after)).toBe(JSON.stringify(before));
   });
 

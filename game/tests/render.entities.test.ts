@@ -49,6 +49,7 @@ import {
   cellIndex,
   type BuildingKind,
   type BuildingRecord,
+  type RoadCell,
 } from '../src/sim/city';
 import type { World } from '../src/sim/world';
 
@@ -101,7 +102,7 @@ function fakeBuilding(kind: BuildingKind, progress: number, owner = 0): Building
 function fakeWorld(parts: {
   units?: UnitRecord[];
   buildings?: BuildingRecord[];
-  roads?: number[];
+  roads?: RoadCell[];
 }): World {
   return {
     tick: 0,
@@ -109,6 +110,11 @@ function fakeWorld(parts: {
     city: { buildings: parts.buildings ?? [], roads: parts.roads ?? [] },
     superweapons: { fx: [] },
   } as unknown as World;
+}
+
+/** Phase 4 (S7): roads carry a class now; test fixtures pave plain cells. */
+function paved(cells: number[]): RoadCell[] {
+  return cells.map((cell) => ({ cell, cls: 'paved' as const }));
 }
 
 /** Find a named child group of the scene (units / buildings / fx). */
@@ -429,7 +435,7 @@ describe('roads', () => {
     const scene = new THREE.Scene();
     const renderer = new EntityRenderer(scene);
     const roads = [cellIndex(0, 0), cellIndex(1, 0), cellIndex(2, 0)];
-    renderer.sync(fakeWorld({ roads }));
+    renderer.sync(fakeWorld({ roads: paved(roads) }));
     const buildings = namedGroup(scene, 'buildings');
     // Ribbon + one dash mesh (middle cell is straight-through).
     expect(buildings.children).toHaveLength(2);
@@ -441,7 +447,7 @@ describe('roads', () => {
   it('an isolated road cell adds a ribbon but no dash mesh', () => {
     const scene = new THREE.Scene();
     const renderer = new EntityRenderer(scene);
-    renderer.sync(fakeWorld({ roads: [cellIndex(5, 5)] }));
+    renderer.sync(fakeWorld({ roads: paved([cellIndex(5, 5)]) }));
     expect(namedGroup(scene, 'buildings').children).toHaveLength(1);
     renderer.dispose();
   });

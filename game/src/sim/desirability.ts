@@ -119,6 +119,23 @@ export const AMENITY_BONUS_CAP = 20;
 export const WATERFRONT_RADIUS_CELLS = 15;
 /** Waterfront (marina hook): bonus points. */
 export const WATERFRONT_BONUS = 10;
+/**
+ * Phase 4 tiered transit stops/stations (2026-09-30). Small stops are
+ * convenience amenities at the parking-lot tier (+3 within 8 cells);
+ * the neighborhood station is a neighborhood asset at the cultural
+ * tier (+5 within 12); the central station is the downtown strategic
+ * decision (+8 within 18 — the biggest non-waterfront row); the
+ * airport interchange is the premier gateway (+10 within 20). All
+ * toward the same AMENITY_BONUS_CAP.
+ */
+export const TRANSIT_STOP_RADIUS_CELLS = 8;
+export const TRANSIT_STOP_BONUS = 3;
+export const NEIGHBORHOOD_STATION_RADIUS_CELLS = 12;
+export const NEIGHBORHOOD_STATION_BONUS = 5;
+export const CENTRAL_STATION_RADIUS_CELLS = 18;
+export const CENTRAL_STATION_BONUS = 8;
+export const AIRPORT_INTERCHANGE_RADIUS_CELLS = 20;
+export const AIRPORT_INTERCHANGE_BONUS = 10;
 
 // ---------------------------------------------------------------------------
 // Amenity table
@@ -152,9 +169,11 @@ export interface AmenityDef {
 /**
  * The amenity table. Six civic/education types at +5/12 cells, two civic
  * parking types (workstream P: lot +3/8, garage +4/10 — convenience
- * amenities score below the cultural/education types), plus the
- * waterfront hook at +10/15 cells. Total amenity contribution is capped
- * at AMENITY_BONUS_CAP (see `amenityBonusFor`).
+ * amenities score below the cultural/education types), the waterfront
+ * hook at +10/15 cells, and the seven Phase 4 tiered transit stops/
+ * stations (four small stops +3/8, neighborhood station +5/12, central
+ * station +8/18, airport interchange +10/20). Total amenity
+ * contribution is capped at AMENITY_BONUS_CAP (see `amenityBonusFor`).
  */
 export const AMENITY_TABLE: readonly AmenityDef[] = [
   { kind: 'park', radius: AMENITY_RADIUS_CELLS, bonus: AMENITY_BONUS_PER_TYPE },
@@ -175,6 +194,21 @@ export const AMENITY_TABLE: readonly AmenityDef[] = [
   // Phase 4 marina hook: any def with waterfrontAmenity: true. Worth +10
   // within 15 cells — toward the same +20 amenity cap, not on top of it.
   { waterfront: true, radius: WATERFRONT_RADIUS_CELLS, bonus: WATERFRONT_BONUS },
+  // Phase 4 tiered transit stops/stations (2026-09-30): one row per
+  // stop/station kind (each is its own amenity TYPE, so a bus stop and
+  // a tram stop stack like parkingLot+parkingGarage do, toward the
+  // same +20 cap). Small stops score as convenience amenities
+  // (+3/8 — the parking-lot tier); the neighborhood station as a
+  // cultural-tier asset (+5/12); the central station is the downtown
+  // strategic decision (+8/18); the airport interchange is the premier
+  // gateway (+10/20). Adding a future stop kind = one row here.
+  { kind: 'busStop', radius: TRANSIT_STOP_RADIUS_CELLS, bonus: TRANSIT_STOP_BONUS },
+  { kind: 'taxiStand', radius: TRANSIT_STOP_RADIUS_CELLS, bonus: TRANSIT_STOP_BONUS },
+  { kind: 'tramStop', radius: TRANSIT_STOP_RADIUS_CELLS, bonus: TRANSIT_STOP_BONUS },
+  { kind: 'ferryPier', radius: TRANSIT_STOP_RADIUS_CELLS, bonus: TRANSIT_STOP_BONUS },
+  { kind: 'neighborhoodStation', radius: NEIGHBORHOOD_STATION_RADIUS_CELLS, bonus: NEIGHBORHOOD_STATION_BONUS },
+  { kind: 'centralStation', radius: CENTRAL_STATION_RADIUS_CELLS, bonus: CENTRAL_STATION_BONUS },
+  { kind: 'airportInterchange', radius: AIRPORT_INTERCHANGE_RADIUS_CELLS, bonus: AIRPORT_INTERCHANGE_BONUS },
 ];
 
 // ---------------------------------------------------------------------------

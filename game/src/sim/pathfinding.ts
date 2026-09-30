@@ -19,7 +19,8 @@
  *
  * Responsibilities:
  *  - Movement cost model over the 256×256 city grid: water is blocked,
- *    roads are cheap (`ROAD_COST_FACTOR`), everything else costs 1.
+ *    roads are cheap per class (dirt 1.0 / country 0.75 / paved 0.5 /
+ *    highway 0.35 — ROAD_CLASS_STATS in city.ts), everything else costs 1.
  *  - Plain 8-directional A* with a binary heap for single-unit paths.
  *    Corner cutting is prevented (a diagonal step needs both orthogonal
  *    neighbors passable). JPS was deliberately NOT used: on a 65k-cell
@@ -69,11 +70,46 @@ import {
   cellIndex,
   cellIsWater,
   inBounds,
+  roadClassAt,
+  ROAD_CLASS_STATS,
 } from './city';
+import type { RoadCell } from './city';
 import { clearUnitOrder, failUnitOrder, findUnit } from './units';
 
-/** Road cells cost this × the base cost (Phase 1 engineering choice). */
+/**
+ * Road cells cost this × the base cost (Phase 1 engineering choice).
+ * Kept as the `paved` class factor for the A* heuristic and any
+ * legacy callers — the per-class table lives in ROAD_CLASS_STATS
+ * (city.ts).
+ */
 export const ROAD_COST_FACTOR = 0.5;
+
+/**
+ * Minimum movement cost over all road classes (highway's 0.35). The
+ * A* heuristic multiplies octile distance by this, keeping it
+ * admissible (never overestimates) now that better-than-paved roads
+ * exist.
+ *
+ * Lazily computed (same class of fix as `gridCells()` below):
+ * pathfinding sits inside the city↔world import cycle, so a
+ * module-scope read could observe a partially-initialized
+ * `ROAD_CLASS_STATS` whenever city is the entry point — the first
+ * `DemoDirector` boot died with `TypeError: Cannot convert undefined
+ * or null to object` for exactly this. Every call site runs at sim
+ * time, long after all modules are initialized.
+ */
+let minRoadMoveCostCache = 0;
+export function minRoadMoveCost(): number {
+  if (minRoadMoveCostCache === 0) {
+    let m = Infinity;
+    for (const cls of Object.keys(ROAD_CLASS_STATS) as (keyof typeof ROAD_CLASS_STATS)[]) {
+      const c = ROAD_CLASS_STATS[cls].moveCost;
+      if (c < m) m = c;
+    }
+    minRoadMoveCostCache = m;
+  }
+  return minRoadMoveCostCache;
+}
 
 /**
  * Synchronous A* searches completed per tick (FIFO). Measured on the dev VM
@@ -128,20 +164,6 @@ export function worldToCell(x: number, z: number): number {
   return cellIndex(qx, qz);
 }
 
-/** Binary search over a sorted number array (roads are sorted ascending). */
-function sortedHas(sorted: number[], value: number): boolean {
-  let lo = 0;
-  let hi = sorted.length - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const v = sorted[mid] as number;
-    if (v === value) return true;
-    if (v < value) lo = mid + 1;
-    else hi = mid - 1;
-  }
-  return false;
-}
-
 /**
  * Static land/water mask for a terrain, memoized per terrain object.
  * The terrain never changes, so the mask is a pure function of it — the
@@ -180,14 +202,17 @@ export function seaPassabilityMask(t: TerrainData): Uint8Array {
 }
 
 /**
- * Cost of ENTERING a cell: Infinity for water/out-of-bounds, 0.5 on roads,
- * 1.0 otherwise. Hot path — pure array lookups, no height math.
+ * Cost of ENTERING a cell: Infinity for water/out-of-bounds, the road
+ * class's moveCost on roads (dirt 1.0 / country 0.75 / paved 0.5 /
+ * highway 0.35 — ROAD_CLASS_STATS), 1.0 otherwise. Hot path — pure
+ * array lookups, no height math.
  */
-function moveCost(mask: Uint8Array, roads: number[], cx: number, cz: number): number {
+function moveCost(mask: Uint8Array, roads: RoadCell[], cx: number, cz: number): number {
   if (!inBounds(cx, cz)) return Infinity;
   const cell = cellIndex(cx, cz);
   if ((mask[cell] as number) === 0) return Infinity;
-  return sortedHas(roads, cell) ? ROAD_COST_FACTOR : 1;
+  const cls = roadClassAt(roads, cell);
+  return cls === undefined ? 1 : ROAD_CLASS_STATS[cls].moveCost;
 }
 
 /**
@@ -498,7 +523,7 @@ function gridCells(): number {
 }
 const SQRT2 = Math.SQRT2;
 
-/** Admissible octile heuristic scaled by the minimum cell cost (0.5). */
+/** Admissible octile heuristic scaled by the minimum cell cost (highway's 0.35 — minRoadMoveCost()). */
 function heuristic(cell: number, goal: number): number {
   const a = cellCoords(cell);
   const b = cellCoords(goal);
@@ -506,7 +531,7 @@ function heuristic(cell: number, goal: number): number {
   const dz = Math.abs(a.cz - b.cz);
   const diag = Math.min(dx, dz);
   const straight = Math.max(dx, dz) - diag;
-  return ROAD_COST_FACTOR * (straight + diag * SQRT2);
+  return minRoadMoveCost() * (straight + diag * SQRT2);
 }
 
 /**
@@ -720,7 +745,7 @@ export function beginFieldBuild(
   unitIds: number[],
   unitCells: number[],
   mask: Uint8Array,
-  roads: number[],
+  roads: RoadCell[],
   comps: Int32Array,
   earlyExit: boolean,
 ): FieldBuild {
@@ -762,7 +787,7 @@ export function beginFieldBuild(
 export function stepFieldBuild(
   build: FieldBuild,
   mask: Uint8Array,
-  roads: number[],
+  roads: RoadCell[],
   popsBudget: number,
 ): boolean {
   // Nothing to wait for (e.g. every unit was cross-component and got
@@ -827,7 +852,7 @@ export function stepFieldBuild(
  * corner-cut rule as the flood and A*. Unreached cells are UNREACHABLE,
  * the destination is DESTINATION.
  */
-export function finishFieldBuild(build: FieldBuild, mask: Uint8Array, roads: number[]): FlowField {
+export function finishFieldBuild(build: FieldBuild, mask: Uint8Array, roads: RoadCell[]): FlowField {
   const dirs = new Array<number>(gridCells());
   for (let cz = 0; cz < CITY_GRID_CELLS; cz++) {
     for (let cx = 0; cx < CITY_GRID_CELLS; cx++) {

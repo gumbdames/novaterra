@@ -201,14 +201,14 @@ function findWaterNear(t: TerrainData, x: number, z: number): { x: number; z: nu
 }
 
 describe('Phase 3 logistics core — roster provisioning (units.ts)', () => {
-  it('has the 30-unit roster with the two new logistics trucks', () => {
-    expect(UNIT_KINDS).toHaveLength(30);
+  it('has the 35-unit roster with the two new logistics trucks', () => {
+    expect(UNIT_KINDS).toHaveLength(35);
     expect(UNIT_KINDS).toContain('supplyTruck');
     expect(UNIT_KINDS).toContain('fuelTruck');
     const kinds = Object.keys(UNIT_DEFS).sort();
-    expect(kinds).toHaveLength(30);
+    expect(kinds).toHaveLength(35);
     const land = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'land');
-    expect(land).toHaveLength(15);
+    expect(land).toHaveLength(19);
   });
 
   it('provisions ammo only on the missile units (§3.2)', () => {
@@ -574,8 +574,8 @@ describe('Phase 3 logistics core — cargo holds in save/load', () => {
     expect(digestWorld(restored)).toBe(before);
   });
 
-  it('decodes a legacy v6 snapshot without cargo fields as empty holds', () => {
-    expect(SNAPSHOT_VERSION).toBe(6); // AD9: no version bump
+  it('decodes a snapshot without cargo fields as empty holds (AD9 neutral decode)', () => {
+    expect(SNAPSHOT_VERSION).toBe(7); // Phase 4 transport bumped v6 -> v7
     const ctx = setup();
     const p = findLandNear(ctx.terrain, -60, -60);
     const truck = spawnUnit(ctx.world, 'supplyTruck', 0, p.x, p.z);

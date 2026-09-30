@@ -161,7 +161,7 @@ describe('placement pipeline: build road', () => {
     ).not.toThrow();
     session.tick();
 
-    expect(session.world.city.roads).toContain(idx);
+    expect(session.world.city.roads.map((r) => r.cell)).toContain(idx);
     expect(player.funds).toBe(fundsBefore - ROAD_COST_FUNDS);
     expect(player.materials).toBe(materialsBefore - ROAD_COST_MATERIALS);
   });
@@ -181,7 +181,7 @@ describe('placement pipeline: place building', () => {
     );
     session.enqueuePlayerIntent(buildRoadOrder(HUMAN_PLAYER_ID, [roadIdx]));
     session.tick();
-    expect(session.world.city.roads).toContain(roadIdx);
+    expect(session.world.city.roads.map((r) => r.cell)).toContain(roadIdx);
 
     const fundsBefore = player.funds;
     const materialsBefore = player.materials;

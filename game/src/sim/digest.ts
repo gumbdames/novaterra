@@ -73,7 +73,12 @@ export function canonicalizeWorld(world: World): string {
   // City state: sorted structures serialize in canonical order already;
   // buildings are in placement (id) order; floats use canonicalNumber.
   out += '|city:';
-  out += `roads=${world.city.roads.join(',')};`;
+  // Phase 4 (S7, v7): roads serialize with their class (cell:cls) and
+  // the new rail layer gets its own segment — both sorted by cell, so
+  // the digest stays canonical. A class change or a re-rail changes
+  // the digest (behavior-affecting, as it should).
+  out += `roads=${world.city.roads.map((r) => `${r.cell}:${r.cls}`).join(',')};`;
+  out += `rails=${(world.city.rails ?? []).map((r) => `${r.cell}:${r.cls}`).join(',')};`;
   // Phase 2: utility conductors + topology epoch (derived model itself
   // is not digested — it is a pure function of these inputs).
   out += `powerLines=${(world.city.powerLines ?? []).join(',')};`;
@@ -92,7 +97,11 @@ export function canonicalizeWorld(world: World): string {
     // Phase 3 resupply reservations (legacy decode default 0).
     out += `${b.reservedAmmo ?? 0},${b.reservedFuel ?? 0},`;
     // Workstream M: meltdown outage state (legacy decode default 0).
-    out += `${b.meltdownUntilTick ?? 0};`;
+    out += `${b.meltdownUntilTick ?? 0},`;
+    // Phase 4 occupancy + variety (2026-09-30): behavior-affecting
+    // (occupancy) and selection-panel-visible (variant), so both are
+    // digest-covered (legacy decode defaults 0/0/0/1).
+    out += `${b.residents ?? 0},${b.workers ?? 0},${b.variant ?? 0},${b.sizeTier ?? 1};`;
   }
   out += '|players:';
   for (const p of world.city.players) {
@@ -125,7 +134,14 @@ export function canonicalizeWorld(world: World): string {
     out += `${canonicalNumber(u.resupplyReservedAmmo ?? 0)},${canonicalNumber(u.resupplyReservedFuel ?? 0)},`;
     // Phase 3 cargo holds (floats via canonicalNumber; legacy decode 0).
     // Behavior-affecting ⇒ digest-covered (PLAN §11).
-    out += `${canonicalNumber(u.cargoFuel ?? 0)},${canonicalNumber(u.cargoAmmo ?? 0)};`;
+    out += `${canonicalNumber(u.cargoFuel ?? 0)},${canonicalNumber(u.cargoAmmo ?? 0)},`;
+    // Phase 4 (S7): the ferry's shipping lane (endpoints via
+    // canonicalNumber, leg as a/b; absent = no route). Behavior-
+    // affecting ⇒ digest-covered.
+    const r = u.route;
+    out += r === undefined
+      ? '-'
+      : `${canonicalNumber(r.ax)},${canonicalNumber(r.az)},${canonicalNumber(r.bx)},${canonicalNumber(r.bz)},${r.leg};`;
   }
   // Pathfinding: queues in FIFO order, fields in creation order; dirs are
   // small ints so they join cheaply. The active build's dist array is
