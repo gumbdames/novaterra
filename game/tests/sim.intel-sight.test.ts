@@ -62,7 +62,7 @@ import { getVisibleEnemies } from '../src/sim/ai';
 import { effectiveSight } from '../src/sim/upgrades';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
 import { digestWorld } from '../src/sim/digest';
-import { BUILDING_DEFS, type BuildingRecord } from '../src/sim/city';
+import { BUILDING_DEFS, type BuildingKind, type BuildingRecord } from '../src/sim/city';
 import { airportDisplayType, discoveryStateOf } from '../src/ui/airports';
 import { discoveryWarnings, rivalAirports, rivalAirportLine } from '../src/ui/intel';
 import { completeBuilding } from './sim.roster-fixtures';
@@ -72,7 +72,7 @@ function setup(): World {
 }
 
 /** Place a completed, operational building and return its record. */
-function place(world: World, kind: string, owner: number, cx: number, cz: number): BuildingRecord {
+function place(world: World, kind: BuildingKind, owner: number, cx: number, cz: number): BuildingRecord {
   completeBuilding(world, kind, owner, cx, cz);
   const b = world.city.buildings[world.city.buildings.length - 1];
   if (!b || b.kind !== kind) throw new Error(`place failed for ${kind}`);
@@ -145,7 +145,7 @@ describe('buildingSightCoverage', () => {
 
   it('the completed + operational + unsabotaged gate: a dead building is blind', () => {
     const world = setup();
-    const c = (kind: string, cx: number): { x: number; z: number } =>
+    const c = (kind: BuildingKind, cx: number): { x: number; z: number } =>
       buildingCenterWorld(place(world, kind, 0, cx, 10));
     const c1 = c('listeningPost', 10);
     const c2 = c('listeningPost', 30);
@@ -434,7 +434,7 @@ describe('mixed-airport discovery', () => {
   });
 
   it('is seed-stable: the same script always digests identically', () => {
-    const script = (): string => {
+    const script = (): number => {
       const { world, center } = setupAnchor();
       spawnUnit(world, 'reconTeam', 1, center.x + 30, center.z);
       runTo(world, 2500);
