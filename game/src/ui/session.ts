@@ -122,6 +122,19 @@ export interface SessionOptions {
    * Defaults to false; every existing caller keeps its rival.
    */
   sandbox?: boolean;
+  /**
+   * Peaceful mode (grand-expansion Phase 8, workstream A, 2026-09-30):
+   * the Classic AI rival EXISTS and plays, but the world is peaceful —
+   * `world.peaceful` is set at tick 0 (never toggled mid-game), military
+   * defs (units/buildings/upgrades) and covert ops are locked out at
+   * the command layer, conquest victory/defeat checks are bypassed, and
+   * the peaceful victory (`checkPeacefulVictory` in sim/peaceful.ts)
+   * applies instead. NOT the same as `sandbox`: sandbox skips the rival
+   * entirely and has no victory condition; peaceful keeps the rival
+   * (it plays peacefully) and has a builder's victory condition.
+   * Defaults to false; every existing caller keeps its war game.
+   */
+  peaceful?: boolean;
 }
 
 /** Everything a running game needs. Plain data + live driver/queue. */
@@ -195,13 +208,18 @@ function startingForces(
   at: { x: number; z: number },
   maxUnits?: number,
 ): void {
+  // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): rifles are a
+  // military def and cannot spawn in a peaceful world — the opening
+  // force swaps them for haulers (civilian logistics). Same count, so
+  // the AI's production-cap headroom math below is unchanged.
+  const peaceful = world.peaceful === true;
   const specs: Array<{ kind: string; dx: number; dz: number }> = [
     { kind: 'engineer', dx: -4, dz: -4 },
     { kind: 'engineer', dx: 4, dz: -4 },
-    { kind: 'rifles', dx: -8, dz: 4 },
-    { kind: 'rifles', dx: 0, dz: 4 },
-    { kind: 'rifles', dx: 8, dz: 4 },
-    { kind: 'rifles', dx: 0, dz: 10 },
+    { kind: peaceful ? 'hauler' : 'rifles', dx: -8, dz: 4 },
+    { kind: peaceful ? 'hauler' : 'rifles', dx: 0, dz: 4 },
+    { kind: peaceful ? 'hauler' : 'rifles', dx: 8, dz: 4 },
+    { kind: peaceful ? 'hauler' : 'rifles', dx: 0, dz: 10 },
   ];
   // The AI's production cap counts all its units: starting forces must not
   // already exceed it, or the AI would never build (cadet cap is 4).
@@ -227,6 +245,11 @@ function startingForces(
  * true; sandbox games (no rival) have no victory condition by design.
  */
 export function checkSkirmishVictory(world: World): boolean {
+  // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): conquest is
+  // unreachable when nothing military exists — the peaceful victory
+  // (checkPeacefulVictory) owns the outcome instead. Loud-and-clear:
+  // this returns false, never a conquest verdict.
+  if (world.peaceful === true) return false;
   for (const unit of world.units) {
     if (unit.owner === AI_PLAYER_ID) return false;
   }
@@ -242,6 +265,10 @@ export function checkSkirmishVictory(world: World): boolean {
  * no wall clock, no RNG. Mirror of checkSkirmishVictory.
  */
 export function checkSkirmishDefeat(world: World): boolean {
+  // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): a peaceful
+  // game can only be won, never lost — nothing hostile exists. The UI
+  // routes peaceful victory through the objective panel instead.
+  if (world.peaceful === true) return false;
   for (const unit of world.units) {
     if (unit.owner === HUMAN_PLAYER_ID) return false;
   }
@@ -272,6 +299,10 @@ export type SkirmishOutcome = 'victory' | 'defeat';
  * use their own director-driven outcome.
  */
 export function getSkirmishOutcome(world: World): SkirmishOutcome | null {
+  // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): conquest is
+  // bypassed entirely in peaceful worlds — the peaceful victory check
+  // (sim/peaceful.ts, driven by the UI panel) owns the outcome.
+  if (world.peaceful === true) return null;
   if (world.tick < CONQUEST_GRACE_TICKS) return null;
   if (checkSkirmishDefeat(world)) return 'defeat';
   if (checkSkirmishVictory(world)) return 'victory';
@@ -304,6 +335,15 @@ export function createSession(options: SessionOptions): GameSession {
   const terrain = generateTerrain(preset.seed, preset);
   // Restored games resume the exact saved world; fresh games start empty.
   const world = options.snapshot ? restoreSnapshot(options.snapshot) : createWorld(seed);
+  // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): the flag is
+  // set at tick 0 from the session options and never toggled mid-game.
+  // Restored sessions carry whatever the snapshot saved (restoreSnapshot
+  // decodes it); fresh sessions take it from `SessionOptions.peaceful`.
+  // This must run before startingForces: the opening force is civilian
+  // in peaceful worlds (rifles are a military def).
+  if (!options.snapshot) {
+    world.peaceful = options.peaceful === true;
+  }
   const queue = createCommandQueue();
   registerCoreCommands(queue);
   registerCityCommands(queue, terrain);

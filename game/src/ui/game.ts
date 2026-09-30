@@ -1514,6 +1514,12 @@ class GameController {
   private maybeShowConquestOutcome(): void {
     if (this.disposed || this.victoryShown || this.defeatShown) return;
     if (!this.session.hasRival) return;
+    // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): conquest is
+    // bypassed in peaceful worlds — the peaceful victory UI panel is
+    // the sibling workstream's. (getSkirmishOutcome already returns
+    // null for peaceful worlds; this is an explicit, readable guard so
+    // the conquest path can never be re-entered for peaceful games.)
+    if (this.session.world.peaceful === true) return;
     const outcome = getSkirmishOutcome(this.session.world);
     if (outcome === 'victory') {
       this.victoryShown = true;
