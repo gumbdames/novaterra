@@ -97,7 +97,6 @@ import {
   buildFireAegisOrder,
   buildFireStormOrder,
   buildMoveOrder,
-  buildRoadOrder,
   buildSetMayorBuildPolicyOrder,
   buildSetGeneralStanceOrder,
   buildSetSpecializationOrder,
@@ -114,6 +113,11 @@ import {
   type PlacementResolution,
 } from './placement';
 import { classifyPointerUp } from './pointer';
+import {
+  LinearNetworkDrag,
+  networkKindForTool,
+  resolveNetworkToolClick,
+} from './linearNetworkDrag';
 import { PauseMenu, loadSettings, type QualityLevel } from './menus';
 import { STRINGS, loc } from './strings';
 import { trainPlacementToast } from './palettes';
@@ -418,7 +422,8 @@ class GameController {
   private dragRect: HTMLElement | null = null;
   /** Last known pointer position in client px (for edge pan). */
   private mouseClient: { x: number; y: number } | null = null;
-  private roadDragCells: number[] | null = null;
+  /** In-progress linear-network drag (road tool today; power lines/pipes/rail later). */
+  private networkDrag: LinearNetworkDrag | null = null;
   private zoneDragStart: { cx: number; cz: number } | null = null;
   private disposed = false;
   /** `?inputdebug=1` — verbose pointer-event console logging for diagnosis. */
@@ -1224,10 +1229,21 @@ class GameController {
       }
       if (e.button === 0) {
         this.dragStart = { x: e.clientX, y: e.clientY };
-        // Road tool: drag-paint accumulates cells until pointerup; a plain
-        // click releases with zero cells and paves the single clicked cell.
-        this.roadDragCells =
-          this.placement?.kind === 'build' && this.placement.tool === 'road' ? [] : null;
+        // Linear-network tools (road today): a press starts a drag-paint
+        // gesture that accumulates cells until pointerup; a plain click
+        // releases with zero cells and falls through to the click resolver.
+        const netKind =
+          this.placement?.kind === 'build'
+            ? networkKindForTool(this.placement.tool)
+            : null;
+        this.networkDrag =
+          netKind === null
+            ? null
+            : new LinearNetworkDrag({
+                kind: netKind,
+                owner: HUMAN_PLAYER_ID,
+                gridWidth: CITY_GRID_CELLS,
+              });
       } else if (e.button === 2) {
         // Right-click cancels placement, else issues a context order.
         if (this.placement) {
@@ -1245,9 +1261,9 @@ class GameController {
       if (this.dragStart && e.buttons === 1) {
         const dx = e.clientX - this.dragStart.x;
         const dy = e.clientY - this.dragStart.y;
-        // No selection rectangle while road-drag-painting: the gesture
-        // belongs to the road tool, not to box-select.
-        if (Math.hypot(dx, dy) > 6 && !this.dragRect && !this.roadDragCells) {
+        // No selection rectangle while linear-network drag-painting: the
+        // gesture belongs to the network tool, not to box-select.
+        if (Math.hypot(dx, dy) > 6 && !this.dragRect && !this.networkDrag) {
           this.dragRect = document.createElement('div');
           this.dragRect.className = 'select-rect';
           this.container.appendChild(this.dragRect);
@@ -1261,15 +1277,13 @@ class GameController {
           this.dragRect.style.height = `${Math.abs(dy)}px`;
         }
       }
-      // Road drag: accumulate cells while painting with the road tool.
-      if (this.roadDragCells && e.buttons === 1) {
+      // Linear-network drag: accumulate cells while painting with the tool
+      // (gap-filled so fast drags don't leave holes).
+      if (this.networkDrag?.isActive && e.buttons === 1) {
         const ndc = this.toNDC(e);
         const p = this.groundPoint(ndc.x, ndc.y);
         const cell = p ? this.worldToCell(p.x, p.z) : null;
-        if (cell) {
-          const idx = cell.cz * CITY_GRID_CELLS + cell.cx;
-          if (!this.roadDragCells.includes(idx)) this.roadDragCells.push(idx);
-        }
+        if (cell) this.networkDrag.addCell(cell);
       }
     });
     on(window, 'pointerup', (e) => {
@@ -1292,27 +1306,29 @@ class GameController {
           x: e.clientX,
           y: e.clientY,
           targetIsCanvas: e.target === this.canvas,
-          hadRoadDrag: this.roadDragCells !== null,
+          hadNetworkDrag: this.networkDrag !== null,
           hadDragRect: this.dragRect !== null,
         });
       }
-      // Road drag-paint finishes here, before the box-select path: a road
-      // gesture must never silently become a unit selection.
-      if (this.roadDragCells) {
-        const cells = this.roadDragCells;
-        this.roadDragCells = null;
+      // Linear-network drag-paint finishes here, before the box-select path:
+      // a network gesture must never silently become a unit selection.
+      if (this.networkDrag) {
+        const outcome = this.networkDrag.finish(gesture);
+        this.networkDrag = null;
         this.dragRect?.remove();
         this.dragRect = null;
-        if (cells.length > 0) {
-          this.enqueue(buildRoadOrder(HUMAN_PLAYER_ID, cells));
+        if (outcome.action === 'order') {
+          this.enqueue(outcome.intent);
           this.audio.playSfx('place');
-        } else if (gesture === 'click') {
-          // Plain click with the road tool: pave the single clicked cell
-          // (or explain why nothing was paved).
+        } else if (outcome.action === 'click') {
+          // Plain click with the network tool: resolve the single clicked
+          // cell (or explain why nothing was placed).
           const ndc = this.toNDC(e);
           const p = this.groundPoint(ndc.x, ndc.y);
           const cell = p ? this.worldToCell(p.x, p.z) : null;
-          this.placeResolution(resolveBuildToolClick('road', HUMAN_PLAYER_ID, cell));
+          this.placeResolution(
+            resolveNetworkToolClick(outcome.kind, outcome.owner, cell),
+          );
         }
         return;
       }
