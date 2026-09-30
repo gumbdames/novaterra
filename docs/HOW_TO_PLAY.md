@@ -173,6 +173,41 @@ red military, violet mixed) and gold arcs for your routes. Airliners
 start flying between your airports once your first civil airport is
 done — decorative, but they make the city feel alive.
 
+## Intel and spies
+
+Open the **Management** tab and look for the **Intelligence** panel.
+Three **asset counters** live in the top bar next to your resources:
+**Surveillance** (watching the enemy), **Operational** (doing things
+to the enemy), and **Counter-intel** (stopping enemy spies). They
+grow over time from intel buildings — the **Intelligence HQ**,
+**Listening Post**, **Signals Station**, and **Satellite Uplink** on
+the build menu's intel tab. Counter-intel also raises your spies'
+chances and makes sabotage against you less likely to land.
+
+Train a **spy** at the Intelligence HQ (400 funds · 40 materials).
+Move it next to a rival building, then come back to the
+Intelligence panel to pick a covert action:
+
+- **Infiltrate** — sneaks the spy inside the building (20 seconds).
+  Failure burns the spy (exposed to everyone for 30 seconds);
+  success leaves it **embedded**, ready to steal.
+- **Sabotage · 25** — costs 25 operational assets and knocks the
+  building offline for a while. Counter-intel and listening posts
+  make failures likelier, so pick soft targets first.
+- **Steal tech · 15** — only for an embedded spy; costs 15
+  surveillance assets. The panel previews what the spy would grab
+  (the lowest research you haven't finished yet). Success grants 40
+  research; failure burns the spy.
+
+**Warnings** at the top of the panel tell you what is going wrong
+and what happens next: a burned spy (exposed — visible to all
+enemies, 30 seconds left), a spy inside rival detection coverage
+(counter-intel buildings see a radius around them — move it), or one of
+your buildings sabotaged (offline with a countdown until it comes
+back). Mixed rival airports **read as civilian until discovered** —
+the panel marks them UNVERIFIED so you never mistake one for a
+harmless neighbor.
+
 ## Tips
 
 - Your first buildings should be farms (food) and a power plant.

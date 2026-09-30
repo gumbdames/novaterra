@@ -202,3 +202,133 @@ Known gap (not fixed — AI workstream's domain): the AI never builds
 intel buildings or runs spy missions; it only defends (its
 `getVisibleEnemies` respects `isDetected`). In AI games the intel
 roster is currently player-only.
+
+## 7. Recon value + mixed-airport discovery (workstream 3, 2026-09-30)
+
+The recon half of S6, on top of the defs above: what surveillance
+buildings and recon units are worth on the map, and how a mixed
+airport stops being a secret. Two deliverables.
+
+### 7.1 The building sight term (recon value)
+
+`buildingSightCoverage(world, owner)` (sim/intel.ts) is the third leg
+of `getVisibleEnemies` (ai.ts), after unit sight and the Signals Grid
+bonus. It runs at AI think cadence — never per-tick in combat
+(PLAN §4 S6): combat's `acquireTarget` still consults unit sight only,
+so a radar contact the AI "knows about" has to be engaged by a unit
+that can reach it. The term is inert for Classic AI owners today (they
+own no physical buildings) but is wired per the S6 hook spec and
+tested directly.
+
+Two flavors, by design:
+
+- **SIGINT** (`detectionRadius`, already on the defs): listeningPost 60,
+  signalsStation 45, +counterIntel bonus. Sees EVERYTHING inside,
+  including spies — consistent with the `isDetected` gate, which keys
+  off the same radius.
+- **Conventional radar** (new `BuildingDef.radarRadius`, set to 90 on
+  radarStation only): sees non-stealthed enemies only. The deliberate
+  asymmetry: if cheap Connectivity-age radar could see spies, the
+  Information-age counter-spy game would be obsolete before it exists.
+  The counter-spy monopoly stays with SIGINT.
+
+satelliteUplink gets no geometric term — it already flows through
+`intelSightBonus` → `effectiveSight` (+12 to every unit's sight). A
+second, overlapping mechanism would double-count the same fantasy.
+
+The gate mirrors accrual (hardened in §6): a building contributes only
+when completed + operational + unsabotaged. A dark or sabotaged post is
+blind — the counterplay is on the map, and it's consistent: the same
+outage that stops intel accrual stops detection (§6) stops coverage.
+
+### 7.2 The recon units (no separate term)
+
+reconTeam, reconUAV, reconPlane carry `UnitDef.recon: true` (exactly
+these three) and contribute through the EXISTING unit-sight path in
+`getVisibleEnemies` — their high platform sight (44 for the team) is
+the recon value. No separate building-style term, no double counting.
+
+### 7.3 Mixed-airport discovery: observation, warning, grace, reveal
+
+Discovery is observation-based, not purchased. Three sources, any one
+suffices on a given tick:
+
+1. An embedded, unburned spy of the viewer (`embeddedIn === airport.id`;
+   burned spies report nothing — their reports are tainted).
+2. SIGINT coverage: the viewer's `detectionRadiusAt` covers the airport
+   center.
+3. Recon overflight: a living recon unit whose sight (platform sight +
+   `intelSightBonus`) covers the airport center.
+
+Rejected: spending surveillance assets to reveal airports. Assets gate
+sabotage/steal (operations); discovery is observation. Buying a reveal
+with no map presence would be exactly the "gotcha" the plan forbids.
+
+Lifecycle, per viewer, on `BuildingRecord.discovery`
+(`AirportDiscoveryState[]`, AD9 additive — older saves decode to
+undefined, no snapshot bump, stays v8):
+
+- First observed tick → `suspected` record (warnedTick = now). **This
+  is THE WARNING** ("suspicious military activity at [airport]"), shown
+  in the intel panel with a countdown. The display still reads
+  civilian — the warning is not the reveal.
+- After exactly `AIRPORT_DISCOVERY_GRACE_TICKS = 1800` (60 sim-seconds;
+  same order as infiltration 20 s / sabotage 45 s) → `revealed`. The
+  display flips to the true type (`mixed`) for that viewer, and the
+  discovering side's AI may treat the site as a military target later.
+
+Decisions, with rationale:
+
+- **Suspicion latches** (no decay, no re-observation during grace).
+  The grace period is the analysis window, not a second observation
+  gate: once the photos exist, analysis is inevitable. Decay would make
+  the warning a bluff; the plan demands the warning precede the
+  consequence, always.
+- **No RNG.** Pure geometry + fixed timers; the `intel-<owner>` streams
+  stay reserved for action rolls (steal/sabotage). Discovery has no
+  dice — a player who sees the warning knows exactly when the reveal
+  lands.
+- **The owner never discovers their own airport** (skipped explicitly).
+- **Runs every tick** via `createIntelSystem`, not think-gated: AI
+  perception and the human's intel picture read the same shared state.
+  Cheap — early return when no mixed anchors exist.
+
+### 7.4 The UI seam (what the panel owns)
+
+Workstream 3 owns sim state + timers + the display-rule flip; the
+intel panel (separate workstream) owns presentation. The seam:
+
+- `discoveryStateOf(b, viewer)` (ui/airports.ts) — the panel's read
+  into the sim record.
+- `airportDisplayType` (ui/airports.ts) — honors the reveal: `mixed`
+  only when the viewer's record is `revealed`; `suspected` still reads
+  `civilian`.
+- `discoveryWarnings(world, owner)` (ui/intel.ts) — one warning per
+  suspected rival airport, with the grace countdown in sim-seconds and
+  a what-happens-next line, wired into `intelWarnings`.
+- `rivalAirports` (ui/intel.ts) — `discovered` reads the sim state
+  (`revealed`), not the old `trueType !== 'mixed'` heuristic; a new
+  `discoveryState` field lets the panel distinguish "under review"
+  from "confirmed".
+- Strings in the ui/strings.ts `intel` section (English-only via
+  `loc()`/`fillLoc()`): `discoveryWarnTitle` ("Suspicious military
+  activity at {name}"), the countdown detail, the next-step line, and
+  the `CONFIRMED — military-capable` flag.
+
+### 7.5 Tests
+
+`game/tests/sim.intel-sight.test.ts` — 22 tests, all deterministic
+(discovery is geometry + fixed timers, zero RNG): the SIGINT/radar
+flavors and their blind spots, the completed/operational/unsabotaged
+gate (three blind-building cases), the satelliteUplink hook pin,
+recon sight on the unit path, the think-cadence-only combat pin
+(radar-known but un-acquirable), the full warning → 1800-tick →
+reveal lifecycle, the latch (observer leaves, reveal still lands), no
+false discoveries (out-of-range recon; civilian/military anchors
+never), the three observation sources, burned-spy exclusion,
+owner exclusion, viewer-sorted idempotent records, the UI seam
+(warning countdown 60 s → empty after reveal; rival list flips
+civilian/UNVERIFIED → mixed/CONFIRMED), save/load round-trip of both
+states, digest coverage (discovery changes the digest) and
+seed-stability, and the def-level pin (mixed reads civilian until
+discovered).

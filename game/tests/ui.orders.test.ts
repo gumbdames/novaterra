@@ -27,12 +27,15 @@ import {
   buildAdvanceAgeOrder,
   buildAttackOrders,
   buildDemolishOrder,
+  buildInfiltrateOrder,
   buildMoveOrder,
   buildPlaceBuildingOrder,
   buildPowerLineOrder,
   buildResearchUpgradeOrder,
   buildRoadOrder,
+  buildSabotageOrder,
   buildSetTaxRateOrder,
+  buildStealTechOrder,
   buildStopOrders,
   buildTrainOrder,
   buildWaterPipeOrder,
@@ -154,6 +157,33 @@ describe('order builders', () => {
     const cmd = buildResearchUpgradeOrder(0, 'apRounds');
     expect(cmd.kind).toBe('researchUpgrade');
     expect(cmd.payload).toEqual({ owner: 0, upgrade: 'apRounds' });
+    expect('issuer' in cmd).toBe(false);
+  });
+});
+
+describe('intel order builders (grand-expansion Phase 7)', () => {
+  // The sim validates { unitId, buildingId, owner } for all three
+  // covert ops (stealTech has no tech param — the sim picks the tech
+  // deterministically). These tests pin the exact payload shapes so the
+  // panel and the sim cannot drift apart.
+  it('infiltrate → infiltrateBuilding', () => {
+    const cmd = buildInfiltrateOrder(0, 12, 99);
+    expect(cmd.kind).toBe('infiltrateBuilding');
+    expect(cmd.payload).toEqual({ unitId: 12, buildingId: 99, owner: 0 });
+    expect('issuer' in cmd).toBe(false);
+  });
+
+  it('sabotage → sabotage', () => {
+    const cmd = buildSabotageOrder(0, 12, 99);
+    expect(cmd.kind).toBe('sabotage');
+    expect(cmd.payload).toEqual({ unitId: 12, buildingId: 99, owner: 0 });
+    expect('issuer' in cmd).toBe(false);
+  });
+
+  it('stealTech → stealTech (no tech param — sim picks deterministically)', () => {
+    const cmd = buildStealTechOrder(0, 12, 99);
+    expect(cmd.kind).toBe('stealTech');
+    expect(cmd.payload).toEqual({ unitId: 12, buildingId: 99, owner: 0 });
     expect('issuer' in cmd).toBe(false);
   });
 });

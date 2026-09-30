@@ -102,7 +102,7 @@ import type { RngBank } from './rng';
 import { canTarget } from './combat';
 import { isUnitAvailableForAge, getSightBonus, AGE_PROGRESSION } from './ages';
 import { effectiveSight, hasUpgrade, registerUpgradeCommands, UPGRADE_DEFS, type UpgradeId } from './upgrades';
-import { isDetected } from './intel';
+import { isDetected, isStealthAsset, buildingSightCoverage } from './intel';
 import { vetSightMult } from './veterancy';
 import {
   getPlayer,
@@ -393,12 +393,27 @@ export function addAIPlayer(
 
 /**
  * Enemies visible to `owner`: any enemy unit within sight range of any
- * of the owner's units. This is the ONLY way the AI perceives enemies —
- * no omniscience.
+ * of the owner's units, PLUS any enemy unit inside the owner's
+ * building surveillance coverage (the S6 building sight term —
+ * listeningPost / signalsStation SIGINT and radarStation radar, via
+ * `buildingSightCoverage` in sim/intel.ts). This is the ONLY way the
+ * AI perceives enemies — no omniscience.
+ *
+ * The building term runs here, at AI think cadence, never per-tick in
+ * combat (PLAN §4 S6): combat's `acquireTarget` consults unit sight
+ * only, so a radar contact the AI "knows about" still has to be
+ * engaged by a unit that can see it.
  */
 export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
   const own = world.units.filter((u) => u.owner === owner && u.hp > 0);
-  if (own.length === 0) return [];
+  // Grand-expansion Phase 7 (S6 intel, workstream 3, 2026-09-30): the
+  // building sight term — completed, operational, unsabotaged
+  // SIGINT/radar buildings extend perception where the owner's units
+  // can't see. (satelliteUplink contributes through the effectiveSight
+  // hook instead; reconTeam/reconUAV/reconPlane through their high
+  // platform sight on the unit path below.)
+  const coverage = buildingSightCoverage(world, owner);
+  if (own.length === 0 && coverage.length === 0) return [];
   const out: UnitRecord[] = [];
   const seen = new Set<number>();
   // Signals Grid (Connectivity age) grants +sight to all units; upgrade
@@ -413,6 +428,7 @@ export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
     // what its side can see (the `isDetected` stealth contract in
     // intel.ts). No omniscience, no cheating.
     if (!isDetected(e, owner, world)) continue;
+    let visible = false;
     for (const o of own) {
       const def = UNIT_DEFS[o.kind as UnitKind];
       // (?? 0: hand-built records without the field count as Recruit.)
@@ -421,12 +437,28 @@ export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
       const dz = e.z - o.z;
       // Compare squared distances; sight is in world units.
       if (dx * dx + dz * dz <= sight * sight) {
-        if (!seen.has(e.id)) {
-          seen.add(e.id);
-          out.push(e);
-        }
+        visible = true;
         break;
       }
+    }
+    if (!visible) {
+      // The building sight term: SIGINT coverage sees everything
+      // (including spies — consistent with the isDetected gate above);
+      // conventional radar sees non-stealthed enemies only, by design.
+      const stealth = isStealthAsset(e);
+      for (const c of coverage) {
+        if (stealth && !c.seesStealth) continue;
+        const dx = e.x - c.x;
+        const dz = e.z - c.z;
+        if (dx * dx + dz * dz <= c.radius * c.radius) {
+          visible = true;
+          break;
+        }
+      }
+    }
+    if (visible && !seen.has(e.id)) {
+      seen.add(e.id);
+      out.push(e);
     }
   }
   // Deterministic order: by id.

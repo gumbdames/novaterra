@@ -362,8 +362,13 @@ building tiers via upgrades (`upgrades.ts` patterns).
   `reconTeam` = suv, `intelHQ` = office block + hqAntenna, `listeningPost`
   = hut + roof dish, `satelliteUplink` = detailed dish, `signalsStation` =
   shed + new procedural signalMast), all lazy, ~0.58 MiB, 0 boot impact.
-  Remaining for the phase: intel panel UI,
-  AI intel play (spends operational on sabotage, steals tech).
+  Remaining for the phase: mixed-use discovery (warning + grace
+  period) and AI intel play (spends operational on sabotage, steals
+  tech). The intel panel UI is DONE (2026-09-30, 0.1 Alpha):
+  `game/src/ui/intel.ts` contract module + the Intelligence panel in
+  the Management tab + the three covert-op order builders with the
+  sim's exact payloads, 29 tests in `tests/ui.intel.test.ts` and
+  `docs/HOW_TO_PLAY.md` player docs.
 
 ### S7. Transport networks
 - Data: `roads` → `RoadCell[]` `{cell, cls}` sorted by cell
@@ -942,8 +947,33 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   `sabotage` / `stealTech` commands, `acquireTarget` +
   `getVisibleEnemies` + `effectiveSight` hooks, economy-tick wiring
   (`createIntelSystem`, `registerIntelCommands` in `ui/session.ts`).
-  Balance rationale: `docs/research/intel-roster.md`. Remaining for
-  Phase 7: the intel panel UI (UI workstream).
+  Balance rationale: `docs/research/intel-roster.md`. Workstream 4
+  (the intel panel UI) landed (2026-09-30, 0.1 Alpha): new
+  `game/src/ui/intel.ts` contract module (asset counters + accrual
+  rates mirroring the sim, spy display states, warnings with
+  countdowns + what-happens-next, rival airports discovered /
+  UNVERIFIED, op targets, steal preview, `ia:` / `ir:` / `is:` /
+  `iw:` / `ig:` / `iu:` digest segments), the **Intelligence** panel
+  in the Management tab (HUD asset counters + `intelSectionEl`),
+  `buildInfiltrateOrder` / `buildSabotageOrder` / `buildStealTechOrder`
+  with the sim's exact `{ unitId, buildingId, owner }` payloads,
+  29 tests in `tests/ui.intel.test.ts` + payload + digest tests in
+  `ui.orders` / `ui.paletteDigest`, and `docs/HOW_TO_PLAY.md` player
+  docs. Workstream 3 (recon value + mixed-use discovery) landed
+  (2026-09-30, 0.1 Alpha): `BuildingDef.radarRadius` (radarStation 90,
+  non-stealthed only), `UnitDef.recon` (reconTeam/reconUAV/reconPlane),
+  `buildingSightCoverage` wired into `getVisibleEnemies` at AI think
+  cadence (SIGINT sees everything incl. spies; radar never sees spies;
+  satelliteUplink keeps the `effectiveSight` hook), and the
+  mixed-airport discovery lifecycle — observation (embedded unburned
+  spy / SIGINT coverage / recon overflight) → `suspected` warning with
+  a 60-second countdown → `revealed` after exactly 1800 ticks
+  (suspicion latches, zero RNG, `BuildingRecord.discovery` AD9 —
+  digest + snapshot covered, stays v8); the UI seam
+  (`discoveryStateOf` / `airportDisplayType` / `discoveryWarnings` /
+  real-state rival airports), 22 tests in
+  `tests/sim.intel-sight.test.ts`. Remaining for Phase 7: AI spy
+  assignment.
 
 ### Phase 8 — Tech-level roster pass + peaceful mode (M + S)
 - **Goal:** Mk II/III variants across the roster (art-shared,

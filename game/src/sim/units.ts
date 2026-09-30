@@ -366,6 +366,20 @@ export interface UnitDef {
    * `isDetected` in sim/intel.ts). Only the spy sets this.
    */
   stealth?: boolean;
+  // ------------------------------------------------------------------
+  // Grand-expansion Phase 7 (S6 intel, workstream 3, 2026-09-30): the
+  // dedicated-recon flag. A living recon unit whose sight covers a
+  // rival's mixed airport anchor *observes* it — the recon-overflight
+  // discovery source (`airportObservedBy` in sim/intel.ts). Set on
+  // reconTeam, reconUAV, reconPlane.
+  // ------------------------------------------------------------------
+  /**
+   * When true, this unit is a dedicated recon asset: its overflight
+   * can discover mixed-use airports (and it is the honest,
+   * always-visible alternative to the spy). Only reconTeam, reconUAV,
+   * reconPlane set this.
+   */
+  recon?: boolean;
 }
 
 /** Mobile HQ command aura: radius and friendly damage bonus. */
@@ -623,6 +637,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 0, trainFunds: 220, trainMaterials: 30, requiredBuilding: 'airfield',
     fuelCapacity: 30, fuelPerSecond: 0.25, fuelType: 'fossil', // 120 s; cheap expendable eyes
     hangarClass: 'light', carrierCapable: true,
+    recon: true, // dedicated recon asset — overflight can discover mixed airports
   },
   armedUAV: {
     kind: 'armedUAV', name: 'Armed UAV', domain: 'air', hp: 70, speed: 30, armor: 'light',
@@ -640,6 +655,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 2, trainFunds: 950, trainMaterials: 140, requiredBuilding: 'airfield',
     fuelCapacity: 64, fuelPerSecond: 0.4, fuelType: 'fossil', // 160 s; outruns what it can't outsee
     hangarClass: 'medium',
+    recon: true, // dedicated recon asset — overflight can discover mixed airports
   },
   gunship: {
     kind: 'gunship', name: 'Gunship', domain: 'air', hp: 280, speed: 22, armor: 'medium',
@@ -994,6 +1010,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     damage: 8, range: 12, minRange: 0, cooldownTicks: 30, targets: 'ground',
     vsLight: 0.8, vsMedium: 0.4, vsHeavy: 0.2, vsAir: 1.0, sight: 44, minAge: 'connectivity',
     manpowerCost: 2, trainFunds: 150, trainMaterials: 15, requiredBuilding: 'barracks',
+    recon: true, // dedicated recon asset — overflight can discover mixed airports
   },
 };
 

@@ -809,6 +809,18 @@ export interface BuildingDef {
    * effectiveSight hook). Set on satelliteUplink only.
    */
   sightBonus?: number;
+  /**
+   * Grand-expansion Phase 7 (S6 intel, workstream 3, 2026-09-30):
+   * conventional radar coverage in world units. A completed,
+   * operational, unsabotaged building reveals NON-stealthed enemy units
+   * inside this radius (centered on its footprint center) to its
+   * owner's AI perception (`getVisibleEnemies` in sim/ai.ts) — the
+   * "radar sight term". Unlike `detectionRadius` (SIGINT — catches
+   * spies), radar never detects stealthed units: the counter-spy
+   * monopoly stays with the listeningPost / signalsStation. Set on
+   * radarStation only.
+   */
+  radarRadius?: number;
 }
 
 /**
@@ -1171,6 +1183,13 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: { research: 0.5 }, input: {}, population: 0, taxBasePerSec: 3.0,
     minAge: 'connectivity',
     jobs: 8,
+    // Phase 7 (S6 intel, workstream 3): conventional early-warning
+    // radar — reveals non-stealthed enemies in a 90-unit radius to the
+    // owner's AI perception (the getVisibleEnemies sight term). Blind
+    // to spies by design (see radarRadius on BuildingDef): a cheap
+    // Connectivity-age radar must not obsolete the Information-age
+    // SIGINT counter-spy game.
+    radarRadius: 90,
   },
   quarry: {
     kind: 'quarry', name: 'Quarry', zone: ZoneType.INDUSTRIAL,
@@ -2015,6 +2034,41 @@ export function findBuildingHangarSlot(
   return -1;
 }
 
+/**
+ * Grand-expansion Phase 7 (S6 intel, workstream 3, 2026-09-30): one
+ * viewer's discovery state for a mixed-use airport anchor. Only ever
+ * set on buildings whose def has `airportType === 'mixed'`; the owner
+ * never appears as a viewer of their own airport (they know what they
+ * built).
+ *
+ * Lifecycle (advanced by `runAirportDiscovery` in sim/intel.ts):
+ *  - `suspected`: a rival's observation (embedded spy, SIGINT coverage,
+ *    or recon overflight) fired the warning at `warnedTick` — the
+ *    discovering side is told "suspicious military activity", but the
+ *    airport still displays civilian to them. Suspicion latches: the
+ *    photos exist, analysis is inevitable (a documented fairness
+ *    choice — the grace period is the analysis window, not a second
+ *    observation gate).
+ *  - `revealed`: at `warnedTick + AIRPORT_DISCOVERY_GRACE_TICKS` the
+ *    true type flips visible — the airport displays as mixed (its true
+ *    type) to this viewer from now on, and the discovering side's AI
+ *    may treat it as a military target.
+ *
+ * Plain data (JSON-safe): snapshotted (v8, AD9 additive — no version
+ * bump) and digest-covered (PLAN §11 — display-affecting). The UI seam
+ * for the intel panel: read `building.discovery` (or
+ * `discoveryStateOf` in ui/airports.ts) for the viewing owner.
+ */
+export interface AirportDiscoveryState {
+  /** The discovering owner (never the airport's owner). */
+  viewer: number;
+  state: 'suspected' | 'revealed';
+  /** World tick the warning fired (observation tick). */
+  warnedTick: number;
+  /** warnedTick + grace; 0 until revealed. */
+  revealedTick: number;
+}
+
 export interface BuildingRecord {
   id: number;
   kind: BuildingKind;
@@ -2110,6 +2164,17 @@ export interface BuildingRecord {
    * AD9 additive — no version bump) and digest-covered.
    */
   sabotagedUntil?: number;
+  /**
+   * Grand-expansion Phase 7 (S6 intel, workstream 3, 2026-09-30):
+   * per-viewer mixed-airport discovery state (`AirportDiscoveryState`,
+   * above). Undefined/empty = no rival has observed this airport twice.
+   * Set ONLY by `runAirportDiscovery` (sim/intel.ts), never by a
+   * command; demolishing the building deletes the records with it.
+   * Optional so pre-Phase-7 record literals keep compiling; every read
+   * uses `?? []` (AD9). Snapshotted (v8, additive — no version bump)
+   * and digest-covered (display-affecting, PLAN §11).
+   */
+  discovery?: AirportDiscoveryState[];
 }
 
 /** One player's stockpiles and policy. */

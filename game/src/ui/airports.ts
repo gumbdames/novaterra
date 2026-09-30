@@ -31,7 +31,8 @@
  * - `BuildingDef`: `zone` (=== ZoneType.AIRPORT), `airportType`,
  *   `hangarClass`, `hangarCapacity`, `runwayClass`.
  * - `BuildingRecord`: `kind`, `owner`, `cx`, `cz`, `progress`,
- *   `operational`.
+ *   `operational`, `discovery` (the Phase 7 mixed-airport discovery
+ *   records — `discoveryStateOf` is the panel's read seam).
  * - `UnitDef`: `hangarClass` (the aircraft workstream assigns these;
  *   unassigned ⇒ undefined ⇒ "unclassified" in the UI).
  * - `CityState.airlineRoutes` / `establishAirlineRoute` /
@@ -49,6 +50,7 @@
 import { BUILDING_DEFS, ZoneType, cellCenterWorld } from '../sim/city';
 import type {
   AircraftClass,
+  AirportDiscoveryState,
   BuildingKind,
   BuildingRecord,
 } from '../sim/city';
@@ -87,13 +89,28 @@ export function isAirportAnchor(b: BuildingRecord): boolean {
 // ---------------------------------------------------------------------------
 
 /**
+ * The viewer's discovery record for a mixed airport anchor, or
+ * undefined when this viewer has never observed it twice. Defensive:
+ * pre-Phase-7 buildings have no `discovery` array. This is the UI seam
+ * for the intel panel (workstream 3 owns the sim state; the panel owns
+ * the presentation).
+ */
+export function discoveryStateOf(
+  b: BuildingRecord,
+  viewerOwner: number,
+): AirportDiscoveryState | undefined {
+  return (b.discovery ?? []).find((d) => d.viewer === viewerOwner);
+}
+
+/**
  * What an airport READS AS to `viewerOwner`. The owner always sees the
  * true `airportType`; everyone else sees a mixed airport as civilian —
  * a mixed site is military-capable but looks like a civil airport until
- * discovered. Phase 7 (intelligence) hooks here: when recon discovers a
- * mixed site, the discovered set flips the display to 'military' for the
- * discovering owner — the hook is this function's signature, not a new
- * branch later.
+ * discovered. Phase 7 (intelligence, workstream 3) wires the hook: once
+ * the viewer's discovery record is `revealed` (warning fired, grace
+ * period elapsed — see `runAirportDiscovery` in sim/intel.ts), the
+ * display flips to the true type ('mixed'). A merely `suspected`
+ * airport still reads civilian — the warning is not the reveal.
  */
 export function airportDisplayType(
   b: BuildingRecord,
@@ -102,6 +119,9 @@ export function airportDisplayType(
   const type = BUILDING_DEFS[b.kind]?.airportType;
   if (type === undefined) return undefined;
   if (b.owner === viewerOwner) return type;
+  if (type === 'mixed' && discoveryStateOf(b, viewerOwner)?.state === 'revealed') {
+    return 'mixed';
+  }
   return type === 'mixed' ? 'civilian' : type;
 }
 

@@ -147,6 +147,10 @@ import {
   buildEmbarkOrder,
   buildBaseOrder,
   buildLaunchOrder,
+  // Grand-expansion Phase 7 (intel): the covert-op orders.
+  buildInfiltrateOrder,
+  buildSabotageOrder,
+  buildStealTechOrder,
   buildSetMayorBuildPolicyOrder,
   buildSetGeneralStanceOrder,
   buildSetSpecializationOrder,
@@ -878,6 +882,19 @@ class GameController {
       onBaseAircraft: (unitId, buildingId) =>
         this.enqueue(buildBaseOrder(unitId, buildingId, HUMAN_PLAYER_ID)),
       onLaunchAircraft: (unitId) => this.enqueue(buildLaunchOrder(unitId, HUMAN_PLAYER_ID)),
+      // Grand-expansion Phase 7 (intel): selecting a spy from the intel
+      // panel, and the covert-op orders. The sim validates each at
+      // enqueue AND apply time; a rejection throws CommandRejectedError
+      // and the player gets a loud toast — never a silent no-op.
+      onSelectUnit: (unitId) => {
+        this.selection = selectUnits([unitId]);
+      },
+      onInfiltrateBuilding: (spyId, buildingId) =>
+        this.enqueue(buildInfiltrateOrder(HUMAN_PLAYER_ID, spyId, buildingId)),
+      onSabotageBuilding: (spyId, buildingId) =>
+        this.enqueue(buildSabotageOrder(HUMAN_PLAYER_ID, spyId, buildingId)),
+      onStealTech: (spyId, buildingId) =>
+        this.enqueue(buildStealTechOrder(HUMAN_PLAYER_ID, spyId, buildingId)),
       // Phase 3: superweapons, specialization, trade, delegation.
       onFireAegis: () => this.issueOrder(buildFireAegisOrder(HUMAN_PLAYER_ID)),
       onStormTarget: () => {

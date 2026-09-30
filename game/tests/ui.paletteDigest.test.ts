@@ -39,6 +39,7 @@ import { createSession, HUMAN_PLAYER_ID } from '../src/ui/session';
 import { selectionDigest, HUD_PANEL_BRANCHES } from '../src/ui/paletteDigest';
 import { createSelection, selectUnits } from '../src/ui/selection';
 import { getPlayer, type BuildingRecord } from '../src/sim/city';
+import { spawnUnit, type UnitRecord } from '../src/sim/units';
 import { UPGRADE_GROUPS } from '../src/ui/palettes';
 
 const GAME_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -274,6 +275,137 @@ describe('selectionDigest', () => {
     const civilianBefore = selectionDigest(world, NO_SEL, 'infantry', 'housing');
     player.taxRates[0] = 0.5;
     expect(selectionDigest(world, NO_SEL, 'infantry', 'housing')).toBe(civilianBefore);
+  });
+});
+
+describe('selectionDigest (Phase 7: intel panel)', () => {
+  it('the Management tab digests the intel counters, spies, warnings, and airports', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const digest = (): string =>
+      selectionDigest(world, NO_SEL, 'infantry', 'housing', undefined, 'management');
+    const base = digest();
+    // The five new segments ride the Management tab's Management-panel
+    // branch — exactly where the intel panel renders.
+    for (const seg of ['ia:', 'ir:', 'is:', 'iw:', 'ig:']) {
+      expect(base).toContain(seg);
+    }
+    // Other tabs don't render the intel panel, so the segments stay out.
+    expect(selectionDigest(world, NO_SEL, 'infantry', 'housing')).not.toContain('ia:');
+  });
+
+  it('asset counters move the digest only when their rendered value changes', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const digest = (): string =>
+      selectionDigest(world, NO_SEL, 'infantry', 'housing', undefined, 'management');
+    const base = digest();
+    expect(base).toContain('ia:0:0:0');
+    const intel = getPlayer(world.city, HUMAN_PLAYER_ID)!.intel;
+    // A fractional accrual below the floor doesn't repaint the counter.
+    intel.surveillance = 0.9;
+    expect(digest()).toBe(base);
+    intel.surveillance = 1.1;
+    const spent = digest();
+    expect(spent).not.toBe(base);
+    expect(spent).toContain('ia:1:0:0');
+    // Under the civilian tab nothing moves — the intel counters aren't
+    // rendered there.
+    const civilian = selectionDigest(world, NO_SEL, 'infantry', 'housing');
+    intel.surveillance = 50;
+    expect(selectionDigest(world, NO_SEL, 'infantry', 'housing')).toBe(civilian);
+  });
+
+  it('accrual rates move the digest when intel buildings come online', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const digest = (): string =>
+      selectionDigest(world, NO_SEL, 'infantry', 'housing', undefined, 'management');
+    const base = digest();
+    expect(base).toContain('ir:0.00:0.00:0.00');
+    const b: BuildingRecord = {
+      id: world.city.nextBuildingId++,
+      kind: 'listeningPost',
+      owner: HUMAN_PLAYER_ID,
+      cx: 64,
+      cz: 64,
+      facing: 0,
+      progress: 1,
+      level: 1,
+      operational: true,
+      powered: true,
+      watered: true,
+    };
+    world.city.buildings.push(b);
+    const rated = digest();
+    expect(rated).not.toBe(base);
+    expect(rated).toContain('ir:0.25:0.00:0.00');
+    // Sabotaging it offline changes the rates back — and adds a warning.
+    b.sabotagedUntil = world.tick + 100;
+    const warned = digest();
+    expect(warned).not.toBe(rated);
+    expect(warned).toContain('ir:0.00:0.00:0.00');
+    expect(warned).toContain('iw:sabotage-');
+  });
+
+  it('spy mission states and warnings move the digest', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const digest = (): string =>
+      selectionDigest(world, NO_SEL, 'infantry', 'housing', undefined, 'management');
+    const spy = spawnUnit(world, 'spy', HUMAN_PLAYER_ID, 0, 0) as UnitRecord;
+    expect(digest()).toContain(`is:${spy.id}:h`);
+    // Burning the spy moves is: (the panel row) and iw: (the warning).
+    spy.spottedUntil = world.tick + 900;
+    const burned = digest();
+    expect(burned).toContain(`is:${spy.id}:b30`);
+    expect(burned).toContain(`iw:burned-${spy.id}.exposure.30`);
+  });
+
+  it('rival airports move the ig: segment', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const digest = (): string =>
+      selectionDigest(world, NO_SEL, 'infantry', 'housing', undefined, 'management');
+    const base = digest();
+    const a: BuildingRecord = {
+      id: world.city.nextBuildingId++,
+      kind: 'mixedAirport',
+      owner: 1,
+      cx: 64,
+      cz: 64,
+      facing: 0,
+      progress: 1,
+      level: 1,
+      operational: true,
+      powered: true,
+      watered: true,
+    };
+    world.city.buildings.push(a);
+    const discovered = digest();
+    expect(discovered).not.toBe(base);
+    expect(discovered).toContain(`ig:${a.id}.civilian`);
+  });
+
+  it('iu: tracks the selected spy mission state (and stays x for non-spies)', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const spy = spawnUnit(world, 'spy', HUMAN_PLAYER_ID, 0, 0) as UnitRecord;
+    const spySel = selectUnits([spy.id]);
+    const digest = (): string => selectionDigest(world, spySel, 'infantry', 'housing');
+    const base = digest();
+    expect(base).toContain(`iu:${spy.id}:h`);
+    spy.spottedUntil = world.tick + 600;
+    const burned = digest();
+    expect(burned).not.toBe(base);
+    expect(burned).toContain(`iu:${spy.id}:b20`);
+    // A selected non-spy digests x — the panel renders no intel line.
+    const rifleman = world.units.find(
+      (u) => u.owner === HUMAN_PLAYER_ID && u.kind === 'rifles',
+    )!;
+    expect(
+      selectionDigest(world, selectUnits([rifleman.id]), 'infantry', 'housing'),
+    ).toContain(`iu:${rifleman.id}:x`);
   });
 });
 

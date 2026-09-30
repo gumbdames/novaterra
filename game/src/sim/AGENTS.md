@@ -160,7 +160,14 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   navalProbeIndex, navalWater, seenSubmarine, personality) is plain data —
   snapshotted (v6, no bump: missing personalities decode to the neutral
   personality, the step-7 precedent) and digested (personality included).
-  `getVisibleEnemies` adds the Signals Grid sight bonus.
+  `getVisibleEnemies` adds the Signals Grid sight bonus, the effectiveSight
+  upgrade hook, veterancy sight, and — grand-expansion Phase 7 (S6 intel,
+  workstream 3, 2026-09-30) — the building sight term from
+  `buildingSightCoverage` (sim/intel.ts): completed, operational,
+  unsabotaged listeningPost/signalsStation SIGINT coverage and
+  radarStation radar. The building term runs at AI think cadence only;
+  combat's `acquireTarget` never consults it, so a radar contact the AI
+  "knows about" still has to be engaged by a unit that can reach it.
   Transport (grand-expansion Phase 4): `thinkCivilianTransport` is a
   documented no-op (civilian buses/trams/trains/ferries have no combat
   role; the civilian trader rival is deferred) and `thinkRoadClasses`
@@ -266,6 +273,25 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   accrual + the sabotage offline gate, so intel.ts must never import
   economy.ts by value (the steal research grant inlines the
   `addStock(player, 'research', n)` mutation instead).
+  Workstream 3 (2026-09-30) adds the recon half: `BuildingDef.radarRadius`
+  (city.ts — radarStation 90; conventional radar, non-stealthed only),
+  `UnitDef.recon` (units.ts — reconTeam, reconUAV, reconPlane),
+  `buildingSightCoverage(world, owner)` (the building sight term consumed
+  by `getVisibleEnemies` at AI think cadence — SIGINT sees everything
+  incl. spies, radar sees non-stealthed only, both gated on completed +
+  operational + unsabotaged; satelliteUplink keeps flowing through the
+  `intelSightBonus`→`effectiveSight` hook, no geometric term), and the
+  mixed-airport discovery lifecycle (`isMixedAirportAnchor`,
+  `airportObservedBy` — three observation sources: embedded unburned
+  spy, SIGINT coverage, recon overflight — `runAirportDiscovery`,
+  `AIRPORT_DISCOVERY_GRACE_TICKS = 1800`): the first observed tick
+  creates a `suspected` record on `BuildingRecord.discovery` (THE
+  WARNING), which flips to `revealed` after exactly 1800 ticks —
+  suspicion latches, no decay, no RNG. Runs every tick via
+  `createIntelSystem`. Digest- and snapshot-covered (AD9 additive, stays
+  v8). The UI seam lives in ui/airports.ts (`discoveryStateOf`,
+  `airportDisplayType`) and ui/intel.ts (`discoveryWarnings`, the rival
+  airports list with real discovery state).
 - `veterancy.ts` — unit veterancy (grand-expansion Phase 1, pure: no
   imports from combat/city, so no cycles). `UnitRecord.xp` grows on
   kills (`xpForKillValue = trainFunds + trainMaterials`), `vetLevel`
@@ -394,7 +420,11 @@ canonical hangar data model and every other module reads it:
   check `chasing`, not just `targetId`.
 - **AI fairness is structural.** The AI never reads enemy positions
   directly — all perception flows through `getVisibleEnemies()`, which
-  filters by sight range from the AI's own units. The AI issues the same
+  filters by sight range from the AI's own units PLUS the building
+  surveillance term (grand-expansion Phase 7, S6 intel workstream 3,
+  2026-09-30: listeningPost/signalsStation SIGINT sees everything
+  including spies; radarStation radar sees non-stealthed only; both
+  gated on completed + operational + unsabotaged). The AI issues the same
   commands a human would; it never mutates world state directly (except
   its own `world.ai` record).
 - **AI respects command validation.** Before issuing `attackUnit`, the AI

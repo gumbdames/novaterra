@@ -102,6 +102,13 @@ export function canonicalizeWorld(world: World): string {
     // (legacy decode default 0). Behavior-affecting (sabotaged
     // buildings produce nothing) ⇒ digest-covered (PLAN §11).
     out += `${b.sabotagedUntil ?? 0},`;
+    // Grand-expansion Phase 7 (S6 intel, workstream 3, 2026-09-30):
+    // mixed-airport discovery state — display-affecting (a revealed
+    // airport reads as mixed to the discovering viewer) ⇒
+    // digest-covered (PLAN §11). `viewer:revealedFlag:warnedTick:
+    // revealedTick` per record, viewer order; legacy decode default is
+    // no records (the empty string).
+    out += `${(b.discovery ?? []).map((d) => `${d.viewer}:${d.state === 'revealed' ? 1 : 0}:${d.warnedTick}:${d.revealedTick}`).join('.')},`;
     // Phase 4 occupancy + variety (2026-09-30): behavior-affecting
     // (occupancy) and selection-panel-visible (variant), so both are
     // digest-covered (legacy decode defaults 0/0/0/1).

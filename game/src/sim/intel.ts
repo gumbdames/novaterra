@@ -62,13 +62,13 @@
  *  - No hyper-lethal counter-intel: counter-intel shortens sabotage
  *    and widens detection — it never kills units by itself.
  *
- * Import discipline (R2): this module imports city/units by value and
- * commands/world/tick by TYPE only. It deliberately does NOT import
- * upgrades.ts by value: upgrades.ts consumes `intelSightBonus` (the
- * `effectiveSight` hook), so the value edge runs upgrades→intel —
- * one-directional, no cycle (units→upgrades→intel→units would close a
- * 3-cycle). Upgrade checks here go through the local `hasUpgradeId`
- * helper (identical semantics to `hasUpgrade` in upgrades.ts).
+ * Import discipline (R2): this module imports city/units/upgrades by
+ * value and commands/world/tick by TYPE only. The upgrades value
+ * import is one-directional (upgrades.ts never imports intel.ts — no
+ * cycle). Upgrade *checks* still go through the local `hasUpgradeId`
+ * helper (identical semantics to `hasUpgrade` in upgrades.ts) so the
+ * hot paths don't pay for indirection; `intelSightBonus` itself is
+ * imported because this module's recon code calls it directly.
  * `intelSightBonus` is implemented in upgrades.ts next to its only
  * consumer and re-exported here so the §3.8 contract ("import it from
  * sim/intel.ts") keeps working.
@@ -91,6 +91,10 @@ import type { BuildingRecord, IntelAssetKey, IntelAssets } from './city';
 import { UNIT_DEFS, findUnit } from './units';
 import type { UnitRecord } from './units';
 import { rngBank } from './world';
+// Value import (not type-only): this module's recon code calls
+// `intelSightBonus`, and the §3.8 contract re-exports it from here.
+// No cycle — upgrades.ts never imports intel.ts (R2).
+import { intelSightBonus, SIGNALS_INTEL_SIGHT_BONUS } from './upgrades';
 
 // ---------------------------------------------------------------------------
 // Upgrade checks (local — see the import-discipline note above)
@@ -319,15 +323,237 @@ export function sabotageDurationSec(world: World, victimOwner: number): number {
   return BASE_SABOTAGE_DURATION_SEC * mult;
 }
 
+// ---------------------------------------------------------------------------
+// Recon value: the getVisibleEnemies building sight term (workstream 3)
+// ---------------------------------------------------------------------------
+
+/**
+ * One building's perception coverage: footprint center, radius, and
+ * whether it sees stealthed units.
+ */
+export interface BuildingSightCoverage {
+  x: number;
+  z: number;
+  radius: number;
+  /** SIGINT (detectionRadius) sees spies; conventional radar does not. */
+  seesStealth: boolean;
+}
+
+/**
+ * The S6 hook spec's building sight term: completed, operational,
+ * unsabotaged buildings of `owner` with detection/surveillance output
+ * extend perception (building id order — deterministic). Two flavors:
+ *
+ *  - SIGINT (`detectionRadius`: listeningPost, signalsStation) — sees
+ *    everything inside, including stealthed units (consistent with
+ *    `isDetected`). The counterIntel radius bonus applies, exactly as
+ *    in `detectionRadiusAt`.
+ *  - Conventional radar (`radarRadius`: radarStation) — non-stealthed
+ *    enemies only, by design: a cheap Connectivity-age radar must not
+ *    obsolete the Information-age SIGINT counter-spy game.
+ *
+ * satelliteUplink needs no geometric term: its `sightBonus` already
+ * flows through the `effectiveSight` hook as a standing unit-sight
+ * bonus. reconTeam / reconUAV / reconPlane contribute through their
+ * high platform sight via the existing unit-sight path in
+ * `getVisibleEnemies` (verified by test — no separate term needed).
+ *
+ * The "completed and working" gate (progress >= 1, operational, not
+ * sabotaged) mirrors `runIntelAccrual`: a dark or sabotaged post sees
+ * nothing. Consumed by `getVisibleEnemies` (ai.ts) at AI think cadence
+ * — never per-tick combat (PLAN §4 S6).
+ */
+export function buildingSightCoverage(world: World, owner: number): BuildingSightCoverage[] {
+  const out: BuildingSightCoverage[] = [];
+  const radiusBonus = hasUpgradeId(world, owner, 'counterIntel') ? COUNTER_INTEL_RADIUS_BONUS : 0;
+  for (const b of world.city.buildings) {
+    if (b.owner !== owner || b.progress < 1 || !b.operational) continue;
+    if (isSabotaged(b, world.tick)) continue;
+    const c = buildingCenterWorld(b);
+    const sigint = BUILDING_DEFS[b.kind]?.detectionRadius ?? 0;
+    if (sigint > 0) {
+      out.push({ x: c.x, z: c.z, radius: sigint + radiusBonus, seesStealth: true });
+      continue;
+    }
+    const radar = BUILDING_DEFS[b.kind]?.radarRadius ?? 0;
+    if (radar > 0) {
+      out.push({ x: c.x, z: c.z, radius: radar, seesStealth: false });
+    }
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Mixed-airport discovery (workstream 3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Warning → reveal grace period, in ticks. 1800 ticks = 60
+ * sim-seconds — the same order as an infiltration (20 s) or a sabotage
+ * (45 s): one counter-intel cycle. Long enough for the discovering side
+ * to feel the warning as a real event (several AI think cadences at any
+ * difficulty), short enough that the reveal lands inside a session.
+ * Fixed and deterministic: the same observation tick always reveals at
+ * the same tick. Rationale in docs/research/intel-roster.md §7.
+ */
+export const AIRPORT_DISCOVERY_GRACE_TICKS = 1800;
+
+/** True when the unit is a dedicated recon asset (`UnitDef.recon`). */
+export function isReconUnit(u: UnitRecord): boolean {
+  return UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS]?.recon === true;
+}
+
+/** True when the building is a completed mixed-use airport anchor. */
+export function isMixedAirportAnchor(b: BuildingRecord): boolean {
+  return b.progress >= 1 && BUILDING_DEFS[b.kind]?.airportType === 'mixed';
+}
+
+/**
+ * Has `viewer` observed the mixed airport anchor `b` this tick? Pure
+ * geometry + mission state — no RNG (PLAN §4 S6: detection is a pure
+ * function of positions; the named `intel-<owner>` streams stay
+ * reserved for the stochastic action rolls).
+ *
+ * Three observation verbs — the three things the intel phase already
+ * gives a player to do (the documented mechanism choice; rationale in
+ * docs/research/intel-roster.md §7). Spending surveillance assets
+ * directly was rejected: assets gate sabotage/steal (operations),
+ * while discovery is observation — letting a rich player buy reveals
+ * with no map presence would be exactly the "gotcha" the plan
+ * forbids.
+ *
+ *  1. Embedded spy: a living, unburned spy of `viewer` with
+ *     `embeddedIn === b.id` sees the military ramps from inside. A
+ *     burned spy (`spottedUntil` in the future) reports nothing —
+ *     its cover is blown.
+ *  2. SIGINT coverage: the airport sits inside the viewer's
+ *     listening-post / signals-station net (`detectionRadiusAt`).
+ *  3. Recon overflight: a living recon unit (reconTeam / reconUAV /
+ *     reconPlane) whose sight covers the airport center. Sight here is
+ *     platform sight + the intel net bonus (`intelSightBonus`) — the
+ *     deliberate simplification vs `effectiveSight` (no Drone Optics /
+ *     Avionics / veterancy terms): a camera sees what the platform
+ *     sees, and it keeps this module's upgrades edge one-directional
+ *     (R2 — intel.ts never imports upgrades.ts by value).
+ *
+ * The owner's counterplay is always on the map: recon assets are overt
+ * (reconTeam) or detectable (spies burn inside your detection radii;
+ * recon aircraft can be shot down). No silent reveals — the warning
+ * below fires first, always.
+ */
+export function airportObservedBy(
+  world: World,
+  viewer: number,
+  b: BuildingRecord,
+  spies: UnitRecord[],
+  recon: UnitRecord[],
+): boolean {
+  const c = buildingCenterWorld(b);
+  // (1) embedded spy — the spy's own eyes, from inside.
+  for (const s of spies) {
+    if (s.embeddedIn === b.id && (s.spottedUntil ?? 0) <= world.tick) return true;
+  }
+  // (2) SIGINT coverage — the airport sits inside the viewer's net.
+  if (detectionRadiusAt(world, viewer, c.x, c.z) > 0) return true;
+  // (3) recon overflight — platform sight + the intel net bonus.
+  const netBonus = intelSightBonus(world, viewer);
+  for (const u of recon) {
+    const sight = (UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS]?.sight ?? 0) + netBonus;
+    const dx = c.x - u.x;
+    const dz = c.z - u.z;
+    if (dx * dx + dz * dz <= sight * sight) return true;
+  }
+  return false;
+}
+
+/**
+ * Advance mixed-airport discovery one tick: warning → grace → reveal.
+ *
+ * For every completed mixed airport anchor (building id order) and
+ * every rival viewer (player order): the first observed tick creates a
+ * `suspected` record — THE WARNING ("suspicious military activity at
+ * [airport]"). The display still reads civilian. After exactly
+ * AIRPORT_DISCOVERY_GRACE_TICKS the record flips to `revealed` and the
+ * airport's true type becomes visible to that viewer (the display-rule
+ * flip in ui/airports.ts; the discovering side's AI may then treat it
+ * as a military target).
+ *
+ * Suspicion latches — no decay, no re-observation needed during grace:
+ * once the photos exist, analysis is inevitable. A documented fairness
+ * choice: the grace period is the analysis window, not a second
+ * observation gate, and the warning always precedes the consequence.
+ *
+ * Deterministic: building id order, player order, viewer-sorted
+ * records, zero RNG. Runs every tick via `createIntelSystem` — cheap:
+ * only mixed anchors are scanned (early return when there are none),
+ * and per-viewer observer lists are built once per call.
+ */
+export function runAirportDiscovery(world: World): void {
+  const anchors: BuildingRecord[] = [];
+  for (const b of world.city.buildings) {
+    if (isMixedAirportAnchor(b)) anchors.push(b);
+  }
+  if (anchors.length === 0) return;
+  // Per-viewer observer units, built once: living spies and living
+  // recon assets, in unit id order (world.units is spawn/id order).
+  const spiesByViewer = new Map<number, UnitRecord[]>();
+  const reconByViewer = new Map<number, UnitRecord[]>();
+  for (const u of world.units) {
+    if (u.hp <= 0) continue;
+    if (isSpyUnit(u)) {
+      const list = spiesByViewer.get(u.owner) ?? [];
+      list.push(u);
+      spiesByViewer.set(u.owner, list);
+    } else if (isReconUnit(u)) {
+      const list = reconByViewer.get(u.owner) ?? [];
+      list.push(u);
+      reconByViewer.set(u.owner, list);
+    }
+  }
+  for (const b of anchors) {
+    const known = b.discovery ?? [];
+    for (const p of world.city.players) {
+      const viewer = p.id;
+      if (viewer === b.owner) continue;
+      let rec = known.find((d) => d.viewer === viewer);
+      if (rec !== undefined) {
+        // Suspicion latches: the grace window is analysis, not a second
+        // observation gate — the reveal needs no current observation.
+        if (
+          rec.state === 'suspected' &&
+          world.tick >= rec.warnedTick + AIRPORT_DISCOVERY_GRACE_TICKS
+        ) {
+          rec.state = 'revealed';
+          rec.revealedTick = world.tick;
+        }
+        continue;
+      }
+      const observed = airportObservedBy(
+        world, viewer, b,
+        spiesByViewer.get(viewer) ?? [],
+        reconByViewer.get(viewer) ?? [],
+      );
+      if (!observed) continue;
+      // First observed tick: THE WARNING. The display still reads
+      // civilian — the reveal comes after the grace period.
+      rec = { viewer, state: 'suspected', warnedTick: world.tick, revealedTick: 0 };
+      known.push(rec);
+    }
+    // Viewer order — deterministic digest + UI reads.
+    known.sort((a, b2) => a.viewer - b2.viewer);
+    if (known.length > 0) b.discovery = known;
+  }
+}
+
 /**
  * Standing unit-sight bonus (world units) for `owner`: the sum of
  * completed satelliteUplink `sightBonus` values plus the signalsIntel
  * upgrade bonus. Implemented in upgrades.ts next to its only consumer
- * (`effectiveSight`); re-exported here so the §3.8 contract ("import
- * it from sim/intel.ts") keeps working without closing a
- * units→upgrades→intel→units value cycle (R2).
+ * (`effectiveSight`); imported AND re-exported here so the §3.8
+ * contract ("import it from sim/intel.ts") keeps working (see the
+ * value-import note at the top of the file).
  */
-export { intelSightBonus, SIGNALS_INTEL_SIGHT_BONUS } from './upgrades';
+export { intelSightBonus, SIGNALS_INTEL_SIGHT_BONUS };
 
 /** Read one player's intel assets (undefined-safe for hand-built states). */
 export function getIntelAssets(world: World, owner: number): IntelAssets {
@@ -470,6 +696,12 @@ export function advanceIntelMissions(world: World): void {
 export function createIntelSystem(): SimSystem {
   return (world: World, _dt: number): void => {
     advanceIntelMissions(world);
+    // Grand-expansion Phase 7 (S6 intel, workstream 3, 2026-09-30):
+    // mixed-airport discovery — warning → grace → reveal. Every tick
+    // (cheap: returns immediately when no mixed anchors exist), because
+    // both AI perception and the human's intel picture read the same
+    // shared state — discovery is not think-gated.
+    runAirportDiscovery(world);
   };
 }
 

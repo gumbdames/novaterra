@@ -91,6 +91,9 @@ import { encodeUpgrades, decodeUpgrades } from './upgrades';
  *     hangar/airport data contract has a versioned home before workers
  *     A/B/C land their behavior; the decode defaults remain AD9-neutral
  *     so every old save still plays.
+ *     (Phase 7 workstream 3, 2026-09-30: BuildingRecord.discovery is
+ *     PURELY ADDITIVE on top of v8 — older saves decode to undefined,
+ *     no version bump, the sabotagedUntil precedent.)
  */
 export const SNAPSHOT_VERSION = 8;
 
@@ -183,6 +186,12 @@ function copyBuilding(b: BuildingRecord, legacy = false): BuildingRecord {
     // sabotage state. ?? 0 = not sabotaged (legacy saves never were —
     // no version bump, stays v8; the meltdown ?? 0 precedent).
     sabotagedUntil: b.sabotagedUntil ?? 0,
+    // Grand-expansion Phase 7 (S6 intel, workstream 3, 2026-09-30):
+    // mixed-airport discovery state. AD9 additive: legacy saves decode
+    // to undefined ("no rival has looked twice") — no version bump,
+    // stays v8 (the sabotagedUntil precedent). Take is faithful
+    // (absent stays absent); restore deep-copies the records.
+    discovery: b.discovery?.map((d) => ({ ...d })),
     // Phase 4 occupancy + variety (2026-09-30). AD9 ?? defaults: legacy
     // v6/v7 saves decode to empty buildings with the default look —
     // no version bump (the veterancy ?? 0 precedent).

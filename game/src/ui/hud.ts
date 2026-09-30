@@ -157,6 +157,32 @@ import {
   shelterLine,
   wingLine,
 } from './hangars';
+// Grand-expansion Phase 7 (intel, 2026-09-30): the intel UI contract —
+// asset counters, spy mission state, warnings, rival airports, and the
+// covert-action display lines. The panel reads the sim through this
+// module, never the records directly.
+import {
+  buildingLabel,
+  hasIntelBuildings,
+  infiltrateLabel,
+  intelAssetLines,
+  intelChipValues,
+  intelWarnings,
+  opTargetsOf,
+  playerSpies,
+  rivalAirportLine,
+  rivalAirports,
+  sabotageLabel,
+  spyDisplayState,
+  spyHeader,
+  spyMissionLine,
+  stealPayoffLine,
+  stealPreviewTechId,
+  stealTechLabel,
+  trainSpyHint,
+  warningLine,
+} from './intel';
+import { SABOTAGE_COST_OPERATIONAL, isSpyUnit } from '../sim/intel';
 
 /** Build-palette tools the HUD can request. */
 export type BuildTool =
@@ -218,6 +244,26 @@ export interface HUDActions {
   onBaseAircraft(unitId: number, buildingId: number): void;
   /** Phase 5 (hangar/carrier shelter): launch a parked/embarked aircraft. */
   onLaunchAircraft(unitId: number): void;
+  /** Grand-expansion Phase 7 (intel): select a unit on the map (intel panel spy list). */
+  onSelectUnit(unitId: number): void;
+  /**
+   * Grand-expansion Phase 7 (intel): order a spy to infiltrate an enemy
+   * building. The sim validates (ownership, adjacency, mission state)
+   * and rejects loudly in plain English — the controller toasts the
+   * reason, the panel never re-checks it.
+   */
+  onInfiltrateBuilding(spyId: number, buildingId: number): void;
+  /**
+   * Grand-expansion Phase 7 (intel): order a spy to sabotage an enemy
+   * building (25 operational assets; the building goes offline).
+   */
+  onSabotageBuilding(spyId: number, buildingId: number): void;
+  /**
+   * Grand-expansion Phase 7 (intel): order an embedded spy to steal
+   * tech (15 surveillance assets; the sim picks the tech
+   * deterministically — success grants research, failure burns the spy).
+   */
+  onStealTech(spyId: number, buildingId: number): void;
   /** Phase 3 (logistics): set a supply unit's field services. */
   onSetSupplyToggles(
     unitId: number,
@@ -387,6 +433,12 @@ export class HUD {
       ['influence', s.influence],
       ['manpower', s.manpower],
       ['population', s.population],
+      // Grand-expansion Phase 7 (intel): the three asset counters ride
+      // the same built-once/write-on-change chip path as the resources
+      // (topbar branch noDigestReason — nodes are never rebuilt).
+      ['intelSurveillance', s.intelSurveillance],
+      ['intelOperational', s.intelOperational],
+      ['intelCounterIntel', s.intelCounterIntel],
     ] as Array<[string, string]>) {
       const chip = el('div', 'hud-chip');
       chip.append(el('span', 'hud-chip-label', label));
@@ -795,9 +847,156 @@ export class HUD {
     panel.append(this.taxSectionEl(world));
     panel.append(this.focusSectionEl(world));
     panel.append(this.cabinetSectionEl(world));
+    // Grand-expansion Phase 7 (intel): the intel panel — asset
+    // counters, spies + covert actions, warnings, rival airports.
+    panel.append(this.intelSectionEl(world));
     if (playerHasCompletedLab(world, HUMAN_PLAYER_ID)) {
       this.appendResearchPanel(panel, world);
     }
+  }
+
+  /**
+   * Management → Intelligence: the intel panel (grand-expansion Phase
+   * 7). Asset counters + accrual rates, the spies (mission state,
+   * timers, covert-action buttons), active warnings with countdowns,
+   * and the rival airports (discovered/undiscovered).
+   *
+   * Named *El (not append/build/update-prefixed) per the ui/AGENTS.md
+   * AD11 rule — it is covered by the management-panel digest branch,
+   * not a branch of its own. All DOM classes are the shared panel
+   * classes that branch already claims; every rendered value is
+   * digested by the ia:/ir:/is:/iw:/ig: segments.
+   *
+   * The panel never validates: every covert-action button fires its
+   * order and the sim rejects loudly in plain English (game.ts toasts
+   * the reason) — no dead buttons, no silent no-ops.
+   */
+  private intelSectionEl(world: World): HTMLElement {
+    const s = STRINGS.intel;
+    const sec = this.makeSection(loc(s.panelTitle));
+
+    // Asset counters + accrual rates.
+    for (const line of intelAssetLines(world, HUMAN_PLAYER_ID)) {
+      const row = el('div', 'panel-row');
+      row.append(el('span', 'panel-label', line));
+      sec.append(row);
+    }
+    if (!hasIntelBuildings(world, HUMAN_PLAYER_ID)) {
+      sec.append(el('div', 'panel-status', loc(s.noIntelBuildings)));
+    }
+
+    // Spies + covert actions.
+    {
+      const row = el('div', 'panel-row');
+      row.append(el('span', 'panel-label', loc(s.spiesTitle)));
+      sec.append(row);
+    }
+    const spies = playerSpies(world, HUMAN_PLAYER_ID);
+    if (spies.length === 0) {
+      sec.append(el('div', 'panel-status', loc(s.noSpies)));
+    }
+    for (const spy of spies) {
+      const row = el('div', 'panel-row');
+      row.append(
+        el('span', 'panel-label', `${spyHeader(spy)} — ${spyMissionLine(world, spy)}`),
+      );
+      row.append(
+        this.makePanelButton(loc(s.selectSpy), loc(s.selectSpyTitle), () =>
+          this.actions.onSelectUnit(spy.id),
+        ),
+      );
+      sec.append(row);
+      // Covert actions against enemy buildings in reach.
+      const targets = opTargetsOf(world, spy);
+      if (targets.length === 0) {
+        sec.append(el('div', 'panel-status', loc(s.noTargets)));
+      }
+      for (const target of targets) {
+        const trow = el('div', 'panel-row');
+        trow.append(el('span', 'panel-label', buildingLabel(target)));
+        trow.append(
+          this.makePanelButton(loc(s.infiltrateVerb), loc(s.infiltrateTitle), () =>
+            this.actions.onInfiltrateBuilding(spy.id, target.id),
+          ),
+        );
+        trow.append(
+          this.makePanelButton(
+            sabotageLabel(),
+            fillLoc(s.sabotageTitle, { cost: SABOTAGE_COST_OPERATIONAL }),
+            () => this.actions.onSabotageBuilding(spy.id, target.id),
+          ),
+        );
+        sec.append(trow);
+      }
+      // Tech steal: offered when the spy is embedded in an enemy
+      // building (the sim's stealTech requires the embedding — the
+      // "Embedded … ready to steal tech" line says so).
+      const state = spyDisplayState(world, spy);
+      if (state.kind === 'embedded') {
+        const victimOwner = world.city.buildings.find(
+          (b) => b.id === state.targetId,
+        )?.owner;
+        const techId =
+          victimOwner === undefined
+            ? null
+            : stealPreviewTechId(world, HUMAN_PLAYER_ID, victimOwner);
+        const srow = el('div', 'panel-row');
+        srow.append(
+          el(
+            'span',
+            'panel-label',
+            techId !== null
+              ? fillLoc(s.stealPreview, { tech: upgradeName(techId as UpgradeId) })
+              : loc(s.stealNothingLeft),
+          ),
+        );
+        srow.append(
+          this.makePanelButton(
+            stealTechLabel(),
+            `${loc(s.stealTechTitle)} ${stealPayoffLine()}`,
+            () => this.actions.onStealTech(spy.id, state.targetId),
+          ),
+        );
+        sec.append(srow);
+      }
+    }
+    sec.append(
+      el('div', 'panel-status', `${loc(s.actionsHint)} ${stealPayoffLine()}`),
+    );
+    sec.append(el('div', 'panel-status', trainSpyHint()));
+
+    // Active warnings (no gotcha UX: countdown + what happens next).
+    {
+      const row = el('div', 'panel-row');
+      row.append(el('span', 'panel-label', loc(s.warningsTitle)));
+      sec.append(row);
+    }
+    const warnings = intelWarnings(world, HUMAN_PLAYER_ID);
+    if (warnings.length === 0) {
+      sec.append(el('div', 'panel-status', loc(s.noWarnings)));
+    }
+    for (const w of warnings) {
+      const row = el('div', 'panel-row');
+      row.append(el('span', 'panel-label', warningLine(w)));
+      sec.append(row);
+    }
+
+    // Rival airports (discovered / undiscovered).
+    {
+      const row = el('div', 'panel-row');
+      row.append(el('span', 'panel-label', loc(s.airportsTitle)));
+      sec.append(row);
+    }
+    const airports = rivalAirports(world, HUMAN_PLAYER_ID);
+    if (airports.length === 0) {
+      sec.append(el('div', 'panel-status', loc(s.noAirports)));
+    }
+    for (const a of airports) {
+      const row = el('div', 'panel-row');
+      row.append(el('span', 'panel-label', rivalAirportLine(a)));
+      sec.append(row);
+    }
+    return sec;
   }
 
   /** Management → Taxes: per-zone rate steppers over setTaxRate. */
@@ -988,6 +1187,12 @@ export class HUD {
       this.setText('influence', fmt(player.influence), this.resEls.get('influence'));
       this.setText('manpower', fmt(player.manpower), this.resEls.get('manpower'));
       this.setText('population', fmt(player.population), this.resEls.get('population'));
+      // Grand-expansion Phase 7 (intel): the asset counters, same
+      // write-on-change path as the resources (floored like fmt).
+      const [surv, ops, ci] = intelChipValues(world, HUMAN_PLAYER_ID);
+      this.setText('intelSurveillance', surv, this.resEls.get('intelSurveillance'));
+      this.setText('intelOperational', ops, this.resEls.get('intelOperational'));
+      this.setText('intelCounterIntel', ci, this.resEls.get('intelCounterIntel'));
     }
     const s = STRINGS.hud;
     // Age display names and program names.
@@ -1212,6 +1417,14 @@ export class HUD {
         // "Veteran ▲▲ · 320/500 XP". Reuses the 'sel-unit' class — no new
         // DOM class, no digest-registry change needed for markup.
         panel.append(el('div', 'sel-unit', vetXpLine(u)));
+        // Grand-expansion Phase 7 (intel): a selected owned spy shows
+        // its mission state ("Infiltrating Power Plant · 12s left",
+        // "Exposed — visible to all enemies · 24s left"). Reuses the
+        // 'sel-unit' class — no new DOM class; the iu: digest segment
+        // covers the rendered value (AD11).
+        if (u.owner === HUMAN_PLAYER_ID && isSpyUnit(u)) {
+          panel.append(el('div', 'sel-unit', spyMissionLine(world, u)));
+        }
         // Phase 3 (logistics): fuel/ammo bars for tracked units, the
         // cargo line + field-service toggles for supply units, and the
         // Resupply button. New DOM classes ('sel-bar', 'sel-bar-fill',

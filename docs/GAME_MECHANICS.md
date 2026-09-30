@@ -561,6 +561,23 @@ catch theirs. Stockpiling counter-intel assets also pays off
 passively: a deep stockpile makes enemy sabotage more likely to burn
 the spy and enemy tech-steals more likely to fail.
 
+Your detection buildings are also your eyes on the battlefield: a
+working Listening Post or Signals Station reports every enemy unit
+inside its radius — even spies — and the **Radar Station** (90-unit
+radar sweep) reports every enemy except spies, which only SIGINT can
+catch. Fly a **Recon UAV** or **Recon Plane** over enemy territory for
+long-range eyes, or march the Recon Team there. What your buildings
+and recon see, your side knows — but combat still needs a unit that
+can reach the target: a radar contact doesn't aim your guns by itself.
+
+Not every airport is what it claims to be. A **mixed-use airport**
+looks exactly like a civilian one until you discover it: park a spy
+inside it, cover it with your detection net, or fly recon over it,
+and your analysts flag it — "suspicious military activity." You get
+60 seconds of warning while they confirm the site; when they do, the
+airport reads as mixed-use on your map and may be treated as a
+military target. No ambushes: the warning always comes first.
+
 ## Maps
 
 Eight battlefields, from nearly all land to mostly ocean:

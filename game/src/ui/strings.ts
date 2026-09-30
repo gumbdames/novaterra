@@ -123,6 +123,11 @@ export const STRINGS = {
     influence: 'Influence',
     manpower: 'Manpower',
     population: 'Population',
+    // Grand-expansion Phase 7 (intel, 2026-09-30): the top-bar intel
+    // asset chips (built once, write-on-change like the other chips).
+    intelSurveillance: 'Surveillance',
+    intelOperational: 'Operational',
+    intelCounterIntel: 'Counter-intel',
     ageFoundation: 'Foundation',
     ageConnectivity: 'Connectivity',
     ageIndustry: 'Industry',
@@ -812,6 +817,89 @@ export const STRINGS = {
     aircraftClassLight: { en: 'Light' },
     aircraftClassMedium: { en: 'Medium' },
     aircraftClassHeavy: { en: 'Heavy' },
+  },
+  /** Grand-expansion Phase 7 (intel, 2026-09-30): the intel panel, spy lines, warnings. English-only. */
+  intel: {
+    panelTitle: { en: 'Intelligence' },
+    assetsTitle: { en: 'Intel assets' },
+    surveillance: { en: 'Surveillance' },
+    operational: { en: 'Operational' },
+    counterIntel: { en: 'Counter-intel' },
+    perSecond: { en: '/s' },
+    noIntelBuildings: {
+      en: 'No intel buildings yet — build a Listening Post or Intel HQ (Intel build tab) to generate assets.',
+    },
+    spiesTitle: { en: 'Spies' },
+    noSpies: { en: 'No spies trained yet.' },
+    trainSpyHint: { en: 'Train spies at the {building} — {funds} funds · {materials} materials' },
+    spyHeader: { en: 'Spy {id} · at ({x}, {z})' },
+    selectSpy: { en: 'Select' },
+    selectSpyTitle: { en: 'Select this spy on the map' },
+    /** Selected-spy / panel-row mission lines. */
+    spyHidden: { en: 'Hidden — undetected' },
+    spyDetected: { en: 'Inside rival detection coverage — visible to them' },
+    spyExposed: { en: 'Exposed — visible to all enemies · {seconds}s left' },
+    spyInfiltrating: { en: 'Infiltrating {target} · {seconds}s left' },
+    spyEmbedded: { en: 'Embedded in {target} — ready to steal tech' },
+    /** Covert actions. */
+    actionsTitle: { en: 'Covert actions' },
+    actionsHint: {
+      en: 'Move a spy next to a rival building, then pick a target below. The game checks every order — a refused order explains why.',
+    },
+    noTargets: { en: 'No rival buildings in reach — move the spy closer.' },
+    infiltrateVerb: { en: 'Infiltrate' },
+    infiltrateTitle: { en: 'Start a 20s infiltration of this building (spy must stay close)' },
+    sabotageVerb: { en: 'Sabotage · {cost}' },
+    sabotageTitle: {
+      en: 'Sabotage this building: it goes offline for a while. Costs {cost} operational assets.',
+    },
+    stealTechVerb: { en: 'Steal tech · {cost}' },
+    stealTechTitle: {
+      en: 'Steal research from the building this spy is embedded in. Costs {cost} surveillance assets.',
+    },
+    stealPreview: { en: 'Would steal: {tech}' },
+    stealNothingLeft: { en: 'Nothing left to steal from this rival' },
+    stealPayoff: { en: 'A successful steal grants {research} research' },
+    /** Warnings. */
+    warningsTitle: { en: 'Warnings' },
+    noWarnings: { en: 'All quiet — no active warnings.' },
+    secondsLeftSuffix: { en: '{seconds}s left' },
+    warnExposedTitle: { en: 'Spy {id} exposed' },
+    warnExposedDetail: { en: 'Visible to all enemies' },
+    warnExposedNext: {
+      en: 'Goes back into hiding when the timer ends — unless inside rival detection coverage.',
+    },
+    warnCoverageTitle: { en: 'Spy {id} inside rival detection' },
+    warnCoverageDetail: { en: 'A rival listening post or signals station can see this spy right now' },
+    warnCoverageNext: { en: 'Move the spy out of rival detection coverage to disappear again.' },
+    warnSabotageTitle: { en: '{building} sabotaged' },
+    warnSabotageDetail: { en: 'Offline' },
+    warnSabotageNext: {
+      en: 'Comes back online when the timer ends. Research Counter-intel to halve future sabotage.',
+    },
+    /** Rival airports. */
+    airportsTitle: { en: 'Rival airports' },
+    noAirports: { en: 'No rival airports known.' },
+    airportLine: { en: '{name} ({owner}) — reads as {readAs} · {flag}' },
+    airportCivilian: { en: 'civilian' },
+    airportMilitary: { en: 'military' },
+    airportMixed: { en: 'mixed-use' },
+    airportDiscovered: { en: 'known' },
+    airportUndiscovered: { en: 'UNVERIFIED — a mixed-use site reads as civilian until discovered' },
+    /**
+     * Grand-expansion Phase 7 (S6 intel, workstream 3, 2026-09-30):
+     * mixed-airport discovery copy. The warning fires first ("suspicious
+     * military activity"), then the grace-period countdown, then the
+     * reveal — no gotchas. English-only via loc()/fillLoc().
+     */
+    discoveryWarnTitle: { en: 'Suspicious military activity at {name}' },
+    discoveryWarnDetail: {
+      en: 'Our analysts are confirming the site — {seconds}s until the assessment is complete',
+    },
+    discoveryWarnNext: {
+      en: 'When confirmed, the site reads as mixed-use and may be treated as a military target.',
+    },
+    discoveryRevealedFlag: { en: 'CONFIRMED — military-capable' },
   },
 } as const;
 

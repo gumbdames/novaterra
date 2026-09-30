@@ -92,6 +92,17 @@ import { parkedAircraft } from './hangars';
 // them (al: / aa:).
 import { airlineRoutesOf } from './airports';
 import { airlineRouteIncome } from '../sim/economy';
+// Grand-expansion Phase 7 (intel): the intel panel's counters, spy
+// states, warnings, and rival airports (ia: / ir: / is: / iw: / ig:),
+// plus the selected-spy mission line (iu:).
+import {
+  intelAirportsDigest,
+  intelAssetsDigest,
+  intelRatesDigest,
+  intelSpiesDigest,
+  intelWarningsDigest,
+  spyUnitDigest,
+} from './intel';
 
 /**
  * Digest of the selection panel's dynamic content. Stable when nothing
@@ -191,6 +202,11 @@ export function selectionDigest(
         parts.push(`ue:${id}:x`);
         parts.push(`ew:${id}:x`);
       }
+      // Grand-expansion Phase 7 (intel): a selected owned spy shows its
+      // mission state line ("Infiltrating Power Plant · 12s left").
+      // iu: carries the displayed state code (x when the panel renders
+      // no intel line), always emitted like ue:/ew:.
+      parts.push(spyUnitDigest(world, id, u, HUMAN_PLAYER_ID));
     }
     if (selection.unitIds.length > 6) parts.push(`um:${selection.unitIds.length}`);
     return parts.join('|');
@@ -307,6 +323,17 @@ export function selectionDigest(
       parts.push(
         `mg:g:${general !== undefined ? `${general.stance}:${general.unitIds.length}` : 'x'}`,
       );
+      // Grand-expansion Phase 7 (intel): the intel panel renders the
+      // asset counters (+ accrual rates), the spies' mission states,
+      // the active warnings, and the rival airports — all in the
+      // Management tab, so the digest carries them only there. Always
+      // emitted (counters read 0 pre-intel), so the representative
+      // state covers every label.
+      parts.push(intelAssetsDigest(world, HUMAN_PLAYER_ID));
+      parts.push(intelRatesDigest(world, HUMAN_PLAYER_ID));
+      parts.push(intelSpiesDigest(world, HUMAN_PLAYER_ID));
+      parts.push(intelWarningsDigest(world, HUMAN_PLAYER_ID));
+      parts.push(intelAirportsDigest(world, HUMAN_PLAYER_ID));
     }
   }
   // The research panel is listed whenever the player owns a completed
@@ -405,6 +432,10 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'their own active class on click via setUtilityOverlayActive / ' +
       'setLogisticsOverlayActive / setDesirabilityOverlayActive / ' +
       'setXrayActive / setGridActive. ' +
+      'The three intel asset chips (Phase 7 intel: surveillance / ' +
+      'operational / counter-intel) are built once in the constructor ' +
+      'like the resource chips and refreshed by the same write-on-change ' +
+      'setText path in update() — they never rebuild either. ' +
       'Invariant: never rebuild topbar DOM (the click-bug pattern).',
   },
   {
@@ -447,7 +478,11 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // building id — the Embark/Park/Launch button set follows it);
     // ew: the carrier's wing occupancy as embarked aircraft ids
     // (x for non-carriers, which render no wing).
-    digestLabels: ['u:', 'uh:', 'uv:', 'um:', 'uf:', 'us:', 'ue:', 'ew:'],
+    // iu: the selected spy's mission-state line (Phase 7 intel:
+    // b<secs> = burned, i<target>:<secs> = infiltrating,
+    // e<target> = embedded, d<n> = inside rival coverage, h = hidden;
+    // x when the panel renders no intel line).
+    digestLabels: ['u:', 'uh:', 'uv:', 'um:', 'uf:', 'us:', 'ue:', 'ew:', 'iu:'],
   },
   {
     id: 'selection-building',
@@ -584,7 +619,12 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // tx: the three tax rates (the tax rows render them as percents);
     // ms: the city-focus status (the active button highlights);
     // mg: the mayor/general status lines (policy/stance/unit count).
-    digestLabels: ['tx:', 'ms:', 'mg:'],
+    // ia: the three intel asset counters (Phase 7 intel — the panel
+    // renders floored integers); ir: their per-second accrual rates;
+    // is: per-spy mission-state codes in id order; iw: the active
+    // warnings (id.kind.countdown); ig: rival airport ids + display
+    // types (the discovered/undiscovered list).
+    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:'],
   },
   {
     id: 'research-panel',

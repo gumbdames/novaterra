@@ -284,6 +284,31 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   writes sim state. Buildings are in cell coords, units in world coords
   — range math goes through `cellCenterWorld` (the 2026-09-30
   cell/world mixup that rejected every in-range basing).
+- `intel.ts` — **intel UI contract module (pure, tested,
+  `tests/ui.intel.test.ts`).** The UI-side mirror of the sim's intel
+  system (`sim/intel.ts`): `intelAssetsOf` / `intelAccrualRatesOf`
+  (exact mirrors of the sim's accrual — rates drift ⇒ sim drift, tests
+  pin it), `intelAssetLines` / `intelChipValues` (the three asset
+  counters + rates), `playerSpies` / `spyDisplayState` (precedence
+  burned > infiltrating > embedded > detected-by-rival > hidden) /
+  `spyMissionLine` / `spyHeader`, `intelWarnings` + `warningLine`
+  (every warning carries countdown-or-null + what-happens-next — the
+  no-gotcha rule), `rivalAirports` + `rivalAirportLine` (mixed
+  airports display civilian → undiscovered/UNVERIFIED), `opTargetsOf`
+  (enemy completed buildings within `INTEL_ADJACENCY`, id order),
+  `stealPreviewTechId` (deterministic, lowest sim-stealable tech),
+  the static copy builders (`sabotageLabel`, `stealTechLabel`,
+  `stealPayoffLine`, `trainSpyHint` — costs come from the sim
+  constants), plus the AD11 digest builders `ia:` / `ir:` / `is:` /
+  `iw:` / `ig:` / `iu:` (quantized to whole seconds so digest
+  rebuilds stay ≤1/sec per timer). The panel reads the sim through
+  this module, never the records directly; **rejection strings from
+  the sim are plain English — wrap/display them, never re-implement
+  validation in the UI.** Payload authority: the sim's exact shapes
+  (`{ unitId, buildingId, owner }` for all three covert ops —
+  `stealTech` has no tech param; the sim picks it), built by
+  `ui/orders.ts` (`buildInfiltrateOrder` / `buildSabotageOrder` /
+  `buildStealTechOrder`).
 - `linearNetworkDrag.ts` — **generic linear-network gesture pipeline (pure,
   tested, `tests/ui.linearNetworkDrag.test.ts`).** One drag-paint pipeline
   shared by every linear network tool: road today, power lines / water pipes

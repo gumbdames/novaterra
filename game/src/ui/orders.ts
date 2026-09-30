@@ -512,3 +512,62 @@ export function buildLaunchOrder(unitId: number, owner: number): OrderIntent {
     payload: { unitId, owner },
   };
 }
+
+// ---------------------------------------------------------------------------
+// Grand-expansion Phase 7 (intel, 2026-09-30): covert-op orders.
+// ---------------------------------------------------------------------------
+
+/**
+ * Start a spy's infiltration of an enemy building (600 ticks / 20s;
+ * the spy becomes embedded on completion, which unlocks stealTech).
+ *
+ * Payload shape is the sim's: `registerIntelCommands`
+ * (sim/intel.ts) validates `{ unitId, buildingId, owner }` — `spyId`
+ * is the spy's unit id. The sim rejects (adjacency, mission state,
+ * ownership) in plain English at enqueue AND apply; the UI wraps the
+ * rejection (game.ts toasts it) and never re-implements the checks.
+ */
+export function buildInfiltrateOrder(
+  owner: number,
+  spyId: number,
+  buildingId: number,
+): OrderIntent {
+  return {
+    kind: 'infiltrateBuilding',
+    payload: { unitId: spyId, buildingId, owner },
+  };
+}
+
+/**
+ * Sabotage an enemy building (25 operational assets; the building goes
+ * offline until `sabotagedUntil`). The UI resolves the target building
+ * before building the order — the sim requires `buildingId`.
+ */
+export function buildSabotageOrder(
+  owner: number,
+  spyId: number,
+  buildingId: number,
+): OrderIntent {
+  return {
+    kind: 'sabotage',
+    payload: { unitId: spyId, buildingId, owner },
+  };
+}
+
+/**
+ * Steal tech through a spy embedded in an enemy building (15
+ * surveillance assets). There is no tech picker: the sim deterministically
+ * steals the lexicographically lowest upgrade the victim has researched
+ * and the thief has not (`pickStealableTech`); success grants research,
+ * failure burns the spy.
+ */
+export function buildStealTechOrder(
+  owner: number,
+  spyId: number,
+  buildingId: number,
+): OrderIntent {
+  return {
+    kind: 'stealTech',
+    payload: { unitId: spyId, buildingId, owner },
+  };
+}
