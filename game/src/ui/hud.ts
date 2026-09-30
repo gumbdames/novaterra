@@ -41,7 +41,8 @@
  *
  * The HUD never mutates sim state — every button calls back into the game
  * controller, which issues commands through the queue. Copy comes from
- * ui/strings.ts (Hebrew-first); availability mirrors ui/palettes.ts.
+ * ui/strings.ts (English-only, see docs/I18N.md); availability mirrors
+ * ui/palettes.ts.
  *
  * DOM module: only constructed inside boot()/startGame(), never imported
  * by headless tests.
@@ -55,7 +56,7 @@ import { AGE_PROGRESSION } from '../sim/ages';
 import type { UpgradeId } from '../sim/upgrades';
 import type { Selection } from './selection';
 import type { AdvisorItem } from './advisor';
-import { STRINGS, loc } from './strings';
+import { STRINGS, loc, type LocalizedString } from './strings';
 import {
   TRAIN_TABS,
   BUILD_TABS,
@@ -631,7 +632,7 @@ export class HUD {
   /** Shared tab bar: localized tab names, active tab highlighted. */
   private buildTabBar(
     tabs: readonly { id: string }[],
-    names: Record<string, { he: string; en: string }>,
+    names: Record<string, LocalizedString>,
     active: string,
     onSelect: (id: string) => void,
   ): HTMLElement {

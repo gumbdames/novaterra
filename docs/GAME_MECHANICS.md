@@ -103,7 +103,7 @@ something and weak against something else — scout first, then build
 the counter. Advanced units need a production building (barracks, war
 factory, airfield, naval yard) before they can be trained.
 
-**Infantry** (חי"ר)
+**Infantry**
 - **Engineer** — builds everything. Protect yours.
 - **Rifles** — cheap infantry, good against other infantry.
 - **Sniper Team** — long-range precision; deletes infantry and
@@ -113,7 +113,7 @@ factory, airfield, naval yard) before they can be trained.
   Keep it behind the line (needs a barracks).
 - **Hauler** — supply truck; keeps your war machine moving.
 
-**Armor** (שריון)
+**Armor**
 - **Tank** — tough all-rounder, eats infantry for breakfast (needs a
   war factory).
 - **APC** — fast armored carrier; shreds infantry, outruns everything
@@ -132,7 +132,7 @@ factory, airfield, naval yard) before they can be trained.
 The rule of thumb: **tanks beat infantry, artillery beats tanks, tank
 destroyers beat tanks at range, AA beats anything that flies**.
 
-**Air force** (חיל אוויר)
+**Air force**
 - **Drone** — cheap flying scout, sees far.
 - **Fighter** — fast air superiority (needs the Connectivity age).
 - **Fighter-Bomber** — heavy strike aircraft; cripples armor in one

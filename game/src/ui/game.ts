@@ -114,7 +114,7 @@ import {
 } from './placement';
 import { classifyPointerUp } from './pointer';
 import { PauseMenu, loadSettings, type QualityLevel } from './menus';
-import { STRINGS, loc, setUiLanguage } from './strings';
+import { STRINGS, loc } from './strings';
 import { trainPlacementToast } from './palettes';
 import { AudioEngine } from '../audio/engine';
 import { CheatConsole, cheatHelpText, type CheatAction } from './cheatconsole';
@@ -459,8 +459,6 @@ class GameController {
     const saved = loadSettings();
     this.setColorblind(saved.colorblind);
     this.setUiScale(saved.uiScale);
-    // Roster expansion: apply the persisted UI language (Hebrew-first).
-    setUiLanguage(saved.language);
 
     this.hud = new HUD(container, {
       onPauseToggle: () => this.togglePause(),

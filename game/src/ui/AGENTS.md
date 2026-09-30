@@ -58,9 +58,9 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   in Military / Economy groups with one-line effects, cost, researched
   checkmark, and disabled reasons.
 - `menus.ts` — main menu (skirmish setup: map picker + difficulty picker),
-  pause overlay, settings (quality, key list, UI language). Quality and
-  language persist in localStorage; language (עברית / English) applies
-  live via `setUiLanguage`. Skirmish setup shows all 8 MAP_PRESETS (name
+  pause overlay, settings (quality, key list, accessibility, audio). Quality,
+  colorblind mode, UI scale and audio persist in localStorage. Skirmish
+  setup shows all 8 MAP_PRESETS (name
   + water %) and all 5 AI difficulties; `onStartSkirmish(difficulty,
   mapPreset)`.
 - `camera.ts` / `selection.ts` — pure state + transitions, fully tested.
@@ -108,12 +108,14 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `onMissionEnd` records progress. Muse settings (frequency + live key)
   live in the settings panel, live-applied in game.
 - `advisor.ts` — pure `evaluateAdvisor(world, playerId)`, worst-first.
-- `strings.ts` — all NEW UI copy in one place, Hebrew-first with an
-  English option: `LocalizedString` (`{he, en}`), module-level language
+- `strings.ts` — all NEW UI copy in one place, English-only (2026-09-30
+  directive; see `docs/I18N.md` for how a future language is added):
+  `LocalizedString` (`{en}` — the localization indirection, kept as the
+  extension point), module-level language
   state (`setUiLanguage` / `getUiLanguage` / `loc` / `fillLoc`). Covers
   all 28 unit names, 28 building names, palette/upgrade tab names, the
   12 upgrade names + one-line effects, cost labels, and lock reasons.
-  Legacy Phase 3 strings are still English-only; migrate incrementally.
+  Legacy Phase 3 strings are still English-only; they were never localized.
 - Audio: `game.ts` owns an `AudioEngine` (see `src/audio/AGENTS.md`) —
   unlocked on first pointer/key gesture, `updateMusic(world, playerId)`
   polled ~2×/sec, SFX on select/orders/placement/age-advance/rejections/

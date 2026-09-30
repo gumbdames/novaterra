@@ -22,11 +22,13 @@ import type { Age } from '../sim/ages';
 /**
  * NOVATERRA — ui/strings.ts — player-facing text.
  *
- * Hebrew-first since the roster expansion (0.1 Alpha): every string added
- * from here on is a `{ he, en }` pair, and `loc()` picks the player's
- * language (default Hebrew — see `setUiLanguage`). The older sections
- * below (menu, hud, …) are still English-only; they are migrated
- * opportunistically and left untouched by this change.
+ * English-only since the 2026-09-30 directive: the shipped game carries no
+ * other language's string data. The `LocalizedString` / `UiLanguage` /
+ * `loc()` / `fill()` / `fillLoc()` machinery below is kept on purpose as the
+ * extension point — English-only data flows through it now, and a future
+ * locale adds a field to `LocalizedString` plus a case in `loc()` (see
+ * `docs/I18N.md`). The older sections below (menu, hud, …) were always
+ * English-only and were never localized.
  *
  * Copy rules: very clear, short, simple — no jargon, no abbreviations the
  * player did not already see in the game.
@@ -34,16 +36,20 @@ import type { Age } from '../sim/ages';
  * Pure module: no DOM, no three.js. Safe under Node/vitest.
  */
 
-/** A player-facing string in both UI languages. Hebrew first. */
+/**
+ * A player-facing string, ready for future locales. English is the only
+ * shipped language — a future locale adds its field here (e.g. `he: string`)
+ * and a case in `loc()`.
+ */
 export interface LocalizedString {
-  he: string;
   en: string;
 }
 
-export type UiLanguage = 'he' | 'en';
+/** UI languages the shipped game supports. Only English in 0.1 Alpha. */
+export type UiLanguage = 'en';
 
-/** Current UI language. Hebrew-first default per the standing UI brief. */
-let uiLanguage: UiLanguage = 'he';
+/** Current UI language. English-only in 0.1 Alpha (see docs/I18N.md). */
+let uiLanguage: UiLanguage = 'en';
 
 /** Switch the UI language (persisted by the caller, e.g. settings). */
 export function setUiLanguage(lang: UiLanguage): void {
@@ -54,14 +60,20 @@ export function getUiLanguage(): UiLanguage {
   return uiLanguage;
 }
 
-/** Pick the current language's text from a localized string. */
+/**
+ * Pick the current language's text from a localized string. Only 'en'
+ * ships; future locales add a field to `LocalizedString` and a case here.
+ */
 export function loc(s: LocalizedString): string {
-  return uiLanguage === 'he' ? s.he : s.en;
+  switch (uiLanguage) {
+    case 'en':
+      return s.en;
+  }
 }
 
 /**
- * Fill `{placeholders}` in a localized template, keeping both languages.
- * Unknown placeholders are left as-is (loud, not silent).
+ * Fill `{placeholders}` in a localized template, keeping every shipped
+ * language. Unknown placeholders are left as-is (loud, not silent).
  */
 export function fill(
   template: LocalizedString,
@@ -71,7 +83,7 @@ export function fill(
     text.replace(/\{(\w+)\}/g, (_m, key: string) =>
       key in vars ? String(vars[key]) : `{${key}}`,
     );
-  return { he: sub(template.he), en: sub(template.en) };
+  return { en: sub(template.en) };
 }
 
 /** Fill a template and pick the current language in one step. */
@@ -196,8 +208,6 @@ export const STRINGS = {
     liveKeyLabel: 'API key',
     liveKeyPlaceholder: 'Stored only in this browser',
     liveEnableLabel: 'Enable Live Muse (hopefully coming)',
-    /** Roster expansion: Hebrew-first language picker (he + en pair). */
-    languageLabel: { he: 'שפה', en: 'Language' },
   },
   help: {
     keys: [
@@ -253,98 +263,99 @@ export const STRINGS = {
     exitToMenu: 'Exit to menu',
   },
   // ------------------------------------------------------------------
-  // Hebrew-first sections (roster expansion). Every entry is he + en.
+  // English-only sections (roster expansion). Every entry is en-only,
+  // flowing through the LocalizedString indirection (see docs/I18N.md).
   // ------------------------------------------------------------------
   /** Localized display names for all 28 unit kinds (tab palettes). */
   unitNames: {
-    engineer: { he: 'מהנדס', en: 'Engineer' },
-    rifles: { he: 'רובאים', en: 'Rifles' },
-    tank: { he: 'טנק', en: 'Main Battle Tank' },
-    artillery: { he: 'תותחים', en: 'Artillery' },
-    aa: { he: 'נ״מ נייד', en: 'Mobile AA' },
-    hauler: { he: 'מוביל', en: 'Hauler' },
-    spectre: { he: 'ספקטר', en: 'Spectre' },
-    hq: { he: 'מפקדה ניידת', en: 'Mobile HQ' },
-    sniperTeam: { he: 'צוות צלפים', en: 'Sniper Team' },
-    combatMedic: { he: 'חובש קרבי', en: 'Combat Medic' },
-    apc: { he: 'נגמ״ש', en: 'Armored Personnel Carrier' },
-    tankDestroyer: { he: 'משמיד טנקים', en: 'Tank Destroyer' },
-    mlrs: { he: 'משגר רקטות', en: 'MLRS' },
-    fighter: { he: 'מטוס קרב', en: 'Fighter' },
-    fighterBomber: { he: 'מפציץ־קרב', en: 'Fighter-Bomber' },
-    attackHeli: { he: 'מסוק תקיפה', en: 'Attack Helicopter' },
-    drone: { he: 'רחפן', en: 'Drone' },
-    awacs: { he: 'מטוס בקרה', en: 'AWACS' },
-    transport: { he: 'מטוס תובלה', en: 'Transport' },
-    patrolBoat: { he: 'ספינת סיור', en: 'Patrol Boat' },
-    missileBoat: { he: 'ספינת טילים', en: 'Missile Boat' },
-    frigate: { he: 'פריגטה', en: 'Frigate' },
-    submarine: { he: 'צוללת', en: 'Submarine' },
-    destroyer: { he: 'משחתת', en: 'Destroyer' },
-    carrier: { he: 'נושאת מטוסים', en: 'Carrier' },
-    commandShip: { he: 'אוניית פיקוד', en: 'Command Ship' },
-    transportShip: { he: 'אוניית תובלה', en: 'Transport Ship' },
-    fishingBoat: { he: 'סירת דיג', en: 'Fishing Boat' },
+    engineer: { en: 'Engineer' },
+    rifles: { en: 'Rifles' },
+    tank: { en: 'Main Battle Tank' },
+    artillery: { en: 'Artillery' },
+    aa: { en: 'Mobile AA' },
+    hauler: { en: 'Hauler' },
+    spectre: { en: 'Spectre' },
+    hq: { en: 'Mobile HQ' },
+    sniperTeam: { en: 'Sniper Team' },
+    combatMedic: { en: 'Combat Medic' },
+    apc: { en: 'Armored Personnel Carrier' },
+    tankDestroyer: { en: 'Tank Destroyer' },
+    mlrs: { en: 'MLRS' },
+    fighter: { en: 'Fighter' },
+    fighterBomber: { en: 'Fighter-Bomber' },
+    attackHeli: { en: 'Attack Helicopter' },
+    drone: { en: 'Drone' },
+    awacs: { en: 'AWACS' },
+    transport: { en: 'Transport' },
+    patrolBoat: { en: 'Patrol Boat' },
+    missileBoat: { en: 'Missile Boat' },
+    frigate: { en: 'Frigate' },
+    submarine: { en: 'Submarine' },
+    destroyer: { en: 'Destroyer' },
+    carrier: { en: 'Carrier' },
+    commandShip: { en: 'Command Ship' },
+    transportShip: { en: 'Transport Ship' },
+    fishingBoat: { en: 'Fishing Boat' },
   } as Record<UnitKind, LocalizedString>,
   /** Localized display names for all 28 building kinds (tab palettes). */
   buildingNames: {
-    house: { he: 'בית', en: 'House' },
-    apartment: { he: 'בניין דירות', en: 'Apartment Block' },
-    school: { he: 'בית ספר', en: 'School' },
-    shop: { he: 'חנות', en: 'Shop' },
-    market: { he: 'שוק', en: 'Market' },
-    lab: { he: 'מעבדת מחקר', en: 'Research Lab' },
-    mediaCenter: { he: 'מרכז תקשורת', en: 'Media Center' },
-    hospital: { he: 'בית חולים', en: 'Hospital' },
-    university: { he: 'אוניברסיטה', en: 'University' },
-    factory: { he: 'מפעל', en: 'Factory' },
-    farm: { he: 'חווה', en: 'Farm' },
-    quarry: { he: 'מחצבה', en: 'Quarry' },
-    oilRefinery: { he: 'בית זיקוק', en: 'Oil Refinery' },
-    recyclingCenter: { he: 'מרכז מחזור', en: 'Recycling Center' },
-    barracks: { he: 'מחנה חי״ר', en: 'Barracks' },
-    warFactory: { he: 'מפעל נשק', en: 'War Factory' },
-    powerPlant: { he: 'תחנת כוח', en: 'Power Plant' },
-    solarFarm: { he: 'חווה סולארית', en: 'Solar Farm' },
-    nuclearPlant: { he: 'תחנה גרעינית', en: 'Nuclear Plant' },
-    waterPump: { he: 'משאבת מים', en: 'Water Pump' },
-    desalination: { he: 'מתקן התפלה', en: 'Desalination Plant' },
-    shipyard: { he: 'מספנה', en: 'Shipyard' },
-    navalYard: { he: 'מספנה צבאית', en: 'Naval Yard' },
-    airfield: { he: 'שדה תעופה', en: 'Airfield' },
-    radarStation: { he: 'תחנת מכ״ם', en: 'Radar Station' },
-    monument: { he: 'אנדרטה', en: 'Monument' },
-    aegisControl: { he: 'בקרת אגיס', en: 'Aegis Control' },
-    stormArray: { he: 'מערך סערה', en: 'Storm Array' },
+    house: { en: 'House' },
+    apartment: { en: 'Apartment Block' },
+    school: { en: 'School' },
+    shop: { en: 'Shop' },
+    market: { en: 'Market' },
+    lab: { en: 'Research Lab' },
+    mediaCenter: { en: 'Media Center' },
+    hospital: { en: 'Hospital' },
+    university: { en: 'University' },
+    factory: { en: 'Factory' },
+    farm: { en: 'Farm' },
+    quarry: { en: 'Quarry' },
+    oilRefinery: { en: 'Oil Refinery' },
+    recyclingCenter: { en: 'Recycling Center' },
+    barracks: { en: 'Barracks' },
+    warFactory: { en: 'War Factory' },
+    powerPlant: { en: 'Power Plant' },
+    solarFarm: { en: 'Solar Farm' },
+    nuclearPlant: { en: 'Nuclear Plant' },
+    waterPump: { en: 'Water Pump' },
+    desalination: { en: 'Desalination Plant' },
+    shipyard: { en: 'Shipyard' },
+    navalYard: { en: 'Naval Yard' },
+    airfield: { en: 'Airfield' },
+    radarStation: { en: 'Radar Station' },
+    monument: { en: 'Monument' },
+    aegisControl: { en: 'Aegis Control' },
+    stormArray: { en: 'Storm Array' },
   } as Record<BuildingKind, LocalizedString>,
   /** Train-palette tab names (spec §8). */
   unitTabs: {
-    infantry: { he: 'חי״ר', en: 'Infantry' },
-    armor: { he: 'שריון', en: 'Armor' },
-    air: { he: 'חיל אוויר', en: 'Air Force' },
-    navy: { he: 'חיל ים', en: 'Navy' },
+    infantry: { en: 'Infantry' },
+    armor: { en: 'Armor' },
+    air: { en: 'Air Force' },
+    navy: { en: 'Navy' },
   } as Record<string, LocalizedString>,
   /** Build-palette tab names (spec §8). */
   buildingTabs: {
-    housing: { he: 'מגורים', en: 'Housing' },
-    commerce: { he: 'מסחר', en: 'Commerce' },
-    industry: { he: 'תעשייה', en: 'Industry' },
-    utilities: { he: 'תשתיות', en: 'Utilities' },
-    navalAir: { he: 'ימי ואווירי', en: 'Naval & Air' },
-    special: { he: 'מיוחד', en: 'Special' },
+    housing: { en: 'Housing' },
+    commerce: { en: 'Commerce' },
+    industry: { en: 'Industry' },
+    utilities: { en: 'Utilities' },
+    navalAir: { en: 'Naval & Air' },
+    special: { en: 'Special' },
   } as Record<string, LocalizedString>,
   /** Research-panel upgrade group names. */
   upgradeGroups: {
-    military: { he: 'צבאי', en: 'Military' },
-    economy: { he: 'כלכלה', en: 'Economy' },
+    military: { en: 'Military' },
+    economy: { en: 'Economy' },
   } as Record<string, LocalizedString>,
   /** Localized age names for lock reasons ("requires the Industry age"). */
   ageNames: {
-    foundation: { he: 'יסוד', en: 'Foundation' },
-    connectivity: { he: 'קישוריות', en: 'Connectivity' },
-    industry: { he: 'תעשייה', en: 'Industry' },
-    information: { he: 'מידע', en: 'Information' },
-    ascendance: { he: 'התעלות', en: 'Ascendance' },
+    foundation: { en: 'Foundation' },
+    connectivity: { en: 'Connectivity' },
+    industry: { en: 'Industry' },
+    information: { en: 'Information' },
+    ascendance: { en: 'Ascendance' },
   } as Record<Age, LocalizedString>,
   /**
    * The 12 researchable upgrades: localized name + one-line effect
@@ -352,93 +363,84 @@ export const STRINGS = {
    */
   upgrades: {
     apRounds: {
-      name: { he: 'פגזי חודרן', en: 'AP Rounds' },
-      effect: { he: '+40% נזק נגד שריון כבד: טנק, משמיד טנקים, נגמ״ש', en: '+40% damage vs heavy armor: tank, tank destroyer, APC' },
+      name: { en: 'AP Rounds' },
+      effect: { en: '+40% damage vs heavy armor: tank, tank destroyer, APC' },
     },
     compositeArmor: {
-      name: { he: 'שריון מרוכב', en: 'Composite Armor' },
-      effect: { he: '+30% נקודות חיים לרכבי קרב משוריינים חדשים', en: '+30% max HP for newly built armored vehicles' },
+      name: { en: 'Composite Armor' },
+      effect: { en: '+30% max HP for newly built armored vehicles' },
     },
     engineTuning: {
-      name: { he: 'כוונון מנועים', en: 'Engine Tuning' },
-      effect: { he: '+25% מהירות לרכבי קרקע', en: '+25% speed for ground vehicles' },
+      name: { en: 'Engine Tuning' },
+      effect: { en: '+25% speed for ground vehicles' },
     },
     advancedAvionics: {
-      name: { he: 'אוויוניקה מתקדמת', en: 'Advanced Avionics' },
-      effect: { he: 'מטוסים: +25% ראייה, +20% נגד מטוסים; מטוס בקרה +15 ראייה', en: 'Aircraft: +25% sight, +20% vs air; AWACS +15 sight' },
+      name: { en: 'Advanced Avionics' },
+      effect: { en: 'Aircraft: +25% sight, +20% vs air; AWACS +15 sight' },
     },
     sonarSuite: {
-      name: { he: 'מערכת סונאר', en: 'Sonar Suite' },
-      effect: { he: 'פריגטה ומשחתת חזקות יותר נגד צוללות; כל כלי השיט +8 ראייה', en: 'Frigate and destroyer hit subs harder; all sea units +8 sight' },
+      name: { en: 'Sonar Suite' },
+      effect: { en: 'Frigate and destroyer hit subs harder; all sea units +8 sight' },
     },
     cruiseMissiles: {
-      name: { he: 'טילי שיוט', en: 'Cruise Missiles' },
-      effect: { he: 'משגר רקטות +10 טווח, תותחים +8 טווח', en: 'MLRS +10 range, artillery +8 range' },
+      name: { en: 'Cruise Missiles' },
+      effect: { en: 'MLRS +10 range, artillery +8 range' },
     },
     droneOptics: {
-      name: { he: 'אופטיקת רחפנים', en: 'Drone Optics' },
-      effect: { he: 'רחפן +15 ראייה, ספקטר +10 ראייה', en: 'Drone +15 sight, spectre +10 sight' },
+      name: { en: 'Drone Optics' },
+      effect: { en: 'Drone +15 sight, spectre +10 sight' },
     },
     fieldMedicine: {
-      name: { he: 'רפואת שדה', en: 'Field Medicine' },
-      effect: { he: 'חובש מרפא 4 נק״ח לשנייה; חי״ר חדש +20 נקודות חיים', en: 'Medic heals 4 HP/s; new infantry +20 max HP' },
+      name: { en: 'Field Medicine' },
+      effect: { en: 'Medic heals 4 HP/s; new infantry +20 max HP' },
     },
     precisionManufacturing: {
-      name: { he: 'ייצור מדויק', en: 'Precision Manufacturing' },
-      effect: { he: '+25% תפוקת מפעלים', en: '+25% factory output' },
+      name: { en: 'Precision Manufacturing' },
+      effect: { en: '+25% factory output' },
     },
     smartGrid: {
-      name: { he: 'רשת חשמל חכמה', en: 'Smart Grid' },
-      effect: { he: 'תחנות כוח מספקות יותר חשמל', en: 'Power plants supply more power' },
+      name: { en: 'Smart Grid' },
+      effect: { en: 'Power plants supply more power' },
     },
     verticalFarming: {
-      name: { he: 'חקלאות אנכית', en: 'Vertical Farming' },
-      effect: { he: 'חווה: +50% מזון, פחות מים', en: 'Farm: +50% food, less water' },
+      name: { en: 'Vertical Farming' },
+      effect: { en: 'Farm: +50% food, less water' },
     },
     freeTrade: {
-      name: { he: 'סחר חופשי', en: 'Free Trade Policy' },
-      effect: { he: 'שווקים וחנויות מרוויחים יותר כסף', en: 'Markets and shops earn more funds' },
+      name: { en: 'Free Trade Policy' },
+      effect: { en: 'Markets and shops earn more funds' },
     },
   } as Record<UpgradeId, { name: LocalizedString; effect: LocalizedString }>,
-  /** Tabbed palettes, research panel, placement hints — all he + en. */
+  /** Tabbed palettes, research panel, placement hints — all en-only. */
   palettes: {
-    trainTitle: { he: 'אימון', en: 'Train' },
-    buildTitle: { he: 'בנייה', en: 'Build' },
-    researchTitle: { he: 'מחקר', en: 'Research' },
-    researchVerb: { he: 'חקור', en: 'Research' },
-    toolRoad: { he: 'כביש', en: 'Road' },
-    toolZoneR: { he: 'אזור מגורים', en: 'Homes' },
-    toolZoneC: { he: 'אזור מסחר', en: 'Shops' },
-    toolZoneI: { he: 'אזור תעשייה', en: 'Industry' },
-    toolDemolish: { he: 'הריסה', en: 'Demolish' },
-    cancelPlacement: { he: 'ביטול (Esc)', en: 'Cancel (Esc)' },
-    placeLandHint: { he: 'לחץ על המפה כדי להציב', en: 'Click the map to place' },
-    placeSeaHint: { he: 'לחץ על מים במפה כדי להציב', en: 'Click WATER on the map to place' },
-    trainToast: {
-      he: 'הצבה: {name} — {hint}. לחיצה ימנית מבטלת.',
-      en: 'Place {name}: {hint}. Right-click cancels.',
-    },
-    buildToast: {
-      he: 'בנייה: גרור או לחץ על המפה. לחיצה ימנית מבטלת.',
-      en: 'Construction: drag or click on the map. Right-click cancels.',
-    },
-    requiresBuilding: { he: 'נדרש: {name}', en: 'Requires: {name}' },
-    requiresAge: { he: 'נדרש עידן {age}', en: 'Requires the {age} age' },
-    requiresUpgrade: { he: 'נדרש שדרוג: {name}', en: 'Requires upgrade: {name}' },
-    needsLab: { he: 'נדרשת מעבדת מחקר פעילה', en: 'Requires a completed Research Lab' },
-    cannotAfford: { he: 'אין מספיק משאבים', en: 'Cannot afford' },
-    notEnoughManpower: { he: 'אין מספיק כוח אדם', en: 'Not enough manpower' },
-    alreadyResearched: { he: 'כבר נחקר', en: 'Already researched' },
-    researchedTag: { he: '✓ נחקר', en: '✓ Researched' },
-    navalYardCoast: {
-      he: 'חובה לבנות על החוף — לפחות תא אחד צמוד למים',
-      en: 'Must be built on the coast — at least one footprint cell adjacent to water',
-    },
-    resFunds: { he: 'כסף', en: 'funds' },
-    resMaterials: { he: 'חומרים', en: 'materials' },
-    resManpower: { he: 'כוח אדם', en: 'manpower' },
-    resResearch: { he: 'מחקר', en: 'research' },
-    hpLabel: { he: 'נק״ח', en: 'HP' },
+    trainTitle: { en: 'Train' },
+    buildTitle: { en: 'Build' },
+    researchTitle: { en: 'Research' },
+    researchVerb: { en: 'Research' },
+    toolRoad: { en: 'Road' },
+    toolZoneR: { en: 'Homes' },
+    toolZoneC: { en: 'Shops' },
+    toolZoneI: { en: 'Industry' },
+    toolDemolish: { en: 'Demolish' },
+    cancelPlacement: { en: 'Cancel (Esc)' },
+    placeLandHint: { en: 'Click the map to place' },
+    placeSeaHint: { en: 'Click WATER on the map to place' },
+    trainToast: { en: 'Place {name}: {hint}. Right-click cancels.' },
+    buildToast: { en: 'Construction: drag or click on the map. Right-click cancels.' },
+    requiresBuilding: { en: 'Requires: {name}' },
+    requiresAge: { en: 'Requires the {age} age' },
+    requiresUpgrade: { en: 'Requires upgrade: {name}' },
+    needsLab: { en: 'Requires a completed Research Lab' },
+    cannotAfford: { en: 'Cannot afford' },
+    notEnoughManpower: { en: 'Not enough manpower' },
+    alreadyResearched: { en: 'Already researched' },
+    researchedTag: { en: '✓ Researched' },
+    navalYardCoast: { en: 'Must be built on the coast — at least one footprint cell adjacent to water' },
+    resFunds: { en: 'funds' },
+    resMaterials: { en: 'materials' },
+    resManpower: { en: 'manpower' },
+    resResearch: { en: 'research' },
+    hpLabel: { en: 'HP' },
   },
 } as const;
 

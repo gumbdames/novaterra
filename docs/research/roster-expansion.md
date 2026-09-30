@@ -19,7 +19,7 @@
 5. [New mechanics required (shippable set)](#5-new-mechanics-required-shippable-set)
 6. [Age gating](#6-age-gating)
 7. [AI notes](#7-ai-notes)
-8. [UI palette grouping (Hebrew-first)](#8-ui-palette-grouping-hebrew-first)
+8. [UI palette grouping (English-only)](#8-ui-palette-grouping-english-only)
 9. [Save/load & snapshot versioning](#9-saveload--snapshot-versioning)
 10. [Performance budget](#10-performance-budget)
 11. [Rejected ideas (cut with rationale)](#11-rejected-ideas-cut-with-rationale)
@@ -679,20 +679,21 @@ invariant holds.
 
 ---
 
-## 8. UI palette grouping (Hebrew-first)
+## 8. UI palette grouping (English-only)
 
-English names in this spec; Hebrew strings land in `ui/strings.ts`
-when implemented (the UI is Hebrew-first per user instruction; the
-game's audience reads Hebrew).
+English names in this spec land in `ui/strings.ts` as English-only
+strings when implemented. (This section was written when the UI was
+Hebrew-first per user instruction; the 2026-09-30 directive made the
+whole game English-only — see `docs/I18N.md`.)
 
 ### Train palette — 4 tabs
 
-| Tab (EN / HE) | Units |
+| Tab | Units |
 |---|---|
-| Infantry / חי״ר | engineer, rifles, sniperTeam, spectre, combatMedic, hauler |
-| Armor / שריון | tank, apc, tankDestroyer, artillery, mlrs, aa, hq |
-| Air Force / חיל אוויר | fighter, fighterBomber, attackHeli, drone, awacs, transport |
-| Navy / חיל ים | patrolBoat, missileBoat, frigate, submarine, destroyer, carrier, commandShip, transportShip, fishingBoat |
+| Infantry | engineer, rifles, sniperTeam, spectre, combatMedic, hauler |
+| Armor | tank, apc, tankDestroyer, artillery, mlrs, aa, hq |
+| Air Force | fighter, fighterBomber, attackHeli, drone, awacs, transport |
+| Navy | patrolBoat, missileBoat, frigate, submarine, destroyer, carrier, commandShip, transportShip, fishingBoat |
 
 Locked kinds show with their requirement ("needs War Factory" /
 "needs Industry age") — same pattern as the current fighter
@@ -702,12 +703,12 @@ age-lock display (`hud.ts` train panel).
 
 | Tab (EN / HE) | Buildings |
 |---|---|
-| Housing / מגורים | house, apartment, school |
-| Commerce / מסחר | shop, market, lab, mediaCenter, hospital, university |
-| Industry / תעשייה | factory, farm, quarry, oilRefinery, recyclingCenter, barracks, warFactory |
-| Utilities / תשתיות | powerPlant, solarFarm, nuclearPlant, waterPump, desalination |
-| Naval & Air / ימי ואווירי | shipyard, navalYard, airfield, radarStation |
-| Special / מיוחד | monument, aegisControl, stormArray |
+| Housing | house, apartment, school |
+| Commerce | shop, market, lab, mediaCenter, hospital, university |
+| Industry | factory, farm, quarry, oilRefinery, recyclingCenter, barracks, warFactory |
+| Utilities | powerPlant, solarFarm, nuclearPlant, waterPump, desalination |
+| Naval & Air | shipyard, navalYard, airfield, radarStation |
+| Special | monument, aegisControl, stormArray |
 
 *Note:* production buildings sit under Industry and naval/air under
 their own tab, so no separate Military tab is needed — the palette is
@@ -716,7 +717,7 @@ scrolling at 1080p.
 
 ### Upgrade panel
 
-One new panel: **Research / מחקר**, opened from the lab (and listed in
+One new panel: **Research**, opened from the lab (and listed in
 the HUD). 12 entries grouped Military / Economy, each showing cost,
 prereq, and one-line effect. Researched items get a checkmark —
 permanent for the match.
@@ -805,7 +806,7 @@ Each is a repo-AGENTS.md step-gated step (tests + docs + commit):
 6. **Upgrades** (`world.upgrades`, `researchUpgrade`, 12 defs, hooks,
    snapshot v6).
 7. **AI tables** (composition, counters, upgrade priorities, caps).
-8. **UI palettes** (tabs, Hebrew strings, lab research panel).
+8. **UI palettes** (tabs, English strings, lab research panel).
 
 ---
 

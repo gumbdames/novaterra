@@ -18,7 +18,7 @@
  * NOVATERRA — tabbed palette + research panel tests (roster expansion).
  *
  * ui/palettes.ts is pure and headless-safe: these tests pin the tab
- * groupings (every kind in exactly one tab), the Hebrew+English string
+ * groupings (every kind in exactly one tab), the English-only string
  * coverage, the grey-out logic (mirrors of the sim's spawnUnit /
  * researchUpgrade validation), and the researchUpgrade command behavior
  * through the session queue (which ui/session.ts wires up).
@@ -53,7 +53,8 @@ import type { World } from '../src/sim/world';
 
 afterEach(() => {
   // Language is global module state — never leak it between tests.
-  setUiLanguage('he');
+  // English is the only shipped language (see docs/I18N.md).
+  setUiLanguage('en');
 });
 
 function sortedKinds(kinds: Iterable<string>): string[] {
@@ -114,11 +115,10 @@ describe('train tabs', () => {
     ]);
   });
 
-  it('every tab has a localized name', () => {
+  it('every tab has an English name', () => {
     for (const tab of TRAIN_TABS) {
       const entry = STRINGS.unitTabs[tab.id];
       expect(entry, `unitTabs.${tab.id}`).toBeDefined();
-      expect(entry!.he.length).toBeGreaterThan(0);
       expect(entry!.en.length).toBeGreaterThan(0);
     }
   });
@@ -169,11 +169,10 @@ describe('build tabs', () => {
     expect(byId.get('special')).toEqual(['monument', 'aegisControl', 'stormArray']);
   });
 
-  it('every tab has a localized name', () => {
+  it('every tab has an English name', () => {
     for (const tab of BUILD_TABS) {
       const entry = STRINGS.buildingTabs[tab.id];
       expect(entry, `buildingTabs.${tab.id}`).toBeDefined();
-      expect(entry!.he.length).toBeGreaterThan(0);
       expect(entry!.en.length).toBeGreaterThan(0);
     }
   });
@@ -206,31 +205,27 @@ describe('research groups', () => {
 });
 
 describe('localized names', () => {
-  it('every unit kind has a Hebrew + English name', () => {
+  it('every unit kind has an English name', () => {
     for (const kind of Object.keys(UNIT_DEFS) as UnitKind[]) {
       const entry = STRINGS.unitNames[kind];
       expect(entry, `unitNames.${kind}`).toBeDefined();
-      expect(entry.he.length, `${kind}.he`).toBeGreaterThan(0);
       expect(entry.en.length, `${kind}.en`).toBeGreaterThan(0);
     }
   });
 
-  it('every building kind has a Hebrew + English name', () => {
+  it('every building kind has an English name', () => {
     for (const kind of Object.keys(BUILDING_DEFS) as BuildingKind[]) {
       const entry = STRINGS.buildingNames[kind];
       expect(entry, `buildingNames.${kind}`).toBeDefined();
-      expect(entry.he.length, `${kind}.he`).toBeGreaterThan(0);
       expect(entry.en.length, `${kind}.en`).toBeGreaterThan(0);
     }
   });
 
-  it('every upgrade has a Hebrew + English name and effect', () => {
+  it('every upgrade has an English name and effect', () => {
     for (const id of UPGRADE_IDS) {
       const entry = STRINGS.upgrades[id];
       expect(entry, `upgrades.${id}`).toBeDefined();
-      expect(entry.name.he.length).toBeGreaterThan(0);
       expect(entry.name.en.length).toBeGreaterThan(0);
-      expect(entry.effect.he.length).toBeGreaterThan(0);
       expect(entry.effect.en.length).toBeGreaterThan(0);
     }
   });
@@ -240,7 +235,7 @@ describe('localized names', () => {
     expect(buildingName('nope')).toBe('nope');
   });
 
-  it('the English option switches every name', () => {
+  it('every name resolves in English (the only shipped language)', () => {
     setUiLanguage('en');
     expect(unitName('tank')).toBe('Main Battle Tank');
     expect(buildingName('lab')).toBe('Research Lab');
@@ -307,8 +302,8 @@ describe('buildingAvailability (grey-out logic)', () => {
     session.world.ages.age = 'foundation';
     const st = buildingAvailability(session.world, HUMAN_PLAYER_ID, 'navalYard');
     expect(st.ok).toBe(false);
-    // Hebrew-first: the industry age name in the reason.
-    expect(st.reason).toContain('תעשייה');
+    // The industry age name appears in the reason.
+    expect(st.reason).toContain('Industry');
     setUiLanguage('en');
     const en = buildingAvailability(session.world, HUMAN_PLAYER_ID, 'navalYard');
     expect(en.reason).toContain('Industry');
@@ -321,7 +316,7 @@ describe('buildingAvailability (grey-out logic)', () => {
     human.materials = 0;
     const st = buildingAvailability(session.world, HUMAN_PLAYER_ID, 'house');
     expect(st.ok).toBe(false);
-    expect(st.reason).toBe(STRINGS.palettes.cannotAfford.he);
+    expect(st.reason).toBe(STRINGS.palettes.cannotAfford.en);
   });
 
   it('the age gate wins over affordability', () => {
@@ -332,7 +327,7 @@ describe('buildingAvailability (grey-out logic)', () => {
     human.materials = 0;
     const st = buildingAvailability(session.world, HUMAN_PLAYER_ID, 'navalYard');
     expect(st.ok).toBe(false);
-    expect(st.reason).toContain('תעשייה');
+    expect(st.reason).toContain('Industry');
   });
 });
 
