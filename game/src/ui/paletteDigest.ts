@@ -64,6 +64,15 @@ import {
   utilityBuildingAvailability,
 } from './utilities';
 import type { BuildingKind } from '../sim/city';
+import {
+  ammoStockOf,
+  fuelStockOf,
+  fuelFracOf,
+  ammoFracOf,
+  cargoFuelOf,
+  cargoAmmoOf,
+  serviceTogglesOf,
+} from './logistics';
 
 /**
  * Digest of the selection panel's dynamic content. Stable when nothing
@@ -95,6 +104,26 @@ export function selectionDigest(
       // Veterancy (Phase 1): the panel renders rank + chevrons + XP per
       // unit, so the digest must move when xp/vetLevel do.
       parts.push(`uv:${id}:${u !== undefined ? `${u.vetLevel ?? 0}:${u.xp ?? 0}` : 'x'}`);
+      // Phase 3 (logistics): the panel renders fuel/ammo bars for
+      // tracked units, the cargo line for supply units, and the service
+      // toggles. Fuel/ammo drain continuously — quantize to 5% steps so
+      // the digest doesn't move (and rebuild the panel) every tick for a
+      // fractional change the bars can't show; cargo and toggles are
+      // chunky by nature. Always emitted (untracked units digest 20/20).
+      if (u !== undefined && def !== undefined) {
+        const fuelQ = Math.round(fuelFracOf(def, u) * 20);
+        const ammoQ = Math.round(ammoFracOf(def, u) * 20);
+        const cargoFQ = Math.floor(cargoFuelOf(u) / 5);
+        const cargoAQ = Math.floor(cargoAmmoOf(u) / 5);
+        parts.push(`uf:${id}:${fuelQ}:${ammoQ}:${cargoFQ}:${cargoAQ}`);
+        const svc = serviceTogglesOf(u);
+        parts.push(
+          `us:${id}:${svc.repair ? 1 : 0}${svc.rearm ? 1 : 0}${svc.refuel ? 1 : 0}`,
+        );
+      } else {
+        parts.push(`uf:${id}:x`);
+        parts.push(`us:${id}:x`);
+      }
     }
     if (selection.unitIds.length > 6) parts.push(`um:${selection.unitIds.length}`);
     return parts.join('|');
@@ -117,6 +146,12 @@ export function selectionDigest(
     // legacy powered/watered flags), so the branch's representative
     // state covers it.
     parts.push(`bu:${buildingPowerDiag(b)}:${buildingWaterDiag(b)}`);
+    // Phase 3 (logistics): the panel renders the depot stock line
+    // ("Ammo 42/150 · Fuel 200/250") for storage buildings. Integer
+    // precision matches the display exactly — the digest moves if and
+    // only if the rendered numbers would. Always emitted (0/0 for
+    // non-depots).
+    parts.push(`bq:${Math.floor(ammoStockOf(b))}:${Math.floor(fuelStockOf(b))}`);
   } else {
     // No selection: the train/build palettes render the active tab's
     // buttons; only each button's availability can move per tick.
@@ -211,6 +246,7 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'hud-speed',
       'hud-pause',
       'hud-util',
+      'hud-logistics',
       'hud-menu-btn',
     ],
     digestLabels: [],
@@ -218,7 +254,9 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'Built once in the constructor; per-frame updates are write-on-change ' +
       'text/property writes (setText) — nodes are never rebuilt, so no digest ' +
       'segment is needed. The utilities-overlay toggle (hud-util, Phase 2) ' +
-      'flips its own active class on click via setUtilityOverlayActive. ' +
+      'and the logistics-overlay toggle (hud-logistics, Phase 3) flip their ' +
+      'own active class on click via setUtilityOverlayActive / ' +
+      'setLogisticsOverlayActive. ' +
       'Invariant: never rebuild topbar DOM (the click-bug pattern).',
   },
   {
@@ -248,8 +286,13 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
   {
     id: 'selection-units',
     renderedIn: 'updateSelection',
-    domClasses: ['sel-title', 'sel-unit', 'sel-action'],
-    digestLabels: ['u:', 'uh:', 'uv:', 'um:'],
+    // sel-bar / sel-bar-fill / sel-bar-label: the Phase 3 fuel/ammo
+    // bars; sel-toggle / sel-toggle-row: the Repair/Rearm/Refuel buttons
+    // on supply units.
+    domClasses: ['sel-title', 'sel-unit', 'sel-action', 'sel-bar', 'sel-bar-fill', 'sel-bar-label', 'sel-toggle-row', 'sel-toggle'],
+    // uf: fuel/ammo/cargo levels (Phase 3 logistics, 5% quantization);
+    // us: the unit's field-service toggles.
+    digestLabels: ['u:', 'uh:', 'uv:', 'um:', 'uf:', 'us:'],
   },
   {
     id: 'selection-building',
@@ -257,7 +300,8 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     domClasses: ['sel-title', 'sel-unit'],
     // bu: power/water diagnosis line (Phase 2 utilities; the panel renders
     // it for every selected building via buildingUtilityLine).
-    digestLabels: ['b:', 'bs:', 'bl:', 'bu:'],
+    // bq: depot stock line (Phase 3 logistics; "Ammo 42/150 · Fuel 200/250").
+    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:'],
   },
   {
     id: 'train-palette',

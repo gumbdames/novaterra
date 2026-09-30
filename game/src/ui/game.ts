@@ -107,6 +107,8 @@ import {
   buildStopOrders,
   buildZoneOrder,
   buildResearchUpgradeOrder,
+  buildResupplyOrder,
+  buildSupplyTogglesOrder,
   type OrderIntent,
 } from './orders';
 import { evaluateAdvisor, type AdvisorItem } from './advisor';
@@ -442,6 +444,8 @@ class GameController {
   private speed = 1;
   /** Phase 2 (utilities): utility-network overlay visibility. */
   private utilityOverlayVisible = false;
+  /** Phase 3 (logistics): logistics-overlay visibility. */
+  private logisticsOverlayVisible = false;
   private advisorItems: AdvisorItem[] = [];
   private lastAdvisorRefresh = 0;
   private readonly keys = new Set<string>();
@@ -562,6 +566,21 @@ class GameController {
         this.entities.setUtilityOverlayVisible(this.utilityOverlayVisible);
         this.hud.setUtilityOverlayActive(this.utilityOverlayVisible);
       },
+      // Phase 3 (logistics): the logistics overlay toggle.
+      onToggleLogisticsOverlay: () => {
+        this.logisticsOverlayVisible = !this.logisticsOverlayVisible;
+        this.entities.setLogisticsOverlayVisible(this.logisticsOverlayVisible);
+        this.hud.setLogisticsOverlayActive(this.logisticsOverlayVisible);
+      },
+      // Phase 3 (logistics): resupply + field-service toggles. The sim's
+      // registerLogisticsCommands is wired at boot (ui/session.ts), so
+      // these validate for real; a rejection still throws
+      // CommandRejectedError and the player gets a loud toast — never a
+      // silent no-op.
+      onResupplyUnit: (unitId, depotId) =>
+        this.enqueue(buildResupplyOrder(unitId, depotId, HUMAN_PLAYER_ID)),
+      onSetSupplyToggles: (unitId, services) =>
+        this.enqueue(buildSupplyTogglesOrder(unitId, HUMAN_PLAYER_ID, services)),
       // Phase 3: superweapons, specialization, trade, delegation.
       onFireAegis: () => this.issueOrder(buildFireAegisOrder(HUMAN_PLAYER_ID)),
       onStormTarget: () => {

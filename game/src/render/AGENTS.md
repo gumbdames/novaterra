@@ -40,6 +40,13 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 
 ## Model loading (`render/models.ts`, 0.1 Alpha)
 
+- Texture-path rule (fixed 2026-09-30 — was 45 console 404s on every
+  boot): `loadOneModel` passes the GLB's DIRECTORY (trailing slash) as
+  `parseAsync`'s resource path, never the file URL — three's resolveURL
+  string-concatenates (`path + uri`), so the file URL resolved embedded
+  textures to `<name>.glbTextures/...`. Same fix in `natureTrees.ts`,
+  which appended a second `models/` onto `modelBaseUrl()` (it already
+  ends with `models/`). Pinned by `render.models.test.ts`.
 - `MODEL_PATHS` is the key -> GLB mapping: **61 real CC0 entries**
   (Kenney + Quaternius; see THIRD_PARTY_NOTICES.md for the per-file
   listing). `path` is relative to `game/public/models/` (served at
@@ -271,6 +278,41 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   from `ui/utilities.ts` `utilityOverlayData(world, …)`, toggled by
   `setUtilityOverlayVisible(v)`, disposed in `dispose()`. Tested in
   `tests/render.utilityOverlay.test.ts`.
+
+## Logistics overlay (`render/logisticsOverlay.ts`, 0.1 Alpha)
+
+- Grand-expansion Phase 3: the toggle-able diagnosis layer (topbar
+  "Logistics" button, next to Utilities). Two ground decal layers, both
+  terrain-draped, both rebuilt only on digest change: one merged mesh of
+  translucent olive coverage discs (one per completed reload point —
+  the 4 production bases, 2 ammo producers, 3 depots — radius = the sim's
+  `LOGISTICS_RADIUS` from `sim/economy.ts`, never an invented constant;
+  +0.14 terrain offset, above the utility tints' +0.12) and one merged
+  mesh of amber ground rings under living units below
+  `LOGISTICS_LOW_SUPPLY` (+0.18 offset). 1 draw call per layer, 0 when
+  empty (meshes are created lazily / removed when the data empties).
+- Pure geometry builders (`buildCoverageDiscGeometry`,
+  `buildLowSupplyRingGeometry`) are Node-testable: counter-clockwise
+  winding from above (up-facing), flat headless fallback when no terrain
+  sampler is passed. `logisticsOverlayDigest(data)` is the FNV-1a rebuild
+  key. Owned by `EntityRenderer`: constructed in its constructor, synced
+  in `sync()` from `ui/logistics.ts` `logisticsOverlayData(world)`,
+  toggled by `setLogisticsOverlayVisible(v)`, disposed in `dispose()`.
+  Tested in `tests/render.logistics.test.ts` (model validity + hoop-arch
+  orientation + overlay geometry + digest stability).
+
+## Logistics procedural models (render/proceduralModels.ts, 0.1 Alpha)
+
+- Grand-expansion Phase 3: final-art procedural builders for the 7
+  logistics buildings (`buildOilWell` pumpjack, `buildOilRig` offshore
+  platform, `buildMunitionsFactory` brick hall, `buildMissilePlant` with
+  transporter-erector, `buildMissileSilo` with open blast doors,
+  `buildOrdnanceDepot` arched bunkers, `buildFuelDepot` bunded tanks)
+  and the 2 supply trucks (`buildSupplyTruck` canvas hoop,
+  `buildFuelTruck` tanker). All registered in `PROCEDURAL_KINDS` and
+  `MODEL_SOURCES`. The truck canvas hoop is a half-cylinder shell rolled
+  to the top (rotateX then rotateZ) — pinned by an arch-signature test
+  (width ≈ diameter, height ≈ radius, sitting on the bed walls).
 
 ## Entity rendering conventions (`render/entities.ts`, 0.1 Alpha)
 

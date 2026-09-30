@@ -96,6 +96,22 @@ import {
   utilityBuildTooltip,
   type UtilityBuildTabId,
 } from './utilities';
+// Phase 3 (logistics): the UI/render contract module (pure, headless-
+// safe). The HUD reads fuel/ammo/cargo/stocks/toggles through these
+// defensive readers and emits only command structs via HUDActions —
+// the sim applies the resupply/toggle commands it validates.
+import {
+  ammoFracOf,
+  cargoLine,
+  depotStockLine,
+  fuelFracOf,
+  isLowSupply,
+  isSupplyUnit,
+  isTrackedUnit,
+  nearestDepot,
+  resupplyBlockReason,
+  serviceTogglesOf,
+} from './logistics';
 
 /** Build-palette tools the HUD can request. */
 export type BuildTool =
@@ -127,6 +143,15 @@ export interface HUDActions {
   onAdvanceAge(program: string): void;
   /** Phase 2 (utilities): toggle the utility-network overlay. */
   onToggleUtilityOverlay(): void;
+  /** Phase 3 (logistics): toggle the logistics overlay. */
+  onToggleLogisticsOverlay(): void;
+  /** Phase 3 (logistics): order a unit to resupply at a depot. */
+  onResupplyUnit(unitId: number, depotId: number): void;
+  /** Phase 3 (logistics): set a supply unit's field services. */
+  onSetSupplyToggles(
+    unitId: number,
+    services: { repair: boolean; rearm: boolean; refuel: boolean },
+  ): void;
   /** Phase 3: fire the Aegis shield. */
   onFireAegis(): void;
   /** Phase 3: enter Storm targeting mode (click map). */
@@ -158,6 +183,21 @@ function el(tag: string, className: string, text?: string): HTMLElement {
   e.className = className;
   if (text !== undefined) e.textContent = text;
   return e;
+}
+
+/**
+ * Phase 3 (logistics): a labeled horizontal bar (fuel / ammo in the
+ * selection panel). The label names the value (accessibility), the fill
+ * width shows the fraction. Pure DOM — the fraction is quantized in the
+ * digest (uf:), never here.
+ */
+function supplyBar(label: string, frac: number): HTMLElement {
+  const wrap = el('div', 'sel-bar');
+  const fill = el('div', 'sel-bar-fill');
+  fill.style.width = `${Math.max(0, Math.min(1, frac)) * 100}%`;
+  const text = el('span', 'sel-bar-label', label);
+  wrap.append(fill, text);
+  return wrap;
 }
 
 function fmt(n: number): string {
@@ -192,6 +232,8 @@ export class HUD {
   private readonly speedBtns: HTMLButtonElement[] = [];
   /** Phase 2 (utilities): overlay toggle, flipped write-on-change. */
   private readonly utilOverlayBtn: HTMLButtonElement;
+  /** Phase 3 (logistics): overlay toggle — built once, write-on-change. */
+  private readonly logisticsOverlayBtn: HTMLButtonElement;
   private readonly advisorPanel: HTMLElement;
   private readonly advisorList: HTMLElement;
   private readonly selectionPanel: HTMLElement;
@@ -278,6 +320,21 @@ export class HUD {
     this.utilOverlayBtn.append(document.createTextNode(loc(STRINGS.utilities.overlayToggle)));
     this.utilOverlayBtn.addEventListener('click', () => actions.onToggleUtilityOverlay());
     this.topbar.append(this.utilOverlayBtn);
+
+    // Phase 3 (logistics): overlay toggle — reload-point coverage discs
+    // and low-supply markers. Same built-once/write-on-change pattern as
+    // the utilities toggle (topbar branch's noDigestReason invariant).
+    this.logisticsOverlayBtn = document.createElement('button');
+    this.logisticsOverlayBtn.className = 'hud-logistics';
+    this.logisticsOverlayBtn.title = loc(STRINGS.logistics.overlayLegend);
+    this.logisticsOverlayBtn.innerHTML = unitIcon('supplyTruck');
+    this.logisticsOverlayBtn.append(
+      document.createTextNode(loc(STRINGS.logistics.overlayToggle)),
+    );
+    this.logisticsOverlayBtn.addEventListener('click', () =>
+      actions.onToggleLogisticsOverlay(),
+    );
+    this.topbar.append(this.logisticsOverlayBtn);
 
     const menuBtn = document.createElement('button');
     menuBtn.className = 'hud-menu-btn';
@@ -471,6 +528,14 @@ export class HUD {
     this.utilOverlayBtn.classList.toggle('active', active);
   }
 
+  /**
+   * Phase 3 (logistics): flip the overlay toggle's active state
+   * (write-on-change — the button is never rebuilt).
+   */
+  setLogisticsOverlayActive(active: boolean): void {
+    this.logisticsOverlayBtn.classList.toggle('active', active);
+  }
+
   /** Show the two National Program choices (called by the age button). */
   private onAgeButton(): void {
     const s = STRINGS.hud;
@@ -572,6 +637,60 @@ export class HUD {
         // "Veteran ▲▲ · 320/500 XP". Reuses the 'sel-unit' class — no new
         // DOM class, no digest-registry change needed for markup.
         panel.append(el('div', 'sel-unit', vetXpLine(u)));
+        // Phase 3 (logistics): fuel/ammo bars for tracked units, the
+        // cargo line + field-service toggles for supply units, and the
+        // Resupply button. New DOM classes ('sel-bar', 'sel-bar-fill',
+        // 'sel-toggle') are registered in HUD_PANEL_BRANCHES and every
+        // value digested by the uf:/us: segments (AD11) — the panel
+        // rebuilds exactly when a bar or toggle would render
+        // differently.
+        if (def !== undefined && isTrackedUnit(def)) {
+          const lg = STRINGS.logistics;
+          panel.append(supplyBar(`${loc(lg.fuelLabel)} ${Math.round(fuelFracOf(def, u) * 100)}%`, fuelFracOf(def, u)));
+          panel.append(supplyBar(`${loc(lg.ammoLabel)} ${Math.round(ammoFracOf(def, u) * 100)}%`, ammoFracOf(def, u)));
+          if (isLowSupply(def, u)) {
+            panel.append(el('div', 'sel-unit', `⚠ ${loc(lg.lowSupplyWarning)}`));
+          }
+        }
+        if (def !== undefined && isSupplyUnit(def) && u.owner === HUMAN_PLAYER_ID) {
+          const lg = STRINGS.logistics;
+          panel.append(el('div', 'sel-unit', cargoLine(u)));
+          const svc = serviceTogglesOf(u);
+          const toggleRow = el('div', 'sel-toggle-row');
+          const toggles = [
+            { key: 'repair' as const, label: loc(lg.repairToggle) },
+            { key: 'rearm' as const, label: loc(lg.rearmToggle) },
+            { key: 'refuel' as const, label: loc(lg.refuelToggle) },
+          ];
+          for (const t of toggles) {
+            const b = document.createElement('button');
+            b.className = `sel-toggle${svc[t.key] ? ' active' : ''}`;
+            b.textContent = t.label;
+            b.setAttribute('aria-pressed', svc[t.key] ? 'true' : 'false');
+            b.addEventListener('click', () => {
+              const next = { ...svc, [t.key]: !svc[t.key] };
+              this.actions.onSetSupplyToggles(u.id, next);
+            });
+            toggleRow.append(b);
+          }
+          panel.append(toggleRow);
+          // Resupply: the UI proposes the depot (nearest with available
+          // stock); the sim validates and rejects loudly when nothing can
+          // serve the unit. The disabled reason names the blocker — never
+          // a dead button, never a silent no-op.
+          const depot = nearestDepot(world, u);
+          const block = resupplyBlockReason(world, u, depot);
+          const rs = document.createElement('button');
+          rs.className = 'sel-action';
+          rs.textContent = loc(lg.resupplyVerb);
+          if (block === null && depot !== null) {
+            rs.addEventListener('click', () => this.actions.onResupplyUnit(u.id, depot.id));
+          } else {
+            rs.disabled = true;
+            rs.title = block ?? loc(lg.noDepotReason);
+          }
+          panel.append(rs);
+        }
       }
       if (units.length > 6) panel.append(el('div', 'sel-unit', `… +${units.length - 6} more`));
       const stopBtn = document.createElement('button');
@@ -594,6 +713,11 @@ export class HUD {
       // building — reuses the 'sel-unit' class so no new DOM class is
       // introduced; digest-covered by the bu: segment.
       panel.append(el('div', 'sel-unit', buildingUtilityLine(b)));
+      // Phase 3 (logistics): the depot stock line for storage buildings
+      // ("Ammo 42/150 · Fuel 200/250"); empty string (no div) otherwise.
+      // Digest-covered by the bq: segment (AD11).
+      const stock = depotStockLine(b);
+      if (stock !== '') panel.append(el('div', 'sel-unit', stock));
       // A completed Research Lab opens the research panel (spec §8).
       if (b.kind === 'lab' && b.owner === HUMAN_PLAYER_ID && b.progress >= 1) {
         this.appendResearchPanel(panel, world);

@@ -477,7 +477,8 @@ export async function loadNatureTreeModels(
   const timeoutMs = opts.timeoutMs ?? NATURE_TREE_TEXTURE_TIMEOUT_MS;
   const loader = new THREE.TextureLoader();
   const loadOne = (path: string): Promise<THREE.Texture> => {
-    const url = `${base}models/${path}`;
+    // modelBaseUrl() already ends with `models/` — don't append it twice.
+    const url = `${base}${path}`;
     return withTimeout(
       loader.loadAsync(url).then((tex) => {
         tex.colorSpace = THREE.SRGBColorSpace;

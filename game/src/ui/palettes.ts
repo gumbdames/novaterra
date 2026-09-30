@@ -69,7 +69,10 @@ export const TRAIN_TABS: readonly TrainTab[] = [
   },
   {
     id: 'armor',
-    kinds: ['tank', 'apc', 'tankDestroyer', 'artillery', 'mlrs', 'aa', 'hq'],
+    // Grand-expansion Phase 3 (logistics): the supply trucks ride with
+    // the land vehicles (no production gate — logistics must work from
+    // the start, like the hauler precedent in infantry).
+    kinds: ['tank', 'apc', 'tankDestroyer', 'artillery', 'mlrs', 'aa', 'hq', 'supplyTruck', 'fuelTruck'],
   },
   {
     id: 'air',

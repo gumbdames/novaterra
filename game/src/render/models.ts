@@ -376,7 +376,12 @@ export async function loadOneModel(
         throw new Error(`loadOneModel(${key}): HTTP ${response.status} for ${url}`);
       }
       const bytes = await response.arrayBuffer();
-      return loader.parseAsync(bytes, url);
+      // parseAsync's `path` is STRING-concatenated (three's resolveURL does
+      // `path + uri`, no URL resolution) with texture URIs inside the GLB —
+      // it must be the model's DIRECTORY (trailing slash), not the GLB file
+      // URL, or textures resolve to `<name>.glbTextures/...` and 404.
+      const resourcePath = url.slice(0, url.lastIndexOf('/') + 1);
+      return loader.parseAsync(bytes, resourcePath);
     })(),
     timeoutMs,
     `loadOneModel(${key})`,

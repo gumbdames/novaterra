@@ -78,6 +78,15 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   sprites over disconnected / shortage / stranded / fouled buildings
   (see `render/utilityOverlay.ts`). The power lines and water pipes
   themselves render always-on like roads (see `render/networks.ts`).
+  Topbar (Phase 3): a "Logistics" toggle shows the logistics overlay —
+  olive reload-point coverage discs (radius = the sim's
+  `LOGISTICS_RADIUS`) plus amber ground rings under low-supply units
+  (see `render/logisticsOverlay.ts`). Selected tracked units show
+  fuel/ammo bars + a low-supply warning; supply units add the cargo
+  line, Repair/Rearm/Refuel toggles, and a Resupply button (depot from
+  `nearestDepot`, disabled with the named blocker from
+  `resupplyBlockReason`); depots show their stock line. Digest-covered
+  (`uf:` / `us:` / `bq:` segments, AD11).
   Tools row (Phase 2): "Power line" and "Water pipe" drag-paint tools ride
   the generic `linearNetworkDrag.ts` pipeline (see "Adding a
   linear-network kind" below) and emit `buildPowerLine` / `buildPipe`
@@ -110,8 +119,12 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `camera.ts` / `selection.ts` — pure state + transitions, fully tested.
 - `orders.ts` — gesture → `OrderIntent` (`NewCommand` minus issuer);
   the controller stamps `issuer: 'player'` at enqueue. Includes
+  `buildResearchUpgradeOrder(owner, upgrade)` for the research panel, and
+  the Phase 3 logistics builders `buildResupplyOrder(unitId, depotId,
+  owner)` / `buildSupplyTogglesOrder(unitId, owner, { repair, rearm,
+  refuel })` — flat payloads, the exact shapes `registerLogisticsCommands`
   validates. Until the sim wires registration at boot, enqueue throws
-  `buildResearchUpgradeOrder(owner, upgrade)` for the research panel.
+  `CommandRejectedError` and the controller toasts loudly — never silent.
 - `palettes.ts` — headless-safe palette data + availability logic for
   the tabbed TRAIN/BUILD palettes and the research panel: `TRAIN_TABS`
   (4 tabs, 30 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck),
@@ -135,6 +148,23 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   view the `UtilityOverlay` renders (served/fouled tint cells + marker
   list). Reads every sim field defensively (empty pre-sim → empty view),
   never writes sim state.
+- `logistics.ts` — **Phase 3 logistics contract module (pure, tested,
+  `tests/ui.logistics.test.ts`).** The UI/render boundary for the sim's
+  missile/fuel logistics: `RELOAD_POINT_KINDS` / `SUPPLY_UNIT_KINDS`
+  derived from the sim defs (never hand-maintained — the sim's canonical
+  9 reload points: 4 production bases + 2 ammo producers + 3 depots; the
+  cargo-carrying units: supplyTruck, fuelTruck, hauler),
+  `LOGISTICS_LOW_SUPPLY` (0.3), defensive stock/cargo/fraction readers,
+  `isDepotBuilding` (mirrors the `resupply` validation rule),
+  `availableAmmo` / `availableFuel` (stock − reserved, crediting the
+  unit's own live reservation — re-issue parity with the sim),
+  `nearestDepot` (same owner, completed, available stock of something
+  the unit needs, Euclidean nearest; null when nothing can help),
+  `resupplyBlockReason` (the disabled-button tooltip — never a dead
+  button), `serviceTogglesOf`, `depotStockLine`, `cargoLine`, and
+  `logisticsOverlayData(world)` + FNV-1a `logisticsOverlayDigest` — the
+  read-only per-frame view the `LogisticsOverlay` renders. Reads every
+  sim field defensively, never writes sim state.
 - `linearNetworkDrag.ts` — **generic linear-network gesture pipeline (pure,
   tested, `tests/ui.linearNetworkDrag.test.ts`).** One drag-paint pipeline
   shared by every linear network tool: road today, power lines / water pipes

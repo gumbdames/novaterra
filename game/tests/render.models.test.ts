@@ -289,7 +289,10 @@ describe('loadModels', () => {
       { timeoutMs: 1000 },
     );
     expect(failed).toHaveLength(0);
-    expect(mockState.lastUrl).toBe('/novaterra/models/tank.glb');
+    // parseAsync gets the model's DIRECTORY as the texture resource path
+    // (three string-concatenates it with texture URIs — the GLB file URL
+    // would resolve textures to `<name>.glbTextures/...`).
+    expect(mockState.lastUrl).toBe('/novaterra/models/');
     const tank = models.get('tank');
     expect(tank).toBeDefined();
     expect(tank?.geometries).toHaveLength(1);

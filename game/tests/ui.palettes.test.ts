@@ -69,7 +69,10 @@ describe('train tabs', () => {
         seen.set(kind, (seen.get(kind) ?? 0) + 1);
       }
     }
-    expect(sortedKinds(seen.keys())).toEqual(sortedKinds(Object.keys(UNIT_DEFS)));
+    // The Phase 3 supply trucks ride the armor tab (UI workstream,
+    // 2026-09-30) — covered here like every other kind.
+    const expected = Object.keys(UNIT_DEFS);
+    expect(sortedKinds(seen.keys())).toEqual(sortedKinds(expected));
     for (const [kind, count] of seen) {
       expect(count, `${kind} in ${count} tabs`).toBe(1);
     }
@@ -93,7 +96,8 @@ describe('train tabs', () => {
       'mlrs',
       'aa',
       'hq',
-      // Phase 3 workstream 3 (2026-09-30): the supply-chain trucks.
+      // Phase 3 (logistics, UI workstream 2026-09-30): the supply trucks
+      // ride with the land vehicles — no production gate, like the hauler.
       'supplyTruck',
       'fuelTruck',
     ]);

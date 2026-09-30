@@ -1654,6 +1654,117 @@ export function buildFuelDepot(): LoadedModel {
  * cargo bed with crate load peeking at the tailgate. The field resupply
  * workhorse (100 fuel / 40 ammo cargo).
  */
+export function buildSupplyTruck(): LoadedModel {
+  const b = new ModelBuilder();
+  const cabPaint = smat('paintedMetal', { color: 0x5a6e3c });
+  const canvas = smat('canvasFabric', { color: 0x9a8f6a });
+  const steel = smat('gunmetal');
+  const tire = smat('tireRubber');
+  // Chassis + fuel tank + mudguards.
+  b.add(new THREE.BoxGeometry(1.9, 0.35, 4.6), steel, tr(0, 0.75, -0.2));
+  b.add(new THREE.CylinderGeometry(0.28, 0.28, 1.2, 10), steel, tr(0.75, 0.55, 0.9, 0, 0, Math.PI / 2));
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.25, 0.15, 4.4), steel, tr(sx * 1.05, 0.85, -0.2));
+  }
+  // Six wheels.
+  for (const wz of [-1.7, -0.3, 1.1]) {
+    for (const sx of [-1, 1]) {
+      b.add(new THREE.CylinderGeometry(0.45, 0.45, 0.35, 14), tire, tr(sx * 1.05, 0.45, wz, 0, 0, Math.PI / 2));
+      b.add(new THREE.CylinderGeometry(0.2, 0.2, 0.37, 10), steel, tr(sx * 1.05, 0.45, wz, 0, 0, Math.PI / 2));
+    }
+  }
+  // Cab: hood + cab box + sloped windshield + roof.
+  b.add(new THREE.BoxGeometry(1.9, 0.7, 1.1), cabPaint, tr(0, 1.15, 1.85));
+  b.add(new THREE.BoxGeometry(1.9, 1.15, 1.2), cabPaint, tr(0, 1.75, 0.85));
+  b.add(new THREE.BoxGeometry(1.7, 0.55, 0.12), smat('glassBlue', { color: 0x1c2733 }), tr(0, 1.95, 1.42, -0.28, 0, 0));
+  b.add(new THREE.BoxGeometry(2.0, 0.14, 1.35), cabPaint, tr(0, 2.4, 0.85));
+  // Bumper + headlights.
+  b.add(new THREE.BoxGeometry(2.0, 0.25, 0.25), steel, tr(0, 0.75, 2.5));
+  const lamp = pmat(0xfff2c0, { emissive: 0x998844 });
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.28, 0.2, 0.1), lamp, tr(sx * 0.7, 1.1, 2.42));
+  }
+  // Cargo bed: side walls + canvas hoop cover.
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.12, 0.8, 2.9), cabPaint, tr(sx * 0.95, 1.35, -1.15));
+  }
+  const hoop = new THREE.CylinderGeometry(1.02, 1.02, 2.9, 12, 1, false, 0, Math.PI);
+  // Raw half-shell covers x >= 0 with the axis on Y: rotateX sends the
+  // axis to Z (bed length), then rotateZ(+90°) rolls the covered half to
+  // the top, forming the canvas hoop over the bed.
+  hoop.applyMatrix4(new THREE.Matrix4().makeRotationX(Math.PI / 2));
+  hoop.applyMatrix4(new THREE.Matrix4().makeRotationZ(Math.PI / 2));
+  b.add(hoop, canvas, tr(0, 1.75, -1.15));
+  b.add(new THREE.BoxGeometry(1.9, 0.12, 2.9), canvas, tr(0, 1.78, -1.15));
+  // Tailgate crates peeking out.
+  b.add(new THREE.BoxGeometry(1.5, 0.5, 0.25), smat('woodPlank'), tr(0, 1.2, -2.65));
+  b.add(new THREE.BoxGeometry(0.7, 0.45, 0.5), smat('woodPlank'), tr(-0.4, 1.6, -2.5));
+  b.add(new THREE.BoxGeometry(0.6, 0.4, 0.45), smat('woodPlank'), tr(0.45, 1.58, -2.55));
+  // Exhaust stack.
+  b.add(new THREE.CylinderGeometry(0.07, 0.07, 1.1, 8), steel, tr(0.85, 2.2, 0.35));
+  return b.build();
+}
+
+/**
+ * fuelTruck — 6x6 tanker: same cab family as the supply truck, with a
+ * cylindrical fuel tank trailer, top hatch, ladder, side pipework and a
+ * hazard diamond. Dedicated fuel carrier (220 cargo, no ammo hold).
+ */
+export function buildFuelTruck(): LoadedModel {
+  const b = new ModelBuilder();
+  const cabPaint = smat('paintedMetal', { color: 0x8c2f28 });
+  const tankMat = smat('paintedMetal', { color: 0xd8d4c8 });
+  const steel = smat('gunmetal');
+  const tire = smat('tireRubber');
+  // Chassis.
+  b.add(new THREE.BoxGeometry(1.9, 0.35, 4.8), steel, tr(0, 0.75, -0.3));
+  // Six wheels.
+  for (const wz of [-1.8, -0.4, 1.0]) {
+    for (const sx of [-1, 1]) {
+      b.add(new THREE.CylinderGeometry(0.45, 0.45, 0.35, 14), tire, tr(sx * 1.05, 0.45, wz, 0, 0, Math.PI / 2));
+      b.add(new THREE.CylinderGeometry(0.2, 0.2, 0.37, 10), steel, tr(sx * 1.05, 0.45, wz, 0, 0, Math.PI / 2));
+    }
+  }
+  // Cab (same family as the supply truck, red livery).
+  b.add(new THREE.BoxGeometry(1.9, 0.7, 1.1), cabPaint, tr(0, 1.15, 1.95));
+  b.add(new THREE.BoxGeometry(1.9, 1.15, 1.2), cabPaint, tr(0, 1.75, 0.95));
+  b.add(new THREE.BoxGeometry(1.7, 0.55, 0.12), smat('glassBlue', { color: 0x1c2733 }), tr(0, 1.95, 1.52, -0.28, 0, 0));
+  b.add(new THREE.BoxGeometry(2.0, 0.14, 1.35), cabPaint, tr(0, 2.4, 0.95));
+  b.add(new THREE.BoxGeometry(2.0, 0.25, 0.25), steel, tr(0, 0.75, 2.6));
+  const lamp = pmat(0xfff2c0, { emissive: 0x998844 });
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.28, 0.2, 0.1), lamp, tr(sx * 0.7, 1.1, 2.52));
+  }
+  // Tanker barrel: cylinder + end caps, riding the rear chassis.
+  const barrel = new THREE.CylinderGeometry(0.95, 0.95, 3.4, 18);
+  barrel.applyMatrix4(new THREE.Matrix4().makeRotationX(Math.PI / 2));
+  b.add(barrel, tankMat, tr(0, 1.75, -1.3));
+  for (const ez of [-3.0, 0.4]) {
+    const cap = new THREE.SphereGeometry(0.95, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    cap.applyMatrix4(new THREE.Matrix4().makeRotationX(ez < -1 ? -Math.PI / 2 : Math.PI / 2));
+    b.add(cap, tankMat, tr(0, 1.75, ez));
+  }
+  // Red band + top hatch + walkway.
+  b.add(new THREE.CylinderGeometry(0.99, 0.99, 0.4, 18), smat('paintedMetal', { color: 0xd8332a }), tr(0, 1.75, -1.3, Math.PI / 2, 0, 0));
+  b.add(new THREE.BoxGeometry(0.5, 0.25, 0.5), steel, tr(0, 2.75, -1.3));
+  b.add(new THREE.BoxGeometry(0.5, 0.08, 3.2), steel, tr(0, 2.62, -1.3));
+  // Ladder at the rear.
+  b.add(new THREE.BoxGeometry(0.4, 2.2, 0.1), steel, tr(0, 1.6, -3.05));
+  for (let i = 0; i < 5; i++) {
+    b.add(new THREE.BoxGeometry(0.4, 0.06, 0.08), steel, tr(0, 0.7 + i * 0.45, -3.0));
+  }
+  // Side pipework + hose reel.
+  b.beam(0.95, 1.0, -0.2, 0.95, 1.0, -2.4, 0.09, steel);
+  b.add(new THREE.CylinderGeometry(0.35, 0.35, 0.25, 12), steel, tr(-1.0, 1.1, -2.2, 0, 0, Math.PI / 2));
+  // Hazard diamond (emissive amber plate).
+  const diamond = new THREE.BoxGeometry(0.45, 0.45, 0.06);
+  diamond.applyMatrix4(new THREE.Matrix4().makeRotationZ(Math.PI / 4));
+  b.add(diamond, pmat(0xff8a2a, { emissive: 0xaa4400 }), tr(0, 1.75, -3.12));
+  // Exhaust stack.
+  b.add(new THREE.CylinderGeometry(0.07, 0.07, 1.1, 8), steel, tr(0.85, 2.2, 0.45));
+  return b.build();
+}
+
 // ---------------------------------------------------------------------------
 // Public dispatch
 // ---------------------------------------------------------------------------
@@ -1700,6 +1811,9 @@ export const PROCEDURAL_KINDS = [
   'missileSilo',
   'ordnanceDepot',
   'fuelDepot',
+  // Grand-expansion Phase 3 (logistics): the 2 supply trucks.
+  'supplyTruck',
+  'fuelTruck',
 ] as const;
 
 export type ProceduralKind = (typeof PROCEDURAL_KINDS)[number];
@@ -1786,6 +1900,11 @@ export function buildProceduralModel(kind: string): LoadedModel | undefined {
       return buildOrdnanceDepot();
     case 'fuelDepot':
       return buildFuelDepot();
+    // Grand-expansion Phase 3 (logistics): the 2 supply trucks.
+    case 'supplyTruck':
+      return buildSupplyTruck();
+    case 'fuelTruck':
+      return buildFuelTruck();
     default:
       return undefined;
   }

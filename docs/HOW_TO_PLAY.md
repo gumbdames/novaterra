@@ -91,6 +91,24 @@ and marker flags over buildings in trouble.
 
 ## Money and ages
 
+## Fuel and ammo (logistics)
+
+Fossil-fuel vehicles burn **fuel** and missile units spend **ammo** —
+watch the fuel/ammo bars on selected units. When a unit drops below 30%
+it gets a **low-supply warning**, and the **Logistics** button in the top
+bar shows amber rings under every thirsty unit plus olive discs for
+reload-point coverage (army bases, ammo factories, depots).
+
+Keep the chain running from the **Logistics** build tab: **Oil Well** /
+**Offshore Oil Rig** pump crude, **Munitions Factory** and **Missile
+Plant** make ammo, and **Ordnance Depot** / **Fuel Depot** / **Missile
+Silo** stockpile it near the front. **Supply Trucks** (armor tab) haul
+fuel + ammo to the field; **Fuel Trucks** haul fuel only. Select a truck
+to set its field services (**Repair / Rearm / Refuel** toggles), and hit
+**Resupply** on any low unit to send it to the nearest depot with stock.
+The **Advanced Logistics** upgrade (Infrastructure group) expands depot
+storage and ammo production ×1.5.
+
 Watch the top bar: Funds, Materials, Food, Fuel, Goods, Influence,
 Manpower, Population, and your age. Your advisor (left side) warns you
 before things go wrong — listen to it.

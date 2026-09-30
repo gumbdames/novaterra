@@ -517,6 +517,28 @@ export const STRINGS = {
       en: 'Show utility networks: yellow = power lines, blue = water pipes. Red icon = disconnected, amber = shortage, flag = stranded plant, purple ring = fouled water source.',
     },
   },
+  /** Logistics (grand-expansion Phase 3). English-only. */
+  logistics: {
+    /** Overlay toggle label (top bar). */
+    overlayToggle: { en: 'Logistics' },
+    /** Overlay legend (title attribute of the toggle). */
+    overlayLegend: {
+      en: 'Show reload-point coverage (olive discs) and low-supply units (amber rings).',
+    },
+    /** Selection-panel labels. */
+    fuelLabel: { en: 'Fuel' },
+    ammoLabel: { en: 'Ammo' },
+    cargoLabel: { en: 'Cargo' },
+    stockLabel: { en: 'Stock' },
+    servicesLabel: { en: 'Field services' },
+    repairToggle: { en: 'Repair' },
+    rearmToggle: { en: 'Rearm' },
+    refuelToggle: { en: 'Refuel' },
+    resupplyVerb: { en: 'Resupply' },
+    lowSupplyWarning: { en: 'Low supply — resupply soon' },
+    resupplyingTo: { en: 'Resupplying at depot' },
+    noDepotReason: { en: 'No depot with available stock in range' },
+  },
   /** Tabbed palettes, research panel, placement hints — all en-only. */
   palettes: {
     trainTitle: { en: 'Train' },

@@ -98,6 +98,11 @@ import { ZoneOverlay } from './zoneOverlay';
 // no three.js) — safe to import from the render layer.
 import { NetworkOverlay } from './networks';
 import { UtilityOverlay } from './utilityOverlay';
+// Phase 3 (logistics): the toggleable reload-coverage / low-supply
+// overlay. ui/logistics.ts is a pure contract module (no DOM, no
+// three.js) — safe to import from the render layer.
+import { LogisticsOverlay } from './logisticsOverlay';
+import { logisticsOverlayData } from '../ui/logistics';
 import {
   cityPowerLines,
   cityPipes,
@@ -155,6 +160,9 @@ export type ModelSource =
   rifles: { type: 'glb', pieces: [piece('rifles')] },
   tank: { type: 'glb', pieces: [piece('tank')] },
   hauler: { type: 'glb', pieces: [piece('hauler')] },
+  // Grand-expansion Phase 3 (logistics): the supply trucks.
+  supplyTruck: { type: 'procedural' },
+  fuelTruck: { type: 'procedural' },
   spectre: { type: 'glb', pieces: [piece('spectre')] },
   hq: { type: 'glb', pieces: [piece('hq')] },
   patrolBoat: { type: 'glb', pieces: [piece('patrolBoat')] },
@@ -803,6 +811,12 @@ export class EntityRenderer {
   private readonly networkOverlay: NetworkOverlay;
   private readonly utilityOverlay: UtilityOverlay;
   private utilityOverlayVisible = false;
+  /**
+   * Phase 3 (logistics): the toggleable reload-coverage / low-supply
+   * overlay (off by default, like the utility overlay).
+   */
+  private readonly logisticsOverlay: LogisticsOverlay;
+  private logisticsOverlayVisible = false;
   /** Live superweapon FX views, keyed by fx identity. */
   private readonly superweaponFx = new Map<string, SuperweaponFxView>();
   // ---- shared model assets (one copy per kind, never disposed per view) ----
@@ -905,6 +919,7 @@ export class EntityRenderer {
     // overlay starts hidden (top-bar toggle flips it).
     this.networkOverlay = new NetworkOverlay(scene);
     this.utilityOverlay = new UtilityOverlay(scene);
+    this.logisticsOverlay = new LogisticsOverlay(scene);
   }
 
   /** Create/update/remove meshes to match the world. Render-side only. */
@@ -916,6 +931,7 @@ export class EntityRenderer {
     this.syncZoneOverlay(world);
     this.syncNetworks(world);
     this.syncUtilityOverlay(world);
+    this.syncLogisticsOverlay(world);
     this.syncSuperweaponFx(world);
     this.syncChevrons(world);
     this.instancer?.endFrame(this.camera ?? undefined);
@@ -1062,12 +1078,34 @@ export class EntityRenderer {
   }
 
   /**
+   * Phase 3 (logistics): sync the reload-coverage / low-supply overlay.
+   * Skipped entirely while hidden (like the utility overlay — the digest
+   * pass is worth skipping).
+   */
+  private syncLogisticsOverlay(world: World): void {
+    if (!this.logisticsOverlayVisible) return;
+    const t = this.terrain;
+    const heightFn =
+      t === null ? undefined : (x: number, z: number): number => heightAt(t, x, z);
+    this.logisticsOverlay.sync(logisticsOverlayData(world), { heightFn });
+  }
+
+  /**
    * Phase 2 (utilities): toggle the diagnostic overlay (the network runs
    * stay always-on). Called by the controller from the top-bar button.
    */
   setUtilityOverlayVisible(visible: boolean): void {
     this.utilityOverlayVisible = visible;
     this.utilityOverlay.setVisible(visible);
+  }
+
+  /**
+   * Phase 3 (logistics): toggle the reload-coverage / low-supply overlay.
+   * Called by the controller from the top-bar button.
+   */
+  setLogisticsOverlayVisible(visible: boolean): void {
+    this.logisticsOverlayVisible = visible;
+    this.logisticsOverlay.setVisible(visible);
   }
 
   /**
@@ -1211,6 +1249,7 @@ export class EntityRenderer {
     this.zoneOverlay.dispose();
     this.networkOverlay.dispose();
     this.utilityOverlay.dispose();
+    this.logisticsOverlay.dispose();
     // Shared per-kind assets (never per-view): release once here.
     for (const m of this.proceduralCache.values()) {
       for (const g of m.geometries) g.dispose();

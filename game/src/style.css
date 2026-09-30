@@ -284,6 +284,35 @@ body {
   color: var(--accent);
 }
 
+/* Phase 2/3 overlay toggles (Utilities / Logistics): themed like the
+   other topbar buttons, with the same .active treatment as pause/speed. */
+.hud-util,
+.hud-logistics {
+  appearance: none;
+  border: 1px solid var(--panel-border);
+  background: var(--panel);
+  color: var(--ink);
+  padding: 6px 12px;
+  font-size: 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hud-util.active,
+.hud-logistics.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.hud-util svg,
+.hud-logistics svg {
+  width: 18px;
+  height: 18px;
+}
+
 .hud-spacer {
   flex: 1;
 }
@@ -382,6 +411,57 @@ body {
   padding: 6px 14px;
   border-radius: 4px;
   cursor: pointer;
+}
+
+/* Phase 3 (logistics): fuel/ammo bars in the selection panel. The fill
+   is an absolute background layer; the label sits above it. */
+.sel-bar {
+  position: relative;
+  font-size: 11px;
+  color: var(--ink-dim);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--panel-border);
+  border-radius: 3px;
+  padding: 3px 6px;
+  margin: 3px 0;
+  overflow: hidden;
+}
+
+.sel-bar-fill {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(159, 184, 74, 0.4);
+  pointer-events: none;
+}
+
+.sel-bar-label {
+  position: relative;
+}
+
+/* Phase 3 (logistics): Repair/Rearm/Refuel toggles on supply units. */
+.sel-toggle-row {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0;
+}
+
+.sel-toggle {
+  appearance: none;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink-dim);
+  padding: 4px 10px;
+  font-size: 11px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.sel-toggle.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: rgba(87, 200, 255, 0.12);
 }
 
 .train-panel,

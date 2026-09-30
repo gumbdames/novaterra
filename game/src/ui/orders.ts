@@ -315,3 +315,46 @@ export function buildSetGeneralStanceOrder(
     payload: { owner, stance },
   };
 }
+
+/**
+ * Phase 3 (logistics): send a unit to resupply at a depot. The sim
+ * (`registerLogisticsCommands`) validates the unit/depot/owner, reserves
+ * the unit's need from the depot's AVAILABLE stock (stock − reserved),
+ * and routes the unit there; the refill aura fulfills the reservation on
+ * arrival. Emitted by the selection panel's Resupply button with the
+ * depot picked by `nearestDepot` (ui/logistics.ts). The sim rejects
+ * loudly when the depot cannot serve the unit — nothing fails silently.
+ */
+export function buildResupplyOrder(
+  unitId: number,
+  depotId: number,
+  owner: number,
+): OrderIntent {
+  return {
+    kind: 'resupply',
+    payload: { unitId, depotId, owner },
+  };
+}
+
+/**
+ * Phase 3 (logistics): set which field services a supply unit offers
+ * (repair / rearm / refuel). Flat booleans — the exact payload shape
+ * `setSupplyToggles` validates. Only cargo-carrying units (supplyTruck /
+ * fuelTruck / hauler) accept it; the sim rejects anything else.
+ */
+export function buildSupplyTogglesOrder(
+  unitId: number,
+  owner: number,
+  services: { repair: boolean; rearm: boolean; refuel: boolean },
+): OrderIntent {
+  return {
+    kind: 'setSupplyToggles',
+    payload: {
+      unitId,
+      owner,
+      repair: services.repair,
+      rearm: services.rearm,
+      refuel: services.refuel,
+    },
+  };
+}
