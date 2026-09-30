@@ -328,6 +328,75 @@ Fill one row per sweep point per backend, plus the machine/GPU/browser.
 Machine: — · GPU: — · Browser: — · dpr: — · Date: —
 Verdict: — (which backend wins on our scenes; where the 60fps budget breaks)
 
+### Entity draw-call ceiling (Phase 0 workstream 1 — DECIDED 2026-09-30)
+
+**Decision: per-kind instancing.** One `THREE.InstancedMesh` per (model
+pool key × material) for model bodies (GLB `MODEL_PATHS` keys,
+`procedural:<kind>` gap models, `prop:<propKey>` attach props), plus ONE
+instanced layer each for team stripes (per-instance scale + color),
+pennants (per-instance color), and health bars (2 billboarded quads,
+only for damaged units → 2 draws total). Draw calls scale with distinct
+kinds on the field, never entity count. Implemented in
+`game/src/render/entityInstancing.ts` (`EntityInstancer`), opt-in via
+`EntityRenderer` `{ instanced: true }` (enabled in `ui/game.ts`); the
+legacy per-view Groups stay the default.
+
+**Rejected:** (a) visible-entity view caps — they break the game's
+promise of thousands of visible entities; (b) far-field impostors — they
+only pay off for triangle-bound scenes, and ours are draw-call-bound
+(~0.1ms CPU per draw call, low-poly models); (c) keeping health
+bars/pennants per-entity as-is — 2 draws per entity can never meet the
+≤200 budget with thousands of entities.
+
+**Deliberate exceptions:** selection rings and superweapon FX stay
+individual meshes (bounded counts, transient); buildings under
+construction keep the legacy per-view fade — per-instance transparency
+is not a thing — and convert into the pools on completion; kinds with
+no resolvable model keep the legacy placeholder path.
+
+**Bench** (temporary `?entitybench=1` harness, removed after the run):
+drove the REAL `EntityRenderer` + the real loaded GLB models through
+`sync()` per frame with moving units; deterministic mulberry32 layouts
+(units 2/3, buildings 1/3 of N; every 3rd unit damaged so bars show);
+same counter protocol as above (`info.autoReset = false` + explicit
+`reset()` per frame). Headless Chromium 152 / SwiftShader,
+`backend=webgl2`, `dpr=1`, `shadows=0`; 10 warmup + 20 measured frames
+per point; raw JSON on `window.__entitybench`.
+
+**Results** (SwiftShader — absolute frame times are meaningless here,
+per the caveat above; the transferable result is draw-call scaling):
+
+| entity views | legacy draws | instanced draws | legacy tris | instanced tris |
+|---|---|---|---|---|
+| 25 | 155 | 80 | 47,029 | 48,741 |
+| 50 | 272 | 84 | 92,851 | 98,895 |
+| 100 | 562 | 84 | 181,284 | 190,456 |
+| 200 | 1,126 | 84 | 351,887 | 377,031 |
+| 400 | 2,275 | 84 | 693,372 | 746,720 |
+
+- Legacy: ~6 draws/view, linear — 562 draws at 100 views is 2.8× OVER
+  the ≤200 budget; thousands of entities would need tens of thousands
+  of draws.
+- Instanced: flat 80–84 draws from 25 → 400 views (the 20-kind bench
+  composition saturates the kind axis; +stripe / pennant / 2 bar
+  layers). Triangle load is unchanged — same geometry, just batched.
+- Honest limit: SwiftShader frame times were parity-ish (software
+  rasterization dominates both paths), so the 60fps claim on real GPUs
+  rests on the draw-call math: 84 draws ≈ 8ms CPU at ~0.1ms/draw vs 562
+  draws ≈ 56ms — the legacy path cannot hold 60fps at 100+ views while
+  the instanced path stays inside the ≤200-draw budget past 400.
+
+**Correctness notes:** a pool's `mesh.count` must track the live slot
+count exactly — a missing assignment rendered stale capacity-sized
+instance lists (ghost geometry at the origin); caught by the bench,
+pinned by `tests/render.entityInstancing.test.ts`. Health-bar quads
+billboard from the camera quaternion passed to `endFrame(camera)`.
+Deterministic: identical op sequences yield byte-identical instance
+matrices (tested); render-side only, no sim state touched.
+
+Machine: leased VM, no GPU (SwiftShader) · Browser: Chromium 152
+headless · dpr: 1 · Date: 2026-09-30.
+
 ---
 
 ## 4. Stylized "AAA look" in the browser

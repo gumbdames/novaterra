@@ -236,3 +236,44 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   `world.tick`); each storm strike gets a gathering cloud, a lightning
   bolt, and an impact flash (phase from the fx expiry tick). Views are
   keyed by fx identity and disposed when the sim record expires.
+
+## Entity instancing (`render/entityInstancing.ts`, 0.1 Alpha)
+
+- The draw-call ceiling decision (Phase 0 workstream 1; see
+  `docs/research/tech-stack.md` §3): one `THREE.InstancedMesh` per
+  (model pool key × material) for model bodies, plus ONE instanced layer
+  each for unit team stripes (per-instance scale + color), pennants
+  (per-instance color), and health bars (two billboarded quads, only for
+  damaged units). Draw calls scale with distinct kinds on the field —
+  never with entity count.
+- Opt-in: `new EntityRenderer(scene, models, { instanced: true })`. The
+  legacy per-view path stays the default; kinds with no resolvable model
+  (placeholder fallback) and buildings under construction stay legacy —
+  per-instance transparency is not a thing, so construction keeps the
+  per-view material-clone fade and converts into the pools on
+  completion (`convertBuildingToInstanced`).
+- Pool discipline: `definePool(key, model)` registers caller-owned
+  geometry/material (never disposed by the instancer); `addEntity` /
+  `removeEntity` manage dense swap-compacted slots (the moved instance's
+  owner record is updated, including its stripe/pennant slot indices);
+  pools double capacity preserving order. Frame protocol:
+  `beginFrame()` → `writeTransform(id, …)` per entity → `endFrame(camera)`.
+  Health-bar jobs accumulate per frame and flush as billboards in
+  `endFrame` (two draw calls total when any damaged unit is shown, zero
+  otherwise). All overlay layer pools (stripe/pennant/bars) are created
+  lazily — an empty instancer adds no pools.
+- Per-frame writes must reach EVERY live entity (matrices are upload-only
+  when dirty; `flushPool` hides emptied pools). Colors upload only for
+  colored pools (stripe/pennant/fg bars) via `setColorAt`; `instanceColor`
+  buffers are pre-allocated so they never reallocate mid-frame.
+- Scratch discipline: module-scope `_entity` / `_piece` / `_quat` /
+  `_pos` / `_scl` / `_color` — no allocation on the write path (offsets
+  are cloned once per slot at `addEntity`).
+- Ownership: `dispose()` releases instance attributes and owned layer
+  assets only; caller-owned pool geometries/materials are never touched
+  (pinned by test). Use-after-dispose throws.
+- Debug/test hooks: `entityCount`, `poolStats()`, `debugMatrices(poolKey)`
+  (determinism: identical op sequences → byte-identical matrices),
+  `drawCallCount()` (pools with count > 0). `EntityRenderer.debugInstancer`
+  exposes the instancer (null in legacy mode). Covered by
+  `tests/render.entityInstancing.test.ts` (14 tests).

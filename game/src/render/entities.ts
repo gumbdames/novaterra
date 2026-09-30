@@ -62,6 +62,7 @@ import {
 } from '../sim/city';
 import { STORM_FX_TICKS, type WeaponFx } from '../sim/superweapons';
 import type { LoadedModel } from './models';
+import { EntityInstancer, type InstancedPiece } from './entityInstancing';
 import {
   buildHqAntenna,
   buildInfantryGear,
@@ -526,9 +527,13 @@ function buildingColorFor(zone: ZoneType | typeof UTILITY_ZONE): number {
 /** One live unit's meshes. */
 interface UnitView {
   group: THREE.Group;
-  hull: THREE.Group;
-  barBg: THREE.Sprite;
-  barFg: THREE.Sprite;
+  id: number;
+  /** Legacy path only: null in instanced mode (meshes live in pools). */
+  hull: THREE.Group | null;
+  /** Legacy path only: null in instanced mode (bars are instanced). */
+  barBg: THREE.Sprite | null;
+  /** Legacy path only: null in instanced mode (bars are instanced). */
+  barFg: THREE.Sprite | null;
   /**
    * Group-relative lift of the hull: the terrain/water Y itself lives on
    * `group.position.y` (see `unitGroundY`), so this is the hover gap
@@ -538,6 +543,10 @@ interface UnitView {
   baseY: number;
   /** Top of the model (stripe/pennant/bar anchor), world units above baseY. */
   modelTop: number;
+  /** Yaw in instanced mode (the legacy path stores it on hull.rotation.y). */
+  yaw: number;
+  /** True when this view's meshes live in the instancer's pools. */
+  instanced: boolean;
   /**
    * Per-view disposables ONLY: health-bar + pennant materials. Shared
    * geometry/materials (model, stripe, placeholder templates) are never
@@ -551,12 +560,15 @@ interface BuildingView {
   group: THREE.Group;
   id: number;
   kind: BuildingKind;
+  owner: number;
   /** Meshes whose materials swap between shared and construction clones. */
   modelMeshes: THREE.Mesh[];
   /** Shared materials parallel to modelMeshes (restored on completion). */
   sharedMaterials: THREE.Material[];
   /** True while the view's materials are per-view construction clones. */
   constructing: boolean;
+  /** True when this view's meshes live in the instancer's pools. */
+  instanced: boolean;
   /** Per-view disposables: pennant material + active construction clones. */
   owned: THREE.Material[];
   /** Top of the model, for the pennant anchor. */
@@ -567,6 +579,13 @@ interface BuildingView {
 export interface EntityRendererOptions {
   /** Water level: sea-unit hulls float here (default 0). */
   waterLevel?: number;
+  /**
+   * Per-kind instanced rendering (Phase 0 workstream 1): model bodies,
+   * team stripes/pennants and health bars render as per-kind
+   * InstancedMesh pools instead of one Group per view. Default false
+   * (legacy per-view Groups — used by headless tests).
+   */
+  instanced?: boolean;
   /**
    * The sim's terrain. When provided, every ground-anchored view rides
    * on it: units (per frame — they move), buildings (at creation),
@@ -596,6 +615,13 @@ export class EntityRenderer {
   private readonly models: Map<string, LoadedModel>;
   private readonly waterLevel: number;
   private readonly terrain: TerrainData | null;
+  /**
+   * Per-kind instanced view pools (`opts.instanced`). Null in the legacy
+   * per-view-Group mode (default; used by headless tests).
+   */
+  private readonly instancer: EntityInstancer | null;
+  /** Camera for instanced health-bar billboarding (set via setCamera). */
+  private camera: THREE.Camera | null = null;
   private readonly unitGroup = new THREE.Group();
   private readonly buildingGroup = new THREE.Group();
   private readonly fxGroup = new THREE.Group();
@@ -696,6 +722,7 @@ export class EntityRenderer {
     this.models = models;
     this.waterLevel = opts.waterLevel ?? 0;
     this.terrain = opts.terrain ?? null;
+    this.instancer = opts.instanced ? new EntityInstancer(scene) : null;
     this.unitGroup.name = 'units';
     this.buildingGroup.name = 'buildings';
     this.fxGroup.name = 'fx';
@@ -713,10 +740,20 @@ export class EntityRenderer {
 
   /** Create/update/remove meshes to match the world. Render-side only. */
   sync(world: World): void {
+    this.instancer?.beginFrame();
     this.syncUnits(world);
     this.syncBuildings(world);
     this.syncRoads(world);
     this.syncSuperweaponFx(world);
+    this.instancer?.endFrame(this.camera ?? undefined);
+  }
+
+  /**
+   * Camera used to billboard instanced health bars (`opts.instanced`
+   * mode). Optional — without it bars face +z (headless tests).
+   */
+  setCamera(camera: THREE.Camera | null): void {
+    this.camera = camera;
   }
 
   /**
@@ -899,6 +936,7 @@ export class EntityRenderer {
     this.buildings.clear();
     this.selectionRings.clear();
     this.superweaponFx.clear();
+    this.instancer?.dispose();
     this.ringGeo.dispose();
     this.ringMat.dispose();
     this.barTexture.dispose();
@@ -1015,56 +1053,135 @@ export class EntityRenderer {
    * infantry gear (rifle / hard-hat / sniper rifle / medic kit), the HQ
    * command antenna, the aegisControl radar dish, the AWACS rotodome,
    * the command-ship comms mast, the airfield runway strip, the nuclear
-   * cooling tower, and the hospital cross. Shared geometry/materials;
-   * one `Mesh` per view (a Mesh can only have one parent).
+   * cooling tower, and the hospital cross. Declared as data so both the
+   * legacy per-view path (`attachModelExtras`) and the instanced path
+   * (`resolveVisualPieces`) place them identically.
+   */
+  private static extraPropSpecs(
+    kind: string,
+  ): Array<{ prop: string; dx: number; dy: number; dz: number }> {
+    if (
+      kind === 'rifles' ||
+      kind === 'engineer' ||
+      kind === 'sniperTeam' ||
+      kind === 'combatMedic'
+    ) {
+      const gearKey =
+        kind === 'sniperTeam' ? 'sniper' : kind === 'combatMedic' ? 'medic' : kind;
+      return [{ prop: `gear:${gearKey}`, dx: 0, dy: 0, dz: 0 }];
+    }
+    switch (kind) {
+      case 'hq':
+        // On the flatbed toward the rear (-z; the model faces +z).
+        return [{ prop: 'hqAntenna', dx: 0, dy: 1.5, dz: -1.2 }];
+      case 'aegisControl':
+        // Beside the main block, clear of its footprint.
+        return [{ prop: 'radarDish', dx: 1.5, dy: 0, dz: 1.8 }];
+      case 'awacs':
+        // On the fuselage crown (fuselage top ≈2.3 at this scale).
+        return [{ prop: 'awacsDome', dx: 0, dy: 1.9, dz: -0.3 }];
+      case 'commandShip':
+        // On the deck aft of the superstructure.
+        return [{ prop: 'shipMast', dx: 0, dy: 2.2, dz: 1.0 }];
+      case 'airfield':
+        // Runway along x beside the hangars.
+        return [{ prop: 'runwayStrip', dx: 0, dy: 0.02, dz: 2.2 }];
+      case 'nuclearPlant':
+        // Beside the reactor hall, clear of its footprint.
+        return [{ prop: 'coolingTower', dx: 2.2, dy: 0, dz: 1.8 }];
+      case 'hospital':
+        // Roof sign (roof ≈8.0 at this scale).
+        return [{ prop: 'hospitalCross', dx: 0, dy: 8.0, dz: 0 }];
+      default:
+        return [];
+    }
+  }
+
+  /**
+   * Attach per-kind extras to a legacy per-view group. Shared
+   * geometry/materials; one `Mesh` per view (a Mesh can only have one
+   * parent).
    */
   private attachModelExtras(group: THREE.Group, kind: string): void {
-    if (kind === 'rifles' || kind === 'engineer' || kind === 'sniperTeam' || kind === 'combatMedic') {
-      const gearKey = kind === 'sniperTeam' ? 'sniper' : kind === 'combatMedic' ? 'medic' : kind;
-      EntityRenderer.addModelMeshes(group, this.propFor(`gear:${gearKey}`));
-    } else if (kind === 'hq') {
-      const antenna = new THREE.Group();
-      EntityRenderer.addModelMeshes(antenna, this.propFor('hqAntenna'));
-      // On the flatbed toward the rear (-z; the model faces +z).
-      antenna.position.set(0, 1.5, -1.2);
-      group.add(antenna);
-    } else if (kind === 'aegisControl') {
-      const dish = new THREE.Group();
-      EntityRenderer.addModelMeshes(dish, this.propFor('radarDish'));
-      // Beside the main block, clear of its footprint.
-      dish.position.set(1.5, 0, 1.8);
-      group.add(dish);
-    } else if (kind === 'awacs') {
-      const dome = new THREE.Group();
-      EntityRenderer.addModelMeshes(dome, this.propFor('awacsDome'));
-      // On the fuselage crown (fuselage top ≈2.3 at this scale).
-      dome.position.set(0, 1.9, -0.3);
-      group.add(dome);
-    } else if (kind === 'commandShip') {
-      const mast = new THREE.Group();
-      EntityRenderer.addModelMeshes(mast, this.propFor('shipMast'));
-      // On the deck aft of the superstructure.
-      mast.position.set(0, 2.2, 1.0);
-      group.add(mast);
-    } else if (kind === 'airfield') {
-      const strip = new THREE.Group();
-      EntityRenderer.addModelMeshes(strip, this.propFor('runwayStrip'));
-      // Runway along x beside the hangars.
-      strip.position.set(0, 0.02, 2.2);
-      group.add(strip);
-    } else if (kind === 'nuclearPlant') {
-      const tower = new THREE.Group();
-      EntityRenderer.addModelMeshes(tower, this.propFor('coolingTower'));
-      // Beside the reactor hall, clear of its footprint.
-      tower.position.set(2.2, 0, 1.8);
-      group.add(tower);
-    } else if (kind === 'hospital') {
-      const cross = new THREE.Group();
-      EntityRenderer.addModelMeshes(cross, this.propFor('hospitalCross'));
-      // Roof sign (roof ≈8.0 at this scale).
-      cross.position.set(0, 8.0, 0);
-      group.add(cross);
+    for (const e of EntityRenderer.extraPropSpecs(kind)) {
+      const sub = new THREE.Group();
+      EntityRenderer.addModelMeshes(sub, this.propFor(e.prop));
+      sub.position.set(e.dx, e.dy, e.dz);
+      group.add(sub);
     }
+  }
+
+  /**
+   * Resolve a kind to its visual pieces (GLB → procedural → null for
+   * placeholder): one pool key + entity-local offset per piece. The
+   * legacy path (`createModelGroup`) and the instanced path share this
+   * resolution, so both place pieces identically.
+   */
+  private resolveVisualPieces(kind: string): {
+    pieces: Array<{
+      pool: string;
+      model: LoadedModel;
+      dx: number;
+      dy: number;
+      dz: number;
+    }>;
+    top: number;
+  } | null {
+    const source = modelSourceFor(kind);
+    const pieces: Array<{
+      pool: string;
+      model: LoadedModel;
+      dx: number;
+      dy: number;
+      dz: number;
+    }> = [];
+    if (source.type === 'glb') {
+      for (const p of source.pieces) {
+        const model = this.models.get(p.key);
+        // Missing piece: show the rest (a geometry-less model can never
+        // contribute an instance, so it is skipped like the legacy path
+        // skipped childless piece groups).
+        if (model === undefined || model.geometries.length === 0) continue;
+        pieces.push({ pool: p.key, model, dx: p.dx, dy: p.dy, dz: p.dz });
+      }
+      if (pieces.length === 0) {
+        // No GLB pieces loaded (missing/failed): try the procedural gap
+        // model for this kind before giving up (GLB → procedural →
+        // placeholder), so e.g. a failed tank-1 download still renders
+        // a tankDestroyer rather than a capsule.
+        const fallback = this.proceduralFor(kind);
+        if (fallback === undefined) return null;
+        pieces.push({
+          pool: `procedural:${kind}`,
+          model: fallback,
+          dx: 0,
+          dy: 0,
+          dz: 0,
+        });
+      }
+    } else if (source.type === 'procedural') {
+      const model = this.proceduralFor(kind);
+      if (model === undefined) return null;
+      pieces.push({
+        pool: `procedural:${kind}`,
+        model,
+        dx: 0,
+        dy: 0,
+        dz: 0,
+      });
+    } else {
+      return null;
+    }
+    for (const e of EntityRenderer.extraPropSpecs(kind)) {
+      pieces.push({
+        pool: `prop:${e.prop}`,
+        model: this.propFor(e.prop),
+        dx: e.dx,
+        dy: e.dy,
+        dz: e.dz,
+      });
+    }
+    return { pieces, top: this.modelTopForPieces(kind, pieces) };
   }
 
   /**
@@ -1074,47 +1191,36 @@ export class EntityRenderer {
    * +z; geometry and materials are shared across all views of the kind.
    */
   private createModelGroup(kind: string): { group: THREE.Group; top: number } | null {
-    const source = modelSourceFor(kind);
+    const resolved = this.resolveVisualPieces(kind);
+    if (resolved === null) return null;
     const group = new THREE.Group();
-    if (source.type === 'glb') {
-      let placed = 0;
-      for (const p of source.pieces) {
-        const model = this.models.get(p.key);
-        if (model === undefined) continue; // missing piece: show the rest
-        const pieceGroup = new THREE.Group();
-        EntityRenderer.addModelMeshes(pieceGroup, model);
-        if (pieceGroup.children.length === 0) continue;
-        pieceGroup.position.set(p.dx, p.dy, p.dz);
-        group.add(pieceGroup);
-        placed++;
-      }
-      if (placed === 0) {
-        // No GLB pieces loaded (missing/failed): try the procedural gap
-        // model for this kind before giving up (GLB → procedural →
-        // placeholder), so e.g. a failed tank-1 download still renders
-        // a tankDestroyer rather than a capsule.
-        const fallback = this.proceduralFor(kind);
-        if (fallback !== undefined) {
-          EntityRenderer.addModelMeshes(group, fallback);
-        } else {
-          return null;
-        }
-      }
-    } else if (source.type === 'procedural') {
-      const model = this.proceduralFor(kind);
-      if (model === undefined) return null;
-      EntityRenderer.addModelMeshes(group, model);
-    } else {
-      return null;
+    for (const p of resolved.pieces) {
+      const pieceGroup = new THREE.Group();
+      EntityRenderer.addModelMeshes(pieceGroup, p.model);
+      pieceGroup.position.set(p.dx, p.dy, p.dz);
+      group.add(pieceGroup);
     }
-    this.attachModelExtras(group, kind);
-    return { group, top: this.modelTopFor(kind, group) };
+    return { group, top: resolved.top };
   }
 
-  /** Top (max y) of a kind's model group, measured once and cached. */
-  private modelTopFor(kind: string, group: THREE.Group): number {
+  /**
+   * Top (max y) of a kind's resolved pieces, measured once and cached.
+   * Measured from the same piece layout the legacy group builder uses,
+   * so stripe/pennant/bar anchors match between the two paths.
+   */
+  private modelTopForPieces(
+    kind: string,
+    pieces: Array<{ model: LoadedModel; dx: number; dy: number; dz: number }>,
+  ): number {
     let top = this.modelTops.get(kind);
     if (top === undefined) {
+      const group = new THREE.Group();
+      for (const p of pieces) {
+        const pieceGroup = new THREE.Group();
+        EntityRenderer.addModelMeshes(pieceGroup, p.model);
+        pieceGroup.position.set(p.dx, p.dy, p.dz);
+        group.add(pieceGroup);
+      }
       const box = new THREE.Box3().setFromObject(group);
       top = box.isEmpty() ? 1 : box.max.y;
       this.modelTops.set(kind, top);
@@ -1236,6 +1342,54 @@ export class EntityRenderer {
     const size = hullSizeFor(u.kind);
     const team = teamColors()[u.owner] ?? '#aaaaaa';
     const owned: Array<THREE.BufferGeometry | THREE.Material> = [];
+    const baseY = unitHoverY(u.domain as HeightDomain, u.kind);
+
+    // Instanced path: model body, stripe, pennant, and health bars all
+    // live in per-kind InstancedMesh pools (see entityInstancing.ts); the
+    // group stays empty so scene-graph invariants still hold. Kinds with
+    // no resolvable model (placeholder fallback) keep the legacy path.
+    const instancer = this.instancer;
+    if (instancer !== null) {
+      const resolved = this.resolveVisualPieces(u.kind);
+      if (resolved !== null) {
+        const pieces: InstancedPiece[] = resolved.pieces.map((p) => {
+          instancer.definePool(p.pool, p.model);
+          return {
+            pool: p.pool,
+            offset: new THREE.Matrix4().makeTranslation(p.dx, p.dy, p.dz),
+          };
+        });
+        instancer.addEntity(u.id, pieces, {
+          stripe: true,
+          stripeScale: size.x * 0.32,
+          team,
+        });
+        const groundY = this.unitGroundY(u);
+        instancer.writeTransform(u.id, {
+          x: u.x,
+          y: groundY,
+          z: u.z,
+          yaw: 0,
+          baseY,
+          modelTop: resolved.top,
+          hpFrac: 1,
+          showBar: false,
+        });
+        group.position.set(u.x, groundY, u.z);
+        return {
+          group,
+          id: u.id,
+          hull: null,
+          barBg: null,
+          barFg: null,
+          baseY,
+          modelTop: resolved.top,
+          yaw: 0,
+          instanced: true,
+          owned,
+        };
+      }
+    }
 
     // Hull: real model (GLB → procedural) or the shared placeholder
     // template. The hull group's base sits at y=0; baseY lifts it for
@@ -1251,7 +1405,6 @@ export class EntityRenderer {
       hull.add(this.placeholderUnitTemplate(u.kind, u.domain).clone());
       modelTop = size.y;
     }
-    const baseY = unitHoverY(u.domain as HeightDomain, u.kind);
     hull.position.y = baseY;
     group.add(hull);
 
@@ -1285,10 +1438,32 @@ export class EntityRenderer {
     // updateUnitView as the unit moves); stripe, pennant, and health
     // bars stay group-relative, so they ride along for free.
     group.position.set(u.x, this.unitGroundY(u), u.z);
-    return { group, hull, barBg, barFg, baseY, modelTop, owned };
+    return { group, id: u.id, hull, barBg, barFg, baseY, modelTop, yaw: 0, instanced: false, owned };
   }
 
   private updateUnitView(view: UnitView, u: UnitRecord): void {
+    const instancer = this.instancer;
+    if (instancer !== null && view.instanced) {
+      const dx = u.destX - u.x;
+      const dz = u.destZ - u.z;
+      if (dx * dx + dz * dz > 0.5) {
+        view.yaw = Math.atan2(dx, dz);
+      }
+      const def = UNIT_DEFS[u.kind as UnitKind];
+      const frac = def ? Math.max(0, Math.min(1, u.hp / def.hp)) : 1;
+      instancer.writeTransform(u.id, {
+        x: u.x,
+        y: this.unitGroundY(u),
+        z: u.z,
+        yaw: view.yaw,
+        baseY: view.baseY,
+        modelTop: view.modelTop,
+        hpFrac: frac,
+        showBar: frac < 1,
+      });
+      return;
+    }
+    const hull = view.hull as THREE.Group;
     view.group.position.set(u.x, this.unitGroundY(u), u.z);
     // Face the order destination when it has one; cheap orientation cue.
     // Models face +z at rotation 0 (rotY baked at load), matching the
@@ -1296,20 +1471,22 @@ export class EntityRenderer {
     const dx = u.destX - u.x;
     const dz = u.destZ - u.z;
     if (dx * dx + dz * dz > 0.5) {
-      view.hull.rotation.y = Math.atan2(dx, dz);
+      hull.rotation.y = Math.atan2(dx, dz);
     }
     const def = UNIT_DEFS[u.kind as UnitKind];
     const frac = def ? Math.max(0, Math.min(1, u.hp / def.hp)) : 1;
     const barY = view.baseY + view.modelTop + 1.1;
-    view.barBg.position.set(-2, barY, 0);
-    view.barFg.position.set(-2, barY, 0);
-    view.barFg.scale.set(4 * frac, 0.5, 1);
-    (view.barFg.material as THREE.SpriteMaterial).color.setHex(
+    const barBg = view.barBg as THREE.Sprite;
+    const barFg = view.barFg as THREE.Sprite;
+    barBg.position.set(-2, barY, 0);
+    barFg.position.set(-2, barY, 0);
+    barFg.scale.set(4 * frac, 0.5, 1);
+    (barFg.material as THREE.SpriteMaterial).color.setHex(
       frac > 0.5 ? 0x4ade80 : frac > 0.25 ? 0xfacc15 : 0xef4444,
     );
     const showBar = frac < 1;
-    view.barBg.visible = showBar;
-    view.barFg.visible = showBar;
+    barBg.visible = showBar;
+    barFg.visible = showBar;
   }
 
   /**
@@ -1318,6 +1495,9 @@ export class EntityRenderer {
    * the renderer and released once in dispose().
    */
   private disposeUnitView(view: UnitView): void {
+    if (view.instanced) {
+      this.instancer?.removeEntity(view.id);
+    }
     for (const o of view.owned) o.dispose();
     view.owned.length = 0;
   }
@@ -1354,6 +1534,62 @@ export class EntityRenderer {
     const sharedMaterials: THREE.Material[] = [];
     const owned: THREE.Material[] = [];
 
+    const w = def.footprintW * CELL_WORLD_SIZE;
+    const d = def.footprintH * CELL_WORLD_SIZE;
+    const bx = cellCenterWorld(b.cx) + (w - CELL_WORLD_SIZE) / 2;
+    const bz = cellCenterWorld(b.cz) + (d - CELL_WORLD_SIZE) / 2;
+    // The foundation sits on the terrain at the footprint center
+    // (buildings never move, so this is computed once at creation).
+    const gy =
+      groundYAt(this.terrain, this.waterLevel, 'land', bx, bz) +
+      BUILDING_GROUND_EPSILON;
+
+    // Instanced path: completed buildings render from per-kind pools.
+    // Buildings under construction keep the legacy per-view fade path
+    // (per-instance transparency is not a thing); they convert to
+    // instanced slots on completion in updateBuildingConstruction.
+    const instancer = this.instancer;
+    if (instancer !== null && b.progress >= 1) {
+      const resolved = this.resolveVisualPieces(kind);
+      if (resolved !== null) {
+        const pieces: InstancedPiece[] = resolved.pieces.map((p) => {
+          instancer.definePool(p.pool, p.model);
+          return {
+            pool: p.pool,
+            offset: new THREE.Matrix4().makeTranslation(p.dx, p.dy, p.dz),
+          };
+        });
+        instancer.addEntity(b.id, pieces, {
+          stripe: false,
+          stripeScale: 0,
+          team,
+        });
+        instancer.writeTransform(b.id, {
+          x: bx,
+          y: gy,
+          z: bz,
+          yaw: 0,
+          baseY: 0,
+          modelTop: resolved.top,
+          hpFrac: 1,
+          showBar: false,
+        });
+        group.position.set(bx, gy, bz);
+        return {
+          group,
+          id: b.id,
+          kind,
+          owner: b.owner,
+          modelMeshes: [],
+          sharedMaterials: [],
+          constructing: false,
+          instanced: true,
+          owned,
+          modelTop: resolved.top,
+        };
+      }
+    }
+
     const built = this.createModelGroup(kind);
     let modelTop: number;
     if (built !== null) {
@@ -1379,24 +1615,18 @@ export class EntityRenderer {
     group.add(pennant.mesh);
     owned.push(pennant.material);
 
-    const w = def.footprintW * CELL_WORLD_SIZE;
-    const d = def.footprintH * CELL_WORLD_SIZE;
-    const bx = cellCenterWorld(b.cx) + (w - CELL_WORLD_SIZE) / 2;
-    const bz = cellCenterWorld(b.cz) + (d - CELL_WORLD_SIZE) / 2;
     // The foundation sits on the terrain at the footprint center
     // (buildings never move, so this is computed once at creation).
-    group.position.set(
-      bx,
-      groundYAt(this.terrain, this.waterLevel, 'land', bx, bz) + BUILDING_GROUND_EPSILON,
-      bz,
-    );
+    group.position.set(bx, gy, bz);
     const view: BuildingView = {
       group,
       id: b.id,
       kind,
+      owner: b.owner,
       modelMeshes,
       sharedMaterials,
       constructing: false,
+      instanced: false,
       owned,
       modelTop,
     };
@@ -1411,8 +1641,17 @@ export class EntityRenderer {
    * on completion the view swaps back to the shared materials and the
    * clones are released. No cross-talk between views — two buildings of
    * the same kind never share a faded material.
+   *
+   * In instanced mode a building that finishes construction converts to
+   * instanced slots (per-instance transparency is not a thing, so the
+   * fade itself stays on the legacy path).
    */
   private updateBuildingConstruction(view: BuildingView, progress: number): void {
+    if (this.instancer !== null && !view.instanced && progress >= 1) {
+      this.convertBuildingToInstanced(view);
+      return;
+    }
+    if (view.instanced) return;
     const wantConstructing = progress < 1;
     if (wantConstructing === view.constructing) return;
     view.constructing = wantConstructing;
@@ -1444,8 +1683,56 @@ export class EntityRenderer {
     }
   }
 
+  /**
+   * Move a finished building from the legacy per-view construction path
+   * into the instancer's pools: release the per-view clones + pennant,
+   * drop the legacy meshes, and allocate instance slots at the view's
+   * current position. A kind with no resolvable model stays legacy
+   * (placeholder fallback).
+   */
+  private convertBuildingToInstanced(view: BuildingView): void {
+    const instancer = this.instancer;
+    if (instancer === null || view.instanced) return;
+    const resolved = this.resolveVisualPieces(view.kind);
+    if (resolved === null) return;
+    const pieces: InstancedPiece[] = resolved.pieces.map((p) => {
+      instancer.definePool(p.pool, p.model);
+      return {
+        pool: p.pool,
+        offset: new THREE.Matrix4().makeTranslation(p.dx, p.dy, p.dz),
+      };
+    });
+    const team = teamColors()[view.owner] ?? '#aaaaaa';
+    instancer.addEntity(view.id, pieces, {
+      stripe: false,
+      stripeScale: 0,
+      team,
+    });
+    instancer.writeTransform(view.id, {
+      x: view.group.position.x,
+      y: view.group.position.y,
+      z: view.group.position.z,
+      yaw: 0,
+      baseY: 0,
+      modelTop: resolved.top,
+      hpFrac: 1,
+      showBar: false,
+    });
+    for (const m of view.owned) m.dispose();
+    view.owned.length = 0;
+    view.group.clear();
+    view.modelMeshes.length = 0;
+    view.sharedMaterials.length = 0;
+    view.modelTop = resolved.top;
+    view.constructing = false;
+    view.instanced = true;
+  }
+
   /** Release per-view objects: pennant + any construction clones. */
   private disposeBuildingView(view: BuildingView): void {
+    if (view.instanced) {
+      this.instancer?.removeEntity(view.id);
+    }
     for (const m of view.owned) m.dispose();
     view.owned.length = 0;
   }
@@ -1484,6 +1771,15 @@ export class EntityRenderer {
     } else {
       dashes.dispose();
     }
+  }
+
+  /**
+   * Test/bench hook: the instancer when `opts.instanced` is set, null in
+   * legacy mode. Exposes entityCount / poolStats / debugMatrices for
+   * mechanism tests without breaking the renderer's encapsulation.
+   */
+  get debugInstancer(): EntityInstancer | null {
+    return this.instancer;
   }
 
   /** Unit records by id (for selection-ring updates). */

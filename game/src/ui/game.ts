@@ -244,6 +244,9 @@ export async function startGame(
     4000,
   );
   const entities = await loadEntityModels(session, scene);
+  // Camera for instanced health-bar billboarding (Phase 0 draw-call
+  // ceiling: `instanced: true` is set on the EntityRenderer above).
+  entities.renderer.setCamera(camera);
 
   const controller = new GameController(
     container,
@@ -356,6 +359,11 @@ async function loadEntityModels(
     // without this every entity would sit at y=0 and bury itself in
     // hillsides (terrain height ranges −10…+30).
     terrain: session.terrain,
+    // Per-kind instanced entity views (Phase 0 draw-call ceiling):
+    // model bodies, team stripes/pennants, and health bars render from
+    // shared InstancedMesh pools — draw calls scale with distinct kinds,
+    // never with entity count.
+    instanced: true,
   });
   // Deterministic render-only nature scatter (built once from initial
   // state; decorative only, never affects the sim).
