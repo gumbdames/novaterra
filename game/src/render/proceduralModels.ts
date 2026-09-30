@@ -938,6 +938,74 @@ function buildQuarry(): LoadedModel {
  * obelisk with a gold pyramidion, plaza ring, corner pillars with orbs.
  * Footprint 6×6, ~9 tall.
  */
+/**
+ * Workstream W (2026-09-30): the civic library — a neoclassical hall
+ * with a columned portico and steps. 2×2 footprint (4×4 world units).
+ */
+function buildLibrary(): LoadedModel {
+  const b = new ModelBuilder();
+  const stone = smat('concrete', { color: 0xd8d4c8 });
+  const stoneDark = smat('concrete', { color: 0x9a968a });
+  const glass = smat('glassBlue', { color: 0x9fd4e8 });
+  const roof = smat('paintedMetal', { color: 0x7a5c48 });
+  // Steps + main hall (set back from the portico).
+  b.add(new THREE.BoxGeometry(3.8, 0.3, 3.8), stoneDark, tr(0, 0.15, 0));
+  b.add(new THREE.BoxGeometry(3.2, 2.4, 2.8), stone, tr(0, 1.5, -0.4));
+  // Columned portico (front, +z); the center bay stays open for the door.
+  for (const px of [-1.4, -0.7, 0.7, 1.4]) {
+    b.add(new THREE.CylinderGeometry(0.14, 0.18, 2.4, 10), stone, tr(px, 1.5, 1.4));
+  }
+  // Entablature + roof slab + parapet block (the "book" silhouette).
+  b.add(new THREE.BoxGeometry(3.8, 0.3, 3.8), stoneDark, tr(0, 2.85, 0));
+  b.add(new THREE.BoxGeometry(3.6, 0.2, 3.6), roof, tr(0, 3.1, 0));
+  b.add(new THREE.BoxGeometry(1.2, 0.5, 0.4), stoneDark, tr(0, 3.45, 0));
+  // Glass entry band between the columns.
+  b.add(new THREE.BoxGeometry(1.2, 1.7, 0.12), glass, tr(0, 1.05, 1.0));
+  return b.build();
+}
+
+/** One low-poly park tree: trunk + two foliage blobs. Deterministic. */
+function parkTree(b: ModelBuilder, px: number, pz: number, s: number): void {
+  const trunk = smat('woodPlank', { color: 0x6b4a2f });
+  const leaf = smat('canvasFabric', { color: 0x3f7a3a });
+  b.add(new THREE.CylinderGeometry(0.09 * s, 0.13 * s, 0.9 * s, 7), trunk, tr(px, 0.45 * s, pz));
+  b.add(new THREE.ConeGeometry(0.55 * s, 1.1 * s, 8), leaf, tr(px, 1.3 * s, pz));
+  b.add(new THREE.ConeGeometry(0.38 * s, 0.8 * s, 8), leaf, tr(px, 1.85 * s, pz));
+}
+
+/**
+ * Workstream W (2026-09-30): the civic park — lawn, cross paths,
+ * trees, benches, and a fountain pond. 3×3 footprint (6×6 world units).
+ */
+function buildPark(): LoadedModel {
+  const b = new ModelBuilder();
+  const lawn = smat('canvasFabric', { color: 0x4a8a42 });
+  const path = smat('concrete', { color: 0xc8bfa8 });
+  const water = smat('glassBlue', { color: 0x6fb8d8 });
+  const wood = smat('woodPlank', { color: 0x7a5c3a });
+  const stone = smat('concrete', { color: 0xd8d4c8 });
+  // Lawn slab + crossing gravel paths.
+  b.add(new THREE.BoxGeometry(5.6, 0.12, 5.6), lawn, tr(0, 0.06, 0));
+  b.add(new THREE.BoxGeometry(5.6, 0.14, 0.8), path, tr(0, 0.07, 0));
+  b.add(new THREE.BoxGeometry(0.8, 0.14, 5.6), path, tr(0, 0.07, 0));
+  // Fountain pond at the center + jet.
+  b.add(new THREE.CylinderGeometry(0.9, 0.9, 0.2, 16), stone, tr(0, 0.2, 0));
+  b.add(new THREE.CylinderGeometry(0.72, 0.72, 0.12, 16), water, tr(0, 0.3, 0));
+  b.add(new THREE.CylinderGeometry(0.06, 0.1, 0.9, 8), stone, tr(0, 0.7, 0));
+  // Trees in the four lawn quadrants.
+  parkTree(b, -1.9, -1.9, 1.0);
+  parkTree(b, 1.9, -1.9, 0.85);
+  parkTree(b, -1.9, 1.9, 0.9);
+  parkTree(b, 1.9, 1.9, 1.05);
+  // Two benches flanking the cross path.
+  for (const pz of [-1.6, 1.6]) {
+    b.add(new THREE.BoxGeometry(1.2, 0.08, 0.3), wood, tr(0, 0.5, pz));
+    b.add(new THREE.BoxGeometry(0.12, 0.5, 0.3), wood, tr(-0.5, 0.28, pz));
+    b.add(new THREE.BoxGeometry(0.12, 0.5, 0.3), wood, tr(0.5, 0.28, pz));
+  }
+  return b.build();
+}
+
 function buildMonument(): LoadedModel {
   const b = new ModelBuilder();
   const stone = smat('concrete', { color: 0xd8d4c8 });
@@ -1858,6 +1926,11 @@ export function buildProceduralModel(kind: string): LoadedModel | undefined {
       return buildQuarry();
     case 'monument':
       return buildMonument();
+    // Workstream W (2026-09-30): the civic amenities (desirability drivers).
+    case 'library':
+      return buildLibrary();
+    case 'park':
+      return buildPark();
     // Phase 2 (utilities): the 13 new utility buildings.
     case 'coalPlant':
       return buildCoalPlant();

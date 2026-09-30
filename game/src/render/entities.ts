@@ -98,6 +98,8 @@ import { ZoneOverlay } from './zoneOverlay';
 // no three.js) — safe to import from the render layer.
 import { NetworkOverlay } from './networks';
 import { UtilityOverlay } from './utilityOverlay';
+import { DesirabilityOverlay } from './desirabilityOverlay';
+import { desirabilityOverlayData } from '../ui/desirability';
 // Phase 3 (logistics): the toggleable reload-coverage / low-supply
 // overlay. ui/logistics.ts is a pure contract module (no DOM, no
 // three.js) — safe to import from the render layer.
@@ -255,6 +257,10 @@ export type ModelSource =
   // Workstream Z (2026-09-30): the education ladder.
   kindergarten: { type: 'glb', pieces: [piece('kindergarten')] },
   college: { type: 'glb', pieces: [piece('college')] },
+  // Workstream W (2026-09-30): the civic amenities — procedural-first
+  // (AD12: zero boot-download growth).
+  library: { type: 'procedural' },
+  park: { type: 'procedural' },
   monument: { type: 'procedural' },
   // Grand-expansion Phase 2 (utilities, 2026-09-30): the 12 new utility
   // buildings — procedural-first (AD12: zero boot-download growth).
@@ -817,6 +823,9 @@ export class EntityRenderer {
    */
   private readonly logisticsOverlay: LogisticsOverlay;
   private logisticsOverlayVisible = false;
+  /** Workstream W: the toggleable residential-desirability overlay. */
+  private readonly desirabilityOverlay: DesirabilityOverlay;
+  private desirabilityOverlayVisible = false;
   /** Live superweapon FX views, keyed by fx identity. */
   private readonly superweaponFx = new Map<string, SuperweaponFxView>();
   // ---- shared model assets (one copy per kind, never disposed per view) ----
@@ -920,6 +929,7 @@ export class EntityRenderer {
     this.networkOverlay = new NetworkOverlay(scene);
     this.utilityOverlay = new UtilityOverlay(scene);
     this.logisticsOverlay = new LogisticsOverlay(scene);
+    this.desirabilityOverlay = new DesirabilityOverlay(scene);
   }
 
   /** Create/update/remove meshes to match the world. Render-side only. */
@@ -932,6 +942,7 @@ export class EntityRenderer {
     this.syncNetworks(world);
     this.syncUtilityOverlay(world);
     this.syncLogisticsOverlay(world);
+    this.syncDesirabilityOverlay(world);
     this.syncSuperweaponFx(world);
     this.syncChevrons(world);
     this.instancer?.endFrame(this.camera ?? undefined);
@@ -1091,6 +1102,21 @@ export class EntityRenderer {
   }
 
   /**
+   * Workstream W: residential-desirability ground tint. Skipped entirely
+   * while hidden; the sim model is cached on structural change so the
+   * common frame path is a key compare (see
+   * `desirabilityOverlayData` / `DesirabilityOverlay.sync`).
+   */
+  private syncDesirabilityOverlay(world: World): void {
+    if (!this.desirabilityOverlayVisible) return;
+    const t = this.terrain;
+    const data = desirabilityOverlayData(t, world);
+    const heightFn =
+      t === null ? undefined : (x: number, z: number): number => heightAt(t, x, z);
+    this.desirabilityOverlay.sync(data, { heightAt: heightFn });
+  }
+
+  /**
    * Phase 2 (utilities): toggle the diagnostic overlay (the network runs
    * stay always-on). Called by the controller from the top-bar button.
    */
@@ -1106,6 +1132,16 @@ export class EntityRenderer {
   setLogisticsOverlayVisible(visible: boolean): void {
     this.logisticsOverlayVisible = visible;
     this.logisticsOverlay.setVisible(visible);
+  }
+
+  /**
+   * Workstream W (desirability): toggle the residential-desirability
+   * ("Land value") overlay. Called by the controller from the top-bar
+   * button; the overlay rebuilds only on model-cache-key change.
+   */
+  setDesirabilityOverlayVisible(visible: boolean): void {
+    this.desirabilityOverlayVisible = visible;
+    this.desirabilityOverlay.setVisible(visible);
   }
 
   /**
@@ -1250,6 +1286,7 @@ export class EntityRenderer {
     this.networkOverlay.dispose();
     this.utilityOverlay.dispose();
     this.logisticsOverlay.dispose();
+    this.desirabilityOverlay.dispose();
     // Shared per-kind assets (never per-view): release once here.
     for (const m of this.proceduralCache.values()) {
       for (const g of m.geometries) g.dispose();

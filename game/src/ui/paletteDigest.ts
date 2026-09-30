@@ -45,7 +45,14 @@
  */
 
 import type { World } from '../sim/world';
+import type { TerrainData } from '../sim/terrain';
 import { UNIT_DEFS, type UnitKind } from '../sim/units';
+import { BUILDING_DEFS, ZoneType } from '../sim/city';
+import {
+  buildingLandValue,
+  buildingTaxMultiplier,
+  getDesirabilityModel,
+} from '../sim/desirability';
 import type { Selection } from './selection';
 import {
   TRAIN_TABS,
@@ -78,12 +85,17 @@ import {
  * Digest of the selection panel's dynamic content. Stable when nothing
  * visible changed (so the panel is not rebuilt); different whenever the
  * panel would render differently.
+ *
+ * `terrain` is optional: when present, the building branch covers the
+ * workstream-W land-value line exactly (score + tax multiplier); without
+ * it (pre-sim / headless tests) the segment is the constant 'bv:x'.
  */
 export function selectionDigest(
   world: World,
   selection: Selection,
   trainTab: string,
   buildTab: string,
+  terrain?: TerrainData,
 ): string {
   const parts: string[] = [
     `u:${selection.unitIds.join(',')}`,
@@ -152,6 +164,19 @@ export function selectionDigest(
     // only if the rendered numbers would. Always emitted (0/0 for
     // non-depots).
     parts.push(`bq:${Math.floor(ammoStockOf(b))}:${Math.floor(fuelStockOf(b))}`);
+    // Workstream W (desirability): the panel renders the land-value line
+    // ("Land: Nice (64) · tax ×1.3") for residential buildings. The
+    // segment carries the rendered score + tax multiplier, so the digest
+    // moves if and only if the line would. Constant 'bv:x' for
+    // non-residential buildings and when no terrain is available.
+    const def = BUILDING_DEFS[b.kind];
+    if (terrain !== undefined && def !== undefined && def.zone === ZoneType.RESIDENTIAL) {
+      const model = getDesirabilityModel(terrain, world);
+      const score = Math.round(buildingLandValue(model, b));
+      parts.push(`bv:${score}:${buildingTaxMultiplier(model, b)}`);
+    } else {
+      parts.push('bv:x');
+    }
   } else {
     // No selection: the train/build palettes render the active tab's
     // buttons; only each button's availability can move per tick.
@@ -247,16 +272,18 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'hud-pause',
       'hud-util',
       'hud-logistics',
+      'hud-desirability',
       'hud-menu-btn',
     ],
     digestLabels: [],
     noDigestReason:
       'Built once in the constructor; per-frame updates are write-on-change ' +
       'text/property writes (setText) — nodes are never rebuilt, so no digest ' +
-      'segment is needed. The utilities-overlay toggle (hud-util, Phase 2) ' +
-      'and the logistics-overlay toggle (hud-logistics, Phase 3) flip their ' +
-      'own active class on click via setUtilityOverlayActive / ' +
-      'setLogisticsOverlayActive. ' +
+      'segment is needed. The utilities-overlay toggle (hud-util, Phase 2), ' +
+      'the logistics-overlay toggle (hud-logistics, Phase 3), and the ' +
+      'desirability-overlay toggle (hud-desirability, workstream W) flip ' +
+      'their own active class on click via setUtilityOverlayActive / ' +
+      'setLogisticsOverlayActive / setDesirabilityOverlayActive. ' +
       'Invariant: never rebuild topbar DOM (the click-bug pattern).',
   },
   {
@@ -301,7 +328,9 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // bu: power/water diagnosis line (Phase 2 utilities; the panel renders
     // it for every selected building via buildingUtilityLine).
     // bq: depot stock line (Phase 3 logistics; "Ammo 42/150 · Fuel 200/250").
-    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:'],
+    // bv: land-value line (workstream W; "Land: Nice (64) · tax ×1.3",
+    // residential buildings only — 'bv:x' otherwise).
+    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:', 'bv:'],
   },
   {
     id: 'train-palette',

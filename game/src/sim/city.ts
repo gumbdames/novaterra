@@ -63,6 +63,11 @@ import type { World } from './world';
 import { rngBank } from './world';
 import type { CommandQueue, CommandSpec } from './commands';
 import type { Age } from './ages';
+import {
+  cellDesirability,
+  getDesirabilityModel,
+  migrationPull,
+} from './desirability';
 
 // ---------------------------------------------------------------------------
 // Grid
@@ -221,6 +226,16 @@ export const BuildingKind = {
   KINDERGARTEN: 'kindergarten',
   /** Workstream Z (2026-09-30): education ladder — tertiary. */
   COLLEGE: 'college',
+  /**
+   * Workstream W (2026-09-30): civic amenity — a library raises nearby
+   * residential desirability (see the amenity table in sim/desirability.ts).
+   */
+  LIBRARY: 'library',
+  /**
+   * Workstream W (2026-09-30): civic amenity — a park raises nearby
+   * residential desirability (see the amenity table in sim/desirability.ts).
+   */
+  PARK: 'park',
   MONUMENT: 'monument',
   // Phase 2 (grand expansion, 2026-09-30): the utility plant ladder —
   // power plants across tech levels, water sources, storage, and the
@@ -367,6 +382,15 @@ export interface BuildingDef {
    * join this list when they land (Phases 5–6).
    */
   reloadPoint?: boolean;
+  /**
+   * Workstream W (2026-09-30): the Phase 4 marina hook. When true, a
+   * completed building counts as a waterfront amenity in the
+   * desirability model (+10 within 15 cells, toward the +20 amenity cap
+   * — see `AMENITY_TABLE` in sim/desirability.ts). The marina building
+   * kind (Phase 4) sets this flag; NO desirability code changes are
+   * needed then — the amenity scan already keys off this flag.
+   */
+  waterfrontAmenity?: boolean;
 }
 
 export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
@@ -626,6 +650,27 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     buildSeconds: 30, upkeepFundsPerSec: 0.8,
     powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: { research: 0.5 }, input: {}, population: 0, taxBasePerSec: 3.0,
+    minAge: 'foundation',
+  },
+  // Workstream W (2026-09-30): civic amenities. Library and park are
+  // placeable anywhere on land (UTILITY_ZONE, like the education
+  // buildings); each completed one counts as an amenity TYPE in the
+  // desirability model (+5 within 12 cells, toward the +20 amenity cap —
+  // see the amenity table in sim/desirability.ts).
+  library: {
+    kind: 'library', name: 'Library', zone: UTILITY_ZONE,
+    footprintW: 2, footprintH: 2, costFunds: 200, costMaterials: 60,
+    buildSeconds: 20, upkeepFundsPerSec: 0.3,
+    powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: { research: 0.15 }, input: {}, population: 0, taxBasePerSec: 1.5,
+    minAge: 'foundation',
+  },
+  park: {
+    kind: 'park', name: 'Park', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 250, costMaterials: 80,
+    buildSeconds: 15, upkeepFundsPerSec: 0.2,
+    powerDemand: 0, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 0.5,
     minAge: 'foundation',
   },
   monument: {
@@ -1057,6 +1102,9 @@ export function initCity(): CityState {
  * that changes the utility topology: road/line/pipe build/demolish,
  * building place/demolish, zone paint. The derived utility-network
  * model keys its cache on this value and recomputes only on change.
+ * Workstream W: the derived desirability model shares the same key
+ * (see sim/desirability.ts `desirabilityCacheKey`) — amenities and
+ * completed-building sets only change here.
  */
 export function bumpUtilityEpoch(city: CityState): void {
   city.utilityEpoch += 1;
@@ -1328,7 +1376,13 @@ function affordableDefForZone(world: World, zone: ZoneType, owner: number): Buil
  * Try to auto-develop one building near a zoned cell for a player.
  * Deterministic: RNG from the 'city' stream, fixed scan order.
  */
-function tryAutoDevelop(t: TerrainData, world: World, owner: number, powerHeadroom: number, waterHeadroom: number): boolean {
+function tryAutoDevelop(
+  t: TerrainData,
+  world: World,
+  owner: number,
+  powerHeadroom: number,
+  waterHeadroom: number,
+): boolean {
   const city = world.city;
   const player = getPlayer(city, owner);
   if (!player || city.zones.length === 0) return false;
@@ -1337,6 +1391,11 @@ function tryAutoDevelop(t: TerrainData, world: World, owner: number, powerHeadro
   // more attractive to organic growth (computed once per pulse, not per
   // attempt — it only changes when a building completes or is demolished).
   const eduBonus = educationGrowthBonus(world, owner);
+  // Workstream W: the derived desirability model (rebuilt only on
+  // structural change — never per tick). Residential samples get a
+  // migration pull toward nicer cells, with a weak affordability pull
+  // so nice-but-affordable cells grow fastest (see `migrationPull`).
+  const desirModel = getDesirabilityModel(t, world);
   // Sample a few zoned cells; each sample is one development attempt.
   const attempts = Math.min(8, city.zones.length);
   for (let a = 0; a < attempts; a++) {
@@ -1348,7 +1407,13 @@ function tryAutoDevelop(t: TerrainData, world: World, owner: number, powerHeadro
     // or without roads; the desirability roll below is the only filter.
     let desirability = growthDesirability(player.taxRates[zrec.zone] as number, powerHeadroom, waterHeadroom);
     // Workstream Z: education bonus applies to residential growth only.
-    if (zrec.zone === ZoneType.RESIDENTIAL) desirability += eduBonus;
+    // Workstream W: migration — layer the desirability/land-value pulls
+    // onto the existing demand loop (multiply, never replace).
+    if (zrec.zone === ZoneType.RESIDENTIAL) {
+      desirability += eduBonus;
+      const d01 = cellDesirability(desirModel, zrec.cell) / 100;
+      desirability = Math.min(1, desirability * migrationPull(d01));
+    }
     if (bank.next('city') >= desirability) continue;
     const def = affordableDefForZone(world, zrec.zone, owner);
     if (!def) return false; // broke: can't afford anything in this zone

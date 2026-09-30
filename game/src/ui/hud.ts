@@ -53,6 +53,9 @@ import type { World } from '../sim/world';
 import { getPlayer } from '../sim/city';
 import { UNIT_DEFS, type UnitKind } from '../sim/units';
 import { type BuildingKind } from '../sim/city';
+import type { TerrainData } from '../sim/terrain';
+import { getDesirabilityModel } from '../sim/desirability';
+import { landValueLine } from './desirability';
 import { AGE_PROGRESSION } from '../sim/ages';
 import type { UpgradeId } from '../sim/upgrades';
 import type { Selection } from './selection';
@@ -145,6 +148,8 @@ export interface HUDActions {
   onToggleUtilityOverlay(): void;
   /** Phase 3 (logistics): toggle the logistics overlay. */
   onToggleLogisticsOverlay(): void;
+  /** Workstream W (desirability): toggle the land-value overlay. */
+  onToggleDesirabilityOverlay(): void;
   /** Phase 3 (logistics): order a unit to resupply at a depot. */
   onResupplyUnit(unitId: number, depotId: number): void;
   /** Phase 3 (logistics): set a supply unit's field services. */
@@ -234,6 +239,8 @@ export class HUD {
   private readonly utilOverlayBtn: HTMLButtonElement;
   /** Phase 3 (logistics): overlay toggle — built once, write-on-change. */
   private readonly logisticsOverlayBtn: HTMLButtonElement;
+  /** Workstream W (desirability): overlay toggle — built once, write-on-change. */
+  private readonly desirabilityOverlayBtn: HTMLButtonElement;
   private readonly advisorPanel: HTMLElement;
   private readonly advisorList: HTMLElement;
   private readonly selectionPanel: HTMLElement;
@@ -335,6 +342,22 @@ export class HUD {
       actions.onToggleLogisticsOverlay(),
     );
     this.topbar.append(this.logisticsOverlayBtn);
+
+    // Workstream W (desirability): overlay toggle — the residential
+    // land-value tint (red low → green prime). Same built-once /
+    // write-on-change pattern as the utilities/logistics toggles (the
+    // topbar branch's noDigestReason invariant).
+    this.desirabilityOverlayBtn = document.createElement('button');
+    this.desirabilityOverlayBtn.className = 'hud-desirability';
+    this.desirabilityOverlayBtn.title = loc(STRINGS.desirability.overlayLegend);
+    this.desirabilityOverlayBtn.innerHTML = buildingIcon('park');
+    this.desirabilityOverlayBtn.append(
+      document.createTextNode(loc(STRINGS.desirability.overlayToggle)),
+    );
+    this.desirabilityOverlayBtn.addEventListener('click', () =>
+      actions.onToggleDesirabilityOverlay(),
+    );
+    this.topbar.append(this.desirabilityOverlayBtn);
 
     const menuBtn = document.createElement('button');
     menuBtn.className = 'hud-menu-btn';
@@ -454,6 +477,10 @@ export class HUD {
     advisor: AdvisorItem[],
     paused: boolean,
     speed: number,
+    // Workstream W (desirability): the terrain the derived model needs.
+    // Optional — without it the land-value line shows nothing (pre-sim /
+    // headless), and the digest carries the constant 'bv:x' segment.
+    terrain?: TerrainData,
   ): void {
     const player = getPlayer(world.city, HUMAN_PLAYER_ID);
     if (player) {
@@ -517,7 +544,7 @@ export class HUD {
     this.speedBtns.forEach((b, i) => b.classList.toggle('active', !paused && speed === speeds[i]));
 
     this.updateAdvisor(advisor);
-    this.updateSelection(world, selection);
+    this.updateSelection(world, selection, terrain);
   }
 
   /**
@@ -534,6 +561,14 @@ export class HUD {
    */
   setLogisticsOverlayActive(active: boolean): void {
     this.logisticsOverlayBtn.classList.toggle('active', active);
+  }
+
+  /**
+   * Workstream W (desirability): flip the overlay toggle's active state
+   * (write-on-change — the button is never rebuilt).
+   */
+  setDesirabilityOverlayActive(active: boolean): void {
+    this.desirabilityOverlayBtn.classList.toggle('active', active);
   }
 
   /** Show the two National Program choices (called by the age button). */
@@ -587,11 +622,11 @@ export class HUD {
    * needs pointerdown + pointerup on the same node) while
    * costs/availability still refresh the moment they actually change.
    */
-  private selectionDigest(world: World, selection: Selection): string {
-    return paletteDigest(world, selection, this.trainTab, this.buildTab);
+  private selectionDigest(world: World, selection: Selection, terrain?: TerrainData): string {
+    return paletteDigest(world, selection, this.trainTab, this.buildTab, terrain);
   }
 
-  private updateSelection(world: World, selection: Selection): void {
+  private updateSelection(world: World, selection: Selection, terrain?: TerrainData): void {
     const panel = this.selectionPanel;
     const sel = STRINGS.selection;
     // Rebuild only when the rendered content actually changes. The panel
@@ -603,7 +638,7 @@ export class HUD {
     // per-button availability, research states, unit/building vitals);
     // a palette interaction that must repaint immediately (tab switch,
     // research click while paused) still sets paletteDirty.
-    const key = this.selectionDigest(world, selection);
+    const key = this.selectionDigest(world, selection, terrain);
     const dirty = this.paletteDirty;
     this.paletteDirty = false;
     if (!dirty && panel.dataset['key'] === key) {
@@ -718,6 +753,15 @@ export class HUD {
       // Digest-covered by the bq: segment (AD11).
       const stock = depotStockLine(b);
       if (stock !== '') panel.append(el('div', 'sel-unit', stock));
+      // Workstream W (desirability): the land-value line for residential
+      // buildings ("Land: Nice (64) · tax ×1.3") — reuses the 'sel-unit'
+      // class so no new DOM class is introduced; digest-covered by the
+      // bv: segment (AD11). The derived model is cached on structural
+      // change, so this is free per frame.
+      const desirModel =
+        terrain !== undefined ? getDesirabilityModel(terrain, world) : undefined;
+      const landLine = landValueLine(desirModel, b);
+      if (landLine !== null) panel.append(el('div', 'sel-unit', landLine));
       // A completed Research Lab opens the research panel (spec §8).
       if (b.kind === 'lab' && b.owner === HUMAN_PLAYER_ID && b.progress >= 1) {
         this.appendResearchPanel(panel, world);

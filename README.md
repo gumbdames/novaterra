@@ -9,19 +9,21 @@ land, sea and air — or play a fully peaceful game with war disabled.
 **Version:** 0.1 Alpha (this name stays until announced otherwise).
 
 - **Play:** https://gumbdames.github.io/novaterra/ (deploys from `main`)
-- **Status:** the grand expansion is underway. Phases 0–3 complete and live;
-  follow-ups queued (desirability/migration, ambient city life, menu
-  polish, camera). See the live plan:
+- **Status:** the grand expansion is underway. Phases 0–3 complete and live,
+  plus the desirability/migration workstream (land value, migration,
+  library + park); follow-ups queued (ambient city life, menu polish,
+  camera). See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
 ## What the game has today (0.1 Alpha)
 
 - City building with visible zoning, terrain-following roads, and
   power/water utility networks you drag-paint across the map
-- 51 buildings and 30 units across land, sea, and air, with tech ages
+- 53 buildings and 30 units across land, sea, and air, with tech ages
 - Unit veterancy (Recruit → Elite), a Military Academy, education and civic
-  systems, growth desirability (taxes, utilities, and schools steer housing
-  growth)
+  systems, land value and desirability (elevation, shoreline, clean air,
+  and nearby libraries/parks/schools set each block's 0–100 score;
+  homes pay tax on their land value, people migrate toward nicer areas)
 - Missile/fuel logistics: fuel burn, ammo magazines, depots, supply trucks,
   resupply orders, reload-point aura
 - 5 Classic AI rivals with per-match personalities, 5 difficulties, skirmish

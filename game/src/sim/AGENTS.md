@@ -42,6 +42,25 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   (utilityEpoch, online sets, foulers, treatments); storage stocks are
   keyed by plant set so charge survives rebuilds. DERIVED DATA ONLY —
   never snapshotted.
+- `desirability.ts` — (workstream W, 2026-09-30) the derived residential
+  desirability model: per-residential-cell 0–100 from elevation
+  (+0..10), water proximity (+0..15), pollution (−0..25), and the amenity
+  table (library/park/school/kindergarten/college/university +5 each ≤12
+  cells, `waterfrontAmenity` +10 ≤15 — the Phase 4 marina hook — all
+  capped +20). Land-value tiers (low ×0.8 / modest ×1.0 / nice ×1.3 /
+  prime ×1.7) feed the residential tax multiplier in `economy.ts`
+  `runTaxes`; `migrationPull` (peaks ×1.594 at d=0.72, fades through
+  prime) scales the residential growth roll in `city.ts`
+  `tryAutoDevelop`. `getDesirabilityModel` caches on
+  (utilityEpoch, completed-building ids) — rebuilt on structural change
+  only, never per tick. DERIVED DATA ONLY — never snapshotted, never in
+  the digest. NOTE the intentional value-import cycle city.ts ⇄
+  desirability.ts: desirability reads `BUILDING_DEFS`/`footprintCells`
+  from city (runtime use only, never at module-eval time), mirroring the
+  world⇄city precedent — safe because neither side touches the other's
+  exports during module evaluation. The FORBIDDEN cycle remains
+  city→commands→movement→pathfinding (the NaN-GRID_CELLS SSR trap,
+  2026-09-30); do not add new city→commands edges.
 - `digest.ts` — FNV-1a canonical encoding, including full city state.
 - `snapshot.ts` — versioned snapshots (v6: per-player researched upgrades;
   v5 snapshots still load with empty upgrades).

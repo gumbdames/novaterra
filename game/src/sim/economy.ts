@@ -77,6 +77,7 @@ import {
 } from './utilityNetworks';
 import { UNIT_DEFS, supplyLevel, type UnitRecord } from './units';
 import { createSpatialHash, shInsert, shQueryRadius } from './spatial';
+import { buildingTaxMultiplier, getDesirabilityModel } from './desirability';
 import {
   BUILDING_DEFS,
   UTILITY_PENALTY,
@@ -762,11 +763,14 @@ function runFood(city: CityState): void {
 }
 
 /** Collect taxes every tax period. Utilities are not taxed (D11). */
-function runTaxes(world: World, economyTickIndex: number): void {
+function runTaxes(world: World, economyTickIndex: number, t: TerrainData): void {
   if (economyTickIndex % TAX_PERIOD_ECONOMY_TICKS !== 0) return;
   const city = world.city;
   // Fiber Grid (Connectivity age) boosts tax income by 25%.
   const mult = getTaxMultiplier(world);
+  // Workstream W: land value — the derived desirability model (rebuilt
+  // only on structural change; the cached instance is free here).
+  const desirModel = getDesirabilityModel(t, world);
   for (const b of city.buildings) {
     if (b.progress < 1 || !b.operational) continue;
     const def = BUILDING_DEFS[b.kind];
@@ -774,7 +778,12 @@ function runTaxes(world: World, economyTickIndex: number): void {
     const player = getPlayer(city, b.owner);
     if (!player) continue;
     const rate = player.taxRates[def.zone] as number;
-    player.funds += rate * def.taxBasePerSec * levelMult(b) * TAX_PERIOD_SECONDS * mult;
+    // Workstream W: residential buildings pay tax on their land value —
+    // low ×0.8, modest ×1.0, nice ×1.3, prime ×1.7 (see
+    // LAND_VALUE_TIERS in sim/desirability.ts). Commercial/industrial
+    // buildings pay the flat rate (land value is a residential concept).
+    const landMult = def.zone === ZoneType.RESIDENTIAL ? buildingTaxMultiplier(desirModel, b) : 1;
+    player.funds += rate * def.taxBasePerSec * levelMult(b) * TAX_PERIOD_SECONDS * mult * landMult;
   }
 }
 
@@ -875,7 +884,7 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   // it sees this tick's fresh producer stocks (PLAN S2).
   runSupplyAura(world, city);
   runFood(city);
-  runTaxes(world, economyTickIndex(world));
+  runTaxes(world, economyTickIndex(world), t);
   runTradeRoutes(world, city);
   runLevels(world);
   runGrowth(t, world, powerHeadroom, waterHeadroom);

@@ -87,6 +87,12 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `nearestDepot`, disabled with the named blocker from
   `resupplyBlockReason`); depots show their stock line. Digest-covered
   (`uf:` / `us:` / `bq:` segments, AD11).
+  Topbar (workstream W): a "Land value" toggle shows the desirability
+  overlay — the residential ground tint, red (low) → green (prime)
+  (see `render/desirabilityOverlay.ts`, data via `ui/desirability.ts`).
+  Selected residential buildings show their land-value line
+  ("Land: Nice (64) · tax ×1.3", via `ui/desirability.ts`
+  `landValueLine`); digest-covered (`bv:` segment, AD11).
   Tools row (Phase 2): "Power line" and "Water pipe" drag-paint tools ride
   the generic `linearNetworkDrag.ts` pipeline (see "Adding a
   linear-network kind" below) and emit `buildPowerLine` / `buildPipe`
@@ -128,7 +134,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `palettes.ts` — headless-safe palette data + availability logic for
   the tabbed TRAIN/BUILD palettes and the research panel: `TRAIN_TABS`
   (4 tabs, 30 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck),
-  `BUILD_TABS` (10 tabs, 51 buildings),
+  `BUILD_TABS` (10 tabs, 53 buildings — workstream W added library+park),
   `UPGRADE_GROUPS` (military 8 / economy 4 / infrastructure 6 / logistics 1), `unitAvailability` /
   `buildingAvailability` / `upgradeAvailability` (ready | reason), cost
   formatters, and the
@@ -165,6 +171,16 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `logisticsOverlayData(world)` + FNV-1a `logisticsOverlayDigest` — the
   read-only per-frame view the `LogisticsOverlay` renders. Reads every
   sim field defensively, never writes sim state.
+- `desirability.ts` — **workstream W desirability contract module (pure,
+  tested, `tests/ui.desirability.test.ts`).** The UI/render boundary for
+  the sim's derived desirability model (`sim/desirability.ts`):
+  `landValueLine(model, b)` (the selection panel's "Land: Nice (64) ·
+  tax ×1.3" line — residential buildings only, null-safe),
+  `landValueTaxMultOf` (the `bv:` digest segment driver),
+  `desirabilityOverlayData(t, world)` (the read-only per-frame view the
+  `DesirabilityOverlay` renders: sorted cells + the model cache key).
+  Reads every sim field defensively (empty pre-sim → empty view), never
+  writes sim state.
 - `linearNetworkDrag.ts` — **generic linear-network gesture pipeline (pure,
   tested, `tests/ui.linearNetworkDrag.test.ts`).** One drag-paint pipeline
   shared by every linear network tool: road today, power lines / water pipes
@@ -205,7 +221,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `icons.ts` — **hand-drawn inline SVG icon set (pure, tested,
   `tests/ui.icons.test.ts`).** Every button shows icon AND text (user
   directive 2026-09-30) — icons are `aria-hidden`, never icon-only.
-  `unitIcon` / `buildingIcon` cover all 30 units + 51 buildings
+  `unitIcon` / `buildingIcon` cover all 30 units + 53 buildings
   (`Record<UnitKind, string>` so a missing glyph is a compile error);
   `toolIcon` for the build tools row (incl. the Phase 2 powerLine /
   waterPipe tools); `mapIcon(waterFraction)` for the
@@ -235,7 +251,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `LocalizedString` (`{en}` — the localization indirection, kept as the
   extension point), module-level language
   state (`setUiLanguage` / `getUiLanguage` / `loc` / `fillLoc`). Covers
-  all 28 unit names, 44 building names, palette/upgrade tab names, the
+  all 30 unit names, 53 building names, palette/upgrade tab names, the
   19 upgrade names + one-line effects, cost labels, and lock reasons.
   Legacy Phase 3 strings are still English-only; they were never localized.
 - Audio: `game.ts` owns an `AudioEngine` (see `src/audio/AGENTS.md`) —

@@ -446,6 +446,8 @@ class GameController {
   private utilityOverlayVisible = false;
   /** Phase 3 (logistics): logistics-overlay visibility. */
   private logisticsOverlayVisible = false;
+  /** Workstream W (desirability): land-value overlay visibility. */
+  private desirabilityOverlayVisible = false;
   private advisorItems: AdvisorItem[] = [];
   private lastAdvisorRefresh = 0;
   private readonly keys = new Set<string>();
@@ -571,6 +573,12 @@ class GameController {
         this.logisticsOverlayVisible = !this.logisticsOverlayVisible;
         this.entities.setLogisticsOverlayVisible(this.logisticsOverlayVisible);
         this.hud.setLogisticsOverlayActive(this.logisticsOverlayVisible);
+      },
+      // Workstream W (desirability): the land-value overlay toggle.
+      onToggleDesirabilityOverlay: () => {
+        this.desirabilityOverlayVisible = !this.desirabilityOverlayVisible;
+        this.entities.setDesirabilityOverlayVisible(this.desirabilityOverlayVisible);
+        this.hud.setDesirabilityOverlayActive(this.desirabilityOverlayVisible);
       },
       // Phase 3 (logistics): resupply + field-service toggles. The sim's
       // registerLogisticsCommands is wired at boot (ui/session.ts), so
@@ -704,7 +712,7 @@ class GameController {
       this.entities.sync(world);
       this.entities.setSelected(this.selection.unitIds);
       this.entities.updateSelectionRings(EntityRenderer.unitMap(world));
-      this.hud.update(world, this.selection, this.advisorItems, this.paused, this.speed);
+      this.hud.update(world, this.selection, this.advisorItems, this.paused, this.speed, this.session.terrain);
       this.pollAudioEvents(world, now);
       this.pollCampaign(world, now);
       this.renderer.render(this.scene, this.camera);

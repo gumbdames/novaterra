@@ -98,7 +98,37 @@ need to, not for profit. (Goods, influence, and manpower can't be traded.)
 
 A healthy city grows on its own: new buildings appear in zoned areas
 every few seconds, as long as people are fed and you can afford them.
-If food runs out, growth stops until farms catch up.
+If food runs out, growth stops until farms catch up. Desirable blocks
+fill in fastest — see Land value and desirability.
+
+## Land value and desirability
+
+Every residential block has a desirability score from 0 to 100 — how
+nice an area is to live in. It shapes two things: where your city grows
+fastest, and the tax rate each home effectively pays.
+
+**What makes an area desirable:**
+- **Elevation** — higher ground scores better, up to +10.
+- **Water** — living near the shore or a lake, up to +15 (shoreline
+  counts; marinas and beaches will add more when they arrive).
+- **Clean air** — distance from smoke and smog (coal plants and the
+  like): up to −25 right next to a polluter, fading with distance.
+- **Amenities** — a nearby library, park, school, kindergarten,
+  college, or university: +5 per type, up to +20 total.
+
+**Land value tiers.** The score maps to a land-value tier, and homes pay
+tax on their land value: Low (×0.8), Modest (×1.0), Nice (×1.3),
+Prime (×1.7). A home in a prime spot pays 70% more tax than the same
+home elsewhere. Shops, factories, and civic buildings always pay the
+flat rate. Select any home to see its line, e.g.
+"Land: Nice (64) · tax ×1.3".
+
+**Migration.** People move toward nicer areas, so desirable blocks fill
+in faster — but prime land is pricey, which cools demand a little. The
+sweet spot is nice-but-affordable: those blocks grow fastest of all.
+
+Toggle the **Land value** button in the top bar to tint residential
+blocks red (low) → green (prime).
 
 ## Education
 
@@ -113,10 +143,12 @@ land:
 - **University** (was on the Commerce tab, now Civic): researches 1.0
   per second.
 
-Each finished **Kindergarten** or **School** also makes your city a
-nicer place to live: +0.05 residential growth desirability per
-building, stacking up to +0.25. (The Hospital stays on the Commerce
-tab and is unchanged.)
+Each finished **Kindergarten** or **School** you own also speeds up
+residential growth everywhere: +0.05 growth desirability per building,
+stacking up to +0.25. And every school kind (kindergarten, school,
+college, university) makes nearby homes more desirable — see Land
+value and desirability. (The Hospital stays on the Commerce tab and is
+unchanged.)
 
 ## Ages: Foundation → Connectivity → Industry → Information → Ascendance
 

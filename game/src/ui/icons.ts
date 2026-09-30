@@ -195,6 +195,15 @@ const BUILDING_ICONS: Record<BuildingKind, string> = {
   college:
     '<rect x="5" y="11" width="14" height="9"/><path d="M5 11a7 7 0 0 1 14 0"/>' +
     '<path d="M10.5 20v-4h3v4"/><path d="M12 4V2.5"/>',
+  // Workstream W (2026-09-30): the civic amenities. Library reads as an
+  // open book (distinct from the school's flag and the college's dome);
+  // park reads as a tree beside a bench.
+  library:
+    '<path d="M3.5 6.5c2.8-1.4 5.9-1.4 8.5 0 2.6-1.4 5.7-1.4 8.5 0v11.5' +
+    'c-2.8-1.4-5.9-1.4-8.5 0-2.6-1.4-5.7-1.4-8.5 0z"/><path d="M12 6.5v11.5"/>',
+  park:
+    '<circle cx="9.5" cy="8" r="4.8"/><path d="M9.5 12.8V19"/>' +
+    '<path d="M13 16h7"/><path d="M13.8 16v3.5M19.2 16v3.5"/>',
   shop:
     '<path d="M4 9.5 6 5h12l2 4.5"/><path d="M4 9.5h16"/>' +
     '<rect x="5" y="9.5" width="14" height="10.5"/><path d="M10 20v-5h4v5"/>',

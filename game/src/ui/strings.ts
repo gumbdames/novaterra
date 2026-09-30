@@ -325,6 +325,9 @@ export const STRINGS = {
     // Workstream Z (2026-09-30): the education ladder.
     kindergarten: { en: 'Kindergarten' },
     college: { en: 'College' },
+    // Workstream W (2026-09-30): civic amenities (desirability drivers).
+    library: { en: 'Library' },
+    park: { en: 'Park' },
     shop: { en: 'Shop' },
     market: { en: 'Market' },
     lab: { en: 'Research Lab' },
@@ -538,6 +541,24 @@ export const STRINGS = {
     lowSupplyWarning: { en: 'Low supply — resupply soon' },
     resupplyingTo: { en: 'Resupplying at depot' },
     noDepotReason: { en: 'No depot with available stock in range' },
+  },
+  /** Desirability / land value / migration (workstream W, grand expansion). English-only. */
+  desirability: {
+    /** Overlay toggle label (top bar). */
+    overlayToggle: { en: 'Land value' },
+    /** Overlay legend (title attribute of the toggle). */
+    overlayLegend: {
+      en: 'Show residential desirability as a ground tint (red = low, green = prime).',
+    },
+    /** Land-value tier display names (the sim tier ids are lowercase). */
+    tierNames: {
+      low: { en: 'Low' },
+      modest: { en: 'Modest' },
+      nice: { en: 'Nice' },
+      prime: { en: 'Prime' },
+    },
+    /** Selection-panel land-value line for residential buildings. */
+    landValueLine: { en: 'Land: {tier} ({score}) · tax ×{mult}' },
   },
   /** Tabbed palettes, research panel, placement hints — all en-only. */
   palettes: {

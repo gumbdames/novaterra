@@ -681,9 +681,14 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   meltdowns). Gate: full suite 1283/1286 (3 perf-budget p95 failures
   proven environmental — Phase 2 baseline 5/5, current HEAD 5/5 ×2,
   failures move between runs), tsc clean, build clean + license stamps.
-  Queued follow-ups (separate briefs, not Phase 3 scope): W
-  (desirability/land value/migration, library + park), X (menu demo
+  Queued follow-ups (separate briefs, not Phase 3 scope): X (menu demo
   director), Y (3-tab menu), V (camera controls), P (ambient city life).
+  W (desirability/land value/migration, library + park) LANDED
+  2026-09-30 (0.1 Alpha): derived per-residential-cell 0–100 model
+  (elevation/water/pollution/amenities), land-value tax tiers
+  (low ×0.8 → prime ×1.7, residential only), migration pull (peaks
+  ×1.594 at top of "nice"), Land value overlay toggle + selection-panel
+  line, 55 new tests green, full suite 1341 green, snapshot stays v6.
 - **Goal:** ammo/fuel as a tempo constraint; supply trucks, depots,
   missile/fuel chains; nuclear exemption.
 - **Contents:** S2 (§4) + §3.2 roster + logistics overlay + resupply

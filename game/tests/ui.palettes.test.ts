@@ -150,7 +150,8 @@ describe('build tabs', () => {
     expect(byId.get('housing')).toEqual(['house', 'apartment']);
     // Workstream Z (2026-09-30): the civic tab — the four education
     // buildings together; the hospital stays in Commerce.
-    expect(byId.get('civic')).toEqual(['kindergarten', 'school', 'college', 'university']);
+    // Workstream W (2026-09-30): the two civic amenities (library/park).
+    expect(byId.get('civic')).toEqual(['kindergarten', 'school', 'college', 'university', 'library', 'park']);
     expect(byId.get('commerce')).toEqual([
       'shop',
       'market',
