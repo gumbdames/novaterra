@@ -50,6 +50,7 @@ import {
   clearUnitOrder,
   UNIT_DEFS,
   HQ_AURA_DAMAGE_BONUS,
+  supplyDamageFactor,
   type UnitRecord,
   type UnitKind,
   type UnitDef,
@@ -189,6 +190,12 @@ export function damageMultiplier(
   // real records always carry it (spawnUnit) and legacy saves decode it
   // (snapshot.ts).
   mult *= vetDamageMult(attacker.vetLevel ?? 0);
+  // Phase 3 logistics (AD3): out-of-supply degrades, never hard-stops —
+  // one simple curve, damage ×(0.6+0.4×supplyLevel), applied as a single
+  // factor alongside veterancy (PLAN §13: no compounding supply
+  // penalties). Exempt kinds sit at level 1 ⇒ exactly ×1.0, so legacy
+  // behavior is unchanged for them.
+  mult *= supplyDamageFactor(def, attacker);
   return mult;
 }
 
@@ -217,6 +224,16 @@ export function acquireTarget(world: World, unit: UnitRecord, def: UnitDef): Uni
 
 /** Apply one shot from attacker to target. Returns true if the target died. */
 function fireWeapon(world: World, attacker: UnitRecord, def: UnitDef, target: UnitRecord): boolean {
+  // Phase 3 logistics (S2): magazine gate. A unit whose def tracks ammo
+  // must have a full shot loaded, or it holds fire — the same outcome as
+  // an unarmed unit: no loud failure, it simply cannot shoot this tick.
+  // The weapon stays OFF cooldown so it fires the instant resupply lands
+  // (the resupply fantasy: the truck arrives, the guns speak next tick).
+  // Reads plain unit data only — no combat→economy import (S2 discipline).
+  const perShot = def.ammoPerShot ?? 1;
+  if ((def.ammoCapacity ?? 0) > 0 && (attacker.ammo ?? 0) < perShot) {
+    return false;
+  }
   const mult = damageMultiplier(world, attacker, def, target);
   // Veteran crews reload faster (Phase 1) — the weapon cooldown already
   // reflects the attacker's level here and in the shield-absorbed path.
@@ -231,6 +248,12 @@ function fireWeapon(world: World, attacker: UnitRecord, def: UnitDef, target: Un
     return false; // shield absorbs the shot
   }
   target.hp -= def.damage * mult;
+  // Phase 3 logistics (S2): the shot actually fired (past the Aegis
+  // check above) — burn the magazine. The gate guarantees
+  // ammo >= perShot, so no clamp is needed. (?? 0: hand-built records.)
+  if ((def.ammoCapacity ?? 0) > 0) {
+    attacker.ammo = (attacker.ammo ?? 0) - perShot;
+  }
   attacker.cooldownLeft = cooldown;
   return target.hp <= 0;
 }

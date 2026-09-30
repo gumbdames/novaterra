@@ -118,6 +118,9 @@ export function canonicalizeWorld(world: World): string {
     out += `${svc.repair ? 1 : 0}${svc.rearm ? 1 : 0}${svc.refuel ? 1 : 0},`;
     // Phase 3 resupply linkage (0 = none).
     out += `${u.resupplyDepotId ?? 0};`;
+    // Phase 3 cargo holds (floats via canonicalNumber; legacy decode 0).
+    // Behavior-affecting ⇒ digest-covered (PLAN §11).
+    out += `${canonicalNumber(u.cargoFuel ?? 0)},${canonicalNumber(u.cargoAmmo ?? 0)};`;
   }
   // Pathfinding: queues in FIFO order, fields in creation order; dirs are
   // small ints so they join cheaply. The active build's dist array is

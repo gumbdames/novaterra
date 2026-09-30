@@ -189,6 +189,10 @@ function copyUnit(u: UnitRecord): UnitRecord {
     supplyServices: u.supplyServices ? { ...u.supplyServices } : undefined,
     // Phase 3 resupply linkage (0 = none). ?? 0 keeps v6 decoding.
     resupplyDepotId: u.resupplyDepotId ?? 0,
+    // Phase 3 cargo holds. ?? 0 so legacy v6 saves decode to empty holds
+    // — no version bump, stays v6 (AD9, same precedent as fuel/ammo).
+    cargoFuel: u.cargoFuel ?? 0,
+    cargoAmmo: u.cargoAmmo ?? 0,
   };
 }
 

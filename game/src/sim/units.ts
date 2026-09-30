@@ -47,9 +47,10 @@ import { isUnitAvailableForAge } from './ages';
 import { effectiveMaxHp, effectiveSpeed } from './upgrades';
 
 /**
- * The full 28-unit roster (spec docs/research/roster-expansion.md §2).
- * Land (13): engineer, rifles, tank, artillery, aa, hauler, spectre, hq,
- * apc, tankDestroyer, mlrs, sniperTeam, combatMedic.
+ * The full 30-unit roster (spec docs/research/roster-expansion.md §2,
+ * plus Phase 3 logistics trucks).
+ * Land (15): engineer, rifles, tank, artillery, aa, hauler, supplyTruck,
+ * fuelTruck, spectre, hq, apc, tankDestroyer, mlrs, sniperTeam, combatMedic.
  * Air (6): fighter, transport, drone, fighterBomber, attackHeli, awacs.
  * Sea (9): patrolBoat, destroyer, transportShip, missileBoat, frigate,
  * submarine, carrier, commandShip, fishingBoat.
@@ -61,6 +62,8 @@ export const UNIT_KINDS = [
   'artillery',
   'aa',
   'hauler',
+  'supplyTruck',
+  'fuelTruck',
   'spectre',
   'hq',
   'fighter',
@@ -177,6 +180,16 @@ export interface UnitDef {
    */
   fuelType?: 'fossil' | 'nuclear' | 'none';
   /**
+   * Phase 3 logistics: mobile supply holds. `cargoFuelCapacity` is how
+   * much fuel the unit can carry for OTHER units (supplyTruck 100,
+   * fuelTruck 220, hauler 40); `cargoAmmoCapacity` the same for ammo
+   * (supplyTruck 40, hauler 20). Undefined = no hold. The live levels
+   * sit on the record (`cargoFuel`/`cargoAmmo`); the resupply workstream
+   * consumes them.
+   */
+  cargoFuelCapacity?: number;
+  cargoAmmoCapacity?: number;
+  /**
    * Command aura: friendly attackers of `auraDomain` (or any domain when
    * undefined) within this radius get +`auraBonus` damage. Generalizes the
    * old HQ_AURA_* constants (hq: 20 / 0.25; commandShip: 24 / 0.25 sea).
@@ -198,6 +211,41 @@ export interface UnitDef {
 export const HQ_AURA_RADIUS = 20;
 export const HQ_AURA_DAMAGE_BONUS = 0.25;
 
+/**
+ * Phase 3 logistics provisioning (S2, PLAN §3.2). Every number below is a
+ * deliberate tempo choice, documented once here instead of per line:
+ *
+ * AMMO — only missile weapons track magazines (one shot = one missile):
+ * mlrs 6 (a single rocket pod — one alpha strike, then resupply),
+ * missileBoat 8 (two 4-packs), submarine 12 (a torpedo room). Guns are
+ * abstracted and never tracked. The ammo gate in combat.ts holds fire
+ * when the magazine can't cover a full shot.
+ *
+ * FUEL — every mechanized unit burns fossil fuel while displacing
+ * (fuelType 'fossil'); infantry (engineer, rifles, sniperTeam,
+ * combatMedic) and the spectre stay untracked (the §3.2 roster names the
+ * 8 ground vehicles explicitly; spectre is special-forces, not in that
+ * list). Nuclear units (submarine, carrier) never burn or refuel — user
+ * directive 2026-09-30 — but the sub still tracks its 12-missile
+ * magazine. capacity/rate = seconds of continuous movement:
+ *  - ground ~300-500 s. A tank at speed 10 crosses the 512-wide map in
+ *    ~51 s, so 400 s ≈ 8 crossings: a tempo constraint on long
+ *    offensives, never starvation in normal play. The hauler gets the
+ *    longest legs (500 s) — it is the logistics backbone.
+ *  - air ~80-150 s. Fighters are the tightest (90 s) on purpose: air
+ *    power must stage from forward airfields. The AWACS loiters (150 s);
+ *    the transport hauls far (137 s).
+ *  - sea ~320-520 s. Ships cross oceans; their tanks are sized for long
+ *    transits with margin.
+ * Thirst scales loosely with speed so ranges stay comparable inside a
+ * domain instead of fast units being punished twice.
+ *
+ * CARGO — mobile holds feed the resupply chain: supplyTruck 100 fuel /
+ * 40 ammo (≈1.5 tank refills, ≈6 MLRS reloads), fuelTruck 220 fuel /
+ * no ammo (dedicated tanker, ≈3.5 tank refills), hauler 40/20 (a light
+ * field carrier, ≈2/3 of a tank refill). Holds spawn EMPTY — cargo is
+ * loaded at depots, never conjured (the resupply workstream's rule).
+ */
 export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     kind: 'engineer', name: 'Engineer', domain: 'land', hp: 80, speed: 6, armor: 'light',
     damage: 5, range: 10, minRange: 0, cooldownTicks: 30, targets: 'ground',
@@ -215,24 +263,48 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     damage: 50, range: 19, minRange: 0, cooldownTicks: 50, targets: 'ground',
     vsLight: 1.3, vsMedium: 1.0, vsHeavy: 0.9, vsAir: 1.0, sight: 26, minAge: 'foundation',
     manpowerCost: 5, trainFunds: 400, trainMaterials: 60, requiredBuilding: 'warFactory',
+    fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil', // 400 s ≈ 8 map crossings
   },
   artillery: {
     kind: 'artillery', name: 'Artillery', domain: 'land', hp: 160, speed: 6, armor: 'medium',
     damage: 95, range: 48, minRange: 12, cooldownTicks: 100, targets: 'ground',
     vsLight: 1.0, vsMedium: 1.4, vsHeavy: 1.6, vsAir: 1.0, sight: 30, minAge: 'foundation',
     manpowerCost: 4, trainFunds: 450, trainMaterials: 80, requiredBuilding: 'warFactory',
+    fuelCapacity: 40, fuelPerSecond: 0.10, fuelType: 'fossil', // 400 s; slow gun, sips fuel
   },
   aa: {
     kind: 'aa', name: 'Mobile AA', domain: 'land', hp: 200, speed: 10, armor: 'medium',
     damage: 40, range: 28, minRange: 0, cooldownTicks: 25, targets: 'air',
     vsLight: 0.3, vsMedium: 0.3, vsHeavy: 0.3, vsAir: 2.2, sight: 34, minAge: 'foundation',
     manpowerCost: 4, trainFunds: 350, trainMaterials: 60, requiredBuilding: 'warFactory',
+    fuelCapacity: 50, fuelPerSecond: 0.15, fuelType: 'fossil', // ~333 s
   },
   hauler: {
     kind: 'hauler', name: 'Hauler', domain: 'land', hp: 160, speed: 9, armor: 'medium',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 16, minAge: 'foundation',
     manpowerCost: 0, trainFunds: 120, trainMaterials: 20,
+    fuelCapacity: 60, fuelPerSecond: 0.12, fuelType: 'fossil', // 500 s — longest land legs
+    cargoFuelCapacity: 40, cargoAmmoCapacity: 20, // light field carrier role (Phase 3)
+  },
+  supplyTruck: {
+    kind: 'supplyTruck', name: 'Supply Truck', domain: 'land', hp: 140, speed: 9, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 16, minAge: 'foundation',
+    // Hauler precedent: no production gate (logistics must work from the
+    // start), no manpower (civilian drivers), modest funds/materials cost.
+    manpowerCost: 0, trainFunds: 180, trainMaterials: 40,
+    fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil', // 400 s own tank
+    cargoFuelCapacity: 100, cargoAmmoCapacity: 40, // the field resupply workhorse
+  },
+  fuelTruck: {
+    kind: 'fuelTruck', name: 'Fuel Truck', domain: 'land', hp: 140, speed: 9, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 16, minAge: 'foundation',
+    // Hauler precedent, like supplyTruck; pricier for the bigger tank.
+    manpowerCost: 0, trainFunds: 200, trainMaterials: 60,
+    fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil', // 400 s own tank
+    cargoFuelCapacity: 220, // dedicated tanker; no ammo hold
   },
   spectre: {
     kind: 'spectre', name: 'Spectre', domain: 'land', hp: 130, speed: 12, armor: 'light',
@@ -246,42 +318,49 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 1.0, sight: 28, minAge: 'foundation',
     manpowerCost: 2, trainFunds: 600, trainMaterials: 100,
     auraRadius: HQ_AURA_RADIUS, auraBonus: HQ_AURA_DAMAGE_BONUS,
+    fuelCapacity: 70, fuelPerSecond: 0.18, fuelType: 'fossil', // ~389 s; heavy command vehicle
   },
   fighter: {
     kind: 'fighter', name: 'Fighter', domain: 'air', hp: 170, speed: 26, armor: 'light',
     damage: 32, range: 24, minRange: 0, cooldownTicks: 28, targets: 'both',
     vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 1.6, sight: 40, minAge: 'connectivity',
     manpowerCost: 3, trainFunds: 800, trainMaterials: 120, requiredBuilding: 'airfield',
+    fuelCapacity: 45, fuelPerSecond: 0.5, fuelType: 'fossil', // 90 s — the air tempo constraint
   },
   transport: {
     kind: 'transport', name: 'Transport', domain: 'air', hp: 240, speed: 22, armor: 'medium',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'foundation',
     manpowerCost: 2, trainFunds: 500, trainMaterials: 80,
+    fuelCapacity: 55, fuelPerSecond: 0.4, fuelType: 'fossil', // ~137 s; airlifter legs
   },
   drone: {
     kind: 'drone', name: 'Drone', domain: 'air', hp: 55, speed: 20, armor: 'light',
     damage: 9, range: 13, minRange: 0, cooldownTicks: 22, targets: 'both',
     vsLight: 0.9, vsMedium: 0.5, vsHeavy: 0.3, vsAir: 1.0, sight: 26, minAge: 'foundation',
     manpowerCost: 0, trainFunds: 80, trainMaterials: 10,
+    fuelCapacity: 25, fuelPerSecond: 0.25, fuelType: 'fossil', // 100 s; efficient, tiny tank
   },
   patrolBoat: {
     kind: 'patrolBoat', name: 'Patrol Boat', domain: 'sea', hp: 220, speed: 14, armor: 'light',
     damage: 18, range: 20, minRange: 0, cooldownTicks: 25, targets: 'sea',
     vsLight: 1.2, vsMedium: 0.8, vsHeavy: 0.5, vsAir: 0.8, sight: 30, minAge: 'industry',
     manpowerCost: 3, trainFunds: 250, trainMaterials: 60,
+    fuelCapacity: 70, fuelPerSecond: 0.2, fuelType: 'fossil', // 350 s
   },
   destroyer: {
     kind: 'destroyer', name: 'Destroyer', domain: 'sea', hp: 600, speed: 11, armor: 'heavy',
     damage: 45, range: 26, minRange: 0, cooldownTicks: 40, targets: 'seaAir',
     vsLight: 1.3, vsMedium: 1.1, vsHeavy: 1.0, vsAir: 1.8, sight: 34, minAge: 'industry',
     manpowerCost: 6, trainFunds: 1500, trainMaterials: 400, requiredBuilding: 'navalYard',
+    fuelCapacity: 120, fuelPerSecond: 0.25, fuelType: 'fossil', // 480 s; fleet legs
   },
   transportShip: {
     kind: 'transportShip', name: 'Transport Ship', domain: 'sea', hp: 350, speed: 9, armor: 'medium',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 22, minAge: 'industry',
     manpowerCost: 2, trainFunds: 400, trainMaterials: 100,
+    fuelCapacity: 120, fuelPerSecond: 0.25, fuelType: 'fossil', // 480 s
   },
   // ------------------------------------------------------------------
   // Roster expansion (spec docs/research/roster-expansion.md §2): 14 new.
@@ -304,60 +383,73 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     damage: 14, range: 16, minRange: 0, cooldownTicks: 25, targets: 'ground',
     vsLight: 1.3, vsMedium: 0.8, vsHeavy: 0.5, vsAir: 1.0, sight: 24, minAge: 'connectivity',
     manpowerCost: 4, trainFunds: 250, trainMaterials: 40, requiredBuilding: 'warFactory',
+    fuelCapacity: 48, fuelPerSecond: 0.16, fuelType: 'fossil', // 300 s; quick battle-taxi
   },
   tankDestroyer: {
     kind: 'tankDestroyer', name: 'Tank Destroyer', domain: 'land', hp: 380, speed: 9, armor: 'medium',
     damage: 70, range: 24, minRange: 0, cooldownTicks: 60, targets: 'ground',
     vsLight: 0.6, vsMedium: 1.2, vsHeavy: 1.8, vsAir: 1.0, sight: 26, minAge: 'industry',
     manpowerCost: 5, trainFunds: 500, trainMaterials: 90, requiredBuilding: 'warFactory',
+    fuelCapacity: 55, fuelPerSecond: 0.15, fuelType: 'fossil', // ~367 s
   },
   mlrs: {
     kind: 'mlrs', name: 'MLRS', domain: 'land', hp: 180, speed: 7, armor: 'medium',
     damage: 140, range: 40, minRange: 14, cooldownTicks: 160, targets: 'ground',
     vsLight: 1.6, vsMedium: 1.2, vsHeavy: 1.2, vsAir: 1.0, sight: 28, minAge: 'industry',
     manpowerCost: 5, trainFunds: 600, trainMaterials: 120, requiredBuilding: 'warFactory',
+    ammoCapacity: 6, ammoPerShot: 1, // one 6-rocket pod: a single alpha strike per load
+    fuelCapacity: 45, fuelPerSecond: 0.12, fuelType: 'fossil', // 375 s
   },
   fighterBomber: {
     kind: 'fighterBomber', name: 'Fighter-Bomber', domain: 'air', hp: 200, speed: 28, armor: 'medium',
     damage: 120, range: 20, minRange: 0, cooldownTicks: 90, targets: 'ground',
     vsLight: 0.8, vsMedium: 1.0, vsHeavy: 1.6, vsAir: 1.0, sight: 32, minAge: 'industry',
     manpowerCost: 4, trainFunds: 1000, trainMaterials: 150, requiredBuilding: 'airfield',
+    fuelCapacity: 55, fuelPerSecond: 0.55, fuelType: 'fossil', // 100 s; strike needs the extra tank
   },
   attackHeli: {
     kind: 'attackHeli', name: 'Attack Helicopter', domain: 'air', hp: 150, speed: 30, armor: 'light',
     damage: 60, range: 22, minRange: 0, cooldownTicks: 55, targets: 'ground',
     vsLight: 0.9, vsMedium: 1.1, vsHeavy: 1.5, vsAir: 1.0, sight: 30, minAge: 'connectivity',
     manpowerCost: 4, trainFunds: 700, trainMaterials: 100, requiredBuilding: 'airfield',
+    fuelCapacity: 40, fuelPerSecond: 0.5, fuelType: 'fossil', // 80 s; helos are thirsty
   },
   awacs: {
     kind: 'awacs', name: 'AWACS', domain: 'air', hp: 180, speed: 24, armor: 'light',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 65, minAge: 'information',
     manpowerCost: 3, trainFunds: 900, trainMaterials: 120, requiredBuilding: 'airfield',
+    fuelCapacity: 60, fuelPerSecond: 0.4, fuelType: 'fossil', // 150 s; endurance is its job
   },
   missileBoat: {
     kind: 'missileBoat', name: 'Missile Boat', domain: 'sea', hp: 180, speed: 18, armor: 'light',
     damage: 70, range: 22, minRange: 0, cooldownTicks: 70, targets: 'sea',
     vsLight: 1.0, vsMedium: 1.1, vsHeavy: 1.5, vsAir: 1.0, sight: 28, minAge: 'connectivity',
     manpowerCost: 4, trainFunds: 500, trainMaterials: 120, requiredBuilding: 'shipyard',
+    ammoCapacity: 8, ammoPerShot: 1, // two 4-packs of anti-ship missiles
+    fuelCapacity: 80, fuelPerSecond: 0.25, fuelType: 'fossil', // 320 s; fast strike craft
   },
   frigate: {
     kind: 'frigate', name: 'Frigate', domain: 'sea', hp: 420, speed: 13, armor: 'medium',
     damage: 30, range: 24, minRange: 0, cooldownTicks: 35, targets: 'seaAir',
     vsLight: 1.2, vsMedium: 1.6, vsHeavy: 0.8, vsAir: 1.2, sight: 32, minAge: 'industry',
     manpowerCost: 5, trainFunds: 900, trainMaterials: 220, requiredBuilding: 'navalYard',
+    fuelCapacity: 110, fuelPerSecond: 0.25, fuelType: 'fossil', // 440 s
   },
   submarine: {
     kind: 'submarine', name: 'Submarine', domain: 'sea', hp: 300, speed: 10, armor: 'medium',
     damage: 90, range: 30, minRange: 0, cooldownTicks: 80, targets: 'sea',
     vsLight: 0.8, vsMedium: 1.5, vsHeavy: 2.0, vsAir: 1.0, sight: 26, minAge: 'industry',
     manpowerCost: 6, trainFunds: 1200, trainMaterials: 300, requiredBuilding: 'navalYard',
+    ammoCapacity: 12, ammoPerShot: 1, // a torpedo room; still tracked under nuclear fuel
+    fuelType: 'nuclear', // no conventional refueling — user directive 2026-09-30
   },
   carrier: {
     kind: 'carrier', name: 'Carrier', domain: 'sea', hp: 900, speed: 8, armor: 'heavy',
     damage: 40, range: 30, minRange: 0, cooldownTicks: 45, targets: 'seaAir',
     vsLight: 1.2, vsMedium: 1.0, vsHeavy: 0.9, vsAir: 2.0, sight: 36, minAge: 'information',
     manpowerCost: 10, trainFunds: 3500, trainMaterials: 1000, requiredBuilding: 'navalYard',
+    fuelType: 'nuclear', // no conventional refueling — user directive 2026-09-30
   },
   commandShip: {
     kind: 'commandShip', name: 'Command Ship', domain: 'sea', hp: 700, speed: 9, armor: 'heavy',
@@ -365,6 +457,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 40, minAge: 'information',
     manpowerCost: 6, trainFunds: 2000, trainMaterials: 500, requiredBuilding: 'navalYard',
     auraRadius: 24, auraBonus: 0.25, auraDomain: 'sea',
+    fuelCapacity: 130, fuelPerSecond: 0.25, fuelType: 'fossil', // 520 s; flagship bunkers
   },
   fishingBoat: {
     kind: 'fishingBoat', name: 'Fishing Boat', domain: 'sea', hp: 120, speed: 12, armor: 'light',
@@ -372,6 +465,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 18, minAge: 'foundation',
     manpowerCost: 0, trainFunds: 150, trainMaterials: 30,
     harvest: { food: 0.6 },
+    fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil', // 400 s; workboat tank
   },
 };
 
@@ -458,6 +552,15 @@ export interface UnitRecord {
    * refill aura fulfills it or the reservation times out.
    */
   resupplyDepotId?: number;
+  /**
+   * Phase 3 logistics: live cargo-hold levels (see
+   * `cargoFuelCapacity`/`cargoAmmoCapacity` on the def). Spawn EMPTY —
+   * cargo is loaded at depots, never conjured. Legacy v6 saves decode to
+   * 0 via `?? 0` in snapshot.ts (AD9, no version bump); digested via
+   * `canonicalNumber`.
+   */
+  cargoFuel: number;
+  cargoAmmo: number;
 }
 
 /** Spawn a unit into the world. Returns the new record. Caller validates. */
@@ -494,6 +597,11 @@ export function spawnUnit(world: World, kind: string, owner: number, x: number, 
     // track ammo; 'none'/untracked kinds sit at 0/0.
     fuel: def.fuelCapacity ?? 0,
     ammo: def.ammoCapacity ?? 0,
+    // Phase 3 logistics: cargo holds spawn EMPTY. Fuel/ammo are the
+    // unit's own consumables (full on spawn); cargo is what it carries
+    // for others and must be loaded at a depot — never conjured.
+    cargoFuel: 0,
+    cargoAmmo: 0,
   };
   world.nextId += 1;
   world.units.push(record);
@@ -539,6 +647,29 @@ export function supplyLevel(def: UnitDef, u: UnitRecord): number {
     level = Math.min(level, u.ammo / (def.ammoCapacity as number));
   }
   return level;
+}
+
+/**
+ * Phase 3 logistics: the ONE supply degradation curve (AD3, PLAN §13 —
+ * no compounding multiplicative supply penalties). Out-of-supply
+ * degrades, never hard-stops: damage ×(0.6+0.4×level), so a fully dry
+ * unit still deals 60% (the ammo gate / fuel failure handle the true
+ * hard cases). Applied as a single factor alongside veterancy —
+ * never stacked with other supply penalties. Exempt kinds sit at level
+ * 1, so the factor is exactly 1.0 for them.
+ */
+export function supplyDamageFactor(def: UnitDef, u: UnitRecord): number {
+  return 0.6 + 0.4 * supplyLevel(def, u);
+}
+
+/**
+ * Phase 3 logistics: the speed half of the single supply curve —
+ * speed ×(0.7+0.3×level). A dry unit crawls at 70%, it doesn't stop
+ * (stopping is the fuel system's loud 'out of fuel' failure, which is
+ * an order failure, not a stat penalty — §13 non-goal).
+ */
+export function supplySpeedFactor(def: UnitDef, u: UnitRecord): number {
+  return 0.7 + 0.3 * supplyLevel(def, u);
 }
 
 /**

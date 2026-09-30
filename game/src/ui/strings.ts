@@ -290,6 +290,10 @@ export const STRINGS = {
     artillery: { en: 'Artillery' },
     aa: { en: 'Mobile AA' },
     hauler: { en: 'Hauler' },
+    // Phase 3 SIM workstream (2026-09-30): provisional names for the two
+    // new logistics trucks — the UI workstream owns final copy/palettes.
+    supplyTruck: { en: 'Supply Truck' },
+    fuelTruck: { en: 'Fuel Truck' },
     spectre: { en: 'Spectre' },
     hq: { en: 'Mobile HQ' },
     sniperTeam: { en: 'Sniper Team' },

@@ -75,8 +75,8 @@ import {
   worldToCell,
 } from './pathfinding';
 import type { FlowField } from './pathfinding';
-import { clearUnitOrder, failUnitOrder, findUnit } from './units';
-import type { UnitRecord } from './units';
+import { clearUnitOrder, failUnitOrder, findUnit, UNIT_DEFS, supplySpeedFactor } from './units';
+import type { UnitRecord, UnitKind } from './units';
 import { createSpatialHash, shInsert, shQueryRadius } from './spatial';
 import type { SpatialHash } from './spatial';
 
@@ -202,7 +202,11 @@ function moveAirUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: 
   let vx = dxFinal;
   let vz = dzFinal;
   const dist = Math.hypot(vx, vz);
-  let speed = unit.speed;
+  // Phase 3 logistics (AD3): degraded cruise speed — ×(0.7+0.3×level),
+  // the speed half of the single supply curve. Also caps separation
+  // pushes below, so a dry unit is slower, period. Exempt kinds: ×1.0.
+  const ratedSpeed = unit.speed * supplySpeedFactor(UNIT_DEFS[unit.kind as UnitKind], unit);
+  let speed = ratedSpeed;
   if (distFinal < SLOW_RADIUS) {
     const factor = Math.max(MIN_SLOW_FACTOR, distFinal / SLOW_RADIUS);
     speed *= factor;
@@ -242,9 +246,9 @@ function moveAirUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: 
   vx += sx;
   vz += sz;
   const vmag = Math.hypot(vx, vz);
-  if (vmag > unit.speed && vmag > 1e-9) {
-    vx = (vx / vmag) * unit.speed;
-    vz = (vz / vmag) * unit.speed;
+  if (vmag > ratedSpeed && vmag > 1e-9) {
+    vx = (vx / vmag) * ratedSpeed;
+    vz = (vz / vmag) * ratedSpeed;
   }
   const [nx, nz] = clampToMap(unit.x + vx * dt, unit.z + vz * dt);
   // Sea units can only move on water; air units fly anywhere.
@@ -303,7 +307,10 @@ function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: Uni
   let vx = target.x - unit.x;
   let vz = target.z - unit.z;
   const dist = Math.hypot(vx, vz);
-  let speed = unit.speed;
+  // Phase 3 logistics (AD3): degraded cruise speed — ×(0.7+0.3×level),
+  // the speed half of the single supply curve (see moveAirUnitTick).
+  const ratedSpeed = unit.speed * supplySpeedFactor(UNIT_DEFS[unit.kind as UnitKind], unit);
+  let speed = ratedSpeed;
   if (distFinal < SLOW_RADIUS) {
     const factor = Math.max(MIN_SLOW_FACTOR, distFinal / SLOW_RADIUS);
     speed *= factor;
@@ -356,9 +363,9 @@ function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: Uni
 
   // 6. Clamp to unit speed and integrate; water/map guard.
   const vmag = Math.hypot(vx, vz);
-  if (vmag > unit.speed && vmag > 1e-9) {
-    vx = (vx / vmag) * unit.speed;
-    vz = (vz / vmag) * unit.speed;
+  if (vmag > ratedSpeed && vmag > 1e-9) {
+    vx = (vx / vmag) * ratedSpeed;
+    vz = (vz / vmag) * ratedSpeed;
   }
   const [nx, nz] = clampToMap(unit.x + vx * dt, unit.z + vz * dt);
   const destIsWater = isWater(t, nx, nz);
@@ -395,9 +402,54 @@ export function createMovementSystem(t: TerrainData): (world: World, dt: number)
     }
     for (const unit of world.units) {
       if (unit.state !== 'moving') continue;
+      // Phase 3 logistics (S2): the fuel gate runs BEFORE displacement —
+      // an empty tank fails the order loudly, never silently.
+      if (!fuelGateOk(unit)) continue;
+      const x0 = unit.x;
+      const z0 = unit.z;
       moveUnitTick(world, t, hash, unit, dt);
+      // Burn only for real displacement (blocked steps and zero-distance
+      // ticks burn nothing). Pathing decisions are made upstream by the
+      // coordinator and never read fuel — burn cannot change them.
+      burnFuelForDisplacement(unit, x0, z0, dt);
     }
   };
+}
+
+/**
+ * Phase 3 logistics (S2): fossil-fuel gate. A fossil-fuel unit whose tank
+ * is empty cannot displace — its order fails LOUDLY ('out of fuel'),
+ * never silently. Nuclear-fuel and untracked units are exempt: no gate,
+ * no failure. The unit is stranded, not destroyed (§13 non-goal: no
+ * dead-instant units from empty supply — it can still fight, be
+ * resupplied, or be re-tasked once refueled). Returns false when the
+ * unit may not move this tick.
+ */
+function fuelGateOk(unit: UnitRecord): boolean {
+  const def = UNIT_DEFS[unit.kind as UnitKind];
+  if (def?.fuelType !== 'fossil') return true;
+  if ((unit.fuel ?? 0) <= 0) {
+    failUnitOrder(unit, 'out of fuel');
+    return false;
+  }
+  return true;
+}
+
+/**
+ * Phase 3 logistics (S2): burn `fuelPerSecond × dt` for actual
+ * displacement this tick. Called with the pre-tick position AFTER the
+ * move integration, so fuel burns ONLY while the unit really moved:
+ * cancelled steps (blocked by water/land rules), zero-velocity ticks,
+ * and arrival snaps of zero distance cost nothing. Deterministic float
+ * comparison — exact equality is stable across identical inputs.
+ */
+function burnFuelForDisplacement(unit: UnitRecord, x0: number, z0: number, dt: number): void {
+  if (unit.x === x0 && unit.z === z0) return;
+  const def = UNIT_DEFS[unit.kind as UnitKind];
+  if (def?.fuelType !== 'fossil') return;
+  const rate = def.fuelPerSecond ?? 0;
+  if (rate <= 0) return;
+  unit.fuel = Math.max(0, (unit.fuel ?? 0) - rate * dt);
 }
 
 /**

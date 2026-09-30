@@ -104,6 +104,17 @@ const UNIT_ICONS: Record<UnitKind, string> = {
   hauler:
     '<rect x="2" y="10" width="11" height="7" rx="1"/><path d="M13 12h3.5L20 15.5V17h-7"/>' +
     '<circle cx="6.5" cy="19" r="1.8"/><circle cx="16" cy="19" r="1.8"/>',
+  // Phase 3 SIM workstream (2026-09-30): provisional glyphs for the two
+  // new logistics trucks — added only to keep `Record<UnitKind, string>`
+  // compiling (tsc-enforced). The UI workstream owns the final art.
+  supplyTruck:
+    '<rect x="2" y="8" width="12" height="9" rx="1"/><path d="M5 11v3.5M8 11v3.5M11 11v3.5"/>' +
+    '<path d="M14 11h3.5L21 14.5V17h-7"/>' +
+    '<circle cx="6.5" cy="19" r="1.8"/><circle cx="16.5" cy="19" r="1.8"/>',
+  fuelTruck:
+    '<ellipse cx="8" cy="12.5" rx="6" ry="4"/><path d="M8 8.5V6"/>' +
+    '<path d="M14 11h3.5L21 14.5V17h-7"/>' +
+    '<circle cx="6.5" cy="19" r="1.8"/><circle cx="16.5" cy="19" r="1.8"/>',
   hq:
     '<rect x="2" y="12" width="12" height="6" rx="1"/><path d="M14 13.5h4l2 2.5v2h-6"/>' +
     '<path d="M8 12V5"/><path d="M8 5.5h4.5L11 7l1.5 1.5H8"/>' +
