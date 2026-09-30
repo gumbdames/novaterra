@@ -66,6 +66,10 @@ import {
   BASE_SABOTAGE_DURATION_SEC,
   COUNTER_INTEL_RADIUS_BONUS,
   SIGNALS_INTEL_SIGHT_BONUS,
+  SABOTAGE_SPOT_CHANCE,
+  STEAL_SUCCESS_BASE,
+  sabotageSpotChance,
+  stealSuccessChance,
 } from '../src/sim/intel';
 import { spawnUnit, type UnitRecord } from '../src/sim/units';
 import { acquireTarget, registerCombatCommands } from '../src/sim/combat';
@@ -143,7 +147,9 @@ function spawnSpyAtBuilding(ctx: Ctx, owner: number, buildingId: number): UnitRe
 /** A completed enemy (owner 1) building at cells (20, 20), owned by player 1. */
 function enemyBuilding(ctx: Ctx, kind = 'barracks'): number {
   completeBuilding(ctx.world, kind as never, 1, 20, 20);
-  return ctx.world.city.buildings[ctx.world.city.buildings.length - 1].id;
+  const last = ctx.world.city.buildings[ctx.world.city.buildings.length - 1];
+  if (!last) throw new Error('completeBuilding placed no building');
+  return last.id;
 }
 
 function research(world: World, owner: number, id: string): void {
@@ -340,6 +346,7 @@ describe('sabotage', () => {
     addIntelAsset(ctx.world, 0, 'operational', 100);
     enq(ctx, 'sabotage', { unitId: spy.id, buildingId: target, owner: 0 });
     const [result] = applyDue(ctx) as Array<{ sabotagedUntil: number; spotted: boolean }>;
+    if (!result) throw new Error('command produced no result');
     expect(getIntelAssets(ctx.world, 0).operational).toBe(100 - SABOTAGE_COST_OPERATIONAL);
     const b = ctx.world.city.buildings.find((x) => x.id === target)!;
     expect(b.sabotagedUntil).toBe(Math.round(BASE_SABOTAGE_DURATION_SEC * 30));
@@ -371,6 +378,8 @@ describe('sabotage', () => {
     addIntelAsset(ctx.world, 0, 'operational', 100);
     enq(ctx, 'sabotage', { unitId: spy.id, buildingId: target, owner: 0 });
     const [result] = applyDue(ctx) as Array<{ spotted: boolean }>;
+    if (!result) throw new Error('command produced no result');
+    if (!result) throw new Error('command produced no result');
     expect(result.spotted).toBe(true);
     expect(spy.spottedUntil).toBe(SPOTTED_DURATION_TICKS);
     // A burned spy is detected by everyone, everywhere.
@@ -428,6 +437,13 @@ describe('stealTech', () => {
     return { ctx, spy, target };
   }
 
+  /** Research stock of a player (test helper). */
+  function playerResearch(world: Ctx['world'], owner: number): number {
+    const pl = world.city.players[owner];
+    if (!pl) throw new Error(`no player ${owner}`);
+    return pl.research;
+  }
+
   it('picks the lexicographically lowest stealable tech', () => {
     const ctx = setup();
     research(ctx.world, 1, 'compositeArmor');
@@ -440,15 +456,16 @@ describe('stealTech', () => {
 
   it('a successful steal grants research and keeps the spy embedded', () => {
     const { ctx, spy, target } = embeddedCtx(20260932); // success seed
-    const before = ctx.world.city.players[0].research;
+    const before = playerResearch(ctx.world, 0);
     enq(ctx, 'stealTech', { unitId: spy.id, buildingId: target, owner: 0 });
     const [result] = applyDue(ctx) as Array<{
       tech: string; success: boolean; grantedResearch: number;
     }>;
+    if (!result) throw new Error('command produced no result');
     expect(result.success).toBe(true);
     expect(result.tech).toBe('apRounds');
     expect(result.grantedResearch).toBe(STEAL_RESEARCH_GRANT);
-    expect(ctx.world.city.players[0].research).toBe(before + STEAL_RESEARCH_GRANT);
+    expect(playerResearch(ctx.world, 0)).toBe(before + STEAL_RESEARCH_GRANT);
     expect(getIntelAssets(ctx.world, 0).surveillance).toBe(100 - STEAL_COST_SURVEILLANCE);
     // A clean steal does not burn the spy: still embedded, still hidden.
     expect(spy.embeddedIn).toBe(target);
@@ -457,12 +474,13 @@ describe('stealTech', () => {
 
   it('a failed steal burns the spy', () => {
     const { ctx, spy, target } = embeddedCtx(20260931); // failure seed
-    const before = ctx.world.city.players[0].research;
+    const before = playerResearch(ctx.world, 0);
     enq(ctx, 'stealTech', { unitId: spy.id, buildingId: target, owner: 0 });
     const [result] = applyDue(ctx) as Array<{ success: boolean; grantedResearch: number }>;
+    if (!result) throw new Error('command produced no result');
     expect(result.success).toBe(false);
     expect(result.grantedResearch).toBe(0);
-    expect(ctx.world.city.players[0].research).toBe(before);
+    expect(playerResearch(ctx.world, 0)).toBe(before);
     expect(spy.spottedUntil).toBe(SPOTTED_DURATION_TICKS);
     expect(isDetected(spy, 1, ctx.world)).toBe(true);
   });
@@ -475,6 +493,7 @@ describe('stealTech', () => {
       if (victimCounter) research(ctx.world, 1, 'counterIntel');
       enq(ctx, 'stealTech', { unitId: spy.id, buildingId: target, owner: 0 });
       const [r] = applyDue(ctx) as Array<{ success: boolean }>;
+      if (!r) throw new Error('command produced no result');
       return r.success;
     };
     // Base 0.65 < 0.8524: fails. signalsIntel 0.80 < 0.8524: still fails.
@@ -661,7 +680,9 @@ describe('persistence', () => {
     expect(b.sabotagedUntil).toBe(9999);
     const burned = restored.units.find((u) => (u.spottedUntil ?? 0) === 7777)!;
     expect(burned).toBeDefined();
-    expect(restored.city.players[0].intel.surveillance).toBe(12.5);
+    const pl = restored.city.players[0];
+    if (!pl) throw new Error('no player 0 in restored world');
+    expect(pl.intel.surveillance).toBe(12.5);
   });
 
   it('digests are stable for identical playthroughs and cover intel state', () => {
@@ -673,5 +694,97 @@ describe('persistence', () => {
     const target = c.city.buildings.find((x) => (x.sabotagedUntil ?? 0) > 0)!;
     target.sabotagedUntil = 0;
     expect(digestWorld(c)).not.toBe(digestWorld(a));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Hardening (audit 2026-09-30): detection gates, the counter-intel
+// stockpile's defensive job, stealTech proximity, getIntelAssets
+// robustness.
+// ---------------------------------------------------------------------------
+
+describe('intel hardening', () => {
+  /** A completed enemy listeningPost at cells (20,20) and a spy inside its radius. */
+  function detectionCtx(): { ctx: Ctx; post: { id: number; sabotagedUntil?: number; operational: boolean }; spy: UnitRecord } {
+    const ctx = setup();
+    completeBuilding(ctx.world, 'listeningPost' as never, 1, 20, 20);
+    const post = ctx.world.city.buildings[ctx.world.city.buildings.length - 1];
+    if (!post) throw new Error('no listening post placed');
+    const c = buildingCenterWorld(post);
+    const spy = spawnUnit(ctx.world, 'spy', 0, c.x + 10, c.z); // 10 < radius 60
+    return { ctx, post, spy };
+  }
+
+  it('a sabotaged detector is blind: sabotage the listening post, then walk the spy in', () => {
+    const { ctx, post, spy } = detectionCtx();
+    expect(isDetected(spy, 1, ctx.world)).toBe(true); // covered while working
+    post.sabotagedUntil = ctx.world.tick + 1000;
+    expect(detectionRadiusAt(ctx.world, 1, spy.x, spy.z)).toBe(0);
+    expect(isDetected(spy, 1, ctx.world)).toBe(false); // a dark post sees nothing
+    post.sabotagedUntil = 0;
+    expect(isDetected(spy, 1, ctx.world)).toBe(true); // recovers with the building
+  });
+
+  it('an unpowered detector is blind', () => {
+    const { ctx, post, spy } = detectionCtx();
+    expect(isDetected(spy, 1, ctx.world)).toBe(true);
+    post.operational = false;
+    expect(detectionRadiusAt(ctx.world, 1, spy.x, spy.z)).toBe(0);
+    expect(isDetected(spy, 1, ctx.world)).toBe(false);
+    post.operational = true;
+    expect(isDetected(spy, 1, ctx.world)).toBe(true);
+  });
+
+  it('sabotageSpotChance: base 0.35, sharpened by victim counter-intel stockpile, capped', () => {
+    const ctx = setup();
+    expect(sabotageSpotChance(ctx.world, 1)).toBe(SABOTAGE_SPOT_CHANCE);
+    addIntelAsset(ctx.world, 1, 'counterIntel', 50);
+    expect(sabotageSpotChance(ctx.world, 1)).toBeCloseTo(0.45, 10); // 0.35 + 50*0.002
+    addIntelAsset(ctx.world, 1, 'counterIntel', 100000);
+    expect(sabotageSpotChance(ctx.world, 1)).toBeCloseTo(0.65, 10); // 0.35 + 0.30 cap
+  });
+
+  it('stealSuccessChance: base 0.65, victim stockpile blunts it, upgrades stack, clamped', () => {
+    const ctx = setup();
+    expect(stealSuccessChance(ctx.world, 0, 1)).toBe(STEAL_SUCCESS_BASE);
+    addIntelAsset(ctx.world, 1, 'counterIntel', 150);
+    expect(stealSuccessChance(ctx.world, 0, 1)).toBeCloseTo(0.5, 10); // 0.65 - 0.15 cap
+    research(ctx.world, 1, 'counterIntel');
+    expect(stealSuccessChance(ctx.world, 0, 1)).toBeCloseTo(0.35, 10); // upgrade stacks
+    research(ctx.world, 0, 'signalsIntel');
+    expect(stealSuccessChance(ctx.world, 0, 1)).toBeCloseTo(0.5, 10); // thief sharpens
+    addIntelAsset(ctx.world, 1, 'counterIntel', 1000000);
+    expect(stealSuccessChance(ctx.world, 0, 1)).toBeGreaterThanOrEqual(0.1); // clamped
+  });
+
+  it('stealTech rejects when the embedded spy walked away from the building', () => {
+    const ctx = setup();
+    const target = enemyBuilding(ctx);
+    const spy = spawnSpyAtBuilding(ctx, 0, target);
+    spy.embeddedIn = target;
+    research(ctx.world, 1, 'apRounds');
+    addIntelAsset(ctx.world, 0, 'surveillance', 100);
+    // Sanity: adjacent to its post, the steal enqueues.
+    expect(
+      rejectionReason(ctx, 'stealTech', { unitId: spy.id, buildingId: target, owner: 0 }),
+    ).toBe(null);
+    // The spy walks home: "embedded" no longer means inside.
+    spy.x += 1000;
+    spy.z += 1000;
+    expect(
+      rejectionReason(ctx, 'stealTech', { unitId: spy.id, buildingId: target, owner: 0 }),
+    ).toMatch(/not adjacent/);
+  });
+
+  it('getIntelAssets is zero-safe for a hand-built player record without intel', () => {
+    const ctx = setup();
+    const p = ctx.world.city.players[1];
+    if (!p) throw new Error('no player 1');
+    (p as unknown as { intel: undefined }).intel = undefined;
+    expect(getIntelAssets(ctx.world, 1)).toEqual({
+      surveillance: 0,
+      operational: 0,
+      counterIntel: 0,
+    });
   });
 });

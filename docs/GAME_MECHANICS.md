@@ -557,7 +557,9 @@ Counter-intelligence) or **steal a technology** (15 surveillance
 assets, +40 research on success). Getting caught burns the spy: it
 becomes visible to everyone for 30 seconds. Keep your spies inside
 your own detection coverage and research Counter-intelligence to
-catch theirs.
+catch theirs. Stockpiling counter-intel assets also pays off
+passively: a deep stockpile makes enemy sabotage more likely to burn
+the spy and enemy tech-steals more likely to fail.
 
 ## Maps
 

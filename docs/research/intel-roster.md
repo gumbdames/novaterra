@@ -81,6 +81,23 @@ without a manual:
    defender *sees* their building come back online twice as fast.
 3. +25 detection radius widens the whole net.
 
+Plus the stockpile: counter-intel *assets* (not just the upgrade)
+sharpen sabotage spot checks (+0.002 burn chance per asset, capped at
++0.30 over the 0.35 base) and blunt tech steals (−0.001 success per
+asset, capped at −0.15, stacking with the upgrade's −0.15). A
+signalsStation's 0.2/s reaches the caps after ~12 minutes — sustained
+investment, not a rush buy. "They're stockpiling counter-intel" is a
+sentence with meaning: your spies get caught more.
+
+**Detection has an off switch.** A sabotaged or unpowered detector is
+blind (`detectionRadiusAt` skips it — the same "completed and working"
+gate as accrual). Sabotage the listening post, *then* walk the spy in:
+that's the intended raid loop, and the test suite pins it.
+
+**"Embedded" means inside.** `stealTech` requires the spy to be
+adjacent to its post, not just flagged embedded — a spy that walked
+home cannot steal remotely.
+
 No secret dice, no hidden kill-chance: detection is pure position
 geometry (a spy inside a radius is seen, outside is not), accrual is
 flat per-second. A player who loses to spies can point at the map and
@@ -154,3 +171,34 @@ asymmetry), sabotage duration 45 → 22.5 s, v8 snapshot round-trip of
 `intel` + `sabotagedUntil` (incl. legacy states decoding to zero,
 AD9 — matches PLAN §11's "No bump" list), digest determinism and
 digest coverage of accrual.
+
+`game/tests/sim.intel.test.ts` — 36 tests: the covert-op commands
+(validation, costs, mission flow, RNG branches on pinned seeds),
+combat/AI/effectiveSight hooks, save/load round-trip, digest
+coverage, plus 6 hardening tests from the 2026-09-30 audit (detection
+gates, spot/steal chance math + caps, stealTech proximity,
+getIntelAssets robustness).
+
+## 6. Audit hardening (2026-09-30)
+
+Post-commit audit of the 9fd8de3 roster + mechanics found and fixed:
+- `detectionRadiusAt` ignored sabotage/power: a dark listening post
+  still detected spies. Now skips sabotaged and non-operational
+  buildings (same gate as accrual).
+- `counterIntel` assets were a dead currency (accrued, never spent).
+  They now defend passively: `sabotageSpotChance` / `stealSuccessChance`
+  (extracted pure helpers) scale with the victim's stockpile, capped.
+- `stealTech` let an embedded spy steal from across the map. Now
+  requires adjacency to its post.
+- `runIntelAccrual` docstring claimed intel buildings "still report
+  when the lights are out" — false (code gates on `operational`).
+  Doc now matches code.
+- `getIntelAssets` claimed undefined-safety but would throw on a
+  player record without `intel`. Now truly `?.`-safe.
+- `tests/sim.intel.test.ts` had 11 strict-null tsc errors
+  (`npm run typecheck` was red). Fixed; typecheck green.
+
+Known gap (not fixed — AI workstream's domain): the AI never builds
+intel buildings or runs spy missions; it only defends (its
+`getVisibleEnemies` respects `isDetected`). In AI games the intel
+roster is currently player-only.

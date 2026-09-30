@@ -147,6 +147,22 @@ export const STEAL_COUNTER_INTEL_PENALTY = 0.15;
 export const STEAL_RESEARCH_GRANT = 40;
 /** Chance a sabotage act burns the spy (spot check on the victim's stream). */
 export const SABOTAGE_SPOT_CHANCE = 0.35;
+/**
+ * Victim's stockpiled counter-intel sharpens spot checks: each asset
+ * adds this much burn chance, up to COUNTER_INTEL_SPOT_BONUS_CAP.
+ * (The counter-intel asset's defensive job — "they're stockpiling
+ * counter-intel" means your spies get caught more.)
+ */
+export const COUNTER_INTEL_SPOT_STOCKPILE_RATE = 0.002;
+export const COUNTER_INTEL_SPOT_BONUS_CAP = 0.3;
+/**
+ * Victim's stockpiled counter-intel blunts tech steals: each asset
+ * subtracts this much success chance, up to
+ * COUNTER_INTEL_STEAL_PENALTY_CAP (stacks with the counterIntel
+ * upgrade's STEAL_COUNTER_INTEL_PENALTY).
+ */
+export const COUNTER_INTEL_STEAL_STOCKPILE_RATE = 0.001;
+export const COUNTER_INTEL_STEAL_PENALTY_CAP = 0.15;
 /** How long (ticks) a burned spy stays visible to everyone. */
 export const SPOTTED_DURATION_TICKS = 900;
 
@@ -163,10 +179,9 @@ export function isSabotaged(building: BuildingRecord, tick: number): boolean {
  *
  * Deterministic and id-ordered: players in `world.city.players` order,
  * their buildings in placement (id) order. A building accrues only when
- * completed (progress >= 1), operational, and not sabotaged — the same
- * "completed and working" gate the economy output path uses, minus the
- * utility-service scaling (intel buildings still report when the
- * lights are out; they just report less reliably — deliberately flat).
+ * completed (progress >= 1), operational (powered and watered — the same
+ * "completed and working" gate the economy output path uses), and not
+ * sabotaged.
  *
  * Upgrade effects (the roster workstream's half of the contract):
  *  - `signalsIntel` researched ⇒ surveillance accrual ×1.5.
@@ -223,7 +238,10 @@ export function buildingCenterWorld(b: BuildingRecord): { x: number; z: number }
  *
  * Coverage comes from `BuildingDef.detectionRadius` (listeningPost,
  * signalsStation); `counterIntel` researched adds
- * COUNTER_INTEL_RADIUS_BONUS to every source. Pure function of
+ * COUNTER_INTEL_RADIUS_BONUS to every source. A building detects only
+ * while completed, operational, and not sabotaged — a dark listening
+ * post is blind (same "completed and working" gate as accrual, so
+ * sabotaging a detector blinds it). Pure function of
  * positions — zero snapshot/digest cost (PLAN §4 S6).
  */
 export function detectionRadiusAt(world: World, owner: number, x: number, z: number): number {
@@ -231,6 +249,9 @@ export function detectionRadiusAt(world: World, owner: number, x: number, z: num
   let best = 0;
   for (const b of world.city.buildings) {
     if (b.owner !== owner || b.progress < 1) continue;
+    // A sabotaged or unpowered detector is blind — sabotage the
+    // listening post, then walk the spy in.
+    if (!b.operational || isSabotaged(b, world.tick)) continue;
     const radius = BUILDING_DEFS[b.kind]?.detectionRadius;
     if (radius === undefined || radius <= 0) continue;
     const c = buildingCenterWorld(b);
@@ -312,9 +333,9 @@ export { intelSightBonus, SIGNALS_INTEL_SIGHT_BONUS } from './upgrades';
 export function getIntelAssets(world: World, owner: number): IntelAssets {
   const p = getPlayer(world.city, owner);
   return {
-    surveillance: p?.intel.surveillance ?? 0,
-    operational: p?.intel.operational ?? 0,
-    counterIntel: p?.intel.counterIntel ?? 0,
+    surveillance: p?.intel?.surveillance ?? 0,
+    operational: p?.intel?.operational ?? 0,
+    counterIntel: p?.intel?.counterIntel ?? 0,
   };
 }
 
@@ -348,6 +369,33 @@ export function spendIntelAsset(world: World, owner: number, kind: IntelAssetKey
 /** Named RNG stream for `owner`'s intel rolls (thief rolls and spot checks). */
 export function intelStreamName(owner: number): string {
   return `intel-${owner}`;
+}
+
+/**
+ * Sabotage spot-check burn chance against `victimOwner`: base 0.35,
+ * sharpened by their stockpiled counter-intel assets (capped). Pure —
+ * the `sabotage` command rolls against this.
+ */
+export function sabotageSpotChance(world: World, victimOwner: number): number {
+  const stockpile = getIntelAssets(world, victimOwner).counterIntel;
+  const bonus = Math.min(COUNTER_INTEL_SPOT_BONUS_CAP, stockpile * COUNTER_INTEL_SPOT_STOCKPILE_RATE);
+  return SABOTAGE_SPOT_CHANCE + bonus;
+}
+
+/**
+ * Tech-steal success chance for `thiefOwner` against `victimOwner`:
+ * base 0.65, +0.15 with the thief's signalsIntel, −0.15 with the
+ * victim's counterIntel upgrade, −stockpile penalty (capped),
+ * clamped to [0.1, 0.95]. Pure — the `stealTech` command rolls
+ * against this.
+ */
+export function stealSuccessChance(world: World, thiefOwner: number, victimOwner: number): number {
+  let chance = STEAL_SUCCESS_BASE;
+  if (hasUpgradeId(world, thiefOwner, 'signalsIntel')) chance += STEAL_SIGNALS_INTEL_BONUS;
+  if (hasUpgradeId(world, victimOwner, 'counterIntel')) chance -= STEAL_COUNTER_INTEL_PENALTY;
+  const stockpile = getIntelAssets(world, victimOwner).counterIntel;
+  chance -= Math.min(COUNTER_INTEL_STEAL_PENALTY_CAP, stockpile * COUNTER_INTEL_STEAL_STOCKPILE_RATE);
+  return Math.min(0.95, Math.max(0.1, chance));
 }
 
 /**
@@ -531,7 +579,8 @@ const sabotageSpec = {
     building.sabotagedUntil = world.tick + durationTicks;
     // Detection jitter: the act may burn the spy. Rolled on the VICTIM's
     // stream — it is their counter-intelligence apparatus that spots it.
-    const spotted = rngBank(world).next(intelStreamName(building.owner)) < SABOTAGE_SPOT_CHANCE;
+    // Their stockpiled counter-intel sharpens the check (sabotageSpotChance).
+    const spotted = rngBank(world).next(intelStreamName(building.owner)) < sabotageSpotChance(world, building.owner);
     if (spotted) spy.spottedUntil = world.tick + SPOTTED_DURATION_TICKS;
     return { buildingId: building.id, sabotagedUntil: building.sabotagedUntil, spotted };
   },
@@ -552,6 +601,12 @@ const stealTechSpec = {
     if ((spy as UnitRecord).embeddedIn !== buildingId) {
       return `stealTech: spy ${unitId} is not embedded in building ${buildingId} (infiltrate it first)`;
     }
+    // "Embedded" means inside: the spy must still be at the building to
+    // work its equipment — walking home does not end the embedding, but
+    // the steal itself needs proximity.
+    if (!withinAdjacency(spy as UnitRecord, building as BuildingRecord)) {
+      return `stealTech: spy ${unitId} is not adjacent to building ${buildingId}`;
+    }
     if (pickStealableTech(world, owner, (building as BuildingRecord).owner) === null) {
       return `stealTech: nothing left to steal from player ${(building as BuildingRecord).owner}`;
     }
@@ -568,12 +623,9 @@ const stealTechSpec = {
     spendIntelAsset(world, owner, 'surveillance', STEAL_COST_SURVEILLANCE);
     const tech = pickStealableTech(world, owner, building.owner) as string;
     // Steal success, rolled on the THIEF's stream. signalsIntel sharpens
-    // the operation; the victim's counterIntel blunts it.
-    let chance = STEAL_SUCCESS_BASE;
-    if (hasUpgradeId(world, owner, 'signalsIntel')) chance += STEAL_SIGNALS_INTEL_BONUS;
-    if (hasUpgradeId(world, building.owner, 'counterIntel')) chance -= STEAL_COUNTER_INTEL_PENALTY;
-    chance = Math.min(0.95, Math.max(0.1, chance));
-    const success = rngBank(world).next(intelStreamName(owner)) < chance;
+    // the operation; the victim's counterIntel (upgrade + stockpiled
+    // assets) blunts it — see stealSuccessChance.
+    const success = rngBank(world).next(intelStreamName(owner)) < stealSuccessChance(world, owner, building.owner);
     if (success) {
       // A successful steal grants research progress toward the stolen
       // tech — the thief still researches it at the lab; the op just

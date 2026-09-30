@@ -236,8 +236,12 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `isDetected(unit, viewerOwner, world)` + `detectionRadiusAt(world,
   owner, x, z)` (the stealth contract: pure position geometry plus the
   unit's `spottedUntil` burn timer — the geometry itself needs zero
-  snapshot/digest cost), `sabotageDurationSec` (counterIntel
-  resistance), and `intelSightBonus` (satelliteUplink + signalsIntel —
+  snapshot/digest cost; detectors must be completed + operational +
+  unsabotaged, so sabotaging a listening post blinds it),
+  `sabotageDurationSec` (counterIntel resistance), `sabotageSpotChance`
+  / `stealSuccessChance` (pure roll-chance helpers — the victim's
+  stockpiled counter-intel assets sharpen spot checks and blunt steals,
+  capped), and `intelSightBonus` (satelliteUplink + signalsIntel —
   the S6 `effectiveSight` hook input). The sim-core half adds the asset
   plumbing (`addIntelAsset` / `spendIntelAsset` — the roster seam),
   spy mission state on `UnitRecord` (`missionEndsAt`,
