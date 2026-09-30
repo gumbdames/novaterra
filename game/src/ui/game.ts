@@ -1605,7 +1605,9 @@ class GameController {
   }
 
   private issueAdvanceAge(program: string): void {
-    this.enqueue(buildAdvanceAgeOrder(HUMAN_PLAYER_ID, program));
+    this.enqueue(
+      buildAdvanceAgeOrder(HUMAN_PLAYER_ID, program, this.session.world.ages.age),
+    );
     this.hud.toast(STRINGS.orders.ageAdvanced);
     this.audio.playSfx('ageFanfare');
   }

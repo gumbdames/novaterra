@@ -246,10 +246,15 @@ export function buildRailOrder(
 export function buildAdvanceAgeOrder(
   owner: number,
   program: string,
+  /** The age the issuer sees right now — makes the world-global advance
+   * idempotent when the AI advances on the same tick (the Phase 9 soak
+   * 6.1 race also bites human-vs-AI games). Omit only where no second
+   * issuer can race (scripted demos). */
+  fromAge?: string,
 ): OrderIntent {
   return {
     kind: 'advanceAge',
-    payload: { owner, program },
+    payload: fromAge === undefined ? { owner, program } : { owner, program, fromAge },
   };
 }
 

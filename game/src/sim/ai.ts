@@ -182,6 +182,7 @@ import {
   type Placement,
 } from './city';
 import type { TerrainData } from './terrain';
+import { isWater } from './terrain';
 import { isAegisReady, isStormReady } from './superweapons';
 import { CommandRejectedError } from './commands';
 
@@ -602,11 +603,19 @@ function totalUnits(world: World, owner: number): number {
  * the AI must never crash the tick on a rejected command. Non-rejection
  * errors still throw: those are real bugs.
  */
-function issue(world: World, queue: CommandQueue, kind: string, payload: Record<string, unknown>): void {
+/**
+ * Enqueue a command, swallowing `CommandRejectedError` (the validator
+ * said no — e.g. a water spawn — so the AI simply doesn't get the
+ * order). Returns false when the command was rejected, true when it
+ * was accepted into the queue. Any other error is re-thrown: only
+ * validation rejections are non-fatal.
+ */
+function issue(world: World, queue: CommandQueue, kind: string, payload: Record<string, unknown>): boolean {
   try {
     queue.enqueue(world, { issuer: 'ai', kind, payload });
+    return true;
   } catch (e) {
-    if (e instanceof CommandRejectedError) return;
+    if (e instanceof CommandRejectedError) return false;
     throw e;
   }
 }
@@ -684,6 +693,13 @@ function canPayImmediate(
  * spends (the per-think ledger), and the cost is reserved on issue so
  * a later spend in the same think can't push this command stale.
  */
+/**
+ * Train one unit of the mix. Returns true when the spawn command was
+ * accepted into the queue; false when unaffordable or the validator
+ * rejected it (e.g. a water spawn — the caller must NOT count it).
+ * The per-think ledger is reserved only on acceptance: a rejected
+ * command spends nothing, so the rest of the think keeps its budget.
+ */
 function spawn(
   world: World,
   queue: CommandQueue,
@@ -691,18 +707,19 @@ function spawn(
   kind: UnitKind,
   x: number,
   z: number,
-): void {
+): boolean {
   const def = UNIT_DEFS[kind];
   const player = getPlayer(world.city, ai.owner);
-  if (!player) return;
+  if (!player) return false;
   const l = thinkLedger(ai);
-  if (player.manpower - l.manpower < def.manpowerCost) return;
-  if (player.funds - l.funds < def.trainFunds) return;
-  if (player.materials - l.materials < def.trainMaterials) return;
-  issue(world, queue, 'spawnUnit', { kind, owner: ai.owner, x, z });
+  if (player.manpower - l.manpower < def.manpowerCost) return false;
+  if (player.funds - l.funds < def.trainFunds) return false;
+  if (player.materials - l.materials < def.trainMaterials) return false;
+  if (!issue(world, queue, 'spawnUnit', { kind, owner: ai.owner, x, z })) return false;
   l.manpower += def.manpowerCost;
   l.funds += def.trainFunds;
   l.materials += def.trainMaterials;
+  return true;
 }
 
 /**
@@ -1095,12 +1112,14 @@ function thinkSupplyTrucks(
   const wantFuel = Math.ceil(fuelConsumers / FUEL_TRUCK_RATIO);
   if ((counts.get('supplyTruck') ?? 0) < wantSupply && n < cap && canTrain(world, ai.owner, 'supplyTruck')) {
     const p = spawnPoint(ai, 'supplyTruck', n);
-    spawn(world, queue, ai, 'supplyTruck', p.x, p.z);
-    ai.builtCounts['supplyTruck'] = (ai.builtCounts['supplyTruck'] ?? 0) + 1;
+    if (spawn(world, queue, ai, 'supplyTruck', p.x, p.z)) {
+      ai.builtCounts['supplyTruck'] = (ai.builtCounts['supplyTruck'] ?? 0) + 1;
+    }
   } else if ((counts.get('fuelTruck') ?? 0) < wantFuel && n < cap && canTrain(world, ai.owner, 'fuelTruck')) {
     const p = spawnPoint(ai, 'fuelTruck', n);
-    spawn(world, queue, ai, 'fuelTruck', p.x, p.z);
-    ai.builtCounts['fuelTruck'] = (ai.builtCounts['fuelTruck'] ?? 0) + 1;
+    if (spawn(world, queue, ai, 'fuelTruck', p.x, p.z)) {
+      ai.builtCounts['fuelTruck'] = (ai.builtCounts['fuelTruck'] ?? 0) + 1;
+    }
   }
   // Role-specialize via the real command (rejections — e.g. the truck
   // died between think and apply — are swallowed by issue()).
@@ -1473,6 +1492,36 @@ function chooseUnitKind(
   return best;
 }
 
+/**
+ * Nearest dry point to (x, z) within `radius` world units, or null when
+ * everything in reach is water. Deterministic expanding-square spiral
+ * (4-unit steps — the land-unit spawn jitter is ±6, so a dry 4-grid
+ * point is a usable rally). Used for the forward-base water check
+ * (Phase 9 soak finding 6.2): the midpoint toward a visible enemy can
+ * be a river, and a water forward base rejects every land-unit spawn.
+ */
+function nearestLand(
+  terrain: TerrainData,
+  x: number,
+  z: number,
+  radius: number,
+): { x: number; z: number } | null {
+  if (!isWater(terrain, x, z)) return { x, z };
+  const step = 4;
+  for (let r = step; r <= radius; r += step) {
+    for (let dz = -r; dz <= r; dz += step) {
+      for (let dx = -r; dx <= r; dx += step) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+        if (!isWater(terrain, x + dx, z + dz)) return { x: x + dx, z: z + dz };
+      }
+    }
+  }
+  return null;
+}
+
+/** How far the forward-base water check searches for dry land. */
+const FORWARD_BASE_WATER_SEARCH_RADIUS = 48;
+
 /** Where a new unit spawns: sea kinds at the probed water, else base. */
 function spawnPoint(ai: AIPlayerState, kind: UnitKind, n: number): { x: number; z: number } {
   if (UNIT_DEFS[kind].domain === 'sea' && ai.navalWater) {
@@ -1503,8 +1552,9 @@ function thinkProduction(
   // untouched — this is a substitution, not a rewrite.
   const kind = preferHighestVariant(world, ai.owner, chooseUnitKind(world, ai, counts, visible), thinkLedger(ai));
   const p = spawnPoint(ai, kind, n);
-  spawn(world, queue, ai, kind, p.x, p.z);
-  ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
+  if (spawn(world, queue, ai, kind, p.x, p.z)) {
+    ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -1971,8 +2021,9 @@ function thinkIntelSpies(
   if (spies.length < quota && canTrain(world, owner, 'spy')) {
     if (totalUnits(world, owner) < AI_MAX_UNITS[ai.difficulty]) {
       const p = spawnPoint(ai, 'spy', spies.length);
-      spawn(world, queue, ai, 'spy', p.x, p.z);
-      ai.builtCounts['spy'] = (ai.builtCounts['spy'] ?? 0) + 1;
+      if (spawn(world, queue, ai, 'spy', p.x, p.z)) {
+        ai.builtCounts['spy'] = (ai.builtCounts['spy'] ?? 0) + 1;
+      }
     }
   }
   // Counter-intel triggers (latch — the surge is answered when
@@ -2277,8 +2328,9 @@ export function thinkCarrierWings(world: World, queue: CommandQueue, ai: AIPlaye
       n < AI_MAX_UNITS[ai.difficulty] &&
       canTrain(world, ai.owner, 'carrier')
     ) {
-      spawn(world, queue, ai, 'carrier', ai.navalWater.x, ai.navalWater.z);
-      ai.builtCounts['carrier'] = (ai.builtCounts['carrier'] ?? 0) + 1;
+      if (spawn(world, queue, ai, 'carrier', ai.navalWater.x, ai.navalWater.z)) {
+        ai.builtCounts['carrier'] = (ai.builtCounts['carrier'] ?? 0) + 1;
+      }
     }
     return;
   }
@@ -2291,8 +2343,9 @@ export function thinkCarrierWings(world: World, queue: CommandQueue, ai: AIPlaye
     const kind = capKinds[0]!;
     if (n < AI_MAX_UNITS[ai.difficulty] && canTrain(world, ai.owner, kind)) {
       const p = spawnPoint(ai, kind, n);
-      spawn(world, queue, ai, kind, p.x, p.z);
-      ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
+      if (spawn(world, queue, ai, kind, p.x, p.z)) {
+        ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
+      }
     }
     // 2b. Idle carrier-capable aircraft converge on the carrier:
     // embark when close (the range gate itself lives in the command's
@@ -2346,8 +2399,9 @@ export function thinkCarrierEscorts(world: World, queue: CommandQueue, ai: AIPla
       canTrain(world, ai.owner, pool[0]!)
     ) {
       const p = spawnPoint(ai, pool[0]!, n);
-      spawn(world, queue, ai, pool[0]!, p.x, p.z);
-      ai.builtCounts[pool[0]!] = (ai.builtCounts[pool[0]!] ?? 0) + 1;
+      if (spawn(world, queue, ai, pool[0]!, p.x, p.z)) {
+        ai.builtCounts[pool[0]!] = (ai.builtCounts[pool[0]!] ?? 0) + 1;
+      }
     }
     // Idle escorts station near the carrier.
     for (const e of screen) {
@@ -2404,8 +2458,9 @@ function thinkCadet(
   // Rifles only: cadet builds no production buildings, so gated kinds
   // (tank, …) could never unlock — ordering them would stall the AI.
   const p = spawnPoint(ai, 'rifles', n);
-  spawn(world, queue, ai, 'rifles', p.x, p.z);
-  ai.builtCounts['rifles'] = (ai.builtCounts['rifles'] ?? 0) + 1;
+  if (spawn(world, queue, ai, 'rifles', p.x, p.z)) {
+    ai.builtCounts['rifles'] = (ai.builtCounts['rifles'] ?? 0) + 1;
+  }
   // Phase 4 transport (S7): civilian-transport AI hook — a documented
   // no-op in 0.1 Alpha (see thinkCivilianTransport).
   thinkCivilianTransport(world, ai);
@@ -2493,6 +2548,7 @@ function thinkCommander(
   world: World,
   queue: CommandQueue,
   ai: AIPlayerState,
+  terrain?: TerrainData,
 ): void {
   const counts = countUnits(world, ai.owner);
   const n = totalUnits(world, ai.owner);
@@ -2514,8 +2570,9 @@ function thinkCommander(
   const scouts = (counts.get('drone') ?? 0) + (counts.get('awacs') ?? 0) + (counts.get('fighter') ?? 0);
   if (scouts === 0 && n < AI_MAX_UNITS[ai.difficulty] && canTrain(world, ai.owner, scoutKind)) {
     const p = spawnPoint(ai, scoutKind, n);
-    spawn(world, queue, ai, scoutKind, p.x, p.z);
-    ai.builtCounts[scoutKind] = (ai.builtCounts[scoutKind] ?? 0) + 1;
+    if (spawn(world, queue, ai, scoutKind, p.x, p.z)) {
+      ai.builtCounts[scoutKind] = (ai.builtCounts[scoutKind] ?? 0) + 1;
+    }
   } else {
     // Order idle scouts to waypoints (cycle through 4 compass points at
     // standoff distance); skip waypoints near visible enemy clusters.
@@ -2625,18 +2682,36 @@ function thinkCommander(
       fx = ai.baseX + Math.round(Math.cos(a) * 80);
       fz = ai.baseZ + Math.round(Math.sin(a) * 80);
     }
-    ai.forwardBase = { x: fx, z: fz };
-    // Send a small detachment to the forward base.
-    const detachment: number[] = [];
-    for (const u of world.units) {
-      if (u.owner !== ai.owner || u.hp <= 0) continue;
-      if (UNIT_DEFS[u.kind as UnitKind].domain !== 'land') continue;
-      if (u.targetId !== 0) continue; // don't pull units already fighting
-      detachment.push(u.id);
-      if (detachment.length >= 4) break;
-    }
-    if (detachment.length > 0) {
-      moveGroupTo(world, queue, ai.owner, detachment, fx, fz);
+    // Phase 9 balance pass (soak finding 6.2): the midpoint can be
+    // water (e.g. a river between the bases). A water forward base
+    // rejects every land-unit spawn at validateSpawnUnit, permanently
+    // capping the AI's army while builtCounts keeps counting the
+    // attempts. Nudge the rally point to the nearest dry land in a
+    // bounded spiral (deterministic). Fairness note: the map itself is
+    // visible to every player (no terrain fog) — this only asks whether
+    // land units can rally at the chosen point, the same question the
+    // spawn validator answers loudly; the AI still finds naval water
+    // by probe spawns, never by scanning the map.
+    const dry = terrain
+      ? nearestLand(terrain, fx, fz, FORWARD_BASE_WATER_SEARCH_RADIUS)
+      : { x: fx, z: fz };
+    // No dry rally point in reach (an all-water gap): leave the base
+    // unset and retry next think — a later visible enemy may give a
+    // better midpoint. Everything below (detachment, attack) still runs.
+    if (dry) {
+      ai.forwardBase = dry;
+      // Send a small detachment to the forward base.
+      const detachment: number[] = [];
+      for (const u of world.units) {
+        if (u.owner !== ai.owner || u.hp <= 0) continue;
+        if (UNIT_DEFS[u.kind as UnitKind].domain !== 'land') continue;
+        if (u.targetId !== 0) continue; // don't pull units already fighting
+        detachment.push(u.id);
+        if (detachment.length >= 4) break;
+      }
+      if (detachment.length > 0) {
+        moveGroupTo(world, queue, ai.owner, detachment, dry.x, dry.z);
+      }
     }
   }
 
@@ -2711,8 +2786,9 @@ function thinkGeneral(
   world: World,
   queue: CommandQueue,
   ai: AIPlayerState,
+  terrain?: TerrainData,
 ): void {
-  thinkCommander(world, queue, ai);
+  thinkCommander(world, queue, ai, terrain);
   thinkNavalProbe(world, queue, ai);
 }
 
@@ -2724,9 +2800,10 @@ function thinkMarshal(
   world: World,
   queue: CommandQueue,
   ai: AIPlayerState,
+  terrain?: TerrainData,
 ): void {
   // Start with General's behavior (includes Commander base + naval probe).
-  thinkGeneral(world, queue, ai);
+  thinkGeneral(world, queue, ai, terrain);
 
   // --- Age advancement: if we can afford the next age, take it.
   // Choose programs that boost military: Heavy Industry, Cyber Command, Arsenal.
@@ -2836,7 +2913,10 @@ function reserveAgeCost(ai: AIPlayerState, cost: Record<string, number>): void {
 
 /** Issue an age advancement command. */
 function advanceAge(world: World, queue: CommandQueue, owner: number, program: string): void {
-  issue(world, queue, 'advanceAge', { owner, program });
+  // fromAge makes the world-global advancement idempotent: a second
+  // issuer on the same tick fizzles instead of going stale at apply
+  // (the Phase 9 soak 6.1 race — it also bites human-vs-AI games).
+  issue(world, queue, 'advanceAge', { owner, program, fromAge: world.ages.age });
 }
 
 // ---------------------------------------------------------------------------
@@ -3499,13 +3579,13 @@ export function createAISystem(queue: CommandQueue, terrain?: TerrainData): SimS
           thinkCitizen(world, queue, ai);
           break;
         case 'commander':
-          thinkCommander(world, queue, ai);
+          thinkCommander(world, queue, ai, terrain);
           break;
         case 'general':
-          thinkGeneral(world, queue, ai);
+          thinkGeneral(world, queue, ai, terrain);
           break;
         case 'marshal':
-          thinkMarshal(world, queue, ai);
+          thinkMarshal(world, queue, ai, terrain);
           break;
       }
     }

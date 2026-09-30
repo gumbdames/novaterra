@@ -216,6 +216,80 @@ describe('advanceAge validation', () => {
   });
 });
 
+describe('same-tick double advance (Phase 9 soak finding 6.1)', () => {
+  it('two issuers advancing on the same tick: the second fizzles, no crash, single charge', () => {
+    const ctx = setup();
+    fundPlayer(ctx);
+    const player = getPlayer(ctx.world.city, 0)!;
+    const fundsBefore = player.funds;
+    const matsBefore = player.materials;
+    // Two AIs (or a human and an AI) thinking on the same tick both see
+    // Foundation and both enqueue the world-global advanceAge. The
+    // payload carries the age each issuer saw (fromAge), so the second
+    // apply fizzles instead of going stale and crashing the tick.
+    ctx.queue.enqueue(ctx.world, {
+      issuer: 'ai',
+      kind: 'advanceAge',
+      payload: { owner: 0, program: 'fiberGrid', fromAge: 'foundation' },
+    });
+    ctx.queue.enqueue(ctx.world, {
+      issuer: 'player',
+      kind: 'advanceAge',
+      payload: { owner: 0, program: 'signalsGrid', fromAge: 'foundation' },
+    });
+    expect(() => runTicks(ctx, 1)).not.toThrow();
+    expect(ctx.world.ages.age).toBe('connectivity');
+    // The first applier (issuer 'ai' sorts before 'player') wins the
+    // program choice; the cost is deducted exactly once.
+    expect(ctx.world.ages.program).toBe('fiberGrid');
+    expect(player.funds).toBeCloseTo(fundsBefore - CONNECTIVITY_COST.funds, 6);
+    expect(player.materials).toBeCloseTo(matsBefore - CONNECTIVITY_COST.materials, 6);
+  });
+
+  it('a duplicate for an already-passed age fizzles even across ages', () => {
+    const ctx = setup();
+    fundPlayer(ctx);
+    const player = getPlayer(ctx.world.city, 0)!;
+    player.funds += 100000;
+    player.materials += 100000;
+    // Advance to connectivity first.
+    ctx.queue.enqueue(ctx.world, {
+      issuer: 'ai',
+      kind: 'advanceAge',
+      payload: { owner: 0, program: 'fiberGrid', fromAge: 'foundation' },
+    });
+    runTicks(ctx, 1);
+    expect(ctx.world.ages.age).toBe('connectivity');
+    const fundsBefore = player.funds;
+    // A late duplicate that saw foundation (e.g. enqueued long ago)
+    // fizzles without charging or crashing.
+    ctx.queue.enqueue(ctx.world, {
+      issuer: 'ai',
+      kind: 'advanceAge',
+      payload: { owner: 0, program: 'fiberGrid', fromAge: 'foundation' },
+    });
+    expect(() => runTicks(ctx, 1)).not.toThrow();
+    expect(ctx.world.ages.age).toBe('connectivity');
+    expect(player.funds).toBeCloseTo(fundsBefore, 6);
+  });
+
+  it('legacy: same-tick double advance WITHOUT fromAge still throws loudly (no silent double-charge)', () => {
+    const ctx = setup();
+    fundPlayer(ctx);
+    ctx.queue.enqueue(ctx.world, {
+      issuer: 'ai',
+      kind: 'advanceAge',
+      payload: { owner: 0, program: 'fiberGrid' },
+    });
+    ctx.queue.enqueue(ctx.world, {
+      issuer: 'player',
+      kind: 'advanceAge',
+      payload: { owner: 0, program: 'signalsGrid' },
+    });
+    expect(() => runTicks(ctx, 1)).toThrow(CommandRejectedError);
+  });
+});
+
 describe('advancing to Connectivity', () => {
   it('advances with Fiber Grid, deducting the cost', () => {
     const ctx = setup();

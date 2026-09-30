@@ -50,14 +50,11 @@
  *      no natural elimination is reachable. The headline config therefore
  *      places bases 200 units apart on open land so patrols can make contact.
  *   2. Two same-cadence AIs can both enqueue the world-global `advanceAge`
- *      command on the same tick; the second goes stale and `applyDue` throws
- *      `CommandRejectedError`, crashing the tick. `issue()` only swallows
- *      enqueue-time rejections, not apply-time ones. Workaround: stagger each
- *      pair by half a think cadence (deterministic, fixed constant). This is
- *      a real sim bug — it can also bite human-vs-AI games on a shared tick —
- *      and is reported as a crash finding, not fixed here. The test harness
- *      staggers owner 1's first think by half a cadence so the two AIs never
- *      share a think tick.
+ *      command on the same tick. FIXED in the Phase 9 balance pass
+ *      (pathology 1): the command carries the age the issuer saw
+ *      (`fromAge`), so the second apply fizzles instead of going stale —
+ *      no crash, no double charge. The old stagger workaround has been
+ *      removed; the two AIs share think ticks freely now.
  *   3. The peaceful AI's economy death-spirals: it spends its starting funds
  *      on ~10 buildings, upkeep drains the treasury to zero, nothing is
  *      funded, every building goes non-operational, and with no operational
@@ -111,7 +108,6 @@ import { createMayorSystem, createGeneralSystem } from '../src/sim/delegation';
 import {
   addAIPlayer,
   createAISystem,
-  AI_THINK_TICKS,
 } from '../src/sim/ai';
 import type { AIDifficulty } from '../src/sim/ai';
 import { checkPeacefulVictory } from '../src/sim/peaceful';
@@ -278,13 +274,9 @@ function runLongGame(opts: LongGameOptions): LongGameResult {
     addAIPlayer(world, i, opts.difficulty, spot.x, spot.z);
     const ai = world.ai.players.find((p) => p.owner === i);
     if (!ai) throw new Error(`phase9-longsoak: AI player ${i} missing`);
-    // Crash-finding workaround (see header note 2): two same-cadence AIs can
-    // both enqueue the world-global advanceAge on one tick and the second
-    // apply throws CommandRejectedError. Stagger by owner index so the two
-    // AIs never share a think tick: each think sees the live age, and a
-    // command applies at the next tick start, so the later thinker always
-    // observes the earlier AI's advancement before deciding.
-    ai.nextThinkTick += Math.floor(AI_THINK_TICKS[opts.difficulty] / 2) * i;
+    // (Header note 2: the advanceAge same-tick race was fixed in the
+    // Phase 9 balance pass — the duplicate fizzles via `fromAge`, so no
+    // stagger is needed and the two AIs share think ticks freely.)
   }
 
   // Full production stack, mirroring ui/session.ts.
@@ -636,10 +628,11 @@ const PEACEFUL_BASES = [
 ];
 
 /**
- * Add a staggered marshal pair on the close bases. Shared by the two
- * determinism tests so both exercise the identical fixture.
+ * Add a marshal pair on the close bases. Shared by the two determinism
+ * tests so both exercise the identical fixture. (The old think-stagger
+ * was removed with the advanceAge race fix — header note 2.)
  */
-function addStaggeredMarshalPair(world: World, t: TerrainData): void {
+function addMarshalPair(world: World, t: TerrainData): void {
   const spots = CLOSE_BASES.map((b) => findLandNear(t, b.x, b.z));
   const west = spots[0];
   const east = spots[1];
@@ -648,10 +641,6 @@ function addStaggeredMarshalPair(world: World, t: TerrainData): void {
   }
   addAIPlayer(world, 0, 'marshal', west.x, west.z);
   addAIPlayer(world, 1, 'marshal', east.x, east.z);
-  const ai = world.ai.players.find((p) => p.owner === 1);
-  if (!ai) throw new Error('phase9-longsoak: AI player 1 missing');
-  // Same stagger as the game runner (header note 2).
-  ai.nextThinkTick += Math.floor(AI_THINK_TICKS.marshal / 2);
 }
 
 describe('phase 9 long AI-vs-AI soaks', () => {
@@ -750,7 +739,7 @@ describe('phase 9 long AI-vs-AI soaks', () => {
     () => {
       const t = terrain();
       const world = createWorld(90210);
-      addStaggeredMarshalPair(world, t);
+      addMarshalPair(world, t);
       const queue = createCommandQueue();
       registerCoreCommands(queue);
       registerCityCommands(queue, t);
@@ -789,7 +778,7 @@ describe('phase 9 long AI-vs-AI soaks', () => {
       for (let run = 0; run < 2; run++) {
         const t = terrain();
         const world = createWorld(90210);
-        addStaggeredMarshalPair(world, t);
+        addMarshalPair(world, t);
         const queue = createCommandQueue();
         registerCoreCommands(queue);
         registerCityCommands(queue, t);

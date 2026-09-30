@@ -260,6 +260,90 @@ describe('commander', () => {
     expect(ai.forwardBase).not.toBeNull();
   });
 
+  it('never plants the forward base in water (Phase 9 soak finding 6.2)', () => {
+    // Terrain-aware AI system: the forward-base water check needs the
+    // terrain threaded through createAISystem (ui/session.ts passes it
+    // in the real game; the shared setup() here does not).
+    const terrain = getTerrain();
+    const world = createWorld(20260930);
+    grantAllTrainingResources(world);
+    for (const p of world.city.players) {
+      completeBuildings(world, p.id, ['barracks', 'warFactory', 'airfield']);
+    }
+    const queue = createCommandQueue();
+    registerCoreCommands(queue);
+    registerUnitCommands(queue, terrain);
+    registerMovementCommands(queue, terrain);
+    registerCombatCommands(queue);
+    const driver = createTickDriver({
+      queue,
+      systems: [
+        createPathfindingSystem(terrain),
+        createMovementSystem(terrain),
+        createCombatSystem(),
+        createAISystem(queue, terrain),
+      ],
+    });
+    // Find a land base and a nearby land spot for a visible enemy such
+    // that the midpoint between them is water (a river gap). The scan
+    // is deterministic (seeded terrain, fixed iteration order).
+    let base: { x: number; z: number } | null = null;
+    let enemy: { x: number; z: number } | null = null;
+    outer: for (let bx = -120; bx <= 120; bx += 20) {
+      for (let bz = -120; bz <= 120; bz += 20) {
+        if (isWater(terrain, bx, bz)) continue;
+        for (let a = 0; a < 8; a++) {
+          const ex = bx + Math.round(Math.cos((a * Math.PI) / 4) * 20);
+          const ez = bz + Math.round(Math.sin((a * Math.PI) / 4) * 20);
+          if (isWater(terrain, ex, ez)) continue;
+          const mx = (bx + ex) / 2;
+          const mz = (bz + ez) / 2;
+          if (isWater(terrain, mx, mz)) {
+            base = { x: bx, z: bz };
+            enemy = { x: ex, z: ez };
+            break outer;
+          }
+        }
+      }
+    }
+    expect(base).not.toBeNull();
+    expect(enemy).not.toBeNull();
+    addAIPlayer(world, 1, 'commander', base!.x, base!.z);
+    // A standing army for owner 1 so the expansion threshold (6..10 by
+    // personality) is met on the very first think — before the parked
+    // enemy tank can grind it down.
+    for (let i = 0; i < 10; i++) {
+      const spot = findLandNear(terrain, base!.x + (i % 5) * 3, base!.z + Math.floor(i / 5) * 3);
+      queue.enqueue(world, {
+        issuer: 'player',
+        kind: 'spawnUnit',
+        payload: { kind: 'rifles', owner: 1, x: spot.x, z: spot.z },
+      });
+    }
+    // One parked enemy tank, close enough to be visible (the same
+    // ~20-unit spacing the counter test relies on for visibility).
+    const eid = world.nextId;
+    queue.enqueue(world, {
+      issuer: 'player',
+      kind: 'spawnUnit',
+      payload: { kind: 'tank', owner: 0, x: enemy!.x, z: enemy!.z },
+    });
+    for (let i = 0; i < 60 * 3 + 10; i++) driver.step(world, TICK_MS);
+    expect(findUnit(world, eid)).toBeDefined();
+    const ai = world.ai.players[0]!;
+    // The forward base was established (8+ units built) and nudged to
+    // dry land — never the water midpoint.
+    expect(ai.forwardBase).not.toBeNull();
+    expect(isWater(terrain, ai.forwardBase!.x, ai.forwardBase!.z)).toBe(false);
+    // And it really came from the visible-enemy midpoint branch (not
+    // the no-enemy personality-direction fallback): the base must sit
+    // within the water-search radius of the midpoint.
+    const mx = (base!.x + enemy!.x) / 2;
+    const mz = (base!.z + enemy!.z) / 2;
+    const dist = Math.hypot(ai.forwardBase!.x - mx, ai.forwardBase!.z - mz);
+    expect(dist).toBeLessThanOrEqual(48 + 1);
+  });
+
   it('builds a balanced force with counters', () => {
     const ctx = setup();
     const base = findLandNear(ctx.terrain, -100, -100);

@@ -45,7 +45,7 @@
  */
 
 import type { World } from './world';
-import type { CommandQueue } from './commands';
+import type { Command, CommandQueue } from './commands';
 import { getPlayer } from './city';
 
 /** Development stages of the player's nation (fixed 2026 setting). */
@@ -288,6 +288,24 @@ export function isBuildingAvailableForAge(world: World, minAge: Age): boolean {
 }
 
 /** Register the `advanceAge` command. */
+/**
+ * True when an `advanceAge` command is a harmless duplicate: its payload
+ * carries the `fromAge` the issuer saw at enqueue, and the world has
+ * already advanced strictly past it (someone else's advancement landed
+ * first). Such a command fizzles at apply instead of going stale — the
+ * fix for the same-tick double-advance race (Phase 9 soak finding 6.1).
+ * A missing/invalid `fromAge` keeps the legacy strict behavior, and an
+ * age equal to or behind `fromAge` is never a duplicate (ages never
+ * regress, so "behind" can't happen — it falls through to the normal
+ * validation, which rejects loudly as before).
+ */
+function isAdvanceAgeDuplicate(cmd: Command, world: World): boolean {
+  const fromAge = cmd.payload['fromAge'];
+  if (typeof fromAge !== 'string') return false;
+  const fromIdx = (AGE_ORDER as string[]).indexOf(fromAge);
+  if (fromIdx < 0) return false;
+  return (AGE_ORDER as string[]).indexOf(world.ages.age) > fromIdx;
+}
 /** Age progression: each age maps to its successor, valid programs, and cost. */
 export const AGE_PROGRESSION: Record<Age, { next: Age | null; programs: string[]; cost: Record<string, number> }> = {
   foundation: { next: 'connectivity', programs: ['fiberGrid', 'signalsGrid'], cost: CONNECTIVITY_COST as unknown as Record<string, number> },
@@ -308,6 +326,14 @@ export function registerAgeCommands(queue: CommandQueue): void {
       if (!player) {
         return 'advanceAge: unknown owner';
       }
+      // Idempotency (Phase 9 balance pass, 2026-09-30): age advancement is
+      // world-global, so two issuers (two AIs, or a human and an AI) can
+      // both enqueue it on the same tick. The payload may carry `fromAge`
+      // — the age the issuer saw at enqueue. When the world has already
+      // advanced past it, this command is a harmless duplicate: it stays
+      // valid and fizzles at apply (no double charge, no stale throw).
+      // Without `fromAge` the legacy strict behavior applies.
+      if (isAdvanceAgeDuplicate(cmd, world)) return null;
       const prog = AGE_PROGRESSION[world.ages.age];
       if (!prog.next) {
         return `advanceAge: already at ${world.ages.age}, cannot advance further`;
@@ -332,6 +358,13 @@ export function registerAgeCommands(queue: CommandQueue): void {
       const player = getPlayer(world.city, owner);
       if (!player) {
         throw new Error('advanceAge: unknown owner at apply');
+      }
+      // Duplicate (see validate): the world already advanced past the
+      // issuer's `fromAge` — fizzle as a no-op WITHOUT charging. The
+      // first applier already paid; a second charge would bill the same
+      // advancement twice.
+      if (isAdvanceAgeDuplicate(cmd, world)) {
+        return { age: world.ages.age, program, stale: true };
       }
       const prog = AGE_PROGRESSION[world.ages.age];
       if (!prog.next) {
