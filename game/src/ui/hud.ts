@@ -84,6 +84,7 @@ import {
   type PaletteToolIcon,
 } from './icons';
 import { HUMAN_PLAYER_ID } from './session';
+import { selectionDigest as paletteDigest } from './paletteDigest';
 
 /** Build-palette tools the HUD can request. */
 export type BuildTool =
@@ -467,20 +468,36 @@ export class HUD {
     }
   }
 
+  /**
+   * Content digest for the selection panel — see ui/paletteDigest.ts
+   * (pure, headless-tested). `updateSelection` rebuilds only when the
+   * digest changes, so button nodes stay stable across frames (a click
+   * needs pointerdown + pointerup on the same node) while
+   * costs/availability still refresh the moment they actually change.
+   */
+  private selectionDigest(world: World, selection: Selection): string {
+    return paletteDigest(world, selection, this.trainTab, this.buildTab);
+  }
+
   private updateSelection(world: World, selection: Selection): void {
     const panel = this.selectionPanel;
     const sel = STRINGS.selection;
-    // Rebuild when the selection identity changes, each sim tick (costs and
-    // availability move), or when a palette interaction asked for it
-    // (tab switch while paused).
-    const key = `u:${selection.unitIds.join(',')}|b:${selection.buildingId}`;
+    // Rebuild only when the rendered content actually changes. The panel
+    // must stay node-stable across frames: recreating the palette buttons
+    // every sim tick broke real clicks — pointerdown and pointerup landed
+    // on different nodes, so no click event ever fired and palette tabs /
+    // items were unclickable while the sim ran. The digest covers
+    // everything the panel renders (selection identity, active tabs,
+    // per-button availability, research states, unit/building vitals);
+    // a palette interaction that must repaint immediately (tab switch,
+    // research click while paused) still sets paletteDirty.
+    const key = this.selectionDigest(world, selection);
     const dirty = this.paletteDirty;
     this.paletteDirty = false;
-    if (!dirty && panel.dataset['key'] === key && panel.dataset['tick'] === String(world.tick)) {
+    if (!dirty && panel.dataset['key'] === key) {
       return;
     }
     panel.dataset['key'] = key;
-    panel.dataset['tick'] = String(world.tick);
     panel.textContent = '';
 
     if (selection.unitIds.length === 0 && selection.buildingId === null) {

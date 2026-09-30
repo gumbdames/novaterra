@@ -114,6 +114,12 @@ body {
   gap: 12px;
   pointer-events: auto;
   min-width: min(320px, 80vw);
+  /* The skirmish setup (8 maps + 5 difficulties) is taller than short
+   * viewports: let the column scroll instead of pushing buttons
+   * off-screen where they can never be clicked. */
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
+  padding: 8px 4px;
 }
 
 #menu button {

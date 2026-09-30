@@ -47,7 +47,12 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `formatSaveSummary`.
 - `hud.ts` — top bar, advisor panel, selection panel, tabbed train/build
   palettes, research panel, toasts. Calls back into the controller; never
-  touches sim. TRAIN palette has 4 tabs (Infantry / Armor / Air / Navy),
+  touches sim. `update()` runs every frame but only touches the DOM when a
+  displayed value actually changed — the selection panel rebuilds only
+  when its content digest (`ui/paletteDigest.ts`) changes, so palette
+  button nodes stay stable across frames (recreating them every sim tick
+  broke real clicks: pointerdown + pointerup landed on different nodes and
+  no click event ever fired). TRAIN palette has 4 tabs (Infantry / Armor / Air / Navy),
   BUILD palette has 6 tabs (Housing / Commerce / Industry / Utilities /
   Naval & Air / Special) — the exact spec groupings, see `palettes.ts`.
   Unavailable entries stay visible but disabled, with tooltip reasons
@@ -57,12 +62,23 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   one with nothing selected) opens the research panel: all 12 upgrades
   in Military / Economy groups with one-line effects, cost, researched
   checkmark, and disabled reasons.
+- `paletteDigest.ts` — **selection-panel content digest (pure, tested,
+  `tests/ui.paletteDigest.test.ts`).** `hud.ts` rebuilds the selection
+  panel only when this digest changes: it covers everything the panel
+  renders (selection identity, active train/build tabs, per-button
+  availability, research states, selected unit/building vitals), so costs
+  and availability still refresh the moment they actually change while
+  button nodes survive across frames (clicks need pointerdown + pointerup
+  on the same node). Headless-safe; mirrors the `updateSelection` render
+  branches — a branch that renders a value must digest it.
 - `menus.ts` — main menu (skirmish setup: map picker + difficulty picker),
   pause overlay, settings (quality, key list, accessibility, audio). Quality,
   colorblind mode, UI scale and audio persist in localStorage. Skirmish
   setup shows all 8 MAP_PRESETS (name
   + water %) and all 5 AI difficulties; `onStartSkirmish(difficulty,
-  mapPreset)`.
+  mapPreset)`. The setup column scrolls (`#menu .buttons` has
+  `overflow-y: auto`) so every map/difficulty stays clickable on short
+  viewports.
 - `camera.ts` / `selection.ts` — pure state + transitions, fully tested.
 - `orders.ts` — gesture → `OrderIntent` (`NewCommand` minus issuer);
   the controller stamps `issuer: 'player'` at enqueue. Includes
