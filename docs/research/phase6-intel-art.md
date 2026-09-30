@@ -86,7 +86,7 @@ exclusion test added in `tests/render.lazyModels.test.ts`).
 | `intelHQ` | `intelHQMain` + `hqAntenna` attach prop at dy 6.6 (roof ≈6.5) | `intelHQMain` (kenney-commercial/building-h.glb, 5.03) | 124 KB |
 | `listeningPost` | `listeningPostHut` + `listeningPostDish` roof-mounted at (0.3, 3.3, 0) | `listeningPostHut` (kenney-commercial/building-c.glb, 3.67), `listeningPostDish` (kenney-space/satelliteDish.glb, 1.8) | 100 + 19 KB |
 | `satelliteUplink` | 1:1 `satelliteUplink` | `satelliteUplink` (kenney-space/satelliteDish_detailed.glb, 8.57) | 25 KB |
-| `signalsStation` | `signalsStationHut` + NEW procedural `signalMast` attach prop at (1.7, 0, 0.5) | `signalsStationHut` (kenney-commercial/building-e.glb, 2.44) | 125 KB |
+| `signalsStation` | `signalsStationHut` + NEW procedural `signalMast` attach prop at (1.7, 0, 0.5) — ground-planted at the shed's edge, rising through the roof (reads as a roof-mounted installation; a true beside-placement cannot fit inside the 2×2 footprint) | `signalsStationHut` (kenney-commercial/building-e.glb, 2.44) | 125 KB |
 
 - New procedural builder: `buildSignalMast()` in
   `game/src/render/proceduralModels.ts` (concrete footing, tapered

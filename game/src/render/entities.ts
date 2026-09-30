@@ -429,7 +429,9 @@ export type ModelSource =
   // radarStation precedent — different dish silhouette).
   satelliteUplink: { type: 'glb', pieces: [piece('satelliteUplink')] },
   // signalsStation 4×4 world: equipment shed; the procedural signalMast
-  // prop rides beside it (extraPropSpecs below).
+  // prop is ground-planted beside it and rises through the shed roof
+  // near its edge (extraPropSpecs below) — reads as a roof-mounted
+  // installation while staying inside the footprint.
   signalsStation: { type: 'glb', pieces: [piece('signalsStationHut')] },
   // ---- NOVATERRA roster-expansion buildings ----
   barracks: { type: 'glb', pieces: [piece('barracks')] },
@@ -2036,7 +2038,8 @@ export class EntityRenderer {
         // (roof ≈6.5 at this scale; the 'hq' precedent).
         return [{ prop: 'hqAntenna', dx: 0, dy: 6.6, dz: -0.5 }];
       case 'signalsStation':
-        // The SIGINT mast stands beside the equipment shed.
+        // The SIGINT mast is ground-planted at the shed's edge and rises
+        // through the roof — reads as a roof-mounted installation.
         return [{ prop: 'signalMast', dx: 1.7, dy: 0, dz: 0.5 }];
       default:
         return [];

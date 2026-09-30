@@ -378,7 +378,7 @@ export const MODEL_PATHS: Record<string, ModelSpec> = {
   // signalsStation 2×2 / 7 tall: hut = commercial building-e
   // (1.64×0.89×1.01) ⇒ 2.44 (footprint-constrained; a low equipment
   // shed — the station's identity is the procedural signalMast attach
-  // prop beside it, entities.ts).
+  // prop rising through its roof, entities.ts).
   signalsStationHut: { path: 'kenney-commercial/building-e.glb', scale: 2.44 },
 };
 
