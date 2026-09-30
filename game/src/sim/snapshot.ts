@@ -94,6 +94,12 @@ import { encodeUpgrades, decodeUpgrades } from './upgrades';
  *     (Phase 7 workstream 3, 2026-09-30: BuildingRecord.discovery is
  *     PURELY ADDITIVE on top of v8 — older saves decode to undefined,
  *     no version bump, the sabotagedUntil precedent.)
+ * Grand-expansion Phase 8 (peaceful mode, 2026-09-30): `peaceful` is
+ * PURELY ADDITIVE on top of v8 — a plain boolean, no version bump.
+ * Older saves (which predate the flag) decode to `false` via
+ * `?? false`: no old save was peaceful, so the neutral default is
+ * exactly the old behavior. PLAN §11's "no bump" line for this field
+ * holds — no shape migration, v5/v6/v7 still load.
  */
 export const SNAPSHOT_VERSION = 8;
 
@@ -117,6 +123,12 @@ export interface Snapshot {
   delegation: DelegationState;
   superweapons: SuperweaponState;
   upgrades: Record<number, string[]>;
+  /**
+   * Grand-expansion Phase 8 (peaceful mode): the world's peaceful flag.
+   * Added without a version bump — legacy snapshots predate the field
+   * and decode to `false` (no old save was peaceful).
+   */
+  peaceful: boolean;
 }
 
 /** Thrown when a snapshot's version doesn't match. Names expected vs found. */
@@ -398,6 +410,9 @@ export function takeSnapshot(world: World): Snapshot {
     delegation: encodeDelegationState(world.delegation) as DelegationState,
     superweapons: encodeSuperweaponState(world.superweapons) as SuperweaponState,
     upgrades: encodeUpgrades(world.upgrades),
+    // Grand-expansion Phase 8 (peaceful mode): faithful copy of the
+    // immutable tick-0 flag.
+    peaceful: world.peaceful,
   };
 }
 
@@ -410,6 +425,9 @@ export function takeSnapshot(world: World): Snapshot {
  * fields decode to their AD9 defaults (legacy airfields → 6 generic
  * slots via defaultHangarSlots, other buildings → undefined, units →
  * hangarBuildingId/embarkedOn 0).
+ * Grand-expansion Phase 8 (peaceful mode): the world's peaceful flag
+ * decodes via `?? false` — pre-flag saves were never peaceful, so the
+ * neutral default reproduces the old behavior exactly (no version bump).
  */
 export function restoreSnapshot(snap: Snapshot): World {
   if (snap === null || typeof snap !== 'object') {
@@ -442,5 +460,10 @@ export function restoreSnapshot(snap: Snapshot): World {
   world.superweapons = snap.superweapons ? decodeSuperweaponState(snap.superweapons) : initSuperweapons();
   // v5 snapshots lack upgrades — per the spec they default to {}.
   world.upgrades = decodeUpgrades(snap.upgrades ?? {});
+  // Grand-expansion Phase 8 (peaceful mode): pre-flag snapshots
+  // decode to false — no old save was peaceful (AD9 neutral default,
+  // no version bump). A hand-built snapshot without the field (e.g.
+  // the legacy fixtures in sim.snapshot.test.ts) behaves identically.
+  world.peaceful = snap.peaceful ?? false;
   return world;
 }

@@ -95,6 +95,19 @@ export interface World {
   superweapons: SuperweaponState;
   /** Per-player researched upgrade ids (spec docs/research/roster-expansion.md §4). */
   upgrades: Record<number, string[]>;
+  /**
+   * Grand-expansion Phase 8 (peaceful mode, 2026-09-30): true when this
+   * world plays peaceful — rivals exist but play peacefully; military
+   * defs (units/buildings/upgrades — see the `military` def flag) and
+   * covert ops are locked out at the command layer, conquest victory
+   * checks are bypassed, and the peaceful victory
+   * (`checkPeacefulVictory`) applies instead. Set at tick 0 from
+   * `SessionOptions.peaceful` and NEVER toggled mid-game (the lockout
+   * validates only at enqueue because the flag is immutable).
+   * Snapshotted and digested; legacy snapshots decode to false (no
+   * version bump — the AD9 neutral-default precedent).
+   */
+  peaceful: boolean;
 }
 
 /** First assignable entity id (0 stays reserved as the "no entity" sentinel). */
@@ -117,6 +130,9 @@ export function createWorld(seed: number): World {
     delegation: initDelegation(),
     superweapons: initSuperweapons(),
     upgrades: initUpgrades(),
+    // Peaceful defaults to false; the session sets it from
+    // SessionOptions.peaceful for fresh worlds, restoreSnapshot for saves.
+    peaceful: false,
   };
 }
 

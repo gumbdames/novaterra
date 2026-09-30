@@ -62,6 +62,11 @@ function canonicalNumber(n: number): string {
 export function canonicalizeWorld(world: World): string {
   let out = `novaterra/v1|tick=${world.tick}|time=${canonicalNumber(world.time)}`;
   out += `|seed=${world.seed >>> 0}|nextId=${world.nextId}|entities=${world.entities.length}|`;
+  // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): the peaceful
+  // flag is behavior-affecting (command lockout + victory routing) ⇒
+  // digest-covered (PLAN §11). `?? false` keeps hand-built fixture
+  // worlds (which predate the field) digesting identically.
+  out += `|peaceful=${world.peaceful === true ? 1 : 0}|`;
   for (const e of world.entities) {
     out += `${e.id},${e.kind},${canonicalNumber(e.x)},${canonicalNumber(e.z)};`;
   }
