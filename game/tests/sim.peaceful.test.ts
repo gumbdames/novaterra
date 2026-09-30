@@ -177,14 +177,22 @@ function peacefulSessionWorld(): World {
 // sets deliberately; that is the point of pinning them here.
 // ---------------------------------------------------------------------------
 
-/** The 47 military unit kinds (every other unit def is civilian). */
+/** The 71 military unit kinds (every other unit def is civilian). */
 const MILITARY_UNITS = new Set([
   'aa',
+  'aaMk2',
+  'aaMk3',
   'ammoShip',
   'apc',
+  'apcMk2',
+  'apcMk3',
   'armedUAV',
   'artillery',
+  'artilleryMk2',
+  'artilleryMk3',
   'attackHeli',
+  'attackHeliMk2',
+  'attackHeliMk3',
   'awacs',
   'battleship',
   'carrier',
@@ -195,19 +203,31 @@ const MILITARY_UNITS = new Set([
   'corvette',
   'cruiser',
   'destroyer',
+  'destroyerMk2',
+  'destroyerMk3',
   'drone', // armed scout drone (damage 9) — not the unarmed reconUAV/reconPlane
   'fighter',
   'fighterBomber',
+  'fighterBomberMk2',
+  'fighterBomberMk3',
+  'fighterMk2',
+  'fighterMk3',
   'frigate',
+  'frigateMk2',
+  'frigateMk3',
   'fuelTanker',
   'fuelTruck',
   'gunship',
+  'gunshipMk2',
+  'gunshipMk3',
   'heavyDestroyer',
   'hq',
   'maritimePatrol',
   'militaryCargo',
   'minelayer',
   'missileBoat',
+  'missileBoatMk2',
+  'missileBoatMk3',
   'missileSub',
   'mlrs',
   'navalFighter',
@@ -221,9 +241,13 @@ const MILITARY_UNITS = new Set([
   'spy',
   'strategicBomber',
   'submarine',
+  'submarineMk2',
+  'submarineMk3',
   'supplyTruck',
   'tank',
   'tankDestroyer',
+  'tankMk2',
+  'tankMk3',
   'tanker',
   'trainer',
 ]);
@@ -414,11 +438,11 @@ describe('peaceful command lockout', () => {
 // ---------------------------------------------------------------------------
 
 describe('military def classification (roster pinning)', () => {
-  it('classifies every one of the 68 unit defs', () => {
+  it('classifies every one of the 96 unit defs', () => {
     const kinds = Object.keys(UNIT_DEFS);
-    expect(kinds).toHaveLength(68);
+    expect(kinds).toHaveLength(96);
     const military = kinds.filter((k) => UNIT_DEFS[k as keyof typeof UNIT_DEFS].military === true);
-    expect(military).toHaveLength(47);
+    expect(military).toHaveLength(71);
     expect(new Set(military)).toEqual(MILITARY_UNITS);
     // The complement is civilian: the flag is absent or explicitly false.
     for (const k of kinds) {
@@ -427,9 +451,12 @@ describe('military def classification (roster pinning)', () => {
     }
   });
 
-  it('classifies every one of the 89 building defs', () => {
+  it('classifies every one of the 99 building defs', () => {
     const kinds = Object.keys(BUILDING_DEFS);
-    expect(kinds).toHaveLength(89);
+    // Grand-expansion Phase 8 (civilian, workstream E, 2026-09-30): 89 +
+    // the 10 new civilian kinds — all military: false, so the military
+    // count stays 21.
+    expect(kinds).toHaveLength(99);
     const military = kinds.filter(
       (k) => BUILDING_DEFS[k as keyof typeof BUILDING_DEFS].military === true,
     );

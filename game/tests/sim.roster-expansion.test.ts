@@ -273,8 +273,8 @@ function findCoastalFootprint(
 }
 
 describe('roster definitions (§2)', () => {
-  it('has exactly the 68 unit kinds (35 + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel)', () => {
-    expect(UNIT_KINDS).toHaveLength(68);
+  it('has exactly the 96 unit kinds (35 + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel + 28 Phase 8 tech-level variants)', () => {
+    expect(UNIT_KINDS).toHaveLength(96);
     const expected = [
       'engineer', 'rifles', 'spectre', 'sniperTeam', 'combatMedic',
       'tank', 'apc', 'tankDestroyer', 'artillery', 'mlrs', 'aa',
@@ -299,6 +299,15 @@ describe('roster definitions (§2)', () => {
       // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
       // the two land intel units.
       'spy', 'reconTeam',
+      // Grand-expansion Phase 8 — tech-level variants (workstream D,
+      // 2026-09-30): the 28 Mk II/Mk III defs.
+      'tankMk2', 'tankMk3', 'artilleryMk2', 'artilleryMk3',
+      'aaMk2', 'aaMk3', 'apcMk2', 'apcMk3', 'haulerMk2', 'haulerMk3',
+      'fighterMk2', 'fighterMk3', 'fighterBomberMk2', 'fighterBomberMk3',
+      'attackHeliMk2', 'attackHeliMk3', 'gunshipMk2', 'gunshipMk3',
+      'destroyerMk2', 'destroyerMk3', 'frigateMk2', 'frigateMk3',
+      'submarineMk2', 'submarineMk3', 'missileBoatMk2', 'missileBoatMk3',
+      'transportShipMk2', 'transportShipMk3',
     ];
     expect([...UNIT_KINDS].sort()).toEqual([...expected].sort());
   });
@@ -455,7 +464,11 @@ describe('building definitions (§3 + Phase 1 + Workstream Z)', () => {
     // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
     // +4 intel buildings (intelHQ, listeningPost, satelliteUplink,
     // signalsStation) → 89.
-    expect(Object.keys(BUILDING_DEFS)).toHaveLength(89);
+    // Grand-expansion Phase 8 civilian deep-dive (workstream E,
+    // 2026-09-30): +10 civilian buildings (museum, theater,
+    // sportsStadium, botanicalGarden, grandMarket, bank, officeTower,
+    // clinic, medicalCenter, fireStation) → 99.
+    expect(Object.keys(BUILDING_DEFS)).toHaveLength(99);
     expect(BUILDING_DEFS.barracks).toMatchObject({
       costFunds: 700, costMaterials: 250, buildSeconds: 40, minAge: 'foundation',
     });

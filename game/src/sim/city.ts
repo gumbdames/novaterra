@@ -68,7 +68,7 @@ import {
   cellDesirability,
   getDesirabilityModel,
   landValueTier,
-  migrationPull,
+  migrationPullFor,
 } from './desirability';
 
 // ---------------------------------------------------------------------------
@@ -480,6 +480,35 @@ export const BuildingKind = {
   // get a small land-value boost.
   PARKING_LOT: 'parkingLot',
   PARKING_GARAGE: 'parkingGarage',
+  // Grand-expansion Phase 8 (civilian deep-dive, workstream E,
+  // 2026-09-30): the civilian roster gaps — cultural amenities (the
+  // user loves parks/libraries/schools, so the family grows), the
+  // economy's "versions of everything" ladder (market → grandMarket,
+  // bank, officeTower), and civic health tiers (clinic < hospital <
+  // medicalCenter) plus the fire station. Every def carries
+  // `military: false` explicitly (the workstream-A contract). All plug
+  // into EXISTING systems only (amenity rows, output/input, jobs,
+  // taxBase) — no new sim currencies, no placebo mechanics.
+  /** Cultural amenity: +5/12 row, small research output. */
+  MUSEUM: 'museum',
+  /** Cultural amenity: +5/12 row, ticket income. */
+  THEATER: 'theater',
+  /** Regional draw: +8/18 amenity row, the biggest cultural building. */
+  SPORTS_STADIUM: 'sportsStadium',
+  /** Green leisure: +6/16 amenity row, tourism influence. */
+  BOTANICAL_GARDEN: 'botanicalGarden',
+  /** The market's big brother: 2x market output at industry age. */
+  GRAND_MARKET: 'grandMarket',
+  /** Commercial finance: flat funds income, strong tax base. */
+  BANK: 'bank',
+  /** Tall commercial: the big employer, industry age. */
+  OFFICE_TOWER: 'officeTower',
+  /** Small/cheap health: manpower output, foundation age. */
+  CLINIC: 'clinic',
+  /** The hospital's big brother: 2.5x manpower, industry age. */
+  MEDICAL_CENTER: 'medicalCenter',
+  /** Civic safety: +3/10 desirability row ("feels safe"). */
+  FIRE_STATION: 'fireStation',
   // Phase 4 transport (S7, 2026-09-30): civilian transport hubs. The
   // railStation / busDepot / ferryTerminal are reload points (fuel) for
   // the matching transport units, exactly like the navalYard is for
@@ -872,6 +901,113 @@ export const ZERO_INTEL_ASSETS: IntelAssets = {
   operational: 0,
   counterIntel: 0,
 };
+
+// ---------------------------------------------------------------------------
+// Grand-expansion Phase 8 — civilian ordinances (workstream E, 2026-09-30).
+//
+// City-wide policy toggles (the Management tab's "Ordinances" section).
+// Each policy has a REAL upkeep cost (funds/sec, charged in the economy
+// tick's upkeep pass — see economy.ts `allocateUtilities`) and REAL
+// effects on existing systems (desirability rows, production
+// multipliers, growth bonuses). No per-building micromanagement: one
+// toggle per city. No free lunch: every bonus is paid for — the
+// balance reasoning lives in docs/research/phase8-civilian-peaceful.md
+// §"Workstream E".
+//
+// Funding rule (the building-upkeep precedent): policies fund AFTER
+// buildings in the upkeep pass, in POLICY_IDS order, from whatever
+// affordable funds remain. An unfunded policy is charged nothing and
+// its effects do NOT apply that tick — `fundedPolicies` on the player
+// record carries the per-tick funding decision (DERIVED, never
+// snapshotted/digested — the desirability-model precedent). The
+// `setPolicy` command's validate requires a 60-second upkeep runway to
+// turn a policy ON (loud rejection when broke); turning OFF is always
+// free. Effects are deterministic functions of (toggles, funding).
+// ---------------------------------------------------------------------------
+
+/** City-wide ordinance ids. */
+export type PolicyId =
+  | 'greenInitiative'
+  | 'transitSubsidy'
+  | 'businessIncentives'
+  | 'nightlife'
+  | 'educationGrants';
+
+/** One ordinance's static definition. */
+export interface PolicyDef {
+  id: PolicyId;
+  /** English display name (the game is English-only, 0.1 Alpha). */
+  name: string;
+  /** Funds/sec charged while the policy is funded (see funding rule). */
+  upkeepFundsPerSec: number;
+  /** One-line player-facing summary of the effects. */
+  summary: string;
+}
+
+/** The ordinance table. Effects are documented per consuming module. */
+export const POLICIES: Record<PolicyId, PolicyDef> = {
+  greenInitiative: {
+    id: 'greenInitiative',
+    name: 'Green Initiative',
+    upkeepFundsPerSec: 0.6,
+    summary: '+2 desirability on park/garden amenity rows; pollution penalty ×0.8',
+  },
+  transitSubsidy: {
+    id: 'transitSubsidy',
+    name: 'Transit Subsidy',
+    upkeepFundsPerSec: 0.5,
+    summary: '+2 desirability on transit-stop rows; ridership income ×1.25; migration pull ×1.15',
+  },
+  businessIncentives: {
+    id: 'businessIncentives',
+    name: 'Business Incentives',
+    upkeepFundsPerSec: 0.8,
+    summary: 'Commercial funds output ×1.15',
+  },
+  nightlife: {
+    id: 'nightlife',
+    name: 'Nightlife Ordinance',
+    upkeepFundsPerSec: 0.3,
+    summary: 'Commercial funds output ×1.10; −3 desirability within 8 cells of commercial buildings',
+  },
+  educationGrants: {
+    id: 'educationGrants',
+    name: 'Education Grants',
+    upkeepFundsPerSec: 0.4,
+    summary: 'Education growth bonus doubled; education research output ×1.25',
+  },
+};
+
+/**
+ * Fixed ordinance order — the funding order, the UI order, and the
+ * digest order. Fixed (not object key order) so the canonical encoding
+ * in digest.ts is stable.
+ */
+export const POLICY_IDS: readonly PolicyId[] = [
+  'greenInitiative',
+  'transitSubsidy',
+  'businessIncentives',
+  'nightlife',
+  'educationGrants',
+];
+
+/**
+ * Turning a policy ON requires this many seconds of its upkeep as a
+ * funds runway (the `setPolicy` validate gate). Loud rejection when
+ * the treasury can't cover it — no silent toggles.
+ */
+export const POLICY_ENABLE_RUNWAY_SECS = 60;
+
+/**
+ * True when `owner`'s policy is BOTH toggled on and funded this economy
+ * tick. All policy effects read this (never the raw toggle) — an
+ * unfunded policy is charged nothing and does nothing.
+ */
+export function policyFunded(world: World, owner: number, id: PolicyId): boolean {
+  const player = getPlayer(world.city, owner);
+  if (!player) return false;
+  return (player.fundedPolicies ?? []).includes(id);
+}
 
 export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   house: {
@@ -1390,6 +1526,125 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: { influence: 1.0 }, input: {}, population: 0, taxBasePerSec: 6.0,
     minAge: 'information',
     jobs: 2,
+  },
+  // ------------------------------------------------------------------
+  // Grand-expansion Phase 8 (civilian deep-dive, workstream E,
+  // 2026-09-30): the civilian roster gaps. Balance notes (full
+  // reasoning in docs/research/phase8-civilian-peaceful.md):
+  // - Cultural amenities (museum/theater/stadium/botanicalGarden) are
+  //   the park/library family grown up: each completed one is its own
+  //   amenity TYPE in the desirability model (see the amenity table in
+  //   sim/desirability.ts) AND earns a small real income/output, so
+  //   each is a building you'd place even ignoring desirability.
+  // - The economy ladder ("versions of everything"): grandMarket is
+  //   the market's 2x big brother at industry age; bank and officeTower
+  //   are the commercial finance/employment tier the roster lacked.
+  // - Health tiers: clinic (cheap, foundation) < hospital < medicalCenter
+  //   (flagship, industry) — manpower output scales 0.2 → 0.4 → 1.0.
+  // - fireStation is the safety amenity: its own +3/10 desirability row.
+  // Every def carries `military: false` explicitly (the workstream-A
+  // contract — all ten are civilian, peaceful-buildable).
+  // ------------------------------------------------------------------
+  museum: {
+    kind: 'museum', name: 'Museum', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 700, costMaterials: 250,
+    buildSeconds: 40, upkeepFundsPerSec: 0.9,
+    powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: { research: 0.15 }, input: {}, population: 0, taxBasePerSec: 4.0,
+    minAge: 'connectivity',
+    military: false,
+    jobs: 8,
+  },
+  theater: {
+    kind: 'theater', name: 'Theater', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 900, costMaterials: 300,
+    buildSeconds: 45, upkeepFundsPerSec: 1.2,
+    powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: { funds: 0.8 }, input: {}, population: 0, taxBasePerSec: 6.0,
+    minAge: 'connectivity',
+    military: false,
+    jobs: 10,
+  },
+  sportsStadium: {
+    kind: 'sportsStadium', name: 'Sports Stadium', zone: UTILITY_ZONE,
+    footprintW: 4, footprintH: 4, costFunds: 2200, costMaterials: 900,
+    buildSeconds: 80, upkeepFundsPerSec: 2.5,
+    powerDemand: 6, powerSupply: 0, waterDemand: 4, waterSupply: 0,
+    output: { funds: 1.5 }, input: {}, population: 0, taxBasePerSec: 10.0,
+    minAge: 'industry',
+    military: false,
+    jobs: 25,
+  },
+  botanicalGarden: {
+    kind: 'botanicalGarden', name: 'Botanical Garden', zone: UTILITY_ZONE,
+    footprintW: 4, footprintH: 4, costFunds: 600, costMaterials: 200,
+    buildSeconds: 30, upkeepFundsPerSec: 0.5,
+    powerDemand: 0, powerSupply: 0, waterDemand: 4, waterSupply: 0,
+    output: { influence: 0.1 }, input: {}, population: 0, taxBasePerSec: 1.5,
+    minAge: 'foundation',
+    military: false,
+    jobs: 6,
+  },
+  grandMarket: {
+    kind: 'grandMarket', name: 'Grand Market', zone: ZoneType.COMMERCIAL,
+    footprintW: 4, footprintH: 4, costFunds: 1500, costMaterials: 600,
+    buildSeconds: 60, upkeepFundsPerSec: 2.2,
+    powerDemand: 6, powerSupply: 0, waterDemand: 4, waterSupply: 0,
+    output: { funds: 5.0 }, input: { food: 1.0, goods: 1.0 }, population: 0,
+    taxBasePerSec: 22.0,
+    minAge: 'industry',
+    military: false,
+    jobs: 30,
+  },
+  bank: {
+    kind: 'bank', name: 'Bank', zone: ZoneType.COMMERCIAL,
+    footprintW: 2, footprintH: 2, costFunds: 500, costMaterials: 180,
+    buildSeconds: 30, upkeepFundsPerSec: 0.8,
+    powerDemand: 3, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: { funds: 1.2 }, input: {}, population: 0, taxBasePerSec: 8.0,
+    minAge: 'connectivity',
+    military: false,
+    jobs: 10,
+  },
+  officeTower: {
+    kind: 'officeTower', name: 'Office Tower', zone: ZoneType.COMMERCIAL,
+    footprintW: 3, footprintH: 3, costFunds: 1200, costMaterials: 450,
+    buildSeconds: 55, upkeepFundsPerSec: 1.8,
+    powerDemand: 6, powerSupply: 0, waterDemand: 3, waterSupply: 0,
+    output: { funds: 2.0 }, input: {}, population: 0, taxBasePerSec: 12.0,
+    minAge: 'industry',
+    military: false,
+    jobs: 40,
+  },
+  clinic: {
+    kind: 'clinic', name: 'Clinic', zone: ZoneType.COMMERCIAL,
+    footprintW: 2, footprintH: 2, costFunds: 300, costMaterials: 100,
+    buildSeconds: 20, upkeepFundsPerSec: 0.5,
+    powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: { manpower: 0.2 }, input: {}, population: 0, taxBasePerSec: 3.0,
+    minAge: 'foundation',
+    military: false,
+    jobs: 10,
+  },
+  medicalCenter: {
+    kind: 'medicalCenter', name: 'Medical Center', zone: ZoneType.COMMERCIAL,
+    footprintW: 4, footprintH: 4, costFunds: 2000, costMaterials: 800,
+    buildSeconds: 75, upkeepFundsPerSec: 3.0,
+    powerDemand: 8, powerSupply: 0, waterDemand: 5, waterSupply: 0,
+    output: { manpower: 1.0 }, input: {}, population: 0, taxBasePerSec: 10.0,
+    minAge: 'industry',
+    military: false,
+    jobs: 60,
+  },
+  fireStation: {
+    kind: 'fireStation', name: 'Fire Station', zone: UTILITY_ZONE,
+    footprintW: 2, footprintH: 2, costFunds: 350, costMaterials: 120,
+    buildSeconds: 25, upkeepFundsPerSec: 0.4,
+    powerDemand: 2, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'foundation',
+    military: false,
+    jobs: 6,
   },
   // ------------------------------------------------------------------
   // Phase 2 (grand expansion, 2026-09-30): the utility plant ladder.
@@ -2258,6 +2513,24 @@ export interface PlayerState {
    * `infiltrateBuilding` / `sabotage` commands.
    */
   intel: IntelAssets;
+  /**
+   * Grand-expansion Phase 8 (civilian ordinances, workstream E,
+   * 2026-09-30): the player's city-wide policy toggles (true = on).
+   * Set via the `setPolicy` command; snapshotted verbatim and
+   * digest-encoded in POLICY_IDS order (see snapshot.ts `copyPlayer`,
+   * digest.ts). Absent/legacy saves decode to {}.
+   */
+  policies: Partial<Record<PolicyId, boolean>>;
+  /**
+   * DERIVED, per-tick funding decision — which toggled policies the
+   * last economy tick's upkeep pass actually funded (see
+   * `allocateUtilities` in economy.ts). Effects read
+   * `policyFunded()`, never this array directly. NEVER snapshotted
+   * (decode resets to []) and never in the digest — it is a pure
+   * function of (funds, toggles, buildings), so digest coverage of
+   * the inputs covers it (the desirability-model precedent).
+   */
+  fundedPolicies: PolicyId[];
 }
 
 /** The whole city. Lives on `World.city`; snapshotted and digested. */
@@ -2344,6 +2617,10 @@ function createPlayer(id: number, name: string): PlayerState {
     // Grand-expansion intel roster (workstream 2, 2026-09-30): every
     // player starts with zero intel assets.
     intel: { ...ZERO_INTEL_ASSETS },
+    // Grand-expansion Phase 8 (civilian ordinances, workstream E,
+    // 2026-09-30): no policies on at game start; nothing funded yet.
+    policies: {},
+    fundedPolicies: [],
   };
 }
 
@@ -2658,11 +2935,14 @@ export function growthDesirability(taxRate: number, powerHeadroom: number, water
 }
 
 /**
- * Workstream Z (2026-09-30): the education growth lever. Each completed
- * (progress >= 1) kindergarten or school owned by `owner` adds +0.05
- * residential growth desirability, additive and capped at +0.25.
- * Unfinished or demolished buildings contribute nothing. Pure and
- * deterministic — used in `tryAutoDevelop` (residential samples only).
+ * Grand-expansion Phase 8 (civilian ordinances, workstream E,
+ * 2026-09-30): the education growth lever, doubled by the Education
+ * Grants ordinance. Each completed (progress >= 1) kindergarten or
+ * school owned by `owner` adds +0.05 (+0.10 with the grants funded)
+ * residential growth desirability, additive and capped at +0.25
+ * (+0.50 with grants). Unfinished or demolished buildings contribute
+ * nothing. Pure and deterministic — used in `tryAutoDevelop`
+ * (residential samples only).
  */
 export function educationGrowthBonus(world: World, owner: number): number {
   let count = 0;
@@ -2671,6 +2951,9 @@ export function educationGrowthBonus(world: World, owner: number): number {
     if (b.kind !== 'kindergarten' && b.kind !== 'school') continue;
     if ((b.progress ?? 0) < 1) continue;
     count += 1;
+  }
+  if (policyFunded(world, owner, 'educationGrants')) {
+    return Math.min(0.5, 0.1 * count);
   }
   return Math.min(0.25, 0.05 * count);
 }
@@ -2958,7 +3241,10 @@ function tryAutoDevelop(
   // structural change — never per tick). Residential samples get a
   // migration pull toward nicer cells, with a weak affordability pull
   // so nice-but-affordable cells grow fastest (see `migrationPull`).
-  const desirModel = getDesirabilityModel(t, world);
+  // Grand-expansion Phase 8 (civilian ordinances, workstream E): the
+  // model is per-owner — the owner's funded ordinances (green /
+  // transit / nightlife) shape their own desirability map.
+  const desirModel = getDesirabilityModel(t, world, owner);
   // Sample a few zoned cells; each sample is one development attempt.
   const attempts = Math.min(8, city.zones.length);
   for (let a = 0; a < attempts; a++) {
@@ -2983,7 +3269,9 @@ function tryAutoDevelop(
     if (zrec.zone === ZoneType.RESIDENTIAL) {
       desirability += eduBonus;
       const d01 = cellDesirability(desirModel, zrec.cell) / 100;
-      desirability = Math.min(1, desirability * migrationPull(d01));
+      // Grand-expansion Phase 8 (civilian ordinances, workstream E):
+      // the Transit Subsidy ordinance multiplies the migration pull.
+      desirability = Math.min(1, desirability * migrationPullFor(world, owner, d01));
     }
     if (bank.next('city') >= desirability) continue;
     // Phase 4 building variety: desirability picks the density
@@ -3673,7 +3961,51 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
     },
   };
 
-  return { buildRoad, upgradeRoad, buildRail, buildPowerLine, buildPipe, paintZone, placeBuilding: placeBuildingSpec, demolish, setTaxRate, setSpecialization };
+  /**
+   * Grand-expansion Phase 8 (civilian ordinances, workstream E,
+   * 2026-09-30): toggle a city-wide policy. The AI workstream's clean
+   * seam: `setPolicy` is a plain CommandSpec (registered with the rest
+   * of the city commands), so the AI issues it exactly like it issues
+   * `setSpecialization` — `{ kind: 'setPolicy', payload: { owner,
+   * policy, on: 1 | 0 } }`. Validate is loud: unknown owner, unknown
+   * policy id, or a non-0/1 `on` all reject with a plain-English
+   * reason. Turning ON additionally requires a 60-second upkeep
+   * runway in the treasury (POLICY_ENABLE_RUNWAY_SECS) — a broke
+   * player is rejected loudly instead of silently arming a policy
+   * that can never fund. Turning OFF is always free. Peaceful games:
+   * ordinances are civilian city management — never locked out.
+   */
+  const setPolicy: CommandSpec = {
+    validate(cmd, world): string | null {
+      const owner = payloadInt(cmd.payload, 'owner');
+      if (owner === null || !getPlayer(world.city, owner)) return 'setPolicy: unknown owner';
+      const policy = payloadStr(cmd.payload, 'policy');
+      if (typeof policy !== 'string' || !(policy in POLICIES)) {
+        return `setPolicy: unknown policy '${policy}' (must be one of ${POLICY_IDS.join(', ')})`;
+      }
+      const on = payloadInt(cmd.payload, 'on');
+      if (on !== 0 && on !== 1) return 'setPolicy: on must be 0 (off) or 1 (on)';
+      if (on === 1) {
+        const player = getPlayer(world.city, owner) as PlayerState;
+        const need = POLICIES[policy as PolicyId].upkeepFundsPerSec * POLICY_ENABLE_RUNWAY_SECS;
+        if (player.funds < need) {
+          return `setPolicy: cannot afford to enable ${policy} (needs ${need} funds runway, treasury holds ${player.funds})`;
+        }
+      }
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const owner = payloadInt(cmd.payload, 'owner') as number;
+      const policy = payloadStr(cmd.payload, 'policy') as PolicyId;
+      const on = payloadInt(cmd.payload, 'on') as number;
+      const player = getPlayer(world.city, owner) as PlayerState;
+      if (on === 1) player.policies[policy] = true;
+      else delete player.policies[policy];
+      return on;
+    },
+  };
+
+  return { buildRoad, upgradeRoad, buildRail, buildPowerLine, buildPipe, paintZone, placeBuilding: placeBuildingSpec, demolish, setTaxRate, setSpecialization, setPolicy };
 }
 
 /** Register the city-building command kinds on a queue. Needs the terrain for placement rules. */

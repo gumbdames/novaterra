@@ -118,12 +118,16 @@ fastest, and the tax rate each home effectively pays.
 - **Clean air** — distance from smoke and smog (coal plants and the
   like): up to −25 right next to a polluter, fading with distance.
 - **Amenities** — a nearby library, park, school, kindergarten,
-  college, or university: +5 per type, up to +20 total. Civic
+  college, university, museum, or theater: +5 per type, up to +20
+  total. A **Botanical Garden** adds +6 within 16 cells; a **Sports
+  Stadium** +7 within 17 — the biggest civic draw in the game. Civic
   parking counts too, as a convenience: a **Parking Lot** adds +3
   within 8 cells, a **Parking Garage** +4 within 10 — toward the same
-  +20 cap. Parking is convenient, not beloved: it scores below the
-  cultural buildings. A **Marina** on the coast is the biggest draw of
-  all: +10 within 15 cells, toward the same +20 cap.
+  +20 cap. A **Fire Station** is the same kind of reassurance: +3
+  within 10 cells. Parking and fire stations are convenient, not
+  beloved: they score below the cultural buildings. A **Marina** on
+  the coast is the biggest draw of all: +10 within 15 cells, toward
+  the same +20 cap.
 
 **Land value tiers.** The score maps to a land-value tier, and homes pay
 tax on their land value: Low (×0.8), Modest (×1.0), Nice (×1.3),
@@ -191,6 +195,36 @@ stacking up to +0.25. And every school kind (kindergarten, school,
 college, university) makes nearby homes more desirable — see Land
 value and desirability. (The Hospital stays on the Commerce tab and is
 unchanged.)
+
+## City ordinances
+
+The Management tab's **City ordinances** section holds five city-wide
+policies. Each one is a single toggle for your whole city — no
+per-building micromanagement — and each one costs real upkeep every
+second it runs. The treasury funds buildings first; whatever is left
+funds your ordinances, in a fixed order. An ordinance the treasury
+cannot afford is charged nothing and does nothing — the panel warns
+you ("On, but unfunded — effects off"). Turning one on needs a
+60-second upkeep cushion in the treasury; turning one off is always
+free.
+
+- **Green Initiative** (0.6/s): parks and botanical gardens are worth
+  +2 more desirability, and pollution hurts 20% less.
+- **Transit Subsidy** (0.5/s): transit stops are worth +2 more
+  desirability, riders bring in 25% more fare income, and 15% more
+  migrants arrive.
+- **Business Incentives** (0.8/s): commercial buildings earn +15%
+  funds.
+- **Nightlife Ordinance** (0.3/s): commercial buildings earn +10%
+  funds — but homes within 8 cells of them lose up to −3 desirability.
+  The city that never sleeps is loud.
+- **Education Grants** (0.4/s): the school growth bonus doubles
+  (+0.10 per kindergarten/school, up to +0.50), and education
+  buildings (including the Museum) research 25% faster.
+
+Business Incentives and the Nightlife Ordinance stack: run both for
++26.5% commercial income at a combined 1.1/s — if your residential
+zones can take the noise.
 
 ## Ages: Foundation → Connectivity → Industry → Information → Ascendance
 

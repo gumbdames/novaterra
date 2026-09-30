@@ -54,7 +54,9 @@
  */
 
 import type { UnitKind } from '../sim/units';
+import { getVariantKinds, variantBaseOf, variantTierOf, type VariantUnitKind } from '../sim/variants';
 import type { BuildingKind } from '../sim/city';
+import type { PolicyId } from '../sim/city';
 import type { AIDifficulty } from '../sim/ai';
 
 /**
@@ -70,12 +72,15 @@ function svg(body: string, strokeWidth = 2): string {
 }
 
 // ---------------------------------------------------------------------------
-// Units — 66 glyphs, one per UnitKind (silhouette reads the domain at a
-// glance: person / tracked hull / aircraft / ship hull).
+// Units — 96 glyphs, one per UnitKind (silhouette reads the domain at a
+// glance: person / tracked hull / aircraft / ship hull). The 28 Phase 8
+// Mk II/Mk III variants reuse their base glyph + a tier chevron
+// (provisional — the UI workstream owns the final variant art).
 // ---------------------------------------------------------------------------
 
-/** Every UnitKind must appear here exactly once (tsc enforces it). */
-const UNIT_ICONS: Record<UnitKind, string> = {
+/** The 68 hand-drawn base-kind glyphs. Base kinds are `UnitKind` minus
+ *  the `VariantUnitKind`s, so tsc still enforces full base coverage. */
+const BASE_UNIT_ICONS: Record<Exclude<UnitKind, VariantUnitKind>, string> = {
   engineer:
     '<path d="M5 12a7 7 0 0 1 14 0"/><path d="M3 12h18"/><path d="M12 5v4"/>',
   rifles:
@@ -308,6 +313,28 @@ const UNIT_ICONS: Record<UnitKind, string> = {
     '<circle cx="12" cy="12" r="3.5"/>' +
     '<path d="M12 4v3.5M12 16.5V20M4 12h3.5M16.5 12H20"/>',
 };
+
+// ---------------------------------------------------------------------------
+// Grand-expansion Phase 8 — tech-level variants (workstream D,
+// 2026-09-30). PROVISIONAL glyphs for the 28 Mk II/Mk III variants: each
+// reuses the base kind's glyph with a tier chevron appended (single ">"
+// for Mk II, double ">>" for Mk III) — generated from the sim's
+// `getVariantKinds()` (single source of truth) only to keep `UNIT_ICONS`
+// complete. The UI workstream owns the final art.
+// ---------------------------------------------------------------------------
+const VARIANT_MK2_CHEVRON = '<path d="M14.5 5l5.5 5.5-5.5 5.5"/>';
+const VARIANT_MK3_CHEVRON =
+  '<path d="M11.5 5l5.5 5.5-5.5 5.5"/>' + '<path d="M16.5 5l5.5 5.5-5.5 5.5"/>';
+const VARIANT_ICONS: Record<VariantUnitKind, string> = Object.fromEntries(
+  getVariantKinds().map((v) => [
+    v,
+    BASE_UNIT_ICONS[variantBaseOf(v) as Exclude<UnitKind, VariantUnitKind>] +
+      (variantTierOf(v) === 3 ? VARIANT_MK3_CHEVRON : VARIANT_MK2_CHEVRON),
+  ]),
+) as Record<VariantUnitKind, string>;
+
+/** Every UnitKind resolves here exactly once (tsc enforces both halves). */
+const UNIT_ICONS: Record<UnitKind, string> = { ...BASE_UNIT_ICONS, ...VARIANT_ICONS };
 
 // ---------------------------------------------------------------------------
 // Buildings — one glyph per BuildingKind (71 entries after the Phase 6
@@ -669,6 +696,51 @@ const BUILDING_ICONS: Record<BuildingKind, string> = {
     '<path d="M12 9V3"/>' +
     '<circle cx="12" cy="5.5" r="2.2"/>' +
     '<path d="M5 21h14"/>',
+  // Grand-expansion Phase 8 (civilian deep-dive, workstream E,
+  // 2026-09-30): the ten civilian buildings. Hand-drawn inline SVGs in
+  // the same 24x24 stroke style; every button shows icon AND text.
+  museum:
+    '<path d="M4 20.5v-8.5a8 4.6 0 0 1 16 0v8.5"/>' +
+    '<path d="M4 20.5h16"/>' +
+    '<path d="M9.5 20.5v-5h5v5"/>',
+  theater:
+    '<path d="M5 3.5c2.6 0 2.6 5.2 0 9.5"/>' +
+    '<path d="M19 3.5c-2.6 0-2.6 5.2 0 9.5"/>' +
+    '<path d="M5 3.5h14"/>' +
+    '<path d="M12 13v7.5M8.5 20.5h7"/>',
+  sportsStadium:
+    '<ellipse cx="12" cy="13" rx="9" ry="6"/>' +
+    '<path d="M12 7v12"/>' +
+    '<path d="M7.2 10.6v4.8M16.8 10.6v4.8"/>',
+  botanicalGarden:
+    '<path d="M12 21v-8"/>' +
+    '<path d="M12 13.2c-3 0-5-2.4-5-5.4 2.6-.4 5 1.2 5 5.4Z"/>' +
+    '<path d="M12 13.2c3 0 5-2.4 5-5.4-2.6-.4-5 1.2-5 5.4Z"/>' +
+    '<circle cx="12" cy="6" r="1.5"/>',
+  grandMarket:
+    '<path d="M3 9.5h18l-1.5 4.5h-15Z"/>' +
+    '<path d="M5.5 14v6.5M18.5 14v6.5"/>' +
+    '<path d="M3 9.5 4.5 4.5h15L21 9.5"/>' +
+    '<circle cx="12" cy="17.2" r="2"/>',
+  bank:
+    '<path d="M2.5 10 12 4.5 21.5 10"/>' +
+    '<rect x="6.5" y="10" width="11" height="10.5"/>' +
+    '<path d="M12 12.6v4.8"/>' +
+    '<path d="M10.4 13.6c0-1 3.2-1 3.2.2s-3.2.8-3.2 2.2 3.2 1.4 3.2-.2"/>',
+  officeTower:
+    '<rect x="8" y="3" width="8" height="18"/>' +
+    '<path d="M8 7.5h8M8 12h8M8 16.5h8"/>',
+  clinic:
+    '<path d="M4 20.5V9.5L12 4l8 5.5v11"/>' +
+    '<path d="M12 10.5v5.5M9.25 13.25h5.5"/>',
+  medicalCenter:
+    '<path d="M4 21V7.5L8 4.5l4 3 4-3 4 3V21"/>' +
+    '<path d="M4 21h16"/>' +
+    '<path d="M12 10.5v5.5M9.25 13.25h5.5"/>',
+  fireStation:
+    '<rect x="5" y="11" width="14" height="10"/>' +
+    '<path d="M5 11l7-6 7 6"/>' +
+    '<path d="M12 5.5c1.6 2.2 2.6 3.6 2.6 5.3a2.6 2.6 0 0 1-5.2 0c0-1 .5-1.9 1.2-2.9"/>',
 };
 
 // ---------------------------------------------------------------------------
@@ -788,6 +860,38 @@ export function unitIcon(kind: UnitKind): string {
 /** Inline SVG for a building kind (palette build buttons). */
 export function buildingIcon(kind: BuildingKind): string {
   return svg(BUILDING_ICONS[kind]);
+}
+
+/**
+ * Grand-expansion Phase 8 (civilian ordinances, workstream E,
+ * 2026-09-30): inline SVG for a city policy (the Management tab's
+ * "City ordinances" section). Same 24x24 stroke style; every row shows
+ * icon AND text.
+ */
+const POLICY_ICONS: Record<PolicyId, string> = {
+  greenInitiative:
+    '<path d="M5 19C5 10 10 5 19 5c0 9-5 14-14 14Z"/>' +
+    '<path d="M5 19c3-5 7-9 11-11"/>',
+  transitSubsidy:
+    '<rect x="4" y="5" width="16" height="11" rx="2"/>' +
+    '<path d="M4 10h16"/>' +
+    '<circle cx="8" cy="18.5" r="1.6"/>' +
+    '<circle cx="16" cy="18.5" r="1.6"/>',
+  businessIncentives:
+    '<rect x="4" y="8" width="16" height="11" rx="1.5"/>' +
+    '<path d="M9 8V5.5h6V8"/>' +
+    '<circle cx="12" cy="13.5" r="2"/>',
+  nightlife:
+    '<path d="M18.5 14.5A7.5 7.5 0 1 1 9.5 5.5a6 6 0 0 0 9 9Z"/>',
+  educationGrants:
+    '<path d="M2.5 9.5 12 5l9.5 4.5L12 14Z"/>' +
+    '<path d="M7 11.5V16c0 1.5 10 1.5 10 0v-4.5"/>' +
+    '<path d="M21.5 9.5V15"/>',
+};
+
+/** Inline SVG for a city policy (the ordinances section). */
+export function policyIcon(id: PolicyId): string {
+  return svg(POLICY_ICONS[id]);
 }
 
 /** Inline SVG for a build-palette tool (road / zones / demolish / networks). */

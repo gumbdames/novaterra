@@ -481,6 +481,19 @@ export const STRINGS = {
     listeningPost: { en: 'Listening Post' },
     satelliteUplink: { en: 'Satellite Uplink' },
     signalsStation: { en: 'Signals Station' },
+    // Grand-expansion Phase 8 (civilian deep-dive, workstream E,
+    // 2026-09-30): cultural amenities, the economy ladder, health
+    // tiers, and the safety amenity.
+    museum: { en: 'Museum' },
+    theater: { en: 'Theater' },
+    sportsStadium: { en: 'Sports Stadium' },
+    botanicalGarden: { en: 'Botanical Garden' },
+    grandMarket: { en: 'Grand Market' },
+    bank: { en: 'Bank' },
+    officeTower: { en: 'Office Tower' },
+    clinic: { en: 'Clinic' },
+    medicalCenter: { en: 'Medical Center' },
+    fireStation: { en: 'Fire Station' },
   } as Record<BuildingKind, LocalizedString>,
   /** Train-palette tab names (spec §8). */
   unitTabs: {
@@ -948,6 +961,55 @@ export const STRINGS = {
     },
   },
   /**
+   * Grand-expansion Phase 8 (civilian ordinances, workstream E,
+   * 2026-09-30): the Management tab's City ordinances section. One
+   * entry per PolicyId (POLICY_IDS order): name, one-line effect, and
+   * the upkeep cost line. Rejection strings from the sim are plain
+   * English already — the UI wraps/displays them, never re-implements
+   * validation.
+   */
+  policies: {
+    /** Section title in the Management tab. */
+    title: { en: 'City ordinances' },
+    /** Section subtitle: what ordinances are. */
+    subtitle: {
+      en: 'City-wide policies with real upkeep. Toggle one — its effects apply only while the treasury funds its upkeep.',
+    },
+    /** Upkeep line: "0.6 funds/s upkeep". */
+    upkeepLine: { en: '{cost} funds/s upkeep' },
+    /** Effect line while funded. */
+    fundedLine: { en: 'Funded' },
+    /** Effect line while toggled but the treasury cannot fund it. */
+    unfundedLine: { en: 'On, but unfunded — effects off' },
+    greenInitiative: {
+      name: { en: 'Green Initiative' },
+      effect: {
+        en: 'Parks and botanical gardens are worth more; pollution hurts less',
+      },
+    },
+    transitSubsidy: {
+      name: { en: 'Transit Subsidy' },
+      effect: {
+        en: 'Transit stops are worth more; riders bring in more; more migrants arrive',
+      },
+    },
+    businessIncentives: {
+      name: { en: 'Business Incentives' },
+      effect: { en: 'Commercial buildings earn +15% funds' },
+    },
+    nightlife: {
+      name: { en: 'Nightlife Ordinance' },
+      effect: {
+        en: 'Commercial buildings earn +10% funds; nearby homes lose desirability (noise)',
+      },
+    },
+    educationGrants: {
+      name: { en: 'Education Grants' },
+      effect: {
+        en: 'Education buildings boost growth twice as much and research +25%',
+      },
+    },
+  },
 } as const;
 
 export type Strings = typeof STRINGS;

@@ -29,9 +29,12 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `peaceful: true` (grand-expansion Phase 8, workstream A, 2026-09-30)
   builds a PEACEFUL skirmish: `world.peaceful` is set at tick 0 (never
   toggled mid-game; restored sessions carry the snapshot's flag) and the
-  AI rival KEEPS PLAYING — it just plays peacefully (its military orders
-  are rejected at the command layer and swallowed by `issue`, never
-  crashing the tick). Starting forces swap the 4 rifles for 4 haulers
+  AI rival KEEPS PLAYING — it just plays peacefully (grand-expansion
+  Phase 8, workstream C, 2026-09-30: the rival runs `thinkPeaceful`
+  and no longer even FORMS military orders — the `canTrain` gate plus
+  the peaceful dispatch mean zero military orders reach the command
+  layer, not merely rejected ones). Starting forces swap the 4 rifles
+  for 4 haulers
   (same count — the AI's cap headroom math is unchanged). Conquest is
   bypassed: `checkSkirmishVictory` / `checkSkirmishDefeat` return false
   and `getSkirmishOutcome` returns null for peaceful worlds (the
@@ -335,10 +338,22 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `landValueLine(model, b)` (the selection panel's "Land: Nice (64) ·
   tax ×1.3" line — residential buildings only, null-safe),
   `landValueTaxMultOf` (the `bv:` digest segment driver),
-  `desirabilityOverlayData(t, world)` (the read-only per-frame view the
+  `desirabilityOverlayData(t, world, owner)` (the read-only per-frame view the
   `DesirabilityOverlay` renders: sorted cells + the model cache key).
   Reads every sim field defensively (empty pre-sim → empty view), never
   writes sim state.
+- `policies.ts` — **workstream E ordinances contract module (pure,
+  tested, `tests/ui.policies.test.ts`).** The UI boundary for the sim's
+  five city-wide policy toggles (`sim/city.ts` `POLICIES`/`POLICY_IDS`,
+  funding in `sim/economy.ts`): `policyRows(world, owner)` (the
+  Management tab's "City ordinances" section — five rows in POLICY_IDS
+  order with name/effect/upkeep and the on/funded/unfunded states),
+  `policyUpkeepLine` / `policyStatusLine` (the player-facing copy),
+  `policiesPanelDigest(world, owner)` (the AD11 UI digest segment:
+  `oc:` + 5 × 2-char states — on=1/off=0, funded=f/unfunded=u/off=- —
+  e.g. `oc:1f,0-,1u,0-,0-`; `po:` was already claimed by workstream B's
+  peaceful-objectives section). Reads every sim field defensively
+  (null world / unknown owner → five off rows), never writes sim state.
 - `hangars.ts` — **hangar/carrier UI contract module (pure, tested,
   `tests/ui.hangars.test.ts`).** The UI-side mirror of the sim's
   shelter system (`sim/units.ts` + `sim/city.ts`): `canEmbarkUI` /

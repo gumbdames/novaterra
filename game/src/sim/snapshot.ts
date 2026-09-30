@@ -248,6 +248,14 @@ function copyPlayer(p: PlayerState): PlayerState {
       operational: p.intel?.operational ?? 0,
       counterIntel: p.intel?.counterIntel ?? 0,
     },
+    // Grand-expansion Phase 8 (civilian ordinances, workstream E,
+    // 2026-09-30): policy toggles copy verbatim (key-ordered object;
+    // `policies` is plain data). `fundedPolicies` is NOT copied — it is
+    // derived per-tick in the economy pass; the decode side rebuilds it
+    // from the next tick's funding decision. Legacy saves (no policies
+    // key) decode to {}.
+    policies: { ...(p.policies ?? {}) },
+    fundedPolicies: [],
   };
 }
 

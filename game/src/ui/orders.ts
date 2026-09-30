@@ -310,6 +310,23 @@ export function buildSetSpecializationOrder(
   };
 }
 
+/**
+ * Grand-expansion Phase 8 (civilian ordinances, workstream E,
+ * 2026-09-30): toggle a city-wide policy. `on` is 0 (off) or 1 (on);
+ * turning on requires a 60-second upkeep runway in the treasury (the
+ * sim's validate rejects loudly otherwise).
+ */
+export function buildSetPolicyOrder(
+  owner: number,
+  policy: string,
+  on: 0 | 1,
+): OrderIntent {
+  return {
+    kind: 'setPolicy',
+    payload: { owner, policy, on },
+  };
+}
+
 /** Phase 3: establish a trade route with another player. */
 export function buildEstablishTradeRouteOrder(
   owner: number,

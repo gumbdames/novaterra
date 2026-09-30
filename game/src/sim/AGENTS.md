@@ -82,15 +82,23 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   desirability model: per-residential-cell 0–100 from elevation
   (+0..10), water proximity (+0..15), pollution (−0..25), and the amenity
   table (library/park/school/kindergarten/college/university +5 each ≤12
-  cells, parking lot +3 ≤8 / parking garage +4 ≤10 (workstream P —
-  convenience scores below the cultural types), `waterfrontAmenity`
-  +10 ≤15 — the Phase 4 marina hook — all capped +20). Land-value tiers (low ×0.8 / modest ×1.0 / nice ×1.3 /
-  prime ×1.7) feed the residential tax multiplier in `economy.ts`
-  `runTaxes`; `migrationPull` (peaks ×1.594 at d=0.72, fades through
-  prime) scales the residential growth roll in `city.ts`
-  `tryAutoDevelop`. `getDesirabilityModel` caches on
-  (utilityEpoch, completed-building ids) — rebuilt on structural change
-  only, never per tick. DERIVED DATA ONLY — never snapshotted, never in
+  cells, museum/theater +5/12 (workstream E), botanical garden +6 ≤16,
+  sports stadium +7 ≤17, fire station +3 ≤10 (workstream E), parking lot
+  +3 ≤8 / parking garage +4 ≤10 (workstream P — convenience scores below
+  the cultural types), `waterfrontAmenity` +10 ≤15 — the Phase 4 marina
+  hook — all capped +20). (Workstream E, 2026-09-30) the model is now
+  PER-OWNER: `getDesirabilityModel(t, world, owner)` — the green
+  (+2 park/garden rows, pollution ×0.8), transit (+2 stop rows), and
+  nightlife (−3 ≤8 of commercial) ordinances reshape each owner's map
+  differently; the cache key carries the owner's funded policy ids, so a
+  funding flip rebuilds the model. Land-value tiers (low ×0.8 / modest
+  ×1.0 / nice ×1.3 / prime ×1.7) feed the residential tax multiplier in
+  `economy.ts` `runTaxes`; `migrationPullFor` (peaks ×1.594 at d=0.72,
+  fades through prime; ×1.15 under the Transit Subsidy, capped 2)
+  scales the residential growth roll in `city.ts` `tryAutoDevelop`.
+  `getDesirabilityModel` caches on (utilityEpoch, completed-building
+  ids, owner, funded policies) — rebuilt on structural change only,
+  never per tick. DERIVED DATA ONLY — never snapshotted, never in
   the digest. NOTE the intentional value-import cycle city.ts ⇄
   desirability.ts: desirability reads `BUILDING_DEFS`/`footprintCells`
   from city (runtime use only, never at module-eval time), mirroring the
@@ -114,26 +122,31 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 - `units.ts` — `UnitRecord` store (stable ids, owner/kind/speed/state),
   `spawnUnit` command. Grand-expansion Phase 8 (peaceful mode,
   workstream A, 2026-09-30): `UnitDef.military?: boolean` — true on the
-  47 war-apparatus kinds (the full 68-kind classification is pinned in
+  71 war-apparatus kinds (the full 96-kind classification is pinned in
   tests/sim.peaceful.test.ts); `spawnUnit` and `deployMine` validates
   reject military defs loudly in peaceful worlds. Judgment calls are
   recorded in docs/research/phase8-civilian-peaceful.md: engineer,
   hauler, transport/transportShip, cargoFreighter, reconUAV/reconPlane
   (damage 0, the recon exception) are civilian; supplyTruck/fuelTruck/
   fuelTanker, the armed scout `drone` (damage 9, targets both), and the
-  whole intel roster are military. The 68-unit roster (21 land: engineer,
-  rifles, tank, artillery, aa, hauler, supplyTruck, fuelTruck, spectre, hq,
-  sniperTeam, combatMedic, apc, tankDestroyer, mlrs, passengerTrain,
-  freightTrain, bus, tram, spy, reconTeam; 22 air: fighter, transport, drone,
-  fighterBomber, attackHeli, awacs, strategicBomber, maritimePatrol,
-  reconUAV, armedUAV, reconPlane, gunship, tanker, militaryCargo,
-  trainer, navalFighter, airliner, jumboAirliner, regionalJet,
-  cargoPlane, passengerHeli, seaplane; 25 sea: patrolBoat, destroyer,
-  transportShip, missileBoat, frigate, submarine, carrier, commandShip,
-  fishingBoat, ferry, coastalSub, missileSub, corvette, cruiser,
-  battleship, heavyDestroyer, cargoFreighter, fuelTanker, ammoShip,
-  repairShip, minelayer, navalMine, coastGuardCutter, cruiseLiner,
-  yacht) with
+  whole intel roster are military. The 96-unit roster (31 land:
+  engineer, rifles, tank, artillery, aa, hauler, supplyTruck, fuelTruck,
+  spectre, hq, sniperTeam, combatMedic, apc, tankDestroyer, mlrs,
+  passengerTrain, freightTrain, bus, tram, spy, reconTeam + 10 Mk II/III
+  variants: tankMk2/Mk3, artilleryMk2/Mk3, aaMk2/Mk3, apcMk2/Mk3,
+  haulerMk2/Mk3; 30 air: fighter, transport, drone, fighterBomber,
+  attackHeli, awacs, strategicBomber, maritimePatrol, reconUAV,
+  armedUAV, reconPlane, gunship, tanker, militaryCargo, trainer,
+  navalFighter, airliner, jumboAirliner, regionalJet, cargoPlane,
+  passengerHeli, seaplane + 8 Mk II/III variants: fighterMk2/Mk3,
+  fighterBomberMk2/Mk3, attackHeliMk2/Mk3, gunshipMk2/Mk3; 35 sea:
+  patrolBoat, destroyer, transportShip, missileBoat, frigate, submarine,
+  carrier, commandShip, fishingBoat, ferry, coastalSub, missileSub,
+  corvette, cruiser, battleship, heavyDestroyer, cargoFreighter,
+  fuelTanker, ammoShip, repairShip, minelayer, navalMine,
+  coastGuardCutter, cruiseLiner, yacht + 10 Mk II/III variants:
+  destroyerMk2/Mk3, frigateMk2/Mk3, submarineMk2/Mk3,
+  missileBoatMk2/Mk3, transportShipMk2/Mk3) with
   combat stats (`UnitDef`: hp, speed, armor, damage, range,
   minRange, targets, vsArmor/vsAir multipliers, sight). Training costs
   (`trainFunds`/`trainMaterials`) are deducted at spawn; gated units
@@ -143,6 +156,29 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   (`path`, `fieldId`, `destX/Z`, `arriveX/Z`) and combat state (`domain`,
   `hp`, `cooldownLeft`, `targetId`, `chasing`) live here too, plus
   veterancy state (`xp`, `vetLevel` — see `veterancy.ts`).
+- `variants.ts` — tech-level variants, pure (DOM/three-free), Phase 8
+  workstream D (2026-09-30): 28 Mk II/Mk III defs across 14 unit lines
+  (gated by the EXISTING `spawnUnit` validator — Mk II minAge is one
+  age above the base floored at industry, Mk III one age above Mk II; no new validation code).
+  `getVariantKinds()` is a LAZY cached getter, never a module-eval const
+  — the units→city→world→ai import cycle makes any
+  `Object.keys(UNIT_DEFS)` at eval time crash (the pathfinding.ts
+  `gridCells()` precedent; ai.ts's `peacefulDistricts()` was lazified
+  for the identical reason). `isVariant`, `variantBaseOf`,
+  `variantArtBase` (the §AD12 render seam — variants resolve to the
+  base kind's `MODEL_SOURCES` entry, zero new `MODEL_PATHS` keys),
+  `variantTierOf`, `variantLine`, `isVariantUnlocked` (pure mirror of the
+  spawnUnit validator: peaceful/military → minAge → requiredBuilding),
+  `preferHighestVariant` (highest unlocked + affordable tier, pure,
+  deterministic, never downgrades). The AI (`ai.ts` `thinkProduction`)
+  substitutes it for `chooseUnitKind`'s result — the AI trains the best
+  tier it has unlocked and can afford. 24 variants are `military: true`
+  (peaceful lockout); the 4 civilian variants (haulerMk2/3,
+  transportShipMk2/3) are the peaceful tech path. Stat ladder: Mk II ≈
+  hp×1.3/damage×1.25/cost×1.6, Mk III ≈ hp×1.6/damage×1.5/cost×2.5, plus
+  role bumps (aa/fighter vsAir, artillery/sub range, ammo mags, hauler
+  cargo, transportShip fuel-legs). Judgment calls are recorded in
+  docs/research/phase8-civilian-peaceful.md §D.
 - `combat.ts` — deterministic combat resolution: `canTarget` (domain
   checks), `damageMultiplier` (armor counters, vsAir, command auras,
   upgrade hooks), nearest-target acquisition with stable-id tiebreaks
@@ -278,6 +314,22 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   **Cap invariant:** the cap counts ALL of the AI's units, so starting
   forces must leave headroom — `ui/session.ts` gives cadet 2 starters
   (cap 6), everyone else 6 (caps 14/26/34/48).
+  Peaceful mode (grand-expansion Phase 8, workstream C, 2026-09-30):
+  `canTrain` returns false for `military: true` defs in peaceful
+  worlds (buildings gated at `placeBuilding`); `thinkIntel` and
+  `thinkSuperweapons` early-return on `world.peaceful === true`; the
+  peaceful dispatch runs `thinkPeaceful(world, queue, ai, terrain)` —
+  a construction brain with NO new AI state fields, NO RNG, and NO
+  snapshot/digest changes. Strategy: the AI is an infrastructure
+  provider (paint compact residential/commercial/industrial districts
+  → waterPump + powerPlant → two factories for the goods supply →
+  houses at funds ≥ 500 → civic/amenities when rich at 2000);
+  organic growth (workstream Z) builds shops/houses/farms on the
+  districts and shares the treasury, so the AI keeps its own spend
+  lean to survive until the income engine comes online (~t=90).
+  The armed scout `drone` is military (gated); the peaceful AI has
+  no scouts and needs none. `createAISystem(queue, terrain?)` takes
+  the optional terrain; `ui/session.ts:381` passes it.
 - `ages.ts` — Ages (Foundation → Connectivity) + National Program choice
   (Step 8). `AgeState` (`age`, `program`) lives on `World.ages`, plain
   data — snapshotted (v6) and digested. `advanceAge` command validates:

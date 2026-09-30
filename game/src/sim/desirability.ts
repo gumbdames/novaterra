@@ -35,25 +35,35 @@
  *    +20 world units (`heightAt`).
  *  - Pollution: −0..25 around completed buildings whose def carries the
  *    `fouling` flag (the Phase 2 water-fouling flag: coal/gas/oil plants),
- *    linear decay to zero at 15 cells.
+ *    linear decay to zero at 15 cells. The Green Initiative ordinance
+ *    scales the penalty ×0.8 for the ordinance holder (workstream E).
  *  - Water proximity: +0..15 near ANY water cell — shoreline, lakes and
  *    rivers all count because all are water cells (user directive
  *    2026-09-30). Full bonus within 6 cells, linear decay to zero at
  *    20 cells.
  *  - Amenities: +5 per amenity TYPE within 12 cells (park, library,
- *    school, kindergarten, college, university), +3/+4 for the two
- *    parking types within 8/10 cells (workstream P — convenience scores
- *    below the cultural types), capped at +20 total.
+ *    school, kindergarten, college, university, museum, theater), +6/16
+ *    for the botanical garden, +7/17 for the sports stadium (the biggest
+ *    civic building — one step below the central station's +8/18),
+ *    +3/+4 for the two parking types within 8/10 cells (workstream P —
+ *    convenience scores below the cultural types), +3/10 for the fire
+ *    station, capped at +20 total. The Green Initiative adds +2 to the
+ *    park and botanical garden rows; the Transit Subsidy adds +2 to
+ *    every transit-stop row (workstream E).
  *    Defs carrying `waterfrontAmenity` (the Phase 4 marina hook — Phase 4
  *    just sets the flag, no desirability code changes then) count as a
  *    waterfront amenity: +10 within 15 cells, toward the same +20 cap.
+ *  - Nightlife (ordinance, workstream E): −0..3 around completed
+ *    commercial-zone buildings (the noise), linear decay to zero at 8
+ *    cells — only in the Nightlife Ordinance holder's own map.
  *
  * Key invariants:
- *  - DERIVED DATA ONLY — never snapshotted. `getDesirabilityModel` caches
- *    per (city, epoch key) and rebuilds ONLY on structural change
- *    (building placed/demolished/completed, zone painted — the epoch plus
- *    the completed-building id list; see `desirabilityKey`). It is never
- *    rebuilt per tick: callers hold the returned model.
+ *  - DERIVED DATA ONLY — never snapshotted. `getDesirabilityModel` is
+ *    per-owner and caches per (city, key, owner); it rebuilds ONLY on
+ *    structural change or a policy funding change (building
+ *    placed/demolished/completed, zone painted, ordinance toggled or
+ *    funded — see `desirabilityKey`). It is never rebuilt per tick:
+ *    callers hold the returned model.
  *  - Deterministic: integer scores (Math.round), sorted inputs, no RNG,
  *    no wall clock. Same city + same terrain ⇒ byte-identical model.
  *  - Distances are Chebyshev on the city grid; the model builder runs one
@@ -70,6 +80,7 @@ import type { World } from './world';
 import {
   BUILDING_DEFS,
   CITY_GRID_CELLS,
+  POLICY_IDS,
   ZoneType,
   cellCenterWorld,
   cellCoords,
@@ -77,6 +88,7 @@ import {
   cellIsWater,
   footprintCells,
   inBounds,
+  policyFunded,
   type BuildingKind,
   type BuildingRecord,
   type CityState,
@@ -137,6 +149,41 @@ export const CENTRAL_STATION_BONUS = 8;
 export const AIRPORT_INTERCHANGE_RADIUS_CELLS = 20;
 export const AIRPORT_INTERCHANGE_BONUS = 10;
 
+/**
+ * Grand-expansion Phase 8 (civilian deep-dive, workstream E,
+ * 2026-09-30): the new cultural/civic amenity rows. Museums and
+ * theaters join the cultural +5/12 tier; the sports stadium is the
+ * regional draw (+7/17 — the biggest CIVIC building, deliberately one
+ * step below the central station's +8/18 downtown anchor: the
+ * transit-stops suite pins the central station as the biggest
+ * non-waterfront row); the botanical garden is the park grown up
+ * (+6/16); the fire station is the safety amenity (+3/10 — the
+ * convenience tier, like parking: reassuring, not beloved).
+ */
+export const SPORTS_STADIUM_RADIUS_CELLS = 17;
+export const SPORTS_STADIUM_BONUS = 7;
+export const BOTANICAL_GARDEN_RADIUS_CELLS = 16;
+export const BOTANICAL_GARDEN_BONUS = 6;
+export const FIRE_STATION_RADIUS_CELLS = 10;
+export const FIRE_STATION_BONUS = 3;
+
+/**
+ * Grand-expansion Phase 8 (civilian ordinances, workstream E,
+ * 2026-09-30): policy-driven desirability modifiers. Green Initiative
+ * adds +2 to the park and botanical-garden rows (a greener city values
+ * its green space more); Transit Subsidy adds +2 to every transit-stop
+ * row (the ride is cheaper, so the stop is worth more). Nightlife
+ * Ordinance is the disamenity: −3 within 8 cells of any completed
+ * commercial building (the noise), linear decay to zero at the radius.
+ * Pollution: Green Initiative scales the pollution penalty ×0.8
+ * (cleaner industry, less smog).
+ */
+export const GREEN_AMENITY_BONUS = 2;
+export const TRANSIT_SUBSIDY_AMENITY_BONUS = 2;
+export const NIGHTLIFE_RADIUS_CELLS = 8;
+export const NIGHTLIFE_PENALTY_MAX = 3;
+export const GREEN_POLLUTION_SCALE = 0.8;
+
 // ---------------------------------------------------------------------------
 // Amenity table
 // ---------------------------------------------------------------------------
@@ -167,12 +214,16 @@ export interface AmenityDef {
 }
 
 /**
- * The amenity table. Six civic/education types at +5/12 cells, two civic
- * parking types (workstream P: lot +3/8, garage +4/10 — convenience
- * amenities score below the cultural/education types), the waterfront
- * hook at +10/15 cells, and the seven Phase 4 tiered transit stops/
- * stations (four small stops +3/8, neighborhood station +5/12, central
- * station +8/18, airport interchange +10/20). Total amenity
+ * The amenity table. Eight civic/education/culture types at +5/12 cells
+ * (workstream E adds museum + theater), two civic parking types
+ * (workstream P: lot +3/8, garage +4/10 — convenience amenities score
+ * below the cultural/education types), the botanical garden (+6/16 —
+ * the park grown up), the sports stadium (+7/17 — the regional draw,
+ * the biggest civic building, one step below the central station),
+ * the fire station (+3/10 — safety, the convenience tier), the
+ * waterfront hook at +10/15 cells, and the seven Phase 4 tiered transit
+ * stops/stations (four small stops +3/8, neighborhood station +5/12,
+ * central station +8/18, airport interchange +10/20). Total amenity
  * contribution is capped at AMENITY_BONUS_CAP (see `amenityBonusFor`).
  */
 export const AMENITY_TABLE: readonly AmenityDef[] = [
@@ -209,6 +260,21 @@ export const AMENITY_TABLE: readonly AmenityDef[] = [
   { kind: 'neighborhoodStation', radius: NEIGHBORHOOD_STATION_RADIUS_CELLS, bonus: NEIGHBORHOOD_STATION_BONUS },
   { kind: 'centralStation', radius: CENTRAL_STATION_RADIUS_CELLS, bonus: CENTRAL_STATION_BONUS },
   { kind: 'airportInterchange', radius: AIRPORT_INTERCHANGE_RADIUS_CELLS, bonus: AIRPORT_INTERCHANGE_BONUS },
+  // Grand-expansion Phase 8 (civilian deep-dive, workstream E,
+  // 2026-09-30): the new cultural/civic amenity TYPES — each its own
+  // row (they stack with each other and with the older rows toward
+  // the same +20 cap). Museum and theater join the cultural +5/12
+  // tier; the stadium is the regional draw (+7/17 — the biggest civic
+  // building, deliberately one step below the central station's +8/18
+  // downtown anchor, which the transit-stops suite pins as the biggest
+  // non-waterfront row); the botanical garden outranks the park (+6/16);
+  // the fire station is a convenience amenity (+3/10). Adding a future
+  // amenity = one row.
+  { kind: 'museum', radius: AMENITY_RADIUS_CELLS, bonus: AMENITY_BONUS_PER_TYPE },
+  { kind: 'theater', radius: AMENITY_RADIUS_CELLS, bonus: AMENITY_BONUS_PER_TYPE },
+  { kind: 'sportsStadium', radius: SPORTS_STADIUM_RADIUS_CELLS, bonus: SPORTS_STADIUM_BONUS },
+  { kind: 'botanicalGarden', radius: BOTANICAL_GARDEN_RADIUS_CELLS, bonus: BOTANICAL_GARDEN_BONUS },
+  { kind: 'fireStation', radius: FIRE_STATION_RADIUS_CELLS, bonus: FIRE_STATION_BONUS },
 ];
 
 // ---------------------------------------------------------------------------
@@ -273,6 +339,21 @@ export function migrationPull(d01: number): number {
   return Math.max(0.1, Math.min(2, pull));
 }
 
+/**
+ * Migration pull for one owner's growth loop (grand-expansion Phase 8,
+ * civilian ordinances, workstream E): the base pull, ×1.15 (still
+ * capped at 2) while the Transit Subsidy ordinance is funded — cheap
+ * transit pulls migrants into the city. Pure and deterministic.
+ */
+export const TRANSIT_MIGRATION_MULT = 1.15;
+export function migrationPullFor(world: World, owner: number, d01: number): number {
+  const pull = migrationPull(d01);
+  if (policyFunded(world, owner, 'transitSubsidy')) {
+    return Math.min(2, pull * TRANSIT_MIGRATION_MULT);
+  }
+  return pull;
+}
+
 // ---------------------------------------------------------------------------
 // Pure driver helpers (exported for tests)
 // ---------------------------------------------------------------------------
@@ -315,11 +396,62 @@ export function waterBonusForDistance(d: number): number {
 /**
  * Pollution driver: −0..POLLUTION_PENALTY_MAX for the Chebyshev distance
  * `d` (cells) to the nearest completed `fouling` building. Linear decay
- * to zero at POLLUTION_RADIUS_CELLS.
+ * to zero at POLLUTION_RADIUS_CELLS. `scale` is the Green Initiative
+ * ordinance's pollution reduction (×0.8 when funded, 1 otherwise).
  */
-export function pollutionPenaltyForDistance(d: number): number {
+export function pollutionPenaltyForDistance(d: number, scale = 1): number {
   if (d >= POLLUTION_RADIUS_CELLS) return 0;
-  return -POLLUTION_PENALTY_MAX * (1 - d / POLLUTION_RADIUS_CELLS);
+  return -POLLUTION_PENALTY_MAX * (1 - d / POLLUTION_RADIUS_CELLS) * scale;
+}
+
+/**
+ * Nightlife driver (grand-expansion Phase 8, civilian ordinances,
+ * workstream E): −0..NIGHTLIFE_PENALTY_MAX for the Chebyshev distance
+ * `d` (cells) to the nearest completed commercial-zone building, linear
+ * decay to zero at NIGHTLIFE_RADIUS_CELLS. The city's nightlife is
+ * loud — the ordinance's price on residential desirability.
+ */
+export function nightlifePenaltyForDistance(d: number): number {
+  if (d >= NIGHTLIFE_RADIUS_CELLS) return 0;
+  return -NIGHTLIFE_PENALTY_MAX * (1 - d / NIGHTLIFE_RADIUS_CELLS);
+}
+
+/**
+ * The seven Phase 4 transit-stop/station kinds — the rows the Transit
+ * Subsidy ordinance boosts (+2 each).
+ */
+const TRANSIT_AMENITY_KINDS: ReadonlySet<BuildingKind> = new Set([
+  'busStop',
+  'taxiStand',
+  'tramStop',
+  'ferryPier',
+  'neighborhoodStation',
+  'centralStation',
+  'airportInterchange',
+]);
+
+/**
+ * The two green amenity kinds — the rows the Green Initiative
+ * ordinance boosts (+2 each).
+ */
+const GREEN_AMENITY_KINDS: ReadonlySet<BuildingKind> = new Set(['park', 'botanicalGarden']);
+
+/** Policy flags that shape one owner's desirability map. */
+interface OwnerPolicyEffects {
+  /** Green Initiative funded: greener amenity rows, weaker pollution. */
+  green: boolean;
+  /** Transit Subsidy funded: stronger transit-stop amenity rows. */
+  transit: boolean;
+  /** Nightlife Ordinance funded: commercial noise disamenity. */
+  nightlife: boolean;
+}
+
+function ownerPolicyEffects(world: World, owner: number): OwnerPolicyEffects {
+  return {
+    green: policyFunded(world, owner, 'greenInitiative'),
+    transit: policyFunded(world, owner, 'transitSubsidy'),
+    nightlife: policyFunded(world, owner, 'nightlife'),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -337,22 +469,27 @@ export interface DesirabilityModel {
   values: Map<number, number>;
 }
 
-let modelCache: { city: CityState; key: string; model: DesirabilityModel } | null = null;
+let modelCache = new Map<string, { city: CityState; model: DesirabilityModel }>();
 
 /**
  * Cache key: everything the builder reads. `utilityEpoch` covers building
  * place/demolish and zone paint (all bump it); the completed-building id
  * list covers construction completions, which advance per economy tick
  * (the utilityNetworks.ts precedent — completion is a structural change
- * for every derived model).
+ * for every derived model). Grand-expansion Phase 8 (civilian
+ * ordinances, workstream E): the owner's funded ordinances shape their
+ * desirability map (green/transit amenity boosts, nightlife noise, the
+ * pollution scale), so the funded policy ids are part of the key and
+ * the model is per-owner — a policy funding change rebuilds the map.
  */
-function desirabilityKey(city: CityState): string {
+function desirabilityKey(city: CityState, world: World, owner: number): string {
   const completedIds: number[] = [];
   for (const b of city.buildings) {
     if (b.progress >= 1) completedIds.push(b.id);
   }
   // buildings are in placement (id) order, so the list is already sorted.
-  return `e${city.utilityEpoch ?? 0};c${completedIds.join(',')}`;
+  const funded = POLICY_IDS.filter((id) => policyFunded(world, owner, id)).join('.');
+  return `e${city.utilityEpoch ?? 0};c${completedIds.join(',')};o${owner};f${funded}`;
 }
 
 /** Residential-zone cells, sorted ascending. */
@@ -477,14 +614,59 @@ function pollutionSources(city: CityState): number[] {
   return sources;
 }
 
-function buildModel(t: TerrainData, city: CityState): DesirabilityModel {
+/**
+ * Nightlife sources (grand-expansion Phase 8, civilian ordinances,
+ * workstream E): completed buildings in the commercial zone, by anchor
+ * cell — the noise the Nightlife Ordinance prices into nearby
+ * residential desirability. Any owner's commercial buildings count
+ * (a loud city is loud); the penalty applies only in the ordinance
+ * holder's own desirability map.
+ */
+function nightlifeSources(city: CityState): number[] {
+  const sources: number[] = [];
+  for (const b of city.buildings) {
+    if (b.progress < 1) continue;
+    if (BUILDING_DEFS[b.kind].zone === ZoneType.COMMERCIAL) {
+      sources.push(cellIndex(b.cx, b.cz));
+    }
+  }
+  return sources;
+}
+
+/**
+ * The amenity bonus of one table row for one owner: the base bonus,
+ * plus the Green Initiative's +2 on the green rows and the Transit
+ * Subsidy's +2 on the transit rows (when funded).
+ */
+function amenityRowBonus(row: AmenityDef, fx: OwnerPolicyEffects): number {
+  let bonus = row.bonus;
+  if (fx.green && row.kind !== undefined && GREEN_AMENITY_KINDS.has(row.kind)) {
+    bonus += GREEN_AMENITY_BONUS;
+  }
+  if (fx.transit && row.kind !== undefined && TRANSIT_AMENITY_KINDS.has(row.kind)) {
+    bonus += TRANSIT_SUBSIDY_AMENITY_BONUS;
+  }
+  return bonus;
+}
+
+function buildModel(
+  t: TerrainData,
+  city: CityState,
+  world: World,
+  owner: number,
+): DesirabilityModel {
   const cells = residentialCells(city);
+  const fx = ownerPolicyEffects(world, owner);
+  const key = desirabilityKey(city, world, owner);
   const values = new Map<number, number>();
   if (cells.length === 0) {
-    return { key: desirabilityKey(city), values };
+    return { key, values };
   }
   const waterDist = waterDistanceMap(t, cells);
   const pollDist = sourceDistanceMap(pollutionSources(city), POLLUTION_RADIUS_CELLS);
+  const nightDist = fx.nightlife
+    ? sourceDistanceMap(nightlifeSources(city), NIGHTLIFE_RADIUS_CELLS)
+    : new Map<number, number>();
   // Amenity rows are independent: one distance map per row, then sum the
   // bonuses that apply (capped). The table stays small by design.
   const amenityDists = AMENITY_TABLE.map((row) => ({
@@ -497,32 +679,44 @@ function buildModel(t: TerrainData, city: CityState): DesirabilityModel {
     const wd = waterDist.get(cell);
     v += waterBonusForDistance(wd === undefined ? Infinity : wd);
     const pd = pollDist.get(cell);
-    if (pd !== undefined) v += pollutionPenaltyForDistance(pd);
+    if (pd !== undefined) {
+      v += pollutionPenaltyForDistance(pd, fx.green ? GREEN_POLLUTION_SCALE : 1);
+    }
+    const nd = nightDist.get(cell);
+    if (nd !== undefined) v += nightlifePenaltyForDistance(nd);
     let amenity = 0;
     for (const { row, dist } of amenityDists) {
       const ad = dist.get(cell);
-      if (ad !== undefined && ad <= row.radius) amenity += row.bonus;
+      if (ad !== undefined && ad <= row.radius) amenity += amenityRowBonus(row, fx);
     }
     v += Math.min(AMENITY_BONUS_CAP, amenity);
     values.set(cell, Math.max(DESIRABILITY_MIN, Math.min(DESIRABILITY_MAX, Math.round(v))));
   }
-  return { key: desirabilityKey(city), values };
+  return { key, values };
 }
 
 /**
- * The derived desirability model for a world. Cached per (city, key);
- * rebuilt ONLY on structural change (building placed/demolished/
- * completed, zone painted) — never per tick. Callers that need the
- * model every frame (the overlay) get the cached instance back.
+ * The derived desirability model for one owner's view of a world.
+ * Cached per (city, key, owner); rebuilt ONLY on structural change or
+ * a policy funding change (building placed/demolished/completed, zone
+ * painted, ordinance toggled/funded) — never per tick. Callers that
+ * need the model every frame (the overlay) get the cached instance
+ * back. The overlay shows the viewing player's own map (their
+ * ordinances shape their land values).
  */
-export function getDesirabilityModel(t: TerrainData, world: World): DesirabilityModel {
+export function getDesirabilityModel(t: TerrainData, world: World, owner: number): DesirabilityModel {
   const city = world.city;
-  const key = desirabilityKey(city);
-  if (modelCache && modelCache.city === city && modelCache.key === key) {
-    return modelCache.model;
+  const key = desirabilityKey(city, world, owner);
+  const cacheKey = `o${owner}|${key}`;
+  const hit = modelCache.get(cacheKey);
+  if (hit && hit.city === city) {
+    return hit.model;
   }
-  const model = buildModel(t, city);
-  modelCache = { city, key, model };
+  const model = buildModel(t, city, world, owner);
+  // Bounded: a handful of owners at most; clear rather than evicting
+  // one entry (keeps the "rebuilt only on change" invariant obvious).
+  if (modelCache.size > 8) modelCache.clear();
+  modelCache.set(cacheKey, { city, model });
   return model;
 }
 

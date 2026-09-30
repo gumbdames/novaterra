@@ -162,8 +162,8 @@ describe('landValueTaxMultOf', () => {
 
 describe('desirabilityOverlayData', () => {
   it('is defensive: missing terrain/world yields an empty view', () => {
-    expect(desirabilityOverlayData(null, null)).toEqual({ key: '', cells: [] });
-    expect(desirabilityOverlayData(undefined, undefined)).toEqual({ key: '', cells: [] });
+    expect(desirabilityOverlayData(null, null, 0)).toEqual({ key: '', cells: [] });
+    expect(desirabilityOverlayData(undefined, undefined, 0)).toEqual({ key: '', cells: [] });
   });
 
   it('exposes every residential cell, sorted, with the model key', () => {
@@ -173,8 +173,8 @@ describe('desirabilityOverlayData', () => {
     // is impossible via paint — so shuffle the check instead).
     paintResidential(ctx.world.city, cx, cz, cx + 3, cz + 2);
     paintResidential(ctx.world.city, cx + 5, cz, cx + 8, cz + 2);
-    const model = getDesirabilityModel(ctx.terrain, ctx.world);
-    const data = desirabilityOverlayData(ctx.terrain, ctx.world);
+    const model = getDesirabilityModel(ctx.terrain, ctx.world, 0);
+    const data = desirabilityOverlayData(ctx.terrain, ctx.world, 0);
     expect(data.key).toBe(model.key);
     expect(data.cells).toHaveLength(model.values.size);
     expect(data.cells.length).toBeGreaterThan(0);
@@ -189,7 +189,7 @@ describe('desirabilityOverlayData', () => {
 
   it('is empty when no residential zones are painted', () => {
     const ctx = setup(42);
-    const data = desirabilityOverlayData(ctx.terrain, ctx.world);
+    const data = desirabilityOverlayData(ctx.terrain, ctx.world, 0);
     expect(data.cells).toEqual([]);
   });
 });

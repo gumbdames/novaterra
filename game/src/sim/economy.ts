@@ -78,9 +78,11 @@ import {
 import { UNIT_DEFS, supplyLevel, type UnitRecord } from './units';
 import { runIntelAccrual, isSabotaged } from './intel';
 import { createSpatialHash, shInsert, shQueryRadius } from './spatial';
-import { buildingTaxMultiplier, getDesirabilityModel } from './desirability';
+import { buildingTaxMultiplier, getDesirabilityModel, type DesirabilityModel } from './desirability';
 import {
   BUILDING_DEFS,
+  POLICIES,
+  POLICY_IDS,
   UTILITY_PENALTY,
   FOOD_PER_POP_PER_SEC,
   UTILITY_ZONE,
@@ -88,11 +90,14 @@ import {
   cellCenterWorld,
   getPlayer,
   isOnTransportNetwork,
+  policyFunded,
   runGrowth,
+  type BuildingKind,
   type BuildingRecord,
   type CitySpecialization,
   type CityState,
   type PlayerState,
+  type PolicyId,
   type ResourceKey,
   type TradeRoute,
   type AirlineRoute,
@@ -263,6 +268,23 @@ function allocateUtilities(world: World, city: CityState): UtilityAllocation {
     for (const b of completed) {
       if (funded.has(b.id)) charged += BUILDING_DEFS[b.kind].upkeepFundsPerSec;
     }
+    // Grand-expansion Phase 8 (civilian ordinances, workstream E):
+    // policies fund AFTER buildings (buildings always win the funding
+    // race), in POLICY_IDS order, from whatever affordable funds remain.
+    // An unfunded policy is charged nothing and its effects do not
+    // apply — `fundedPolicies` carries the decision for the rest of
+    // the tick (DERIVED per-tick state: never snapshotted/digested).
+    const fundedPolicies: PolicyId[] = [];
+    for (const pid of POLICY_IDS) {
+      if (player.policies[pid] !== true) continue;
+      const cost = POLICIES[pid].upkeepFundsPerSec;
+      if (affordable >= cost) {
+        affordable -= cost;
+        fundedPolicies.push(pid);
+      }
+    }
+    player.fundedPolicies = fundedPolicies;
+    for (const pid of fundedPolicies) charged += POLICIES[pid].upkeepFundsPerSec;
     player.funds -= charged;
 
     // 3. Online sets: completed + funded plants, minus hook/meltdown
@@ -501,6 +523,34 @@ function levelMult(b: BuildingRecord): number {
  * 'balanced' and utility-zone buildings are unaffected.
  */
 export const SPECIALIZATION_OUTPUT_BONUS = 1.25;
+
+/**
+ * Grand-expansion Phase 8 (civilian ordinances, workstream E,
+ * 2026-09-30): the five ordinance effects that ride the economy tick.
+ * The upkeep costs live in city.ts POLICIES (charged in
+ * `allocateUtilities` before production runs, so the effects here are
+ * always backed by real spend). Business Incentives and Nightlife both
+ * lift commercial funds output and stack multiplicatively (+1.15 ×
+ * +1.10 — the fun pair: a louder city that pays for itself). Transit
+ * Subsidy lifts ridership income ×1.25. Education Grants lifts research
+ * from the education/culture buildings (kindergarten, school, college,
+ * university, library, museum) ×1.25 — the research output that the
+ * education ladder and the museum produce; everything else researches
+ * nothing.
+ */
+export const BUSINESS_INCENTIVES_COMMERCIAL_MULT = 1.15;
+export const NIGHTLIFE_COMMERCIAL_MULT = 1.1;
+export const TRANSIT_RIDERSHIP_MULT = 1.25;
+export const EDUCATION_GRANTS_RESEARCH_MULT = 1.25;
+/** Building kinds whose research output the Education Grants lift. */
+export const EDUCATION_RESEARCH_KINDS: ReadonlySet<BuildingKind> = new Set([
+  'kindergarten',
+  'school',
+  'college',
+  'university',
+  'library',
+  'museum',
+]);
 export const SPECIALIZATION_OUTPUT_PENALTY = 0.9;
 
 const SPEC_ZONE: Record<Exclude<CitySpecialization, 'balanced'>, number> = {
@@ -566,6 +616,25 @@ function runProduction(world: World, city: CityState): void {
       if (key === 'funds' && hasUpgrade(world, b.owner, 'freeTrade')) {
         if (b.kind === 'market') gain *= FREE_TRADE_MARKET_MULT;
         else if (b.kind === 'shop') gain *= FREE_TRADE_SHOP_MULT;
+      }
+      // Grand-expansion Phase 8 (civilian ordinances, workstream E):
+      // Business Incentives ×1.15 and Nightlife Ordinance ×1.10 on
+      // commercial-zone funds output (they stack multiplicatively).
+      if (key === 'funds' && def.zone === ZoneType.COMMERCIAL) {
+        if (policyFunded(world, b.owner, 'businessIncentives')) {
+          gain *= BUSINESS_INCENTIVES_COMMERCIAL_MULT;
+        }
+        if (policyFunded(world, b.owner, 'nightlife')) {
+          gain *= NIGHTLIFE_COMMERCIAL_MULT;
+        }
+      }
+      // Grand-expansion Phase 8 (civilian ordinances, workstream E):
+      // Education Grants ×1.25 on research from the education/culture
+      // buildings (the education ladder + library + museum).
+      if (key === 'research' && EDUCATION_RESEARCH_KINDS.has(b.kind)) {
+        if (policyFunded(world, b.owner, 'educationGrants')) {
+          gain *= EDUCATION_GRANTS_RESEARCH_MULT;
+        }
       }
       if (gain > 0) addStock(player, key, gain);
     }
@@ -687,7 +756,12 @@ function runRidershipIncome(world: World, city: CityState): void {
     if (rate <= 0) continue;
     const player = getPlayer(city, b.owner);
     if (!player) continue;
-    player.funds += rate;
+    // Grand-expansion Phase 8 (civilian ordinances, workstream E):
+    // the Transit Subsidy ordinance boosts ridership income ×1.25
+    // (subsidized fares, more riders) — the ordinance's payoff side.
+    player.funds += rate * (policyFunded(world, b.owner, 'transitSubsidy')
+      ? TRANSIT_RIDERSHIP_MULT
+      : 1);
   }
 }
 
@@ -926,7 +1000,14 @@ function runTaxes(world: World, economyTickIndex: number, t: TerrainData): void 
   const mult = getTaxMultiplier(world);
   // Workstream W: land value — the derived desirability model (rebuilt
   // only on structural change; the cached instance is free here).
-  const desirModel = getDesirabilityModel(t, world);
+  // Workstream W: land value — the derived desirability model (rebuilt
+  // only on structural change; the cached instance is free here).
+  // Grand-expansion Phase 8 (civilian ordinances, workstream E): the
+  // model is per-owner — green/transit/nightlife ordinances reshape
+  // each owner's land values, so rebuild the owner's model for the
+  // building's owner (cache hit when nothing changed since last time).
+  let desirModel: DesirabilityModel | null = null;
+  let desirOwner = -1;
   for (const b of city.buildings) {
     if (b.progress < 1 || !b.operational) continue;
     const def = BUILDING_DEFS[b.kind];
@@ -938,7 +1019,14 @@ function runTaxes(world: World, economyTickIndex: number, t: TerrainData): void 
     // low ×0.8, modest ×1.0, nice ×1.3, prime ×1.7 (see
     // LAND_VALUE_TIERS in sim/desirability.ts). Commercial/industrial
     // buildings pay the flat rate (land value is a residential concept).
-    const landMult = def.zone === ZoneType.RESIDENTIAL ? buildingTaxMultiplier(desirModel, b) : 1;
+    let landMult = 1;
+    if (def.zone === ZoneType.RESIDENTIAL) {
+      if (b.owner !== desirOwner) {
+        desirModel = getDesirabilityModel(t, world, b.owner);
+        desirOwner = b.owner;
+      }
+      landMult = buildingTaxMultiplier(desirModel as DesirabilityModel, b);
+    }
     player.funds += rate * def.taxBasePerSec * levelMult(b) * TAX_PERIOD_SECONDS * mult * landMult;
   }
 }

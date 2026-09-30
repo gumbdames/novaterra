@@ -157,6 +157,7 @@ import {
   buildSetMayorBuildPolicyOrder,
   buildSetGeneralStanceOrder,
   buildSetSpecializationOrder,
+  buildSetPolicyOrder,
   buildSetTaxRateOrder,
   buildStopOrders,
   buildZoneOrder,
@@ -917,6 +918,10 @@ class GameController {
       },
       onSetSpecialization: (spec) =>
         this.issueOrder(buildSetSpecializationOrder(HUMAN_PLAYER_ID, spec)),
+      // Grand-expansion Phase 8 (civilian ordinances, workstream E):
+      // the Management tab's City ordinances toggles → setPolicy orders.
+      onSetPolicy: (policy, on) =>
+        this.issueOrder(buildSetPolicyOrder(HUMAN_PLAYER_ID, policy, on)),
       onEstablishTradeRoute: (partner) =>
         this.issueOrder(buildEstablishTradeRouteOrder(HUMAN_PLAYER_ID, partner)),
       onCancelTradeRoute: (partner) =>

@@ -28,8 +28,9 @@
  *
  * SIM CONTRACT (workstream W sim workstream — VERIFIED 2026-09-30 against
  * the sim's committed code; names match exactly):
- *  - `getDesirabilityModel(t, world)` (sim/desirability.ts): the derived
- *    model, cached on structural change (never per tick). `values` is a
+ *  - `getDesirabilityModel(t, world, owner)` (sim/desirability.ts): the
+ *    derived model for one owner, cached on structural change or a
+ *    policy funding change (never per tick). `values` is a
  *    Map of residential-zone cell → integer 0..100.
  *  - `landValueTier(d)` → `{ name, taxMultiplier }`; `LAND_VALUE_TIERS`
  *    (low ×0.8 / modest ×1.0 / nice ×1.3 / prime ×1.7).
@@ -111,18 +112,21 @@ export interface DesirabilityOverlayData {
 
 /**
  * The desirability overlay's data: every residential-zone cell with its
- * 0–100 score. The sim model is cached on structural change, so this is
- * cheap per frame (one key compare + a sorted iteration). Defensive:
- * a missing/empty city yields an empty view.
+ * 0–100 score. The sim model is per-owner and cached on structural
+ * change, so this is cheap per frame (one key compare + a sorted
+ * iteration). The caller picks the owner — the render caller passes the
+ * viewing player (their funded ordinances shape their land values).
+ * Defensive: a missing/empty city yields an empty view.
  */
 export function desirabilityOverlayData(
   t: TerrainData | null | undefined,
   world: World | null | undefined,
+  owner: number,
 ): DesirabilityOverlayData {
   if (t === undefined || t === null || world === undefined || world === null) {
     return { key: '', cells: [] };
   }
-  const model = getDesirabilityModel(t, world);
+  const model = getDesirabilityModel(t, world, owner);
   const cells: DesirabilityOverlayCell[] = [];
   for (const [cell, value] of model.values) {
     cells.push({ cell, value });

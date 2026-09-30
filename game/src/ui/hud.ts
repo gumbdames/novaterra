@@ -108,9 +108,15 @@ import {
   toolIcon,
   menuIcon,
   viewIcon,
+  policyIcon,
   type PaletteToolIcon,
   type MenuIconKey,
 } from './icons';
+import {
+  policyRows,
+  policyStatusLine,
+  policyUpkeepLine,
+} from './policies';
 import { HUMAN_PLAYER_ID } from './session';
 // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
 // the peaceful UI contract (tab visibility, objectives lines).
@@ -296,6 +302,12 @@ export interface HUDActions {
   onSetGeneralStance(stance: string): void;
   /** Workstream Y: set one zone's tax rate (Management tab). */
   onSetTaxRate(zone: 0 | 1 | 2 | 3, rate: number): void;
+  /**
+   * Grand-expansion Phase 8 (civilian ordinances, workstream E):
+   * toggle a city-wide policy (Management tab's City ordinances
+   * section). `on` is 0 (off) or 1 (on).
+   */
+  onSetPolicy(policy: string, on: 0 | 1): void;
   /** Airlines (Phase 5, S5): arm the two-click airline-route gesture. */
   onAirlineNewRoute(): void;
   /** Airlines (Phase 5, S5): cancel an airline route by its route id. */
@@ -873,6 +885,11 @@ export class HUD {
     panel.append(this.taxSectionEl(world));
     panel.append(this.focusSectionEl(world));
     panel.append(this.cabinetSectionEl(world));
+    // Grand-expansion Phase 8 (civilian ordinances, workstream E):
+    // the City ordinances section — five city-wide policy toggles with
+    // real upkeep, on the Management tab in every world (ordinances
+    // are civilian city management; peaceful games keep them too).
+    panel.append(this.policySectionEl(world));
     // Grand-expansion Phase 7 (intel): the intel panel — asset
     // counters, spies + covert actions, warnings, rival airports.
     panel.append(this.intelSectionEl(world));
@@ -1135,6 +1152,48 @@ export class HUD {
       );
     }
     sec.append(row);
+    return sec;
+  }
+
+  /**
+   * Management → City ordinances (grand-expansion Phase 8, civilian
+   * ordinances, workstream E): the five city-wide policy toggles — name,
+   * icon, upkeep cost, one-line effect, and live funded/unfunded status
+   * — with an On/Off toggle per policy. Rows read through
+   * ui/policies.ts (the contract module), never the sim records
+   * directly; toggles emit `setPolicy` orders and the sim's
+   * plain-English rejection strings toast loudly on failure.
+   *
+   * Named *El (not append/build/update-prefixed) per the ui/AGENTS.md
+   * AD11 rule — it is covered by the management-panel digest branch
+   * (oc: segment), not a branch of its own. All DOM classes are the
+   * shared panel classes that branch already claims (panel-row,
+   * panel-label, panel-btn, panel-status).
+   */
+  private policySectionEl(world: World): HTMLElement {
+    const sec = this.makeSection(loc(STRINGS.policies.title));
+    sec.append(el('div', 'panel-status', loc(STRINGS.policies.subtitle)));
+    for (const prow of policyRows(world, HUMAN_PLAYER_ID)) {
+      const row = el('div', 'panel-row');
+      const label = el('span', 'panel-label');
+      // Icon + text (user directive 2026-09-30: never icon-only).
+      label.innerHTML =
+        `${policyIcon(prow.id)}<span>${prow.name} · ${policyUpkeepLine(prow.upkeep)}</span>`;
+      const toggle = document.createElement('button');
+      toggle.className = `panel-btn${prow.on ? ' active' : ''}`;
+      toggle.title = prow.on ? `Turn off ${prow.name}` : `Turn on ${prow.name}`;
+      toggle.innerHTML =
+        `${policyIcon(prow.id)}<span>${prow.on ? 'On' : 'Off'}</span>`;
+      toggle.addEventListener('click', () =>
+        this.actions.onSetPolicy(prow.id, prow.on ? 0 : 1),
+      );
+      row.append(label, toggle);
+      sec.append(row);
+      const detail = el('div', 'panel-status', prow.effect);
+      sec.append(detail);
+      const status = policyStatusLine(prow);
+      if (status !== '') sec.append(el('div', 'panel-status', status));
+    }
     return sec;
   }
 
@@ -1663,10 +1722,12 @@ export class HUD {
       // Workstream W (desirability): the land-value line for residential
       // buildings ("Land: Nice (64) · tax ×1.3") — reuses the 'sel-unit'
       // class so no new DOM class is introduced; digest-covered by the
-      // bv: segment (AD11). The derived model is cached on structural
-      // change, so this is free per frame.
+      // bv: segment (AD11). The derived model is per-owner and cached
+      // on structural change, so this is free per frame. The model is
+      // the BUILDING owner's — the land value a building taxes on is
+      // shaped by its owner's own ordinances.
       const desirModel =
-        terrain !== undefined ? getDesirabilityModel(terrain, world) : undefined;
+        terrain !== undefined ? getDesirabilityModel(terrain, world, b.owner) : undefined;
       const landLine = landValueLine(desirModel, b);
       if (landLine !== null) panel.append(el('div', 'sel-unit', landLine));
       // Phase 4 (transport): the occupancy line ("Residents 12/50 ·

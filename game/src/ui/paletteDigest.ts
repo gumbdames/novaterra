@@ -57,6 +57,7 @@ import {
   getDesirabilityModel,
 } from '../sim/desirability';
 import { getMayor, getGeneral } from '../sim/delegation';
+import { policiesPanelDigest } from './policies';
 import type { Selection } from './selection';
 import {
   TRAIN_TABS,
@@ -247,7 +248,10 @@ export function selectionDigest(
     // non-residential buildings and when no terrain is available.
     const def = BUILDING_DEFS[b.kind];
     if (terrain !== undefined && def !== undefined && def.zone === ZoneType.RESIDENTIAL) {
-      const model = getDesirabilityModel(terrain, world);
+      // Grand-expansion Phase 8 (civilian ordinances, workstream E):
+      // the model is per-owner — the digest carries the BUILDING
+      // owner's land values (the same map the selection panel shows).
+      const model = getDesirabilityModel(terrain, world, b.owner);
       const score = Math.round(buildingLandValue(model, b));
       parts.push(`bv:${score}:${buildingTaxMultiplier(model, b)}`);
     } else {
@@ -356,6 +360,12 @@ export function selectionDigest(
       } else {
         parts.push('po:x');
       }
+      // Grand-expansion Phase 8 (civilian ordinances, workstream E,
+      // 2026-09-30): the City ordinances section renders on the
+      // Management tab in all worlds — the digest carries the toggle +
+      // funding states (ui/policies.ts `policiesPanelDigest`), so the
+      // panel repaints exactly when a rendered row would change.
+      parts.push(policiesPanelDigest(world, HUMAN_PLAYER_ID));
     }
   }
   // The research panel is listed whenever the player owns a completed
@@ -653,7 +663,9 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // po: the peaceful-objectives section (Phase 8 peaceful, workstream
     // B — player population, treasury flag, rival population; 'po:x'
     // when the section does not render, i.e. non-peaceful worlds).
-    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:', 'po:'],
+    // oc: the City ordinances section (Phase 8 civilian, workstream E —
+    // per-policy on/off + funded/unfunded, in POLICY_IDS order).
+    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:', 'po:', 'oc:'],
   },
   {
     id: 'research-panel',

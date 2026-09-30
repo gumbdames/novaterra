@@ -267,7 +267,7 @@ snapshotted/digested). New Intel panel UI (digested per §AD11).
 
 ### 3.9 Peaceful mode + tech levels
 
-**Status (workstreams A + B, 2026-09-30):** DONE — workstream A (sim
+**Status (workstreams A + B + C + D + E, 2026-09-30):** DONE — workstream A (sim
 core) merged: `world.peaceful` (tick 0, never toggled; snapshotted,
 digested, defaults false) + `SessionOptions.peaceful`; the def-level
 `military?: boolean` predicate on all 68 units / 89 buildings / 21
@@ -289,8 +289,42 @@ player; this overrides the sim-side "never lost" note, which the
 workstream A owner should reconcile); palette availability lockout
 with "Not available in peaceful mode" reasons; covert-op buttons
 replaced by a note; `po:` digest segment; 23 UI tests
-(`tests/ui.peaceful.test.ts`), all green. Remaining: peaceful AI
-behavior and tech levels (Mk II/III).
+(`tests/ui.peaceful.test.ts`), all green. Workstream C (peaceful AI)
+complete: `canTrain` gates military defs in peaceful worlds;
+`thinkIntel`/`thinkSuperweapons` early-return; `thinkPeaceful` builds
+a civilian city (compact districts → waterPump+powerPlant → two
+factories → houses at funds ≥ 500 → civic when rich at 2000), zero
+military orders, zero rejections; no new AI state, no RNG, no
+snapshot/digest changes; `createAISystem(queue, terrain?)` —
+`ui/session.ts:381` passes the session terrain. 5 unit tests
+(`tests/sim.ai-peaceful.test.ts`) + 3 soak tests
+(`tests/sim.ai-peaceful-soak.test.ts`: marshal-vs-marshal 3600-tick
+soak, both cities grow 6–18 pop, zero military, zero rejections,
+same-seed digest-identical, save/load stable). The armed scout
+`drone` is military (gated); the peaceful AI has no scouts and needs
+none. Workstream E (civilian
+deep-dive) complete: 10 new civilian buildings (museum, theater,
+sports stadium, botanical garden, grand market, bank, office tower,
+clinic, medicalCenter, fire station — all `military: false`, 99
+building defs) + 5 city ordinances (green/transit/business/nightlife/
+education — real upkeep, funded after buildings in POLICY_IDS order,
+per-owner desirability model); `setPolicy` command seam for the AI
+workstream; `oc:` UI digest segment; no new render model keys (AD12).
+Workstream D (tech levels) complete: 28 Mk II/Mk III variant defs across
+14 unit lines (tanks, artillery, AA, APCs, haulers / fighters,
+fighter-bombers, attack helis, gunships / destroyers, frigates,
+submarines, missile boats, transport ships) — gated by the existing
+spawnUnit validator (minAge one/two ages above base, same
+requiredBuilding); `game/src/sim/variants.ts` pure helpers
+(`isVariantUnlocked`, `preferHighestVariant` — the AI trains the best
+tier it has unlocked and can afford; 24 military variants lock out in
+peaceful mode, the 4 civilian hauler/transportShip variants are the
+peaceful tech path); §AD12 art sharing (zero new MODEL_PATHS keys);
+44 tests in `game/tests/sim.variants.test.ts`, all green.
+Remaining: the UI workstream's TRAIN_TABS /
+`STRINGS.unitNames` integration for the 28 variants, and the palettes
+workstream's BUILD_TABS integration for the 10 new buildings
+(open handoffs — see docs/research/phase8-civilian-peaceful.md §§D.4, E.7).
 
 Peaceful: `world.peaceful` flag (tick 0, never toggled mid-game;
 snapshotted, digested, defaults false) + `SessionOptions.peaceful`;
@@ -1010,14 +1044,25 @@ delta → AI work.** Step gate (§0) applies to every step inside.
 - **Status: COMPLETE (2026-09-30, 0.1 Alpha).**
 
 ### Phase 8 — Tech-level roster pass + peaceful mode (M + S)
-**Status:** workstreams A (peaceful-mode sim core) and B (peaceful UI
-panel) complete 2026-09-30 — def flags, command lockout,
-`world.peaceful`, snapshot/digest, victory helpers, 28 sim tests;
-skirmish-setup peaceful toggle, hidden Military tab, Management tab's
-live objectives section, peaceful victory/defeat end screens (the rival
-can win the race first — a peaceful defeat exists), palette lockout
-with reasons, `po:` digest segment (23 UI tests, all green). Remaining:
-peaceful AI behavior and Mk II/III tech levels.
+**Status:** workstreams A (peaceful-mode sim core), B (peaceful UI
+panel), and E (civilian deep-dive: 10 buildings + 5 city ordinances)
+complete 2026-09-30 — def flags, command lockout, `world.peaceful`,
+snapshot/digest, victory helpers, 28 sim tests; skirmish-setup peaceful
+toggle, hidden Military tab, Management tab's live objectives section,
+peaceful victory/defeat end screens (the rival can win the race first —
+a peaceful defeat exists), palette lockout with reasons, `po:` digest
+segment (23 UI tests, all green); 99 building defs (10 new civilian:
+museum/theater/stadium/botanical garden/grand market/bank/office
+tower/clinic/medicalCenter/fire station), five funded ordinances
+(green/transit/business/nightlife/education), per-owner desirability,
+`setPolicy` AI seam, `oc:` digest segment, `|pol…=` sim digest.
+Workstream D (tech levels, 2026-09-30): 28 Mk II/Mk III variant defs
+(96 unit defs: 31 land / 30 air / 35 sea), pure `sim/variants.ts`
+helpers, AI trains best unlocked+affordable tier, §AD12 art sharing
+(zero new MODEL_PATHS keys), 44 tests green.
+Remaining: peaceful AI behavior, the UI workstream's TRAIN_TABS /
+`STRINGS.unitNames` integration for the 28 variants, and the palettes
+workstream's BUILD_TABS integration for the 10 new buildings.
 - **Goal:** Mk II/III variants across the roster (art-shared,
   §AD12); peaceful skirmish mode.
 - **Contents:** §3.9; variant defs gated by age/building; peaceful

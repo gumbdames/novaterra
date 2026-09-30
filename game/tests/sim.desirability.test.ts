@@ -285,52 +285,52 @@ describe('migrationPull', () => {
 describe('desirability model caching', () => {
   it('returns the same cached instance when nothing changed', () => {
     const ctx = setup();
-    const a = getDesirabilityModel(ctx.terrain, ctx.world);
-    const b = getDesirabilityModel(ctx.terrain, ctx.world);
+    const a = getDesirabilityModel(ctx.terrain, ctx.world, 0);
+    const b = getDesirabilityModel(ctx.terrain, ctx.world, 0);
     expect(b).toBe(a);
   });
 
   it('is NOT recomputed per tick (structural change only)', () => {
     const ctx = setup();
-    const before = getDesirabilityModel(ctx.terrain, ctx.world);
+    const before = getDesirabilityModel(ctx.terrain, ctx.world, 0);
     // 120 economy ticks with no structural change: no rebuild.
     // (No zones painted → tryAutoDevelop exits early; nothing completes.)
     runEconomySeconds(ctx, 120);
-    expect(getDesirabilityModel(ctx.terrain, ctx.world)).toBe(before);
+    expect(getDesirabilityModel(ctx.terrain, ctx.world, 0)).toBe(before);
   });
 
   it('rebuilds on placeBuilding (utility epoch)', () => {
     const ctx = setup();
-    const before = getDesirabilityModel(ctx.terrain, ctx.world);
+    const before = getDesirabilityModel(ctx.terrain, ctx.world, 0);
     const { cx, cz } = findLandRect(ctx.terrain, 4, 4);
     placeBuilding(ctx.world.city, { kind: 'house', owner: 0, cx, cz, facing: 0 });
-    expect(getDesirabilityModel(ctx.terrain, ctx.world)).not.toBe(before);
+    expect(getDesirabilityModel(ctx.terrain, ctx.world, 0)).not.toBe(before);
   });
 
   it('rebuilds when a construction completes (completed-id set changes)', () => {
     const ctx = setup();
     const { cx, cz } = findLandRect(ctx.terrain, 4, 4);
     const b = placeBuilding(ctx.world.city, { kind: 'house', owner: 0, cx, cz, facing: 0 });
-    const before = getDesirabilityModel(ctx.terrain, ctx.world);
+    const before = getDesirabilityModel(ctx.terrain, ctx.world, 0);
     b.progress = 1;
-    expect(getDesirabilityModel(ctx.terrain, ctx.world)).not.toBe(before);
+    expect(getDesirabilityModel(ctx.terrain, ctx.world, 0)).not.toBe(before);
   });
 
   it('rebuilds on demolish and on zone paint (epoch)', () => {
     const ctx = setup();
     const { cx, cz } = findLandRect(ctx.terrain, 8, 8);
     const b = completed(ctx.world.city, { kind: 'house', owner: 0, cx, cz, facing: 0 });
-    const before = getDesirabilityModel(ctx.terrain, ctx.world);
+    const before = getDesirabilityModel(ctx.terrain, ctx.world, 0);
     demolishBuilding(ctx.world.city, b.id);
-    const afterDemolish = getDesirabilityModel(ctx.terrain, ctx.world);
+    const afterDemolish = getDesirabilityModel(ctx.terrain, ctx.world, 0);
     expect(afterDemolish).not.toBe(before);
     // Zone paint: the paintZone command bumps the epoch, so the new
     // cells get scored on the next build. (paintResidential bypasses the
     // command — no bump, no rebuild — then we bump like the command.)
     paintResidential(ctx.world.city, cx, cz, cx + 3, cz + 3);
-    expect(getDesirabilityModel(ctx.terrain, ctx.world)).toBe(afterDemolish);
+    expect(getDesirabilityModel(ctx.terrain, ctx.world, 0)).toBe(afterDemolish);
     bumpUtilityEpoch(ctx.world.city);
-    const afterPaint = getDesirabilityModel(ctx.terrain, ctx.world);
+    const afterPaint = getDesirabilityModel(ctx.terrain, ctx.world, 0);
     expect(afterPaint).not.toBe(afterDemolish);
     expect(afterPaint.values.size).toBe(16);
   });
@@ -346,12 +346,12 @@ describe('desirability scenarios', () => {
     const { cx, cz } = findLandRect(ctx.terrain, 30, 10);
     paintResidential(ctx.world.city, cx, cz, cx + 19, cz + 7);
     const target = cellIndex(cx + 10, cz + 3);
-    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target);
+    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world, 0), target);
     // Park 3×3 and library 2×2 just east of the zone, both completed and
     // both within 12 cells of the target.
     completed(ctx.world.city, { kind: 'park', owner: 0, cx: cx + 21, cz: cz + 2, facing: 0 });
     completed(ctx.world.city, { kind: 'library', owner: 0, cx: cx + 21, cz: cz + 6, facing: 0 });
-    const after = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target);
+    const after = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world, 0), target);
     expect(after - base).toBe(10);
   });
 
@@ -360,7 +360,7 @@ describe('desirability scenarios', () => {
     const { cx, cz } = findLandRect(ctx.terrain, 26, 10);
     paintResidential(ctx.world.city, cx, cz, cx + 9, cz + 7);
     const target = cellIndex(cx + 7, cz + 3);
-    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target);
+    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world, 0), target);
     // Six amenity types clustered east of the zone, all within 12 cells
     // of the target (6 × +5 = 30 → cap 20). A second park must NOT
     // double-count its type.
@@ -371,7 +371,7 @@ describe('desirability scenarios', () => {
     completed(ctx.world.city, { kind: 'kindergarten', owner: 0, cx: cx + 18, cz: cz + 1, facing: 0 });
     completed(ctx.world.city, { kind: 'college', owner: 0, cx: cx + 18, cz: cz + 4, facing: 0 });
     completed(ctx.world.city, { kind: 'university', owner: 0, cx: cx + 18, cz: cz + 6, facing: 0 });
-    const after = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target);
+    const after = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world, 0), target);
     expect(after - base).toBe(20);
   });
 
@@ -380,12 +380,12 @@ describe('desirability scenarios', () => {
     const { cx, cz } = findLandRect(ctx.terrain, 30, 10);
     paintResidential(ctx.world.city, cx, cz, cx + 19, cz + 7);
     const target = cellIndex(cx + 10, cz + 3);
-    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target);
+    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world, 0), target);
     // A half-built park and a completed shop (not an amenity type).
     const park = placeBuilding(ctx.world.city, { kind: 'park', owner: 0, cx: cx + 21, cz: cz + 2, facing: 0 });
     park.progress = 0.5;
     completed(ctx.world.city, { kind: 'shop', owner: 0, cx: cx + 24, cz: cz + 2, facing: 0 });
-    expect(cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target)).toBe(base);
+    expect(cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world, 0), target)).toBe(base);
   });
 
   it('a completed coal plant penalizes nearby cells (−25 at the fence)', () => {
@@ -399,7 +399,7 @@ describe('desirability scenarios', () => {
     // Coal plant 2×2 just east of the zone: the anchor cell is
     // (cx+21, cz+2); target (cx+10, cz+3) is 11 cells away (Chebyshev).
     completed(ctx.world.city, { kind: 'coalPlant', owner: 0, cx: cx + 21, cz: cz + 2, facing: 0 });
-    const got = cellDesirability(getDesirabilityModel(t, ctx.world), target);
+    const got = cellDesirability(getDesirabilityModel(t, ctx.world, 0), target);
     // Independent expectation: base + elevation + brute-force water
     // distance + the distance-11 pollution penalty (no amenities here).
     let wd = Infinity;
@@ -427,10 +427,10 @@ describe('desirability scenarios', () => {
     const { cx, cz } = findLandRect(ctx.terrain, 30, 10);
     paintResidential(ctx.world.city, cx, cz, cx + 19, cz + 7);
     const target = cellIndex(cx + 10, cz + 3);
-    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target);
+    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world, 0), target);
     const plant = placeBuilding(ctx.world.city, { kind: 'coalPlant', owner: 0, cx: cx + 21, cz: cz + 2, facing: 0 });
     plant.progress = 0.9;
-    expect(cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target)).toBe(base);
+    expect(cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world, 0), target)).toBe(base);
   });
 
   it('water proximity: a shoreline cell beats the base by the water bonus', () => {
@@ -455,7 +455,7 @@ describe('desirability scenarios', () => {
     expect(lx).toBeGreaterThanOrEqual(0);
     paintResidential(ctx.world.city, lx, lz, lx, lz);
     const cell = cellIndex(lx, lz);
-    const got = cellDesirability(getDesirabilityModel(t, ctx.world), cell);
+    const got = cellDesirability(getDesirabilityModel(t, ctx.world, 0), cell);
     // Independent expectation: brute-force the true nearest-water
     // distance. No amenities or pollution exist in this fresh world.
     let wd = Infinity;
@@ -484,7 +484,7 @@ describe('desirability scenarios', () => {
     }
     ctx.world.city.zones.sort((a, b) => a.cell - b.cell);
     completed(ctx.world.city, { kind: 'park', owner: 0, cx: cx + 5, cz, facing: 0 });
-    const model = getDesirabilityModel(ctx.terrain, ctx.world);
+    const model = getDesirabilityModel(ctx.terrain, ctx.world, 0);
     expect(model.values.size).toBe(0);
     expect(cellDesirability(model, cellIndex(cx, cz))).toBe(BASE_DESIRABILITY);
   });
@@ -505,7 +505,7 @@ describe('land-value tax multiplier', () => {
     completed(ctx.world.city, { kind: 'library', owner: 0, cx: cx + 8, cz: cz + 4, facing: 0 });
     completed(ctx.world.city, { kind: 'school', owner: 0, cx: cx + 8, cz: cz + 7, facing: 0 });
     const house = completed(ctx.world.city, { kind: 'house', owner: 0, cx, cz, facing: 0 });
-    const model = getDesirabilityModel(ctx.terrain, ctx.world);
+    const model = getDesirabilityModel(ctx.terrain, ctx.world, 0);
     const value = buildingLandValue(model, house);
     expect(value).toBeGreaterThan(50);
     expect(buildingTaxMultiplier(model, house)).toBe(landValueTier(Math.round(value)).taxMultiplier);
@@ -527,7 +527,7 @@ describe('land-value tax multiplier', () => {
     const zero = taxedWorld(0.0);
     const house = half.world.city.buildings.find((b) => b.kind === 'house')!;
     const landMult = buildingTaxMultiplier(
-      getDesirabilityModel(half.terrain, half.world),
+      getDesirabilityModel(half.terrain, half.world, 0),
       house,
     );
     // 61 economy ticks → one collection at index 60 (the sim.economy
@@ -561,7 +561,7 @@ describe('land-value tax multiplier', () => {
     const half = taxedWorld(0.5);
     const zero = taxedWorld(0.0);
     const shop = half.world.city.buildings.find((b) => b.kind === 'shop')!;
-    const model = getDesirabilityModel(half.terrain, half.world);
+    const model = getDesirabilityModel(half.terrain, half.world, 0);
     // The footprint really is valuable land — the multiplier WOULD bite.
     expect(buildingLandValue(model, shop)).toBeGreaterThan(50);
     expect(buildingTaxMultiplier(model, shop)).toBeGreaterThan(1);
@@ -623,7 +623,7 @@ describe('snapshot/digest contract', () => {
     completed(ctx.world.city, { kind: 'park', owner: 0, cx: cx + 6, cz, facing: 0 });
     // Building the model must not touch the snapshot at all.
     const before = takeSnapshot(ctx.world);
-    getDesirabilityModel(ctx.terrain, ctx.world);
+    getDesirabilityModel(ctx.terrain, ctx.world, 0);
     const after = takeSnapshot(ctx.world);
     expect(before.version).toBe(SNAPSHOT_VERSION);
     expect(after.version).toBe(8); // v8: Phase 5/6 S4 hangar data contract
@@ -637,7 +637,7 @@ describe('snapshot/digest contract', () => {
     completed(ctx.world.city, { kind: 'library', owner: 0, cx, cz, facing: 0 });
     const d1 = digestWorld(ctx.world);
     // Building the derived model adds no digest fields.
-    getDesirabilityModel(ctx.terrain, ctx.world);
+    getDesirabilityModel(ctx.terrain, ctx.world, 0);
     expect(digestWorld(ctx.world)).toBe(d1);
   });
 
@@ -684,11 +684,11 @@ describe('marina waterfront amenity (Phase 4)', () => {
     const { cx, cz } = findLandRect(ctx.terrain, 30, 10);
     paintResidential(ctx.world.city, cx, cz, cx + 19, cz + 7);
     const target = cellIndex(cx + 10, cz + 3);
-    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target);
+    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world, 0), target);
     // Marina 2×2 just east of the zone, completed, within the 15-cell
     // waterfront radius of the target (distance 11, Chebyshev).
     completed(ctx.world.city, { kind: 'marina', owner: 0, cx: cx + 21, cz: cz + 2, facing: 0 });
-    const after = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target);
+    const after = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world, 0), target);
     expect(after - base).toBe(WATERFRONT_BONUS);
   });
 
@@ -697,10 +697,10 @@ describe('marina waterfront amenity (Phase 4)', () => {
     const { cx, cz } = findLandRect(ctx.terrain, 30, 10);
     paintResidential(ctx.world.city, cx, cz, cx + 19, cz + 7);
     const target = cellIndex(cx + 10, cz + 3);
-    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target);
+    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world, 0), target);
     const marina = placeBuilding(ctx.world.city, { kind: 'marina', owner: 0, cx: cx + 21, cz: cz + 2, facing: 0 });
     marina.progress = 0.5;
-    expect(cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world), target)).toBe(base);
+    expect(cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world, 0), target)).toBe(base);
   });
 
   it('a house near the marina gains land value while an identical far house does not', () => {
@@ -711,13 +711,13 @@ describe('marina waterfront amenity (Phase 4)', () => {
     // well outside the 15-cell waterfront radius.
     const near = completed(ctx.world.city, { kind: 'house', owner: 0, cx: cx + 2, cz: cz + 2, facing: 0 });
     const far = completed(ctx.world.city, { kind: 'house', owner: 0, cx: cx + 29, cz: cz + 2, facing: 0 });
-    const before = getDesirabilityModel(ctx.terrain, ctx.world);
+    const before = getDesirabilityModel(ctx.terrain, ctx.world, 0);
     const nearBase = buildingLandValue(before, near);
     const farBase = buildingLandValue(before, far);
     // Marina 2×2 next to the near house (anchor distance 4); the far
     // house is 25 cells away — outside the radius.
     completed(ctx.world.city, { kind: 'marina', owner: 0, cx: cx + 6, cz: cz + 2, facing: 0 });
-    const after = getDesirabilityModel(ctx.terrain, ctx.world);
+    const after = getDesirabilityModel(ctx.terrain, ctx.world, 0);
     const nearAfter = buildingLandValue(after, near);
     const farAfter = buildingLandValue(after, far);
     expect(nearAfter).toBeGreaterThan(nearBase);

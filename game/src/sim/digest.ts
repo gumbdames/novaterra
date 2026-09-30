@@ -37,6 +37,7 @@
  */
 
 import type { World } from './world';
+import { POLICY_IDS } from './city';
 
 /** FNV-1a 32-bit hash of a string. Returns an unsigned uint32. */
 export function fnv1a32(input: string): number {
@@ -136,6 +137,15 @@ export function canonicalizeWorld(world: World): string {
     // infiltrate/sabotage missions) ⇒ digest-covered (PLAN §11).
     const intel = p.intel ?? { surveillance: 0, operational: 0, counterIntel: 0 };
     out += `|intel${p.id}=${canonicalNumber(intel.surveillance)},${canonicalNumber(intel.operational)},${canonicalNumber(intel.counterIntel)};`;
+    // Grand-expansion Phase 8 (civilian ordinances, workstream E,
+    // 2026-09-30): policy toggles are behavior-affecting (they change
+    // funding, desirability, production, migration) ⇒ digest-covered
+    // (PLAN §11). Toggled-on ids in POLICY_IDS order; fundedPolicies is
+    // NOT digested (pure function of funds + toggles + buildings, which
+    // are all covered). Legacy saves decode policies to {} (the empty
+    // string).
+    const policies = p.policies ?? {};
+    out += `|pol${p.id}=${POLICY_IDS.filter((pid) => policies[pid] === true).join(',')};`;
   }
   out += `|shortage=${world.city.foodShortage ? 1 : 0}`;
   // Trade routes: owner→partner pairs in establishment order.

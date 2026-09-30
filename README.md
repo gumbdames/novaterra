@@ -41,15 +41,33 @@ land, sea and air — or play a fully peaceful game with war disabled.
   8,000 housed residents — the skirmish-setup toggle, the hidden
   Military tab, the Management tab's live objectives section, the
   peaceful victory/defeat end screens, and the greyed-out palette
-  lockout are all wired. Mk II/III tech levels are queued. See the live
-  plan:
+  lockout are all wired. The civilian deep-dive is in too: 99 buildings
+  (museum, theater, sports stadium, botanical garden, grand market,
+  bank, office tower, clinic, medicalCenter, fire station) and five
+  city ordinances on the Management tab — Green Initiative, Transit
+  Subsidy, Business Incentives, Nightlife Ordinance, Education Grants —
+  each with real upkeep, funded after buildings from the treasury. The
+  Mk II/III tech-level pass is in too: 28 variant defs across 14 unit
+  lines (96 units total), gated by age + production building through the
+  existing spawn validator — the AI trains the best tier it has
+  unlocked and can afford, and variants share their base kind's 3D art
+  (zero new model downloads). The peaceful AI rival is in too: it
+  builds a civilian city (districts → utilities → factories → housing →
+  civic), issues zero military orders, and never forms them — the
+  `canTrain` gate and the peaceful dispatch (`thinkPeaceful`) keep the
+  rival's entire play peaceful. See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
 ## What the game has today (0.1 Alpha)
 
 - City building with visible zoning, terrain-following roads, and
   power/water utility networks you drag-paint across the map
-- 89 buildings and 68 units across land, sea, and air, with tech ages
+- 99 buildings and 68 units across land, sea, and air, with tech ages
+- City ordinances (Phase 8): five city-wide policies on the Management
+  tab — Green Initiative, Transit Subsidy, Business Incentives,
+  Nightlife Ordinance, Education Grants — each with real per-second
+  upkeep, funded from the treasury after buildings; effects apply only
+  while funded
 - Peaceful mode (Phase 8, sim core + UI panel in): war disabled by
   design — the full military roster (units, buildings, upgrades,
   covert ops, superweapons) is locked out at the command layer while
@@ -58,7 +76,7 @@ land, sea and air — or play a fully peaceful game with war disabled.
   rival can win the race first, which ends the game in defeat)
 - Unit veterancy (Recruit → Elite), a Military Academy, education and civic
   systems, land value and desirability (elevation, shoreline, clean air,
-  and nearby libraries/parks/schools/parking/marinas set each block's
+  and nearby libraries/parks/schools/museums/stadiums/parking/marinas set each block's
   0–100 score; homes pay tax on their land value, people migrate toward
   nicer areas)
 - Ambient city life: painted zones auto-pave, and completed homes fill

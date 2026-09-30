@@ -145,9 +145,14 @@ describe('parking desirability amenities', () => {
     // Deliberately below the +5/12 cultural types (convenience, not beloved).
     // Phase 4 tiered transit: the four small stops sit at the same +3/8
     // convenience tier as the lot (street furniture, not destinations).
+    // Grand-expansion Phase 8 (civilian, workstream E): the fire station
+    // is the same story — a +3/10 convenience-tier safety amenity
+    // (reassuring, not beloved), so it is excluded from the strict
+    // below-everything comparison like the small stops are.
     const SMALL_STOPS = new Set(['busStop', 'taxiStand', 'tramStop', 'ferryPier']);
+    const CONVENIENCE_TIER = new Set(['fireStation']);
     for (const row of AMENITY_TABLE) {
-      if (row.kind !== 'parkingLot' && row.kind !== 'parkingGarage' && !row.waterfront && row.kind !== undefined && !SMALL_STOPS.has(row.kind)) {
+      if (row.kind !== 'parkingLot' && row.kind !== 'parkingGarage' && !row.waterfront && row.kind !== undefined && !SMALL_STOPS.has(row.kind) && !CONVENIENCE_TIER.has(row.kind)) {
         expect(lot!.bonus).toBeLessThan(row.bonus);
         expect(garage!.bonus).toBeLessThan(row.bonus);
       }
@@ -156,46 +161,46 @@ describe('parking desirability amenities', () => {
 
   it('an adjacent completed lot adds exactly +3', () => {
     const { terrain, world, target } = zoneWorld();
-    const base = cellDesirability(getDesirabilityModel(terrain, world), target);
+    const base = cellDesirability(getDesirabilityModel(terrain, world, 0), target);
     // Re-find the same rect; the amenity scan measures from the
     // building's anchor cell, so the lot anchor sits 7 cells east of
     // the target — inside the lot's 8-cell radius.
     const t = getTerrain();
     const { cx: zx, cz: zz } = findLandRect(t, 34, 10);
     completed(world.city, { kind: 'parkingLot', owner: 0, cx: zx + 17, cz: zz + 2, facing: 0 });
-    const near = cellDesirability(getDesirabilityModel(t, world), target);
+    const near = cellDesirability(getDesirabilityModel(t, world, 0), target);
     expect(near - base).toBe(3);
   });
 
   it('a completed garage adds exactly +4; outside its 10-cell radius it adds nothing', () => {
     const { terrain, world, target } = zoneWorld();
-    const base = cellDesirability(getDesirabilityModel(terrain, world), target);
+    const base = cellDesirability(getDesirabilityModel(terrain, world, 0), target);
     const { cx: zx, cz: zz } = findLandRect(getTerrain(), 34, 10);
     // Garage anchor 8 east of the target: inside the 10-cell radius.
     completed(world.city, { kind: 'parkingGarage', owner: 0, cx: zx + 18, cz: zz + 2, facing: 0 });
-    const after = cellDesirability(getDesirabilityModel(getTerrain(), world), target);
+    const after = cellDesirability(getDesirabilityModel(getTerrain(), world, 0), target);
     expect(after - base).toBe(4);
     // A second garage 15 cells east: outside the radius, no change.
     completed(world.city, { kind: 'parkingGarage', owner: 0, cx: zx + 25, cz: zz + 2, facing: 0 });
-    const far = cellDesirability(getDesirabilityModel(getTerrain(), world), target);
+    const far = cellDesirability(getDesirabilityModel(getTerrain(), world, 0), target);
     expect(far).toBe(after);
   });
 
   it('unfinished parking and non-parking buildings add nothing', () => {
     const { terrain, world, target } = zoneWorld();
-    const base = cellDesirability(getDesirabilityModel(terrain, world), target);
+    const base = cellDesirability(getDesirabilityModel(terrain, world, 0), target);
     const { cx: zx, cz: zz } = findLandRect(getTerrain(), 34, 10);
     // The half-built lot sits INSIDE its radius — completion gates it.
     const half = placeBuilding(world.city, { kind: 'parkingLot', owner: 0, cx: zx + 17, cz: zz + 2, facing: 0 });
     half.progress = 0.5; // still constructing
     completed(world.city, { kind: 'house', owner: 0, cx: zx + 17, cz: zz + 6, facing: 0 });
-    const after = cellDesirability(getDesirabilityModel(getTerrain(), world), target);
+    const after = cellDesirability(getDesirabilityModel(getTerrain(), world, 0), target);
     expect(after).toBe(base);
   });
 
   it('parking types stack with the W amenities toward the same +20 cap', () => {
     const { terrain, world, target } = zoneWorld();
-    const base = cellDesirability(getDesirabilityModel(terrain, world), target);
+    const base = cellDesirability(getDesirabilityModel(terrain, world, 0), target);
     const { cx: zx, cz: zz } = findLandRect(getTerrain(), 34, 10);
     // Four +5 cultural types (20) + lot (+3) + garage (+4) = 27 → cap.
     // Every anchor sits inside its type's radius of the target.
@@ -205,7 +210,7 @@ describe('parking desirability amenities', () => {
     completed(world.city, { kind: 'kindergarten', owner: 0, cx: zx + 21, cz: zz + 4, facing: 0 });
     completed(world.city, { kind: 'parkingLot', owner: 0, cx: zx + 17, cz: zz + 1, facing: 0 });
     completed(world.city, { kind: 'parkingGarage', owner: 0, cx: zx + 18, cz: zz + 5, facing: 0 });
-    const after = cellDesirability(getDesirabilityModel(getTerrain(), world), target);
+    const after = cellDesirability(getDesirabilityModel(getTerrain(), world, 0), target);
     expect(after - base).toBe(AMENITY_BONUS_CAP);
   });
 });
@@ -242,11 +247,19 @@ describe('parking UI coverage', () => {
     expect(idx('parkingGarage')).toBeGreaterThan(idx('parkingLot'));
   });
 
-  it('89 building kinds across palettes, icons, strings, and defs', () => {
+  it('99 building kinds across palettes, icons, strings, and defs', () => {
     const kinds = Object.keys(BUILDING_DEFS) as BuildingKind[];
-    expect(kinds).toHaveLength(89);
+    // Grand-expansion Phase 8 (civilian, workstream E, 2026-09-30): 89 +
+    // the 10 new civilian kinds (museum, theater, sportsStadium,
+    // botanicalGarden, grandMarket, bank, officeTower, clinic,
+    // medicalCenter, fireStation).
+    expect(kinds).toHaveLength(99);
     const paletteKinds = new Set(BUILD_TABS.flatMap((t) => t.kinds));
-    expect(paletteKinds.size).toBe(89);
+    // NOTE (workstream E): the 10 new kinds land in BUILD_TABS with the
+    // palettes-owning workstream's tab integration (ui/palettes.ts is
+    // sibling-owned). Until then this assertion fails on the new kinds
+    // — that is a cross-workstream handoff, not a sim regression.
+    expect(paletteKinds.size).toBe(99);
     for (const kind of kinds) {
       expect(paletteKinds.has(kind)).toBe(true);
       expect(buildingIcon(kind)).toBeTruthy();

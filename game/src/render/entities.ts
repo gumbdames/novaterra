@@ -63,6 +63,7 @@ import * as THREE from 'three';
 import type { World } from '../sim/world';
 import type { UnitRecord } from '../sim/units';
 import { UNIT_DEFS, isSheltered, type UnitKind } from '../sim/units';
+import { variantArtBase } from '../sim/variants';
 import {
   BUILDING_DEFS,
   cellCenterWorld,
@@ -502,6 +503,27 @@ export type ModelSource =
   centralStation: { type: 'procedural' },
   airportInterchange: { type: 'procedural' },
   monument: { type: 'procedural' },
+  // Grand-expansion Phase 8 (civilian deep-dive, workstream E,
+  // 2026-09-30): the ten civilian buildings — all-shared art, zero new
+  // model keys (AD12: no boot-download growth). museum/theater/
+  // grandMarket/bank/officeTower/clinic/medicalCenter reuse existing
+  // GLBs; the stadium, botanical garden, and fire station ride the
+  // procedural fallback until the render workstream's Phase 8 pass
+  // (the Phase-4-hub precedent — `{ type: 'procedural' }` renders the
+  // seeded placeholder, never nothing).
+  museum: { type: 'glb', pieces: [piece('university')] },
+  theater: { type: 'glb', pieces: [piece('college')] },
+  grandMarket: {
+    type: 'glb',
+    pieces: [piece('market', -2, 0, 0), piece('market', 2, 0, 0)],
+  },
+  bank: { type: 'glb', pieces: [piece('shop')] },
+  officeTower: { type: 'glb', pieces: [piece('apartment')] },
+  clinic: { type: 'glb', pieces: [piece('lab')] },
+  medicalCenter: { type: 'glb', pieces: [piece('hospital')] },
+  sportsStadium: { type: 'procedural' },
+  botanicalGarden: { type: 'procedural' },
+  fireStation: { type: 'procedural' },
   // Grand-expansion Phase 2 (utilities, 2026-09-30): the 12 new utility
   // buildings — procedural-first (AD12: zero boot-download growth).
   // NOT in game/src/render/models.ts MODEL_PATHS (no GLB weight added).
@@ -529,13 +551,29 @@ export type ModelSource =
 };
 
 /**
- * Resolve an entity kind to its model source. Unknown kinds fall back
- * to the placeholder builders — the game never renders a blank entity.
- * Exported for the mapping-completeness test (every UnitKind and
- * BuildingKind must resolve to `glb` or `procedural`).
+ * Resolve an entity kind to its model source. Tech-level variants
+ * (sim/variants.ts) share their base kind's art (§AD12): a variant with
+ * no own entry resolves through the base kind's entry — zero new
+ * MODEL_PATHS keys. Unknown kinds fall back to the placeholder
+ * builders — the game never renders a blank entity. Exported for the
+ * mapping-completeness test (every UnitKind and BuildingKind must
+ * resolve to `glb` or `procedural`).
  */
 export function modelSourceFor(kind: string): ModelSource {
-  return MODEL_SOURCES[kind] ?? { type: 'placeholder' };
+  return MODEL_SOURCES[kind] ?? MODEL_SOURCES[artBaseKindFor(kind)] ?? { type: 'placeholder' };
+}
+
+/**
+ * The kind whose art entry `kind` resolves through: a tech-level
+ * variant maps to its base kind (sim/variants.ts `variantArtBase`);
+ * everything else maps to itself. Local wrapper so the render layer
+ * touches the sim's variant table through one documented seam — and so
+ * building kinds and unknown strings (which have no sim def) pass
+ * through to the placeholder fallback untouched.
+ */
+function artBaseKindFor(kind: string): string {
+  const def = UNIT_DEFS[kind as UnitKind];
+  return def ? variantArtBase(def.kind) : kind;
 }
 
 /** A kind's resolved visual pieces (shared by the legacy and instanced view paths). */
@@ -651,7 +689,11 @@ function hullColorFor(kind: string): number {
  * mapping test treat this as the footprint convention.
  */
 export function hullSizeFor(kind: string): { x: number; y: number; z: number } {
-  switch (kind) {
+  // Tech-level variants share the base kind's hull: they render the
+  // base kind's model, so selection rings, stripes, and health bars
+  // must size from the base footprint (the infantry-ish default below
+  // would shrink a tankMk2's ring to a rifleman's).
+  switch (artBaseKindFor(kind)) {
     case 'engineer':
     case 'rifles':
       return { x: 1.4, y: 1.8, z: 1.4 };
@@ -1576,7 +1618,7 @@ export class EntityRenderer {
   private syncDesirabilityOverlay(world: World): void {
     if (!this.desirabilityOverlayVisible) return;
     const t = this.terrain;
-    const data = desirabilityOverlayData(t, world);
+    const data = desirabilityOverlayData(t, world, HUMAN_PLAYER_ID);
     const heightFn =
       t === null ? undefined : (x: number, z: number): number => heightAt(t, x, z);
     this.desirabilityOverlay.sync(data, { heightAt: heightFn });
@@ -1876,11 +1918,17 @@ export class EntityRenderer {
    * undefined for non-gap kinds (caller falls through to placeholders).
    */
   private proceduralFor(kind: string): LoadedModel | undefined {
-    let m = this.proceduralCache.get(kind);
+    // Cache by art-base kind: variants share the base's built model,
+    // not just its builder (base kinds resolve to themselves — behavior
+    // unchanged for them).
+    const base = artBaseKindFor(kind);
+    let m = this.proceduralCache.get(base);
     if (m === undefined) {
-      const built = buildProceduralModel(kind);
+      // Tech-level variants share the base kind's procedural builder
+      // (§AD12) — the builder switch knows base kinds only.
+      const built = buildProceduralModel(base);
       if (built === undefined) return undefined;
-      this.proceduralCache.set(kind, built);
+      this.proceduralCache.set(base, built);
       m = built;
     }
     return m;
