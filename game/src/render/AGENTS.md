@@ -224,6 +224,22 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   hover applied group-relative; land units sit on the terrain (+0.15,
   spectre gunship at 1.6). See the terrain-riding bullet above for the
   full rule set (`render/terrainHeight.ts`).
+- Lazy-load arrival upgrade (0.1 Alpha): a view created while its
+  kind's GLB pieces are still loading (or failed) carries
+  `degraded: true`, computed at creation by the pure
+  `isDegradedResolution(kind, resolved)` — true when a GLB kind
+  resolved fewer GLB pieces than its source declares.
+  Procedural/placeholder kinds are never degraded. `sync` re-checks
+  degraded views every frame (`maybeUpgradeUnitView` /
+  `maybeUpgradeBuildingView`): when the kind resolves whole, the
+  fallback art is swapped for the real model in place — legacy unit
+  hulls rebuild (stripe/pennant re-anchored), instanced units are
+  removed and re-added to the pools, legacy buildings rebuild and
+  re-apply the construction fade from the live progress, completed
+  buildings go to instance slots. The kind's cached model top is
+  invalidated before re-resolving so it is re-measured from the real
+  pieces. Render-side only; a view still waiting keeps its fallback
+  art. Pinned by `tests/render.entities.test.ts` (10 tests).
 - Roads: ribbon + dash meshes rebuilt when the road digest changes (FNV
   over cell indices, not just the count).
 - `dispose()` releases per-view objects and every SHARED asset the

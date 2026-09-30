@@ -191,17 +191,39 @@ overall budget and the failure warnings keep their exact shape.
   and empty-map degradation are unchanged. `?bench=1` still calls
   `loadModels(MODEL_PATHS)` directly (all keys, same contract).
 
-## 5. Known limitation: per-view hot-swap
+## 5. Per-view hot-swap: implemented (2026-09-30)
 
 Arrival upgrades the map, so views created *after* arrival get the
-GLB. A view created *during* the loading window keeps its fallback
-art for its lifetime — upgrading it needs a per-view rebuild hook in
-`EntityRenderer`, which is outside this workstream's file ownership
-(the render workstream owns `entities.ts`). The window is small in
-practice (boot set + save-game scan cover everything visible at
-start; later keys are usually requested well before their first view
-is built), and the fallback is the designed placeholder art, not a
-blank. `onDidLoad` already emits the key list such a hook needs.
+GLB. Views created *during* the loading window used to keep their
+fallback art for their lifetime; the per-view rebuild hook in
+`EntityRenderer` is now implemented (`game/src/render/entities.ts`,
+same change as the Phase 0 step-gate commit):
+
+- Each `UnitView` / `BuildingView` carries a `degraded` flag, computed
+  at creation by the pure helper `isDegradedResolution(kind, resolved)`
+  — true when a GLB kind resolved fewer GLB pieces than its source
+  declares (missing/failed keys). Procedural/placeholder kinds can
+  never be degraded (nothing to wait for).
+- `sync` re-checks degraded views every frame
+  (`maybeUpgradeUnitView` / `maybeUpgradeBuildingView`): re-resolve
+  (cheap — cached Map gets), and if the kind is now whole, swap the
+  fallback art for the real model in place. The kind's cached model
+  top is invalidated first so it is re-measured from the real pieces.
+- Legacy units rebuild the hull group (stripe/pennant re-anchored to
+  the new top); instanced units are removed and re-added to the pools;
+  legacy buildings rebuild the model group and re-apply the
+  construction fade from the live progress; completed buildings go to
+  instance slots. A view still waiting keeps its fallback art and is
+  re-checked next frame — a failed fetch never resolves, so it simply
+  stays degraded (the designed placeholder art, not a blank).
+- Render-side only: no sim state touched; save format untouched.
+
+`game/tests/render.entities.test.ts` gained 10 tests:
+`isDegradedResolution` (5: procedural never degraded, null resolution,
+fallback-only pieces, whole resolution, partial composite) and the
+arrival-upgrade hook (5: legacy unit swap, still-waiting keeps art,
+instanced unit claims slots, legacy building swap, mid-construction
+building keeps its fade).
 
 ## 6. Tests
 
@@ -236,8 +258,9 @@ nondeterministically across runs).
 - **Prefetch triggers are the next lever** if the first-use window
   ever shows: palette tab switches and age advancement are the natural
   prefetch points (both outside this workstream's files).
-- **Per-view hot-swap** needs the one-method `EntityRenderer` hook
-  (§5); `onDidLoad` is the subscription point.
+- **Per-view hot-swap is done** (§5). No hook work remains; the
+  `onDidLoad` subscription point was never needed — `sync` re-checks
+  degraded views directly against the borrowed map.
 - **Meshopt stays an option** for shrinking the long tail later; it is
   no longer load-bearing for the budget.
 - Download-budget accounting for phase plans: startup ≈ 3.5 MiB

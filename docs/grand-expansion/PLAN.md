@@ -466,6 +466,35 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   pipeline unit tests.
 - **Budget delta:** 0 keys.
 - **AI work:** none.
+- **Status: COMPLETE (2026-09-30, 0.1 Alpha).** All four contents
+  delivered and measured:
+  - (a) Draw-call ceiling → **per-kind instancing** (rejected: view
+    caps, far-field impostors). Measured headless driving the real
+    `EntityRenderer` + real GLBs: legacy ≈ 6 draws/view linear (562
+    draws at 100 views, 2.8× over budget) vs instanced flat 80–84
+    draws at 25–400 views, triangles unchanged. One `InstancedMesh`
+    per (model pool key × material) + one instanced layer each for
+    team stripes, pennants, health bars. Opt-in
+    `EntityRenderer { instanced: true }`; construction keeps the
+    legacy fade, converts on completion. Recorded in
+    docs/research/tech-stack.md §3.
+  - (b) Download budget → **lazy per-key loading** (rejected:
+    meshopt — optimistic 50% still left ~3.2 MiB > 2.5 MiB headroom).
+    58 keys = 4.62 MiB; boot set pinned at 28 keys ≈ 2.60 MiB, so
+    startup ≈ 3.46 MiB of the 8 MiB gate; 30 keys (~2.02 MiB)
+    deferred to first use, Cache-API offline support, and views
+    created mid-load upgrade in place when the GLB arrives
+    (`isDegradedResolution` + `maybeUpgradeUnitView` /
+    `maybeUpgradeBuildingView`). Recorded in
+    docs/research/lazy-models.md.
+  - (c) AD10: generic linear-network gesture pipeline
+    (`game/src/ui/linearNetworkDrag.ts`; road tool rewired, with
+    8-connected gap-filling the old road code lacked).
+  - (d) AD11: `HUD_PANEL_BRANCHES` registry + digest coverage test
+    (3 structural tripwires; also fixed a real gap — building
+    digest omitted owner — and the same stale-panel bug class in
+    the advisor panel).
+- **Budget delta:** 0 keys. Zero new units/buildings — enforced.
 
 ### Phase 1 — Veterancy + military academy (S–M)
 - **Goal:** first player-visible expansion win; exercises the

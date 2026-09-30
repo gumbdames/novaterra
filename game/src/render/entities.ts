@@ -127,8 +127,7 @@ export type ModelSource =
  * Entity kind → model source. Composite buildings assemble several GLB
  * pieces (offsets relative to the footprint center); every 1:1 kind has
  * a single piece keyed by its own name.
- */
-const MODEL_SOURCES: Record<string, ModelSource> = {
+ */const MODEL_SOURCES: Record<string, ModelSource> = {
   // ---- units ----
   engineer: { type: 'glb', pieces: [piece('engineer')] },
   rifles: { type: 'glb', pieces: [piece('rifles')] },
@@ -232,6 +231,39 @@ const MODEL_SOURCES: Record<string, ModelSource> = {
  */
 export function modelSourceFor(kind: string): ModelSource {
   return MODEL_SOURCES[kind] ?? { type: 'placeholder' };
+}
+
+/** A kind's resolved visual pieces (shared by the legacy and instanced view paths). */
+export interface ResolvedVisual {
+  pieces: Array<{
+    pool: string;
+    model: LoadedModel;
+    dx: number;
+    dy: number;
+    dz: number;
+  }>;
+  top: number;
+}
+
+/**
+ * True when a kind's visual resolution is degraded: the kind wants GLB
+ * pieces but one or more are missing from the loaded map (lazy load
+ * still in flight, or the fetch failed). Degraded views render fallback
+ * art (procedural gap model or placeholder) and are upgraded in place by
+ * `maybeUpgradeUnitView` / `maybeUpgradeBuildingView` once the pieces
+ * arrive — a view created during the load window must not keep fallback
+ * art forever. Kinds whose source is procedural/placeholder can never be
+ * degraded (nothing to wait for). Pure and headless-safe.
+ */
+export function isDegradedResolution(kind: string, resolved: ResolvedVisual | null): boolean {
+  const source = modelSourceFor(kind);
+  if (source.type !== 'glb') return false;
+  if (resolved === null) return true;
+  let glbPieces = 0;
+  for (const p of resolved.pieces) {
+    if (!p.pool.startsWith('procedural:') && !p.pool.startsWith('prop:')) glbPieces++;
+  }
+  return glbPieces < source.pieces.length;
 }
 
 // ---------------------------------------------------------------------------
@@ -547,6 +579,16 @@ interface UnitView {
   yaw: number;
   /** True when this view's meshes live in the instancer's pools. */
   instanced: boolean;
+  /** Legacy path only: team stripe mesh (repositioned on model upgrade). */
+  stripe: THREE.Mesh | null;
+  /** Legacy path only: pennant mesh (repositioned on model upgrade). */
+  pennant: THREE.Mesh | null;
+  /**
+   * True when the view was built while some of the kind's GLB pieces were
+   * still loading (or failed): it renders fallback art and `sync` upgrades
+   * it in place once the pieces arrive.
+   */
+  degraded: boolean;
   /**
    * Per-view disposables ONLY: health-bar + pennant materials. Shared
    * geometry/materials (model, stripe, placeholder templates) are never
@@ -573,6 +615,12 @@ interface BuildingView {
   owned: THREE.Material[];
   /** Top of the model, for the pennant anchor. */
   modelTop: number;
+  /**
+   * True when the view was built while some of the kind's GLB pieces were
+   * still loading (or failed): it renders fallback art and `sync` upgrades
+   * it in place once the pieces arrive.
+   */
+  degraded: boolean;
 }
 
 /** Options for the EntityRenderer constructor. */
@@ -1117,16 +1165,7 @@ export class EntityRenderer {
    * legacy path (`createModelGroup`) and the instanced path share this
    * resolution, so both place pieces identically.
    */
-  private resolveVisualPieces(kind: string): {
-    pieces: Array<{
-      pool: string;
-      model: LoadedModel;
-      dx: number;
-      dy: number;
-      dz: number;
-    }>;
-    top: number;
-  } | null {
+  private resolveVisualPieces(kind: string): ResolvedVisual | null {
     const source = modelSourceFor(kind);
     const pieces: Array<{
       pool: string;
@@ -1327,6 +1366,10 @@ export class EntityRenderer {
         this.unitGroup.add(view.group);
       }
       this.updateUnitView(view, u);
+      // Lazy-load upgrade: a view built while its kind's GLB was still
+      // arriving renders fallback art until the pieces land, then swaps
+      // to the real model in place (render-side only).
+      if (view.degraded) this.maybeUpgradeUnitView(view, u);
     }
     for (const [id, view] of this.units) {
       if (!seen.has(id)) {
@@ -1343,52 +1386,39 @@ export class EntityRenderer {
     const team = teamColors()[u.owner] ?? '#aaaaaa';
     const owned: Array<THREE.BufferGeometry | THREE.Material> = [];
     const baseY = unitHoverY(u.domain as HeightDomain, u.kind);
+    // Resolve once: both view paths (and the degraded flag below) share
+    // the resolution, so legacy and instanced views place pieces
+    // identically.
+    const resolved = this.resolveVisualPieces(u.kind);
+    const degraded = isDegradedResolution(u.kind, resolved);
 
     // Instanced path: model body, stripe, pennant, and health bars all
     // live in per-kind InstancedMesh pools (see entityInstancing.ts); the
     // group stays empty so scene-graph invariants still hold. Kinds with
     // no resolvable model (placeholder fallback) keep the legacy path.
+    // The resolution is shared with the legacy branch below (and the
+    // degraded flag), so both paths place pieces identically.
     const instancer = this.instancer;
-    if (instancer !== null) {
-      const resolved = this.resolveVisualPieces(u.kind);
-      if (resolved !== null) {
-        const pieces: InstancedPiece[] = resolved.pieces.map((p) => {
-          instancer.definePool(p.pool, p.model);
-          return {
-            pool: p.pool,
-            offset: new THREE.Matrix4().makeTranslation(p.dx, p.dy, p.dz),
-          };
-        });
-        instancer.addEntity(u.id, pieces, {
-          stripe: true,
-          stripeScale: size.x * 0.32,
-          team,
-        });
-        const groundY = this.unitGroundY(u);
-        instancer.writeTransform(u.id, {
-          x: u.x,
-          y: groundY,
-          z: u.z,
-          yaw: 0,
-          baseY,
-          modelTop: resolved.top,
-          hpFrac: 1,
-          showBar: false,
-        });
-        group.position.set(u.x, groundY, u.z);
-        return {
-          group,
-          id: u.id,
-          hull: null,
-          barBg: null,
-          barFg: null,
-          baseY,
-          modelTop: resolved.top,
-          yaw: 0,
-          instanced: true,
-          owned,
-        };
-      }
+    if (instancer !== null && resolved !== null) {
+      const groundY = this.unitGroundY(u);
+      group.position.set(u.x, groundY, u.z);
+      const view: UnitView = {
+        group,
+        id: u.id,
+        hull: null,
+        barBg: null,
+        barFg: null,
+        baseY,
+        modelTop: resolved.top,
+        yaw: 0,
+        instanced: false,
+        stripe: null,
+        pennant: null,
+        degraded,
+        owned,
+      };
+      this.addUnitInstance(view, u, resolved);
+      return view;
     }
 
     // Hull: real model (GLB → procedural) or the shared placeholder
@@ -1438,7 +1468,92 @@ export class EntityRenderer {
     // updateUnitView as the unit moves); stripe, pennant, and health
     // bars stay group-relative, so they ride along for free.
     group.position.set(u.x, this.unitGroundY(u), u.z);
-    return { group, id: u.id, hull, barBg, barFg, baseY, modelTop, yaw: 0, instanced: false, owned };
+    return {
+      group, id: u.id, hull, barBg, barFg, baseY, modelTop, yaw: 0,
+      instanced: false, stripe, pennant: pennant.mesh, degraded, owned,
+    };
+  }
+
+  /**
+   * Allocate a unit's instance slots from a resolution. Shared by view
+   * creation and the lazy-load upgrade path (`maybeUpgradeUnitView`).
+   */
+  private addUnitInstance(view: UnitView, u: UnitRecord, resolved: ResolvedVisual): void {
+    const instancer = this.instancer as EntityInstancer;
+    const team = teamColors()[u.owner] ?? '#aaaaaa';
+    const size = hullSizeFor(u.kind);
+    const pieces: InstancedPiece[] = resolved.pieces.map((p) => {
+      instancer.definePool(p.pool, p.model);
+      return {
+        pool: p.pool,
+        offset: new THREE.Matrix4().makeTranslation(p.dx, p.dy, p.dz),
+      };
+    });
+    instancer.addEntity(u.id, pieces, {
+      stripe: true,
+      stripeScale: size.x * 0.32,
+      team,
+    });
+    instancer.writeTransform(u.id, {
+      x: u.x,
+      y: this.unitGroundY(u),
+      z: u.z,
+      yaw: view.yaw,
+      baseY: view.baseY,
+      modelTop: resolved.top,
+      hpFrac: 1,
+      showBar: false,
+    });
+    view.modelTop = resolved.top;
+    view.instanced = true;
+  }
+
+  /**
+   * Rebuild a legacy unit view's hull from the current resolution
+   * (lazy-load upgrade path). Only shared assets are touched — the old
+   * hull's children are placeholder clones or shared model groups, never
+   * per-view disposables — so no disposal is needed. Stripe, pennant, and
+   * health bars are re-anchored to the new model top (bars also move every
+   * frame in `updateUnitView`).
+   */
+  private rebuildUnitHull(view: UnitView, u: UnitRecord): void {
+    const hull = view.hull as THREE.Group;
+    hull.clear();
+    const built = this.createModelGroup(u.kind);
+    if (built !== null) {
+      hull.add(built.group);
+      view.modelTop = built.top;
+    } else {
+      hull.add(this.placeholderUnitTemplate(u.kind, u.domain).clone());
+      view.modelTop = hullSizeFor(u.kind).y;
+    }
+    const anchorY = view.baseY + view.modelTop;
+    if (view.stripe !== null) view.stripe.position.y = anchorY + 0.15;
+    if (view.pennant !== null) view.pennant.position.y = anchorY + 0.55;
+  }
+
+  /**
+   * Lazy-load upgrade for a unit view built while its kind's GLB pieces
+   * were still arriving: re-resolve, and if the kind is now whole, swap
+   * the fallback art for the real model in place. Render-side only —
+   * no sim state is touched. Degraded views that are still waiting keep
+   * their fallback art and are re-checked next frame (a failed fetch
+   * never resolves, so they simply stay degraded).
+   */
+  private maybeUpgradeUnitView(view: UnitView, u: UnitRecord): void {
+    // The model top is cached per kind: drop it so the fresh resolution
+    // measures the real pieces, not the fallback art.
+    this.modelTops.delete(u.kind);
+    const resolved = this.resolveVisualPieces(u.kind);
+    if (isDegradedResolution(u.kind, resolved) || resolved === null) return;
+    const instancer = this.instancer;
+    if (instancer !== null) {
+      if (view.instanced) instancer.removeEntity(u.id);
+      this.addUnitInstance(view, u, resolved);
+    } else {
+      this.rebuildUnitHull(view, u);
+    }
+    view.degraded = false;
   }
 
   private updateUnitView(view: UnitView, u: UnitRecord): void {
@@ -1515,6 +1630,10 @@ export class EntityRenderer {
         this.buildings.set(b.id, view);
       }
       this.updateBuildingConstruction(view, b.progress);
+      // Lazy-load upgrade: a view built while its kind's GLB was still
+      // arriving renders fallback art until the pieces land, then swaps
+      // to the real model in place (render-side only).
+      if (view.degraded) this.maybeUpgradeBuildingView(view, b);
     }
     for (const [id, view] of this.buildings) {
       if (!seen.has(id)) {
@@ -1544,50 +1663,33 @@ export class EntityRenderer {
       groundYAt(this.terrain, this.waterLevel, 'land', bx, bz) +
       BUILDING_GROUND_EPSILON;
 
+    // The resolution is shared by both view paths (and the degraded
+    // flag below), so legacy and instanced views place pieces identically.
+    const resolved = this.resolveVisualPieces(kind);
+    const degraded = isDegradedResolution(kind, resolved);
+
     // Instanced path: completed buildings render from per-kind pools.
     // Buildings under construction keep the legacy per-view fade path
     // (per-instance transparency is not a thing); they convert to
     // instanced slots on completion in updateBuildingConstruction.
     const instancer = this.instancer;
-    if (instancer !== null && b.progress >= 1) {
-      const resolved = this.resolveVisualPieces(kind);
-      if (resolved !== null) {
-        const pieces: InstancedPiece[] = resolved.pieces.map((p) => {
-          instancer.definePool(p.pool, p.model);
-          return {
-            pool: p.pool,
-            offset: new THREE.Matrix4().makeTranslation(p.dx, p.dy, p.dz),
-          };
-        });
-        instancer.addEntity(b.id, pieces, {
-          stripe: false,
-          stripeScale: 0,
-          team,
-        });
-        instancer.writeTransform(b.id, {
-          x: bx,
-          y: gy,
-          z: bz,
-          yaw: 0,
-          baseY: 0,
-          modelTop: resolved.top,
-          hpFrac: 1,
-          showBar: false,
-        });
-        group.position.set(bx, gy, bz);
-        return {
-          group,
-          id: b.id,
-          kind,
-          owner: b.owner,
-          modelMeshes: [],
-          sharedMaterials: [],
-          constructing: false,
-          instanced: true,
-          owned,
-          modelTop: resolved.top,
-        };
-      }
+    if (instancer !== null && b.progress >= 1 && resolved !== null) {
+      group.position.set(bx, gy, bz);
+      const view: BuildingView = {
+        group,
+        id: b.id,
+        kind,
+        owner: b.owner,
+        modelMeshes: [],
+        sharedMaterials: [],
+        constructing: false,
+        instanced: false,
+        owned,
+        modelTop: resolved.top,
+        degraded,
+      };
+      this.addBuildingInstance(view, resolved);
+      return view;
     }
 
     const built = this.createModelGroup(kind);
@@ -1629,10 +1731,120 @@ export class EntityRenderer {
       instanced: false,
       owned,
       modelTop,
+      degraded,
     };
     // A building placed mid-construction starts faded.
     this.updateBuildingConstruction(view, b.progress);
     return view;
+  }
+
+  /**
+   * Allocate a completed building's instance slots from a resolution.
+   * Shared by view creation, the construction-completion conversion
+   * (`convertBuildingToInstanced`), and the lazy-load upgrade path
+   * (`maybeUpgradeBuildingView`). The view's group position is the
+   * write anchor.
+   */
+  private addBuildingInstance(view: BuildingView, resolved: ResolvedVisual): void {
+    const instancer = this.instancer as EntityInstancer;
+    const team = teamColors()[view.owner] ?? '#aaaaaa';
+    const pieces: InstancedPiece[] = resolved.pieces.map((p) => {
+      instancer.definePool(p.pool, p.model);
+      return {
+        pool: p.pool,
+        offset: new THREE.Matrix4().makeTranslation(p.dx, p.dy, p.dz),
+      };
+    });
+    instancer.addEntity(view.id, pieces, {
+      stripe: false,
+      stripeScale: 0,
+      team,
+    });
+    instancer.writeTransform(view.id, {
+      x: view.group.position.x,
+      y: view.group.position.y,
+      z: view.group.position.z,
+      yaw: 0,
+      baseY: 0,
+      modelTop: resolved.top,
+      hpFrac: 1,
+      showBar: false,
+    });
+    view.modelMeshes.length = 0;
+    view.sharedMaterials.length = 0;
+    view.modelTop = resolved.top;
+    view.constructing = false;
+    view.instanced = true;
+  }
+
+  /**
+   * Drop a legacy building view's per-view model assets (construction
+   * material clones + pennant material) and empty its group. Shared
+   * geometry and materials are caller-owned and never disposed here.
+   */
+  private clearLegacyBuildingModel(view: BuildingView): void {
+    for (const m of view.owned) m.dispose();
+    view.owned.length = 0;
+    view.group.clear();
+    view.modelMeshes.length = 0;
+    view.sharedMaterials.length = 0;
+  }
+
+  /**
+   * Rebuild a legacy building view's model group from the current
+   * resolution (lazy-load upgrade path), preserving the construction
+   * fade: the fade is torn down with the old model and re-applied from
+   * the live progress below.
+   */
+  private rebuildLegacyBuildingModel(view: BuildingView, b: BuildingRecord): void {
+    this.clearLegacyBuildingModel(view);
+    const built = this.createModelGroup(view.kind);
+    if (built !== null) {
+      view.group.add(built.group);
+      view.modelTop = built.top;
+    } else {
+      view.group.add(this.placeholderBuildingTemplate(view.kind).clone());
+      view.modelTop = buildingHeightFor(view.kind);
+    }
+    view.group.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (mesh.isMesh && !Array.isArray(mesh.material)) {
+        view.modelMeshes.push(mesh);
+        view.sharedMaterials.push(mesh.material as THREE.Material);
+      }
+    });
+    const team = teamColors()[b.owner] ?? '#aaaaaa';
+    const pennant = this.createPennant(team);
+    pennant.mesh.position.y = view.modelTop + 0.6;
+    view.group.add(pennant.mesh);
+    view.owned.push(pennant.material);
+    // Force the construction fade to re-apply from the live progress.
+    view.constructing = false;
+    this.updateBuildingConstruction(view, b.progress);
+  }
+
+  /**
+   * Lazy-load upgrade for a building view built while its kind's GLB
+   * pieces were still arriving: re-resolve, and if the kind is now whole,
+   * swap the fallback art for the real model in place. Completed
+   * buildings go to instance slots; buildings still under construction
+   * keep the legacy fade path (per-instance transparency is not a thing)
+   * and convert on completion as usual. Render-side only.
+   */
+  private maybeUpgradeBuildingView(view: BuildingView, b: BuildingRecord): void {
+    // The model top is cached per kind: drop it so the fresh resolution
+    // measures the real pieces, not the fallback art.
+    this.modelTops.delete(view.kind);
+    const resolved = this.resolveVisualPieces(view.kind);
+    if (isDegradedResolution(view.kind, resolved) || resolved === null) return;
+    if (this.instancer !== null && b.progress >= 1) {
+      if (view.instanced) this.instancer.removeEntity(view.id);
+      else this.clearLegacyBuildingModel(view);
+      this.addBuildingInstance(view, resolved);
+    } else {
+      this.rebuildLegacyBuildingModel(view, b);
+    }
+    view.degraded = false;
   }
 
   /**
@@ -1695,37 +1907,8 @@ export class EntityRenderer {
     if (instancer === null || view.instanced) return;
     const resolved = this.resolveVisualPieces(view.kind);
     if (resolved === null) return;
-    const pieces: InstancedPiece[] = resolved.pieces.map((p) => {
-      instancer.definePool(p.pool, p.model);
-      return {
-        pool: p.pool,
-        offset: new THREE.Matrix4().makeTranslation(p.dx, p.dy, p.dz),
-      };
-    });
-    const team = teamColors()[view.owner] ?? '#aaaaaa';
-    instancer.addEntity(view.id, pieces, {
-      stripe: false,
-      stripeScale: 0,
-      team,
-    });
-    instancer.writeTransform(view.id, {
-      x: view.group.position.x,
-      y: view.group.position.y,
-      z: view.group.position.z,
-      yaw: 0,
-      baseY: 0,
-      modelTop: resolved.top,
-      hpFrac: 1,
-      showBar: false,
-    });
-    for (const m of view.owned) m.dispose();
-    view.owned.length = 0;
-    view.group.clear();
-    view.modelMeshes.length = 0;
-    view.sharedMaterials.length = 0;
-    view.modelTop = resolved.top;
-    view.constructing = false;
-    view.instanced = true;
+    this.clearLegacyBuildingModel(view);
+    this.addBuildingInstance(view, resolved);
   }
 
   /** Release per-view objects: pennant + any construction clones. */

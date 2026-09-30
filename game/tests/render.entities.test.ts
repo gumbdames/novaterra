@@ -39,7 +39,8 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import * as THREE from 'three';
 
-import { EntityRenderer, modelSourceFor } from '../src/render/entities';
+import { EntityRenderer, modelSourceFor, isDegradedResolution } from '../src/render/entities';
+import type { ResolvedVisual } from '../src/render/entities';
 import { buildProceduralModel } from '../src/render/proceduralModels';
 import type { LoadedModel } from '../src/render/models';
 import { UNIT_DEFS, type UnitKind, type UnitRecord } from '../src/sim/units';
@@ -437,6 +438,168 @@ describe('roads', () => {
     const renderer = new EntityRenderer(scene);
     renderer.sync(fakeWorld({ roads: [cellIndex(5, 5)] }));
     expect(namedGroup(scene, 'buildings').children).toHaveLength(1);
+    renderer.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Lazy-load arrival upgrade: a view created while its kind's GLB pieces
+// are still loading renders fallback art, then swaps to the real model in
+// place once the pieces land (render-side only — the sim never sees it).
+// ---------------------------------------------------------------------------
+
+/** First mesh under a view group, in traversal order (the model body). */
+function firstMesh(root: THREE.Object3D): THREE.Mesh | null {
+  let found: THREE.Mesh | null = null;
+  root.traverse((o) => {
+    if (found === null && (o as THREE.Mesh).isMesh) found = o as THREE.Mesh;
+  });
+  return found;
+}
+
+function resolvedWith(pools: string[]): ResolvedVisual {
+  return {
+    pieces: pools.map((pool) => ({
+      pool,
+      model: fakeLoadedModel(),
+      dx: 0,
+      dy: 0,
+      dz: 0,
+    })),
+    top: 1,
+  };
+}
+
+describe('isDegradedResolution', () => {
+  it('procedural kinds are never degraded (nothing to wait for)', () => {
+    expect(modelSourceFor('artillery').type).toBe('procedural');
+    expect(isDegradedResolution('artillery', null)).toBe(false);
+    expect(isDegradedResolution('artillery', resolvedWith([]))).toBe(false);
+  });
+
+  it('a glb kind with no resolution is degraded', () => {
+    expect(modelSourceFor('tank').type).toBe('glb');
+    expect(isDegradedResolution('tank', null)).toBe(true);
+  });
+
+  it('a glb kind with only fallback pieces is degraded', () => {
+    expect(isDegradedResolution('tank', resolvedWith(['procedural:tank']))).toBe(true);
+    expect(isDegradedResolution('tank', resolvedWith(['prop:hqAntenna']))).toBe(true);
+  });
+
+  it('a glb kind with all of its pieces resolved is whole', () => {
+    expect(isDegradedResolution('tank', resolvedWith(['tank']))).toBe(false);
+  });
+
+  it('a partially resolved composite stays degraded until every piece lands', () => {
+    const source = modelSourceFor('warFactory');
+    if (source.type !== 'glb') throw new Error('warFactory must be glb-mapped');
+    const keys = source.pieces.map((p) => p.key);
+    expect(keys.length).toBeGreaterThan(1);
+    const first = keys[0] as string;
+    expect(isDegradedResolution('warFactory', resolvedWith([first]))).toBe(true);
+    expect(isDegradedResolution('warFactory', resolvedWith(keys))).toBe(false);
+  });
+});
+
+describe('lazy-load arrival upgrade', () => {
+  it('a legacy unit swaps placeholder art for the real model when the GLB arrives', () => {
+    const scene = new THREE.Scene();
+    const models = new Map<string, LoadedModel>();
+    const renderer = new EntityRenderer(scene, models);
+    const unit = fakeUnit('tank', 'land');
+    renderer.sync(fakeWorld({ units: [unit] }));
+    const group = namedGroup(scene, 'units').children[0] as THREE.Group;
+    const before = firstMesh(group);
+    expect(before).not.toBeNull();
+
+    // The lazy load finishes: the same map the renderer borrows gains the key.
+    const model = fakeLoadedModel();
+    models.set('tank', model);
+    renderer.sync(fakeWorld({ units: [unit] }));
+
+    const after = firstMesh(group);
+    expect(after).not.toBeNull();
+    expect(after!.geometry).toBe(model.geometries[0]);
+    expect(after!.geometry).not.toBe(before!.geometry);
+    // The view group itself is stable: same object, still tracked.
+    expect(namedGroup(scene, 'units').children[0]).toBe(group);
+    renderer.dispose();
+  });
+
+  it('a unit that is still waiting keeps fallback art without throwing', () => {
+    const scene = new THREE.Scene();
+    const renderer = new EntityRenderer(scene, new Map());
+    const unit = fakeUnit('tank', 'land');
+    renderer.sync(fakeWorld({ units: [unit] }));
+    const group = namedGroup(scene, 'units').children[0] as THREE.Group;
+    const before = firstMesh(group);
+    expect(before).not.toBeNull();
+    // Still loading (or failed): repeated syncs must not throw or swap.
+    expect(() => {
+      renderer.sync(fakeWorld({ units: [unit] }));
+      renderer.sync(fakeWorld({ units: [unit] }));
+    }).not.toThrow();
+    expect(firstMesh(group)).toBe(before);
+    renderer.dispose();
+  });
+
+  it('an instanced unit claims instance slots when the GLB arrives', () => {
+    const scene = new THREE.Scene();
+    const models = new Map<string, LoadedModel>();
+    const renderer = new EntityRenderer(scene, models, { instanced: true });
+    const instancer = renderer.debugInstancer;
+    expect(instancer).not.toBeNull();
+    const unit = fakeUnit('tank', 'land');
+    renderer.sync(fakeWorld({ units: [unit] }));
+    // No resolvable model yet: legacy fallback view, no instance slots.
+    expect(instancer!.entityCount).toBe(0);
+
+    models.set('tank', fakeLoadedModel());
+    renderer.sync(fakeWorld({ units: [unit] }));
+    expect(instancer!.entityCount).toBe(1);
+    renderer.dispose();
+  });
+
+  it('a legacy building swaps fallback art for the real model when the GLB arrives', () => {
+    const scene = new THREE.Scene();
+    const models = new Map<string, LoadedModel>();
+    const renderer = new EntityRenderer(scene, models);
+    const building = fakeBuilding('house', 1);
+    renderer.sync(fakeWorld({ buildings: [building] }));
+    const group = namedGroup(scene, 'buildings').children[0] as THREE.Group;
+    const before = firstMesh(group);
+    expect(before).not.toBeNull();
+
+    const model = fakeLoadedModel();
+    models.set('house', model);
+    renderer.sync(fakeWorld({ buildings: [building] }));
+
+    const after = firstMesh(group);
+    expect(after).not.toBeNull();
+    expect(after!.geometry).toBe(model.geometries[0]);
+    expect(after!.geometry).not.toBe(before!.geometry);
+    renderer.dispose();
+  });
+
+  it('a mid-construction building keeps its fade through the upgrade', () => {
+    const scene = new THREE.Scene();
+    const models = new Map<string, LoadedModel>();
+    const renderer = new EntityRenderer(scene, models);
+    const building = fakeBuilding('house', 0.5);
+    renderer.sync(fakeWorld({ buildings: [building] }));
+    const group = namedGroup(scene, 'buildings').children[0] as THREE.Group;
+
+    models.set('house', fakeLoadedModel());
+    renderer.sync(fakeWorld({ buildings: [building] }));
+
+    // The model body (first mesh) renders the real model, still faded.
+    const body = firstMesh(group);
+    expect(body).not.toBeNull();
+    expect(body!.geometry).toBe(models.get('house')!.geometries[0]);
+    const mat = body!.material as THREE.Material;
+    expect(mat.transparent).toBe(true);
+    expect(mat.opacity).toBeLessThan(1);
     renderer.dispose();
   });
 });
