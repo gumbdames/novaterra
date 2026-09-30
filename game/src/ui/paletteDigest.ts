@@ -31,6 +31,17 @@
  * Pure module: safe under Node/vitest. It mirrors the render branches in
  * hud.ts `updateSelection` — if a branch renders a value, the digest must
  * include it, or a visible change would not repaint.
+ *
+ * AD11 UI digest contract: HUD_PANEL_BRANCHES below is the single source
+ * of truth enumerating every hud.ts panel branch. hud.ts consumes the
+ * digest from this module; the contract test
+ * (game/tests/ui.paletteDigest.test.ts) consumes the registry. A branch
+ * that renders a dynamic value must contribute a digest segment
+ * (digestLabels); the test asserts each label literally appears in
+ * selectionDigest() output for a representative state, and scans hud.ts
+ * for panel-building methods / DOM classes that are not registered here —
+ * so a new panel (or a new rendered value) without digest coverage fails
+ * the suite instead of shipping a stale panel.
  */
 
 import type { World } from '../sim/world';
@@ -83,7 +94,11 @@ export function selectionDigest(
       ? world.city.buildings.find((x) => x.id === selection.buildingId)
       : undefined;
   if (b !== undefined) {
-    parts.push(`bs:${b.kind}:${b.operational ? 1 : 0}:${b.progress >= 1 ? 1 : 0}`);
+    // bs: kind + owner (the lab research panel is owner-gated) +
+    // operational + completed.
+    parts.push(
+      `bs:${b.kind}:${b.owner}:${b.operational ? 1 : 0}:${b.progress >= 1 ? 1 : 0}`,
+    );
   } else {
     // No selection: the train/build palettes render the active tab's
     // buttons; only each button's availability can move per tick.
@@ -108,3 +123,194 @@ export function selectionDigest(
   }
   return parts.join('|');
 }
+
+/**
+ * One hud.ts panel branch, for the AD11 UI digest contract.
+ */
+export interface HudPanelBranch {
+  /** Stable branch id, e.g. 'train-palette'. */
+  id: string;
+  /**
+   * hud.ts renderer: the method that builds it, or 'updateSelection'
+   * for the inline selection branches, or 'constructor' for panels built
+   * once at construction.
+   */
+  renderedIn: string;
+  /**
+   * DOM class literals the branch creates (el()/className arguments as
+   * written in hud.ts; template-literal classes by their static prefix,
+   * e.g. 'train-btn' for `train-btn${...}`). The contract test scans
+   * hud.ts and fails on any panel class not claimed here — claiming a
+   * new branch forces the digest question to be answered.
+   */
+  domClasses: string[];
+  /**
+   * selectionDigest() segment labels this branch contributes. The
+   * contract test asserts each label literally appears in digest output
+   * for a representative state where the branch renders, so a declared
+   * label that the digest never emits fails loudly.
+   */
+  digestLabels: string[];
+  /**
+   * Required exactly when digestLabels is empty: why no digest segment
+   * is needed (fully static, write-on-change without rebuilds, or a
+   * separate change key).
+   */
+  noDigestReason?: string;
+}
+
+/**
+ * HOW TO ADD A PANEL (AD11 UI digest contract):
+ *  1. Render it in hud.ts.
+ *  2. Add every dynamic value it renders to selectionDigest() above
+ *     (additive: new segments only — never change an existing segment's
+ *     meaning, the digest doubles as the panel's rebuild key).
+ *  3. Register the branch here: id, renderedIn (hud.ts method), the
+ *     domClasses it creates, and the digestLabels it contributes — or a
+ *     noDigestReason when the branch is truly static / never rebuilt.
+ * The contract test (game/tests/ui.paletteDigest.test.ts) enforces all
+ * three: unregistered hud.ts panel methods or DOM classes fail the
+ * suite, and each digestLabels entry must really appear in digest output.
+ */
+export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
+  {
+    id: 'topbar',
+    renderedIn: 'constructor',
+    domClasses: [
+      'hud',
+      'hud-topbar',
+      'hud-chip',
+      'hud-chip-label',
+      'hud-chip-value',
+      'hud-age',
+      'hud-age-btn',
+      'hud-spacer',
+      'hud-speed',
+      'hud-pause',
+      'hud-menu-btn',
+    ],
+    digestLabels: [],
+    noDigestReason:
+      'Built once in the constructor; per-frame updates are write-on-change ' +
+      'text/property writes (setText) — nodes are never rebuilt, so no digest ' +
+      'segment is needed. Invariant: never rebuild topbar DOM (the click-bug pattern).',
+  },
+  {
+    id: 'advisor',
+    renderedIn: 'updateAdvisor',
+    domClasses: [
+      'hud-advisor',
+      'hud-panel-title',
+      'hud-advisor-list',
+      'advisor-item info',
+      'advisor-item',
+      'advisor-title',
+      'advisor-detail',
+    ],
+    digestLabels: [],
+    noDigestReason:
+      'Rebuilt on its own change key (severity+title), not the selection digest. ' +
+      'KNOWN GAP: item.detail is rendered but not part of the key — the panel can ' +
+      'go stale if detail changes under an identical severity+title (same bug class ' +
+      'as the click bug). Fix in hud.ts updateAdvisor; out of scope for paletteDigest.ts.',
+  },
+  {
+    id: 'selection-empty',
+    renderedIn: 'updateSelection',
+    domClasses: ['hud-selection', 'sel-empty'],
+    digestLabels: ['u:', 'b:', 'tt:', 'bt:'],
+  },
+  {
+    id: 'selection-units',
+    renderedIn: 'updateSelection',
+    domClasses: ['sel-title', 'sel-unit', 'sel-action'],
+    digestLabels: ['u:', 'uh:', 'um:'],
+  },
+  {
+    id: 'selection-building',
+    renderedIn: 'updateSelection',
+    domClasses: ['sel-title', 'sel-unit'],
+    digestLabels: ['b:', 'bs:'],
+  },
+  {
+    id: 'train-palette',
+    renderedIn: 'appendTrainPanel',
+    domClasses: [
+      'train-panel',
+      'hud-panel-title',
+      'palette-tabs',
+      'palette-tab',
+      'palette-grid',
+      'train-btn',
+      'palette-icon',
+      'palette-name',
+      'palette-cost',
+    ],
+    digestLabels: ['tt:', 'ta:'],
+  },
+  {
+    id: 'build-palette',
+    renderedIn: 'appendBuildPanel',
+    domClasses: [
+      'build-panel',
+      'hud-panel-title',
+      'palette-tabs',
+      'palette-tab',
+      'palette-grid',
+      'build-btn',
+      'build-btn cancel',
+      'palette-icon',
+      'palette-name',
+      'palette-cost',
+    ],
+    digestLabels: ['bt:', 'ba:'],
+  },
+  {
+    id: 'tools-row',
+    renderedIn: 'appendBuildPanel',
+    domClasses: ['palette-tools', 'palette-label', 'build-btn'],
+    digestLabels: [],
+    noDigestReason:
+      'Static tool buttons (road/zones/demolish): labels and icons never change at runtime.',
+  },
+  {
+    id: 'research-panel',
+    renderedIn: 'appendResearchPanel',
+    domClasses: [
+      'research-panel',
+      'hud-panel-title',
+      'research-group',
+      'research-row',
+      'research-head',
+      'research-name',
+      'research-done',
+      'palette-cost',
+      'research-effect',
+      'research-btn',
+    ],
+    digestLabels: ['lab:', 'rs:'],
+  },
+  {
+    id: 'phase3-panel',
+    renderedIn: 'buildPhase3Panel',
+    domClasses: [
+      'hud-phase3',
+      'hud-panel-title',
+      'hud-phase3-row',
+      'hud-label',
+      'hud-btn',
+      'hud-btn small',
+    ],
+    digestLabels: [],
+    noDigestReason:
+      'Built once in the constructor; every button is static (labels never change, no dynamic values).',
+  },
+  {
+    id: 'toast',
+    renderedIn: 'toast',
+    domClasses: ['hud-toast'],
+    digestLabels: [],
+    noDigestReason:
+      'Transient one-line feedback; textContent set imperatively, never rebuilt on a digest.',
+  },
+];

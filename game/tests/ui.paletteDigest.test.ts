@@ -29,11 +29,20 @@
  * must change it (the panel still repaints when it should).
  */
 import { describe, expect, it } from 'vitest';
+// node builtins (ambient declarations in i18n-shim.d.ts — tsconfig has
+// `types: []` and @types/node is not a dependency).
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { createSession, HUMAN_PLAYER_ID } from '../src/ui/session';
-import { selectionDigest } from '../src/ui/paletteDigest';
+import { selectionDigest, HUD_PANEL_BRANCHES } from '../src/ui/paletteDigest';
 import { createSelection, selectUnits } from '../src/ui/selection';
 import { getPlayer, type BuildingRecord } from '../src/sim/city';
 import { UPGRADE_GROUPS } from '../src/ui/palettes';
+
+const GAME_DIR = join(dirname(fileURLToPath(import.meta.url)), '..');
+const HUD_SRC = readFileSync(join(GAME_DIR, 'src/ui/hud.ts'), 'utf8');
 
 const NO_SEL = createSelection();
 
@@ -99,11 +108,27 @@ describe('selectionDigest', () => {
     const sel = { unitIds: [], buildingId: lab.id };
     const selected = selectionDigest(world, sel, 'infantry', 'housing');
     expect(selected).not.toBe(base);
-    expect(selected).toContain('bs:lab:1:1');
+    expect(selected).toContain(`bs:lab:${HUMAN_PLAYER_ID}:1:1`);
     lab.operational = false;
     const offline = selectionDigest(world, sel, 'infantry', 'housing');
     expect(offline).not.toBe(selected);
-    expect(offline).toContain('bs:lab:0:1');
+    expect(offline).toContain(`bs:lab:${HUMAN_PLAYER_ID}:0:1`);
+  });
+
+  it('covers the selected building owner (the lab research panel is owner-gated)', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const lab = giveCompletedLab(session);
+    const sel = { unitIds: [], buildingId: lab.id };
+    const owned = selectionDigest(world, sel, 'infantry', 'housing');
+    expect(owned).toContain(`bs:lab:${HUMAN_PLAYER_ID}:1:1`);
+    // An ownership flip (capture, scenario script, debug) toggles the
+    // research panel for the selected lab — the digest must move so the
+    // panel repaints instead of going stale.
+    lab.owner = 2;
+    const enemy = selectionDigest(world, sel, 'infantry', 'housing');
+    expect(enemy).not.toBe(owned);
+    expect(enemy).toContain('bs:lab:2:1:1');
   });
 
   it('changes when button availability flips (funds drained)', () => {
@@ -131,5 +156,110 @@ describe('selectionDigest', () => {
     const researched = selectionDigest(world, NO_SEL, 'infantry', 'housing');
     expect(researched).not.toBe(withLab);
     expect(researched).toContain(`rs:${id}:researched`);
+  });
+});
+
+describe('AD11 digest contract', () => {
+  /**
+   * Representative digest states, keyed by branch id: a state in which
+   * that branch actually renders, so the label-presence check below is
+   * meaningful (a label that never appears in ANY state is dead).
+   */
+  function digestForBranch(branchId: string): string {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    switch (branchId) {
+      case 'selection-units':
+        // Eight selected (all unknown ids) so the overflow segment appears.
+        return selectionDigest(
+          world,
+          selectUnits([90001, 90002, 90003, 90004, 90005, 90006, 90007, 90008]),
+          'infantry',
+          'housing',
+        );
+      case 'selection-building': {
+        const lab = giveCompletedLab(session);
+        return selectionDigest(world, { unitIds: [], buildingId: lab.id }, 'infantry', 'housing');
+      }
+      case 'research-panel':
+        giveCompletedLab(session);
+        return selectionDigest(world, NO_SEL, 'infantry', 'housing');
+      default:
+        return selectionDigest(world, NO_SEL, 'infantry', 'housing');
+    }
+  }
+
+  it('every branch is either digest-covered or documents why it needs no digest', () => {
+    const ids = new Set<string>();
+    for (const branch of HUD_PANEL_BRANCHES) {
+      expect(branch.id.length, 'branch id').toBeGreaterThan(0);
+      expect(ids.has(branch.id), `duplicate branch id ${branch.id}`).toBe(false);
+      ids.add(branch.id);
+      // Exactly one of digestLabels / noDigestReason must be set.
+      const hasLabels = branch.digestLabels.length > 0;
+      const hasReason = (branch.noDigestReason ?? '').length > 0;
+      expect(hasLabels !== hasReason, `${branch.id}: set digestLabels or noDigestReason, not both/neither`).toBe(
+        true,
+      );
+      if (!hasLabels) continue;
+      // Declared coverage must be REAL: every label literally appears in
+      // digest output for a state where the branch renders. A branch that
+      // renders a value the digest ignores fails here instead of shipping
+      // a stale panel (the click bug's cousin).
+      const segs = digestForBranch(branch.id).split('|');
+      for (const label of branch.digestLabels) {
+        expect(
+          segs.some((s) => s.startsWith(label)),
+          `${branch.id}: digest never emits a '${label}' segment — register the rendered value in selectionDigest()`,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it('every hud.ts panel-building method is registered in HUD_PANEL_BRANCHES', () => {
+    const methods = new Set<string>();
+    for (const m of HUD_SRC.matchAll(/^\s*(?:private\s+)?\b((?:append|build|update)[A-Za-z0-9_$]*)\s*\(/gm)) {
+      methods.add(m[1]!);
+    }
+    // Helpers that build no branch of their own.
+    const NON_BRANCH_METHODS = new Set(['update', 'buildTabBar']);
+    const registered = new Set(HUD_PANEL_BRANCHES.map((b) => b.renderedIn));
+    const unregistered = [...methods].filter((m) => !registered.has(m) && !NON_BRANCH_METHODS.has(m));
+    expect(
+      unregistered,
+      `new hud.ts panel method(s) without digest coverage: ${unregistered.join(', ')}. ` +
+        'Register the branch in HUD_PANEL_BRANCHES (game/src/ui/paletteDigest.ts) and add ' +
+        'every value it renders to selectionDigest().',
+    ).toEqual([]);
+  });
+
+  it('every hud.ts panel DOM class is claimed by a registered branch', () => {
+    const found = new Set<string>();
+    const take = (raw: string | undefined): void => {
+      if (raw === undefined) return;
+      const cls = raw.split('${')[0]!.trim();
+      if (cls.length > 0) found.add(cls);
+    };
+    for (const m of HUD_SRC.matchAll(/\bel\(\s*'(?:div|span)'\s*,\s*(?:`([^`]*?)`|'([^']*?)')/g)) {
+      take(m[1] ?? m[2]);
+    }
+    for (const m of HUD_SRC.matchAll(/\.className\s*=\s*(?:`([^`]*?)`|'([^']*?)')/g)) {
+      take(m[1] ?? m[2]);
+    }
+    const claimed = new Set<string>();
+    for (const branch of HUD_PANEL_BRANCHES) {
+      for (const cls of branch.domClasses) claimed.add(cls);
+    }
+    const unclaimed = [...found].filter((c) => !claimed.has(c));
+    expect(
+      unclaimed,
+      `new hud.ts DOM class(es) without a registered digest branch: ${unclaimed.join(', ')}. ` +
+        'Claim them in HUD_PANEL_BRANCHES (game/src/ui/paletteDigest.ts); if the new markup ' +
+        'renders a dynamic value, add a digest segment for it too.',
+    ).toEqual([]);
+    // Reverse direction: a claimed class that no longer exists in hud.ts
+    // is stale registry — fail instead of drifting.
+    const stale = [...claimed].filter((c) => !HUD_SRC.includes(c));
+    expect(stale, `stale HUD_PANEL_BRANCHES.domClasses entries: ${stale.join(', ')}`).toEqual([]);
   });
 });
