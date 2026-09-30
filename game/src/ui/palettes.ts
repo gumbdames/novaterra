@@ -188,6 +188,57 @@ export const BUILD_TABS: readonly BuildTab[] = [
   { id: 'special', kinds: ['monument', 'aegisControl', 'stormArray'] },
 ];
 
+// ---------------------------------------------------------------------------
+// Main menu tabs (workstream Y, 2026-09-30): the bottom-left menu is
+// organized into three tabs — Civilian, Military, Management. Build tabs
+// are assigned whole (the industry tab keeps its military production
+// buildings: they are production infrastructure, built like any factory).
+// ---------------------------------------------------------------------------
+
+/** The three main menu tabs of the bottom-left menu. */
+export type MenuTabId = 'civilian' | 'military' | 'management';
+
+/**
+ * Which main menu tab each build tab lives under. Every BuildTabId
+ * appears here exactly once (tsc enforces it) so no build tab can be
+ * orphaned by the 3-tab restructure.
+ *
+ * - Civilian: zone tools ride along (road / power line / water pipe /
+ *   zones / demolish are civilian infrastructure tools), plus the city
+ *   build tabs.
+ * - Military: unit training lives here (TRAIN_TABS, below), plus the
+ *   military build tabs. `logistics` is military: the missile/ammo/fuel
+ *   supply chain exists to feed the war effort. `navalAir` holds the
+ *   military production buildings (shipyard, naval yard, airfield,
+ *   radar). `special` holds the superweapons (Aegis Control, Storm
+ *   Array); the Monument rides along as the one civilian oddity.
+ */
+export const BUILD_TAB_MENU_TABS: Record<BuildTabId, 'civilian' | 'military'> = {
+  housing: 'civilian',
+  civic: 'civilian',
+  commerce: 'civilian',
+  industry: 'civilian',
+  utilities: 'civilian',
+  power: 'civilian',
+  waterNet: 'civilian',
+  logistics: 'military',
+  navalAir: 'military',
+  special: 'military',
+};
+
+/**
+ * The build tabs rendered under one main menu tab, in BUILD_TABS order.
+ * Generic over the tab record so callers keep their kind types (the
+ * canonical list comes from utilities.ts `allBuildTabs()` so the utility
+ * tabs can never drift out of the menu).
+ */
+export function buildTabsForMenuTab<T extends { id: BuildTabId }>(
+  tabs: ReadonlyArray<T>,
+  menuTab: 'civilian' | 'military',
+): T[] {
+  return tabs.filter((t) => BUILD_TAB_MENU_TABS[t.id] === menuTab);
+}
+
 export type UpgradeGroupId = 'military' | 'economy' | 'infrastructure' | 'logistics';
 
 export interface UpgradeGroup {

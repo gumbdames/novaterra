@@ -426,7 +426,13 @@ export type MenuIconKey =
   | 'back'
   | 'resume'
   | 'save'
-  | 'exit';
+  | 'exit'
+  // Workstream Y (2026-09-30): the three main menu tabs — Civilian,
+  // Military, Management. Hand-drawn in the established style (24×24,
+  // currentColor); always paired with the tab's text label.
+  | 'tabCivilian'
+  | 'tabMilitary'
+  | 'tabManagement';
 
 const MENU_ICONS: Record<MenuIconKey, string> = {
   skirmish:
@@ -445,8 +451,20 @@ const MENU_ICONS: Record<MenuIconKey, string> = {
     '<path d="M9 20.5v-6h6v6"/>',
   exit:
     '<path d="M14 4.5H6v15h8"/><path d="M11 12h10"/><path d="M17.5 8.5 21 12l-3.5 3.5"/>',
-
-
+  // Workstream Y (2026-09-30): the three main menu tabs. Civilian reads
+  // as a house (the city you build); Military as a shield (defense);
+  // Management as the slider bank (rates and policies you tune).
+  tabCivilian:
+    '<path d="M4 11 12 4l8 7"/><rect x="6" y="11" width="12" height="9"/>' +
+    '<path d="M10 20v-4.5h4V20"/>',
+  tabMilitary:
+    '<path d="M12 3l7 2.8v6.1c0 4.8-3.3 7.7-7 9.1-3.7-1.4-7-4.3-7-9.1V5.8Z"/>' +
+    '<path d="M9.5 11.5l2 2 3.5-3.7"/>',
+  tabManagement:
+    '<path d="M4 7h16M4 12h16M4 17h16"/>' +
+    '<circle cx="9" cy="7" r="2.3" fill="currentColor" stroke="none"/>' +
+    '<circle cx="15" cy="12" r="2.3" fill="currentColor" stroke="none"/>' +
+    '<circle cx="8" cy="17" r="2.3" fill="currentColor" stroke="none"/>',
 };
 
 // ---------------------------------------------------------------------------

@@ -20,8 +20,10 @@
  * Responsibilities:
  *  - Compute a cheap string digest of everything the HUD selection panel
  *    renders (see hud.ts `updateSelection`): selection identity, the
- *    active train/build tabs, per-button availability, research states,
- *    and the selected unit/building vitals.
+ *    active main menu tab (workstream Y: Civilian/Military/Management),
+ *    the active train/build tabs, per-button availability, research
+ *    states, the selected unit/building vitals, and the Management tab's
+ *    tax/focus/cabinet values.
  *  - hud.ts rebuilds the panel only when this digest changes. The panel
  *    must stay node-stable across frames: recreating the palette buttons
  *    every sim tick broke real clicks — pointerdown and pointerup landed
@@ -47,12 +49,13 @@
 import type { World } from '../sim/world';
 import type { TerrainData } from '../sim/terrain';
 import { UNIT_DEFS, type UnitKind } from '../sim/units';
-import { BUILDING_DEFS, ZoneType } from '../sim/city';
+import { BUILDING_DEFS, ZoneType, getPlayer } from '../sim/city';
 import {
   buildingLandValue,
   buildingTaxMultiplier,
   getDesirabilityModel,
 } from '../sim/desirability';
+import { getMayor, getGeneral } from '../sim/delegation';
 import type { Selection } from './selection';
 import {
   TRAIN_TABS,
@@ -61,6 +64,7 @@ import {
   buildingAvailability,
   upgradeAvailability,
   playerHasCompletedLab,
+  type MenuTabId,
 } from './palettes';
 import { HUMAN_PLAYER_ID } from './session';
 import {
@@ -96,12 +100,19 @@ export function selectionDigest(
   trainTab: string,
   buildTab: string,
   terrain?: TerrainData,
+  // Workstream Y (3-tab menu): which main menu tab is active. The tab
+  // bar is part of the panel, so the digest must move on a tab switch
+  // (paletteDirty also forces it, but the digest is the rebuild key —
+  // a branch that renders a value must digest it). Optional so existing
+  // callers/tests keep compiling; defaults to the pre-restructure menu.
+  menuTab: MenuTabId = 'civilian',
 ): string {
   const parts: string[] = [
     `u:${selection.unitIds.join(',')}`,
     `b:${selection.buildingId}`,
     `tt:${trainTab}`,
     `bt:${buildTab}`,
+    `mt:${menuTab}`,
   ];
   if (selection.unitIds.length > 0) {
     // Unit vitals (hp%) are the only per-tick mover in this branch.
@@ -192,6 +203,24 @@ export function selectionDigest(
         ? utilityBuildingAvailability(world, HUMAN_PLAYER_ID, kind).ok
         : buildingAvailability(world, HUMAN_PLAYER_ID, kind as BuildingKind).ok;
       parts.push(`ba:${kind}:${ok ? 1 : 0}`);
+    }
+    // Workstream Y (3-tab menu): the Management tab renders the tax
+    // rates, the city-focus status, and the cabinet (mayor/general)
+    // status — all dynamic values the panel shows, so the digest must
+    // carry them. Emitted only when the Management content actually
+    // renders (no selection: a unit/building selection replaces the tab
+    // content, exactly like the palettes).
+    if (menuTab === 'management') {
+      const player = getPlayer(world.city, HUMAN_PLAYER_ID);
+      const rates = player?.taxRates ?? [0, 0, 0];
+      parts.push(`tx:${rates.map((r) => r.toFixed(2)).join(',')}`);
+      parts.push(`ms:${player?.specialization ?? 'balanced'}`);
+      const mayor = getMayor(world, HUMAN_PLAYER_ID);
+      parts.push(`mg:m:${mayor !== undefined ? `${mayor.policy}:${mayor.buildPolicy}` : 'x'}`);
+      const general = getGeneral(world, HUMAN_PLAYER_ID);
+      parts.push(
+        `mg:g:${general !== undefined ? `${general.stance}:${general.unitIds.length}` : 'x'}`,
+      );
     }
   }
   // The research panel is listed whenever the player owns a completed
@@ -308,7 +337,9 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     id: 'selection-empty',
     renderedIn: 'updateSelection',
     domClasses: ['hud-selection', 'sel-empty'],
-    digestLabels: ['u:', 'b:', 'tt:', 'bt:'],
+    // mt: the workstream-Y main menu tab (Civilian/Military/Management) —
+    // the tab bar is part of the panel, so a tab switch must rebuild.
+    digestLabels: ['u:', 'b:', 'tt:', 'bt:', 'mt:'],
   },
   {
     id: 'selection-units',
@@ -367,7 +398,7 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
   },
   {
     id: 'tools-row',
-    renderedIn: 'appendBuildPanel',
+    renderedIn: 'appendCivilianPanel',
     domClasses: [
       'palette-tools',
       'palette-zones',
@@ -377,8 +408,58 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     ],
     digestLabels: [],
     noDigestReason:
-      'Static tool buttons (road/zones/demolish) and the static "Zoning" ' +
-      'section header: labels and icons never change at runtime.',
+      'Static tool buttons (road/networks/zones/demolish) and the static ' +
+      'section headers: labels and icons never change at runtime.',
+  },
+  {
+    id: 'menu-tabs',
+    renderedIn: 'buildMenuTabBar',
+    domClasses: ['menu-tabs', 'menu-tab'],
+    // mt: the active main tab — the bar highlights it, so the digest
+    // must move on a tab switch.
+    digestLabels: ['mt:'],
+  },
+  {
+    id: 'military-panel',
+    renderedIn: 'appendMilitaryPanel',
+    // panel-section / panel-section-title: the Orders and Superweapons
+    // section wrappers; order-hint: the static attack/move/stop help
+    // lines. The train/build palettes embedded here are digest-covered
+    // by their own branches.
+    domClasses: [
+      'panel-section',
+      'panel-section-title',
+      'panel-row',
+      'panel-label',
+      'panel-btn',
+      'panel-status',
+      'order-hint',
+    ],
+    digestLabels: [],
+    noDigestReason:
+      'Static section chrome: orders hints, superweapon button labels ' +
+      'and section titles never change at runtime (a click either fires ' +
+      'or the sim rejects loudly). The embedded train/build palettes are ' +
+      'digest-covered by the train-palette / build-palette branches.',
+  },
+  {
+    id: 'management-panel',
+    renderedIn: 'appendManagementPanel',
+    // panel-*: the Taxes / City focus / Cabinet section chrome;
+    // tax-rate: the per-zone rate value in the tax rows.
+    domClasses: [
+      'panel-section',
+      'panel-section-title',
+      'panel-row',
+      'panel-label',
+      'panel-btn',
+      'panel-status',
+      'tax-rate',
+    ],
+    // tx: the three tax rates (the tax rows render them as percents);
+    // ms: the city-focus status (the active button highlights);
+    // mg: the mayor/general status lines (policy/stance/unit count).
+    digestLabels: ['tx:', 'ms:', 'mg:'],
   },
   {
     id: 'research-panel',
@@ -396,21 +477,6 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'research-btn',
     ],
     digestLabels: ['lab:', 'rs:'],
-  },
-  {
-    id: 'phase3-panel',
-    renderedIn: 'buildPhase3Panel',
-    domClasses: [
-      'hud-phase3',
-      'hud-panel-title',
-      'hud-phase3-row',
-      'hud-label',
-      'hud-btn',
-      'hud-btn small',
-    ],
-    digestLabels: [],
-    noDigestReason:
-      'Built once in the constructor; every button is static (labels never change, no dynamic values).',
   },
   {
     id: 'toast',

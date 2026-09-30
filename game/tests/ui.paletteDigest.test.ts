@@ -211,6 +211,70 @@ describe('selectionDigest', () => {
     expect(researched).not.toBe(withLab);
     expect(researched).toContain(`rs:${id}:researched`);
   });
+
+  it('changes when the main menu tab changes (workstream Y)', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const civilian = selectionDigest(world, NO_SEL, 'infantry', 'housing');
+    expect(civilian).toContain('mt:civilian');
+    const military = selectionDigest(world, NO_SEL, 'infantry', 'housing', undefined, 'military');
+    expect(military).not.toBe(civilian);
+    expect(military).toContain('mt:military');
+    const management = selectionDigest(world, NO_SEL, 'infantry', 'housing', undefined, 'management');
+    expect(management).not.toBe(civilian);
+    expect(management).toContain('mt:management');
+    // The Management tab's values are digested only under that tab.
+    expect(civilian).not.toContain('tx:');
+    expect(management).toContain('tx:');
+    expect(management).toContain('ms:');
+    expect(management).toContain('mg:');
+  });
+
+  it('tracks the Management tab values: taxes, focus, cabinet (workstream Y)', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const digest = (): string =>
+      selectionDigest(world, NO_SEL, 'infantry', 'housing', undefined, 'management');
+    const base = digest();
+    expect(base).toContain('tx:0.10,0.10,0.10');
+    expect(base).toContain('ms:balanced');
+    expect(base).toContain('mg:m:x');
+    expect(base).toContain('mg:g:x');
+    // A tax change repaints the tax rows.
+    const player = getPlayer(world.city, HUMAN_PLAYER_ID)!;
+    player.taxRates[1] = 0.25;
+    const taxed = digest();
+    expect(taxed).not.toBe(base);
+    expect(taxed).toContain('tx:0.10,0.25,0.10');
+    // A new city focus repaints the focus row's active button.
+    player.specialization = 'industrial';
+    const focused = digest();
+    expect(focused).not.toBe(taxed);
+    expect(focused).toContain('ms:industrial');
+    // Appointing a mayor repaints the cabinet status line.
+    world.delegation.mayors.push({
+      owner: HUMAN_PLAYER_ID,
+      policy: 'growth',
+      buildPolicy: 'housing',
+    });
+    const mayoral = digest();
+    expect(mayoral).not.toBe(focused);
+    expect(mayoral).toContain('mg:m:growth:housing');
+    // Appointing a general repaints the cabinet status line.
+    world.delegation.generals.push({
+      owner: HUMAN_PLAYER_ID,
+      unitIds: [1, 2, 3],
+      stance: 'defensive',
+    });
+    const generaled = digest();
+    expect(generaled).not.toBe(mayoral);
+    expect(generaled).toContain('mg:g:defensive:3');
+    // The same values under another tab don't move the digest — the
+    // Management content isn't rendered there, so nothing can go stale.
+    const civilianBefore = selectionDigest(world, NO_SEL, 'infantry', 'housing');
+    player.taxRates[0] = 0.5;
+    expect(selectionDigest(world, NO_SEL, 'infantry', 'housing')).toBe(civilianBefore);
+  });
 });
 
 describe('AD11 digest contract', () => {
@@ -244,6 +308,11 @@ describe('AD11 digest contract', () => {
       case 'research-panel':
         giveCompletedLab(session);
         return selectionDigest(world, NO_SEL, 'infantry', 'housing');
+      case 'management-panel':
+        // Workstream Y (3-tab menu): the Management tab renders the tax
+        // rates, the city-focus status and the cabinet status — the
+        // representative state selects that tab.
+        return selectionDigest(world, NO_SEL, 'infantry', 'housing', undefined, 'management');
       default:
         return selectionDigest(world, NO_SEL, 'infantry', 'housing');
     }

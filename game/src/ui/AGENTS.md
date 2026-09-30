@@ -52,12 +52,26 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   when its content digest (`ui/paletteDigest.ts`) changes, so palette
   button nodes stay stable across frames (recreating them every sim tick
   broke real clicks: pointerdown + pointerup landed on different nodes and
-  no click event ever fired). TRAIN palette has 4 tabs (Infantry / Armor / Air / Navy),
+  no click event ever fired). The bottom-left menu (workstream Y,
+  2026-09-30) is three main tabs headed by a `menu-tabs` bar:
+  **Civilian** (tools row + Housing / Civic / Commerce / Industry /
+  Utilities / Power / Water build tabs), **Military** (unit-orders hints
+  + TRAIN palette's 4 tabs + Logistics / Naval-Air / Special build tabs +
+  superweapons), **Management** (tax steppers + city focus + cabinet +
+  research panel). `menuTab` state is remembered per tab, and so is the
+  build tab per main tab. Selecting a unit/building replaces the tab
+  content with the contextual branch (as before). TRAIN palette has 4 tabs (Infantry / Armor / Air / Navy),
   BUILD palette has 10 tabs (Housing / Civic / Commerce / Industry /
   Utilities / Power / Water / Naval & Air / Special / Logistics) — the spec groupings
   plus the Workstream Z civic tab (education buildings), plus the Phase 2
   utility tabs (the 13 new power/water buildings), plus the Phase 3
   logistics tab (the 7 new fuel/ammo production + depot buildings), see `palettes.ts`.
+  The 10 build tabs are classified whole-tab into the menu via
+  `BUILD_TAB_MENU_TABS` in `palettes.ts` (tsc-enforced exhaustive:
+  Civilian = housing/civic/commerce/industry/utilities/power/waterNet,
+  Military = logistics/navalAir/special) and served through
+  `buildTabsForMenuTab()`; the tools row (road, powerLine, waterPipe,
+  zones, demolish) is a Civilian-only element now, not a build tab.
   Unavailable entries stay visible but disabled, with tooltip reasons
   (age, production building, cost, manpower, Naval Yard coast rule).
   Train buttons show funds + materials + manpower cost; build buttons
@@ -108,9 +122,14 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   branches — a branch that renders a value must digest it.
   Also exports `HUD_PANEL_BRANCHES`, the AD11 UI digest contract registry:
   every hud.ts panel branch (topbar, advisor, selection empty/units/
-  building, train/build palettes, tools row, research panel, phase3
-  panel, toast) with the digest segments it contributes (or a
-  `noDigestReason` when it is static / never rebuilt / keyed separately).
+  building, train/build palettes, tools row, research panel, menu-tabs,
+  military-panel, management-panel, toast) with the digest segments it
+  contributes (or a `noDigestReason` when it is static / never rebuilt /
+  keyed separately). Workstream Y (2026-09-30) replaced the
+  `phase3-panel` branch with the three menu branches; the digest gained
+  an always-present `mt:` (active main tab) segment plus `tx:`
+  (tax rates), `ms:` (city focus) and `mg:` (cabinet) segments that only
+  appear while the Management tab renders them.
   The contract test asserts each declared label really appears in digest
   output and scans hud.ts for unregistered panel methods / DOM classes —
   see "Adding a HUD panel" below.
@@ -227,7 +246,8 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   waterPipe tools); `mapIcon(waterFraction)` for the
   8 map presets (5 terrain buckets); `difficultyIcon` (1–5 rank
   chevrons); `menuIcon` for skirmish/load/missions/settings/back/
-  resume/save/exit. 24×24 viewBox, `stroke="currentColor"` so button
+  resume/save/exit plus the three main-tab icons (tabCivilian /
+  tabMilitary / tabManagement, workstream Y). 24×24 viewBox, `stroke="currentColor"` so button
   CSS (including locked dimming) drives the color. Decision record:
   `docs/research/ui-icons.md`.
 - `session.ts` also assembles campaign missions:
@@ -292,6 +312,12 @@ The test enforces all three: any `append*/build*/update*` method or
 suite, and each declared `digestLabels` entry must literally appear in
 digest output for a representative state. (The advisor panel's key was
 extended to severity+title+detail on 2026-09-30 so it cannot go stale.)
+Sub-section helpers must not look like panel branches: keep them out of
+the `append*/build*/update*` name pattern (workstream Y uses
+`taxSectionEl` / `focusSectionEl` / `cabinetSectionEl`), or register
+each one. When a branch renders only under a state the default
+`digestForBranch` helper does not produce (e.g. the Management tab's
+`menuTab='management'`), add a case for it in the helper.
 
 ## Adding a linear-network kind (Phase 2/4)
 

@@ -111,6 +111,7 @@ import {
   buildSetMayorBuildPolicyOrder,
   buildSetGeneralStanceOrder,
   buildSetSpecializationOrder,
+  buildSetTaxRateOrder,
   buildStopOrders,
   buildZoneOrder,
   buildResearchUpgradeOrder,
@@ -633,6 +634,9 @@ class GameController {
       onDismissGeneral: () => this.issueOrder(buildDismissGeneralOrder(HUMAN_PLAYER_ID)),
       onSetGeneralStance: (stance) =>
         this.issueOrder(buildSetGeneralStanceOrder(HUMAN_PLAYER_ID, stance)),
+      // Workstream Y (3-tab menu): taxes live in the Management tab.
+      onSetTaxRate: (zone, rate) =>
+        this.issueOrder(buildSetTaxRateOrder(HUMAN_PLAYER_ID, zone, rate)),
     });
     this.pauseMenu = new PauseMenu(container, {
       onStartSkirmish: () => undefined,

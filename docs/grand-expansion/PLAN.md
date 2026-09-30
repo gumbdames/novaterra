@@ -682,7 +682,15 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   proven environmental — Phase 2 baseline 5/5, current HEAD 5/5 ×2,
   failures move between runs), tsc clean, build clean + license stamps.
   Queued follow-ups (separate briefs, not Phase 3 scope): X (menu demo
-  director), Y (3-tab menu), V (camera controls), P (ambient city life).
+  director), V (camera controls), P (ambient city life). Y (3-tab menu)
+  LANDED 2026-09-30 (0.1 Alpha): bottom-left menu is Civilian /
+  Military / Management tabs — Civilian owns the tools row + the 7
+  civilian build tabs, Military owns the train palette + orders hints +
+  the 3 military build tabs + superweapons, Management owns tax
+  steppers (new UI over the existing setTaxRate order) + city focus +
+  cabinet status + research; every pre-existing control kept a home
+  (pinned by game/tests/ui.menuTabs.test.ts), digest gained mt:/tx:/ms:/
+  mg: segments, full suite green, tsc/build clean.
   W (desirability/land value/migration, library + park) LANDED
   2026-09-30 (0.1 Alpha): derived per-residential-cell 0–100 model
   (elevation/water/pollution/amenities), land-value tax tiers

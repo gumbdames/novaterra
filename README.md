@@ -11,8 +11,9 @@ land, sea and air — or play a fully peaceful game with war disabled.
 - **Play:** https://gumbdames.github.io/novaterra/ (deploys from `main`)
 - **Status:** the grand expansion is underway. Phases 0–3 complete and live,
   plus the desirability/migration workstream (land value, migration,
-  library + park); follow-ups queued (ambient city life, menu polish,
-  camera). See the live plan:
+  library + park) and the 3-tab menu restructure (Civilian / Military /
+  Management bottom-left menu); follow-ups queued (ambient city life,
+  menu polish, camera). See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
 ## What the game has today (0.1 Alpha)

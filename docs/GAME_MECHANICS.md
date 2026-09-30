@@ -444,9 +444,11 @@ output, −10% other zones), **Commercial** (+25% shops), **Residential**
 (+25% homes), or **Balanced** (no bonus, no penalty). Utility buildings
 are unaffected.
 
-**Trade routes**: establish routes with other players (500 funds setup).
-Each active route pays 3 funds/sec — but only while both you and your
-partner have working commercial buildings. Cancel anytime.
+**Trade routes**: the sim commands exist (establish for 500 funds
+setup; each active route pays 3 funds/sec — but only while both you
+and your partner have working commercial buildings; cancel anytime),
+but 0.1 Alpha has no menu surface for them yet — routes cannot be
+established from the menu in this version.
 
 ## Phase 3: Logistics (fuel and ammo)
 

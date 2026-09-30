@@ -150,6 +150,10 @@ describe('menu icons', () => {
       'resume',
       'save',
       'exit',
+      // Workstream Y (3-tab menu): the Civilian/Military/Management tabs.
+      'tabCivilian',
+      'tabMilitary',
+      'tabManagement',
     ];
     for (const key of keys) {
       expectValidIcon(menuIcon(key));

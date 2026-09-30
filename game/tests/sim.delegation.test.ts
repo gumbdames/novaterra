@@ -276,6 +276,58 @@ describe('sim/delegation — generals', () => {
   });
 });
 
+describe('sim/delegation — setTaxRate', () => {
+  it('sets one zone rate and leaves the others', () => {
+    const ctx = setup();
+    enqueue(ctx, [{ kind: 'setTaxRate', payload: { owner: 0, zone: 1, rate: 0.25 } }]);
+    runTicks(ctx, 2);
+    expect(taxRates(ctx)).toEqual([0.1, 0.25, 0.1]);
+  });
+
+  it('rejects bad zones and rates', () => {
+    const ctx = setup();
+    for (const payload of [
+      { owner: 0, zone: 3, rate: 0.2 },
+      { owner: 0, zone: 1, rate: -0.1 },
+      { owner: 0, zone: 1, rate: 1.5 },
+      { owner: 0, zone: 1, rate: 'high' },
+    ]) {
+      expect(() => enqueue(ctx, [{ kind: 'setTaxRate', payload }])).toThrow(
+        CommandRejectedError,
+      );
+    }
+    expect(taxRates(ctx)).toEqual([0.1, 0.1, 0.1]);
+  });
+
+  it('applies even while a mayor holds office (the mayor system resets it next economy tick)', () => {
+    const ctx = setup();
+    enqueue(ctx, [{ kind: 'assignMayor', payload: { owner: 0, policy: 'growth' } }]);
+    runTicks(ctx, 1);
+    expect(getMayor(ctx.world, 0)?.policy).toBe('growth');
+    // The Management tab disables the tax steppers while a mayor holds
+    // office; the command itself stays permissive and the mayor system
+    // overwrites the manual rate at the next economy tick (30 ticks).
+    enqueue(ctx, [{ kind: 'setTaxRate', payload: { owner: 0, zone: 0, rate: 0.5 } }]);
+    runTicks(ctx, 2);
+    expect(taxRates(ctx)[0]).toBe(0.5);
+    runTicks(ctx, 30);
+    expect(taxRates(ctx)).toEqual([...MAYOR_POLICY_RATES.growth]);
+  });
+
+  it('is deterministic across identical runs', () => {
+    const run = (): [number, number, number] => {
+      const ctx = setup(777001);
+      enqueue(ctx, [
+        { kind: 'setTaxRate', payload: { owner: 0, zone: 0, rate: 0.2 } },
+        { kind: 'setTaxRate', payload: { owner: 0, zone: 2, rate: 0.3 } },
+      ]);
+      runTicks(ctx, 40);
+      return taxRates(ctx);
+    };
+    expect(run()).toEqual(run());
+  });
+});
+
 describe('sim/delegation — determinism', () => {
   it('same commands, same digest (mayor + general)', () => {
     const run = (): number => {

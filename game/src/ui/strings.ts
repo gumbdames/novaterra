@@ -602,6 +602,39 @@ export const STRINGS = {
     resResearch: { en: 'research' },
     hpLabel: { en: 'HP' },
   },
+  /** Workstream Y (2026-09-30): the three main menu tabs. English-only. */
+  menuTabs: {
+    civilian: { en: 'Civilian' },
+    military: { en: 'Military' },
+    management: { en: 'Management' },
+    /** Military tab: the unit-orders help block. */
+    ordersTitle: { en: 'Orders' },
+    attackHint: { en: 'Attack — right-click an enemy unit' },
+    moveHint: { en: 'Move — right-click open ground' },
+    stopHint: { en: 'Stop — select units, then S or the Stop button' },
+    /** Military tab: superweapons live here now (was the Command panel). */
+    superTitle: { en: 'Superweapons' },
+    fireAegis: { en: 'Fire Aegis' },
+    aegisTitle: { en: 'Raise the Aegis shield (Ascendance + Aegis Control)' },
+    stormTarget: { en: 'Storm Target' },
+    stormTitle: { en: 'Enter Storm targeting mode, then click the map (Ascendance + Storm Array)' },
+    /** Management tab: taxes. */
+    taxesTitle: { en: 'Taxes' },
+    taxZoneNames: {
+      0: { en: 'Homes' },
+      1: { en: 'Shops' },
+      2: { en: 'Industry' },
+    },
+    mayorSetsRates: { en: 'Mayor sets the rates ({policy})' },
+    /** Management tab: city specialization (was the Command panel). */
+    focusTitle: { en: 'City focus' },
+    /** Management tab: the cabinet — mayor + general (was the Command panel). */
+    cabinetTitle: { en: 'Cabinet' },
+    noMayor: { en: 'No mayor appointed' },
+    noGeneral: { en: 'No general appointed' },
+    dismissVerb: { en: 'Dismiss' },
+    mayorBuildsLabel: { en: 'Mayor builds:' },
+  },
 } as const;
 
 export type Strings = typeof STRINGS;

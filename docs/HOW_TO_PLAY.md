@@ -173,14 +173,25 @@ Using any cheat marks the save as **cheated** (shown in the load list).
 
 ## Phase 3 controls
 
-**Command panel** (bottom of HUD): fire **Aegis**, enter **Storm
-targeting** (then click the map), set city **Focus** (specialization),
-appoint/dismiss **Mayor** (pick a tax policy), set **Mayor builds**
-(housing/industry/balanced auto-construction), appoint/dismiss
-**General** (select units first, pick a stance).
+The bottom-left menu has three tabs:
 
-Trade routes: established from the command panel — pick a partner
-player. Routes pay only while both sides have working shops.
+- **Civilian** — road / power-line / water-pipe / zoning / demolish
+  tools plus the Housing, Civic, Commerce, Industry, Utilities, Power
+  and Water build tabs (all peaceful city building lives here).
+- **Military** — unit **orders** (right-click to attack/move, **S** to
+  stop), the **train** palette, the Logistics / Naval-Air / Special
+  build tabs, and the **superweapons**: fire **Aegis**, enter **Storm
+  targeting** (then click the map).
+- **Management** — set **tax rates** per zone (0–50%; disabled while a
+  mayor holds office — the mayor resets them each month), set the
+  **city focus** (specialization), appoint/dismiss your **Mayor** (tax
+  policy + housing/industry/balanced auto-construction) and **General**
+  (select units first, then pick a stance), and **research** upgrades
+  once you own a completed lab.
+
+Trade routes: the sim commands exist but 0.1 Alpha has no menu surface
+for them yet — routes cannot be established from the menu in this
+version.
 
 ## Keyboard shortcuts
 

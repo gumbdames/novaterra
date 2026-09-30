@@ -23,19 +23,24 @@
  *    menu button.
  *  - Advisor panel: worst problems first (from ui/advisor.ts), or the
  *    all-clear line when nothing is wrong.
- *  - Selection panel: what is selected + contextual actions (Stop; tabbed
- *    Train/Build palettes when nothing is selected).
- *  - Train palette: 4 tabs (spec §8) for the 28 units; production-gated
+ *  - Selection panel: what is selected + contextual actions (Stop; the
+ *    3-tab menu when nothing is selected — workstream Y).
+ *  - Main menu tabs (bottom-left, workstream Y): Civilian (zone/network
+ *    tools + the civilian build tabs), Military (the tabbed train
+ *    palette, unit orders, the military build tabs, superweapons),
+ *    Management (taxes, city focus, the mayor/general cabinet, the
+ *    research panel).
+ *  - Train palette: 4 tabs (spec §8) for the 30 units; production-gated
  *    units show greyed with the required building named; costs show
  *    funds + materials + manpower.
- *  - Build palette: tool row (road/zones/demolish, with a "Zoning"
- *    section header) + 7 tabs (spec §8 + the civic tab) for the 30
- *    buildings; unaffordable buildings grey out; navalYard's coast
- *    rule is surfaced in its tooltip.
- *  - Research panel: at a completed Research Lab (or listed in the HUD
- *    when the player owns one), the 12 upgrades with funds + research
- *    cost, prerequisites and one-line effect; unavailable upgrades grey
- *    out with reasons.
+ *  - Build palette: 10 tabs (spec §8 + the civic tab + Phase 2 utility
+ *    tabs + the Phase 3 logistics tab) for the 55 buildings, split
+ *    across the Civilian and Military main tabs; unaffordable buildings
+ *    grey out; navalYard's coast rule is surfaced in its tooltip.
+ *  - Research panel: at a completed Research Lab (or in the Management
+ *    tab when the player owns one), the 19 upgrades with funds +
+ *    research cost, prerequisites and one-line effect; unavailable
+ *    upgrades grey out with reasons.
  *  - Toasts: one-line feedback for rejected orders and confirmations.
  *  - `update()` is called every frame but only touches the DOM when a
  *    displayed value actually changed (cheap text updates otherwise).
@@ -78,16 +83,21 @@ import {
   formatResearchCost,
   trainTooltip,
   buildTooltip,
+  buildTabsForMenuTab,
   type TrainTabId,
   type BuildTabId,
+  type MenuTabId,
 } from './palettes';
 import {
   unitIcon,
   buildingIcon,
   toolIcon,
+  menuIcon,
   type PaletteToolIcon,
+  type MenuIconKey,
 } from './icons';
 import { HUMAN_PLAYER_ID } from './session';
+import { getMayor, getGeneral } from '../sim/delegation';
 import { selectionDigest as paletteDigest } from './paletteDigest';
 import {
   allBuildTabs,
@@ -179,6 +189,8 @@ export interface HUDActions {
   onDismissGeneral(): void;
   /** Phase 3: change general stance. */
   onSetGeneralStance(stance: string): void;
+  /** Workstream Y: set one zone's tax rate (Management tab). */
+  onSetTaxRate(zone: 0 | 1 | 2, rate: number): void;
   /** Roster expansion: research an upgrade (from the research panel). */
   onResearchUpgrade(upgradeId: UpgradeId): void;
 }
@@ -244,14 +256,27 @@ export class HUD {
   private readonly advisorPanel: HTMLElement;
   private readonly advisorList: HTMLElement;
   private readonly selectionPanel: HTMLElement;
-  private readonly phase3Panel: HTMLElement;
   private readonly toastEl: HTMLElement;
   private toastTimer = 0;
   private lastText = new Map<string, string>();
   private lastAdvisorKey = '';
+  /**
+   * Workstream Y (3-tab menu): which main menu tab is active. The build
+   * tab is remembered per main tab so flipping between Civilian and
+   * Military doesn't lose your place in either palette.
+   */
+  private menuTab: MenuTabId = 'civilian';
+  private civilianBuildTab: BuildTabId | UtilityBuildTabId = 'housing';
+  private militaryBuildTab: BuildTabId | UtilityBuildTabId = 'navalAir';
+  private get buildTab(): BuildTabId | UtilityBuildTabId {
+    return this.menuTab === 'military' ? this.militaryBuildTab : this.civilianBuildTab;
+  }
+  private set buildTab(id: BuildTabId | UtilityBuildTabId) {
+    if (this.menuTab === 'military') this.militaryBuildTab = id;
+    else this.civilianBuildTab = id;
+  }
   /** Active palette tabs (persist across the per-tick panel rebuilds). */
   private trainTab: TrainTabId = 'infantry';
-  private buildTab: BuildTabId | UtilityBuildTabId = 'housing';
   /**
    * Set by tab switches / research clicks so the selection panel rebuilds
    * even when the sim tick hasn't advanced (e.g. while paused).
@@ -377,11 +402,6 @@ export class HUD {
     this.selectionPanel = el('div', 'hud-selection');
     hud.append(this.selectionPanel);
 
-    // ---- Phase 3: command, superweapons, city ----
-    this.phase3Panel = el('div', 'hud-phase3');
-    this.buildPhase3Panel();
-    hud.append(this.phase3Panel);
-
     // ---- toast ----
     this.toastEl = el('div', 'hud-toast');
     this.toastEl.id = 'hud-toast';
@@ -390,84 +410,332 @@ export class HUD {
     root.append(hud);
   }
 
-  /** Phase 3 panel: superweapons, specialization, trade, delegation. */
-  private buildPhase3Panel(): void {
-    const panel = this.phase3Panel;
-    panel.append(el('div', 'hud-panel-title', 'Command'));
+  /**
+   * Workstream Y (3-tab menu): the main tab bar at the top of the
+   * selection panel — Civilian / Military / Management, icon AND text
+   * (user directive 2026-09-30). Registered in HUD_PANEL_BRANCHES as
+   * 'menu-tabs' (digest label mt:).
+   */
+  private buildMenuTabBar(): HTMLElement {
+    const bar = el('div', 'menu-tabs');
+    const tabs: Array<{ id: MenuTabId; icon: MenuIconKey }> = [
+      { id: 'civilian', icon: 'tabCivilian' },
+      { id: 'military', icon: 'tabMilitary' },
+      { id: 'management', icon: 'tabManagement' },
+    ];
+    for (const { id, icon } of tabs) {
+      const b = document.createElement('button');
+      b.className = `menu-tab${this.menuTab === id ? ' active' : ''}`;
+      b.prepend(iconSpan(menuIcon(icon)));
+      b.append(el('span', 'palette-label', loc(STRINGS.menuTabs[id])));
+      b.setAttribute('aria-pressed', this.menuTab === id ? 'true' : 'false');
+      b.addEventListener('click', () => {
+        this.menuTab = id;
+        // Tab switches must repaint even while paused (no tick advance).
+        this.paletteDirty = true;
+      });
+      bar.append(b);
+    }
+    return bar;
+  }
 
-    // Superweapons.
-    const swRow = el('div', 'hud-phase3-row');
-    const aegisBtn = document.createElement('button');
-    aegisBtn.className = 'hud-btn';
-    aegisBtn.textContent = 'Fire Aegis';
-    aegisBtn.title = 'Raise the Aegis shield (Ascendance + Aegis Control)';
-    aegisBtn.addEventListener('click', () => this.actions.onFireAegis());
-    swRow.append(aegisBtn);
-    const stormBtn = document.createElement('button');
-    stormBtn.className = 'hud-btn';
-    stormBtn.textContent = 'Storm Target';
-    stormBtn.title = 'Enter Storm targeting mode, then click the map (Ascendance + Storm Array)';
-    stormBtn.addEventListener('click', () => this.actions.onStormTarget());
-    swRow.append(stormBtn);
-    panel.append(swRow);
+  /**
+   * One labeled section inside the Military/Management panels
+   * (panel-section/panel-row/panel-btn classes, claimed by the
+   * military-panel / management-panel digest branches).
+   */
+  private makeSection(title: string): HTMLElement {
+    const sec = el('div', 'panel-section');
+    sec.append(el('div', 'panel-section-title', title));
+    return sec;
+  }
 
-    // Specialization.
-    const specRow = el('div', 'hud-phase3-row');
-    specRow.append(el('span', 'hud-label', 'Focus:'));
+  /** A small labeled button for the Military/Management panels. */
+  private makePanelButton(
+    label: string,
+    title: string,
+    onClick: () => void,
+    opts: { active?: boolean; disabled?: boolean } = {},
+  ): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.className = `panel-btn${opts.active === true ? ' active' : ''}`;
+    b.textContent = label;
+    b.title = title;
+    if (opts.disabled === true) b.disabled = true;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  /**
+   * Civilian main tab: the build tools row (road / power line / water
+   * pipe / zone R-C-I / demolish) plus the civilian build tabs. The
+   * tools live here because they are civilian infrastructure tools.
+   */
+  private appendCivilianPanel(panel: HTMLElement, world: World): void {
+    const p = STRINGS.palettes;
+    const toolsRow = el('div', 'palette-tools');
+    const makeToolButton = (
+      tool: BuildTool,
+      label: string,
+      icon: PaletteToolIcon,
+    ): HTMLButtonElement => {
+      const b = document.createElement('button');
+      b.className = 'build-btn';
+      b.prepend(iconSpan(toolIcon(icon)));
+      b.append(el('span', 'palette-label', label));
+      b.addEventListener('click', () => this.actions.onBuildTool(tool));
+      return b;
+    };
+    toolsRow.append(makeToolButton('road', loc(p.toolRoad), 'road'));
+    // Phase 2 (utilities): the drag-paint network tools sit together in a
+    // "Networks" group, next to the road tool they share a gesture with.
+    const netGroup = el('div', 'palette-zones');
+    netGroup.append(el('div', 'palette-section-title', loc(p.toolSectionNetworks)));
+    const netTools = [
+      { tool: 'powerLine', label: loc(p.toolPowerLine), icon: 'powerLine' },
+      { tool: 'waterPipe', label: loc(p.toolWaterPipe), icon: 'waterPipe' },
+    ] as const;
+    for (const { tool, label, icon } of netTools) {
+      netGroup.append(makeToolButton(tool, label, icon));
+    }
+    toolsRow.append(netGroup);
+    // Workstream Z: the three zone tools are grouped under a small
+    // "Zoning" section header so their purpose is obvious at a glance.
+    const zoneGroup = el('div', 'palette-zones');
+    zoneGroup.append(el('div', 'palette-section-title', loc(p.toolSectionZoning)));
+    const zoneTools = [
+      { tool: 'zoneR', label: loc(p.toolZoneR), icon: 'zoneR' },
+      { tool: 'zoneC', label: loc(p.toolZoneC), icon: 'zoneC' },
+      { tool: 'zoneI', label: loc(p.toolZoneI), icon: 'zoneI' },
+    ] as const;
+    for (const { tool, label, icon } of zoneTools) {
+      zoneGroup.append(makeToolButton(tool, label, icon));
+    }
+    toolsRow.append(zoneGroup);
+    toolsRow.append(makeToolButton('demolish', loc(p.toolDemolish), 'demolish'));
+    panel.append(toolsRow);
+    const tabs = buildTabsForMenuTab(allBuildTabs(), 'civilian');
+    this.appendBuildPanel(panel, world, tabs);
+  }
+
+  /**
+   * Military main tab: unit orders help, the tabbed train palette, the
+   * military build tabs, and the superweapons (moved here from the old
+   * Phase 3 "Command" panel — nothing lost, just rehomed).
+   */
+  private appendMilitaryPanel(panel: HTMLElement, world: World): void {
+    const m = STRINGS.menuTabs;
+    // Unit orders: the existing commands. Attack/move are right-click
+    // map gestures (game.ts issueContextOrder); Stop is the selection
+    // panel button / the S key. No per-unit "defend" command exists in
+    // the sim — the orders block says what the game actually has.
+    const orders = this.makeSection(loc(m.ordersTitle));
+    const orderRow = el('div', 'panel-row');
+    orderRow.append(el('div', 'order-hint', `⚔ ${loc(m.attackHint)}`));
+    orderRow.append(el('div', 'order-hint', `➤ ${loc(m.moveHint)}`));
+    orderRow.append(el('div', 'order-hint', `■ ${loc(m.stopHint)}`));
+    orders.append(orderRow);
+    panel.append(orders);
+
+    this.appendTrainPanel(panel, world);
+    const tabs = buildTabsForMenuTab(allBuildTabs(), 'military');
+    this.appendBuildPanel(panel, world, tabs);
+
+    const sw = this.makeSection(loc(m.superTitle));
+    const swRow = el('div', 'panel-row');
+    swRow.append(
+      this.makePanelButton(loc(m.fireAegis), loc(m.aegisTitle), () =>
+        this.actions.onFireAegis(),
+      ),
+    );
+    swRow.append(
+      this.makePanelButton(loc(m.stormTarget), loc(m.stormTitle), () =>
+        this.actions.onStormTarget(),
+      ),
+    );
+    sw.append(swRow);
+    panel.append(sw);
+  }
+
+  /**
+   * Management main tab: taxes, city focus, the mayor/general cabinet,
+   * and the research panel (when the player owns a completed lab). The
+   * old Phase 3 "Command" panel's specialization/mayor/general controls
+   * live here now; taxes are new UI over the existing setTaxRate command
+   * (orders.ts already had the HUD-tax builder waiting for a home).
+   */
+  private appendManagementPanel(panel: HTMLElement, world: World): void {
+    const m = STRINGS.menuTabs;
+    panel.append(this.taxSectionEl(world));
+    panel.append(this.focusSectionEl(world));
+    panel.append(this.cabinetSectionEl(world));
+    if (playerHasCompletedLab(world, HUMAN_PLAYER_ID)) {
+      this.appendResearchPanel(panel, world);
+    }
+  }
+
+  /** Management → Taxes: per-zone rate steppers over setTaxRate. */
+  private taxSectionEl(world: World): HTMLElement {
+    const m = STRINGS.menuTabs;
+    const sec = this.makeSection(loc(m.taxesTitle));
+    const player = getPlayer(world.city, HUMAN_PLAYER_ID);
+    const mayor = getMayor(world, HUMAN_PLAYER_ID);
+    const rates: [number, number, number] = [
+      player?.taxRates[0] ?? 0,
+      player?.taxRates[1] ?? 0,
+      player?.taxRates[2] ?? 0,
+    ];
+    if (mayor !== undefined) {
+      // A mayor resets the rates to its policy every economy tick, so
+      // manual steppers would be futile — say so instead of a dead UI.
+      sec.append(
+        el(
+          'div',
+          'panel-status',
+          fillLoc(m.mayorSetsRates, { policy: mayor.policy }),
+        ),
+      );
+    }
+    for (const zone of [0, 1, 2] as const) {
+      const row = el('div', 'panel-row');
+      const nameEntry = m.taxZoneNames[zone];
+      row.append(el('span', 'panel-label', nameEntry !== undefined ? loc(nameEntry) : `zone ${zone}`));
+      const rate = el('span', 'tax-rate', `${Math.round(rates[zone] * 100)}%`);
+      const minus = this.makePanelButton(
+        '−',
+        `Lower the ${nameEntry !== undefined ? loc(nameEntry) : zone} tax rate`,
+        () => this.actions.onSetTaxRate(zone, Math.max(0, rates[zone] - 0.05)),
+        { disabled: mayor !== undefined },
+      );
+      const plus = this.makePanelButton(
+        '+',
+        `Raise the ${nameEntry !== undefined ? loc(nameEntry) : zone} tax rate`,
+        () => this.actions.onSetTaxRate(zone, Math.min(1, rates[zone] + 0.05)),
+        { disabled: mayor !== undefined },
+      );
+      row.append(minus, rate, plus);
+      sec.append(row);
+    }
+    return sec;
+  }
+
+  /** Management → City focus: the specialization buttons + current. */
+  private focusSectionEl(world: World): HTMLElement {
+    const m = STRINGS.menuTabs;
+    const sec = this.makeSection(loc(m.focusTitle));
+    const row = el('div', 'panel-row');
+    const current = getPlayer(world.city, HUMAN_PLAYER_ID)?.specialization ?? 'balanced';
     for (const spec of ['balanced', 'industrial', 'commercial', 'residential']) {
-      const b = document.createElement('button');
-      b.className = 'hud-btn small';
-      b.textContent = spec;
-      b.addEventListener('click', () => this.actions.onSetSpecialization(spec));
-      specRow.append(b);
+      row.append(
+        this.makePanelButton(
+          spec,
+          spec === current ? `Current focus: ${spec}` : `Set city focus to ${spec}`,
+          () => this.actions.onSetSpecialization(spec),
+          { active: spec === current },
+        ),
+      );
     }
-    panel.append(specRow);
+    sec.append(row);
+    return sec;
+  }
 
-    // Delegation: mayor.
-    const mayorRow = el('div', 'hud-phase3-row');
-    mayorRow.append(el('span', 'hud-label', 'Mayor:'));
+  /**
+   * Management → Cabinet: the existing chain-of-command status
+   * (sim/delegation.ts) — the mayor and the general the player
+   * appointed, with their policies/stance — plus the same
+   * appoint/dismiss controls the old Command panel had. No new
+   * minigame: this surfaces existing sim state.
+   */
+  private cabinetSectionEl(world: World): HTMLElement {
+    const m = STRINGS.menuTabs;
+    const sec = this.makeSection(loc(m.cabinetTitle));
+
+    // Mayor.
+    const mayor = getMayor(world, HUMAN_PLAYER_ID);
+    const mayorRow = el('div', 'panel-row');
+    mayorRow.append(
+      el(
+        'div',
+        'panel-status',
+        mayor !== undefined
+          ? `Mayor · ${mayor.policy} · builds ${mayor.buildPolicy}`
+          : loc(m.noMayor),
+      ),
+    );
+    sec.append(mayorRow);
+    const mayorBtns = el('div', 'panel-row');
     for (const policy of ['balanced', 'growth', 'revenue']) {
-      const b = document.createElement('button');
-      b.className = 'hud-btn small';
-      b.textContent = policy;
-      b.addEventListener('click', () => this.actions.onAssignMayor(policy));
-      mayorRow.append(b);
+      mayorBtns.append(
+        this.makePanelButton(
+          policy,
+          `Appoint a mayor with the ${policy} tax policy`,
+          () => this.actions.onAssignMayor(policy),
+          { active: mayor?.policy === policy },
+        ),
+      );
     }
-    const disMayor = document.createElement('button');
-    disMayor.className = 'hud-btn small';
-    disMayor.textContent = 'Dismiss';
-    disMayor.addEventListener('click', () => this.actions.onDismissMayor());
-    mayorRow.append(disMayor);
-    panel.append(mayorRow);
-
-    // Delegation: mayor build policy (what the mayor auto-builds).
-    const buildRow = el('div', 'hud-phase3-row');
-    buildRow.append(el('span', 'hud-label', 'Mayor builds:'));
+    if (mayor !== undefined) {
+      mayorBtns.append(
+        this.makePanelButton(loc(m.dismissVerb), 'Dismiss the mayor', () =>
+          this.actions.onDismissMayor(),
+        ),
+      );
+    }
+    sec.append(mayorBtns);
+    // Mayor build policy (what the mayor auto-builds).
+    const buildRow = el('div', 'panel-row');
+    buildRow.append(el('span', 'panel-label', loc(m.mayorBuildsLabel)));
     for (const bp of ['housing', 'industry', 'balanced']) {
-      const b = document.createElement('button');
-      b.className = 'hud-btn small';
-      b.textContent = bp;
-      b.addEventListener('click', () => this.actions.onSetMayorBuildPolicy(bp));
-      buildRow.append(b);
+      buildRow.append(
+        this.makePanelButton(
+          bp,
+          `The mayor auto-builds: ${bp}`,
+          () => this.actions.onSetMayorBuildPolicy(bp),
+          { active: mayor?.buildPolicy === bp, disabled: mayor === undefined },
+        ),
+      );
     }
-    panel.append(buildRow);
+    sec.append(buildRow);
 
-    // Delegation: general.
-    const genRow = el('div', 'hud-phase3-row');
-    genRow.append(el('span', 'hud-label', 'General:'));
+    // General.
+    const general = getGeneral(world, HUMAN_PLAYER_ID);
+    const genRow = el('div', 'panel-row');
+    genRow.append(
+      el(
+        'div',
+        'panel-status',
+        general !== undefined
+          ? `General · ${general.stance} · ${general.unitIds.length} units`
+          : loc(m.noGeneral),
+      ),
+    );
+    sec.append(genRow);
+    const genBtns = el('div', 'panel-row');
     for (const stance of ['aggressive', 'defensive', 'hold']) {
-      const b = document.createElement('button');
-      b.className = 'hud-btn small';
-      b.textContent = stance;
-      b.addEventListener('click', () => this.actions.onAssignGeneral(stance));
-      genRow.append(b);
+      genBtns.append(
+        this.makePanelButton(
+          stance,
+          general !== undefined
+            ? `Set the general's stance to ${stance}`
+            : `Appoint a general over the selected units (${stance})`,
+          () =>
+            general !== undefined
+              ? this.actions.onSetGeneralStance(stance)
+              : this.actions.onAssignGeneral(stance),
+          { active: general?.stance === stance },
+        ),
+      );
     }
-    const disGen = document.createElement('button');
-    disGen.className = 'hud-btn small';
-    disGen.textContent = 'Dismiss';
-    disGen.addEventListener('click', () => this.actions.onDismissGeneral());
-    genRow.append(disGen);
-    panel.append(genRow);
+    if (general !== undefined) {
+      genBtns.append(
+        this.makePanelButton(loc(m.dismissVerb), 'Dismiss the general', () =>
+          this.actions.onDismissGeneral(),
+        ),
+      );
+    }
+    sec.append(genBtns);
+
+    return sec;
   }
 
   /** Refresh all panels from the world. Cheap: DOM writes only on change. */
@@ -623,7 +891,7 @@ export class HUD {
    * costs/availability still refresh the moment they actually change.
    */
   private selectionDigest(world: World, selection: Selection, terrain?: TerrainData): string {
-    return paletteDigest(world, selection, this.trainTab, this.buildTab, terrain);
+    return paletteDigest(world, selection, this.trainTab, this.buildTab, terrain, this.menuTab);
   }
 
   private updateSelection(world: World, selection: Selection, terrain?: TerrainData): void {
@@ -647,14 +915,19 @@ export class HUD {
     panel.dataset['key'] = key;
     panel.textContent = '';
 
+    // Workstream Y (3-tab menu): the main tab bar heads the panel in
+    // every state; the content below is the active tab when nothing is
+    // selected, or the contextual unit/building branch when something is.
+    panel.append(this.buildMenuTabBar());
+
     if (selection.unitIds.length === 0 && selection.buildingId === null) {
       panel.append(el('div', 'sel-empty', sel.noSelection));
-      this.appendTrainPanel(panel, world);
-      this.appendBuildPanel(panel, world);
-      // The research panel is also listed in the HUD whenever the player
-      // owns a completed lab (spec §8), not only when the lab is selected.
-      if (playerHasCompletedLab(world, HUMAN_PLAYER_ID)) {
-        this.appendResearchPanel(panel, world);
+      if (this.menuTab === 'civilian') {
+        this.appendCivilianPanel(panel, world);
+      } else if (this.menuTab === 'military') {
+        this.appendMilitaryPanel(panel, world);
+      } else {
+        this.appendManagementPanel(panel, world);
       }
       return;
     }
@@ -769,7 +1042,7 @@ export class HUD {
     }
   }
 
-  /** Tabbed train palette: 4 tabs for the 28 units (spec §8). */
+  /** Tabbed train palette: 4 tabs for the 30 units (spec §8). */
   private appendTrainPanel(panel: HTMLElement, world: World): void {
     const wrap = el('div', 'train-panel');
     wrap.append(el('div', 'hud-panel-title', loc(STRINGS.palettes.trainTitle)));
@@ -796,58 +1069,28 @@ export class HUD {
     panel.append(wrap);
   }
 
-  /** Tabbed build palette: tool row + 7 tabs for the 30 buildings (spec §8 + civic). */
-  private appendBuildPanel(panel: HTMLElement, world: World): void {
+  /**
+   * Build palette: the tab bar + grid for the given build tabs (the
+   * caller picks the Civilian or Military subset — workstream Y), plus
+   * the Cancel-placement button. The tools row lives in
+   * appendCivilianPanel; the tab state is remembered per main tab.
+   */
+  private appendBuildPanel(
+    panel: HTMLElement,
+    world: World,
+    tabs: ReadonlyArray<{
+      id: BuildTabId | UtilityBuildTabId;
+      kinds: readonly string[];
+    }>,
+  ): void {
     const p = STRINGS.palettes;
     const wrap = el('div', 'build-panel');
     wrap.append(el('div', 'hud-panel-title', loc(p.buildTitle)));
-    // Tools are not buildings: road, zones and demolish sit above the tabs.
-    // Workstream Z: the three zone tools are grouped under a small
-    // "Zoning" section header so their purpose is obvious at a glance.
-    const toolsRow = el('div', 'palette-tools');
-    const makeToolButton = (
-      tool: BuildTool,
-      label: string,
-      icon: PaletteToolIcon,
-    ): HTMLButtonElement => {
-      const b = document.createElement('button');
-      b.className = 'build-btn';
-      b.prepend(iconSpan(toolIcon(icon)));
-      b.append(el('span', 'palette-label', label));
-      b.addEventListener('click', () => this.actions.onBuildTool(tool));
-      return b;
-    };
-    toolsRow.append(makeToolButton('road', loc(p.toolRoad), 'road'));
-    // Phase 2 (utilities): the drag-paint network tools sit together in a
-    // "Networks" group, next to the road tool they share a gesture with.
-    const netGroup = el('div', 'palette-zones');
-    netGroup.append(el('div', 'palette-section-title', loc(p.toolSectionNetworks)));
-    const netTools = [
-      { tool: 'powerLine', label: loc(p.toolPowerLine), icon: 'powerLine' },
-      { tool: 'waterPipe', label: loc(p.toolWaterPipe), icon: 'waterPipe' },
-    ] as const;
-    for (const { tool, label, icon } of netTools) {
-      netGroup.append(makeToolButton(tool, label, icon));
-    }
-    toolsRow.append(netGroup);
-    const zoneGroup = el('div', 'palette-zones');
-    zoneGroup.append(el('div', 'palette-section-title', loc(p.toolSectionZoning)));
-    const zoneTools = [
-      { tool: 'zoneR', label: loc(p.toolZoneR), icon: 'zoneR' },
-      { tool: 'zoneC', label: loc(p.toolZoneC), icon: 'zoneC' },
-      { tool: 'zoneI', label: loc(p.toolZoneI), icon: 'zoneI' },
-    ] as const;
-    for (const { tool, label, icon } of zoneTools) {
-      zoneGroup.append(makeToolButton(tool, label, icon));
-    }
-    toolsRow.append(zoneGroup);
-    toolsRow.append(makeToolButton('demolish', loc(p.toolDemolish), 'demolish'));
-    wrap.append(toolsRow);
-    wrap.append(this.buildTabBar(allBuildTabs(), STRINGS.buildingTabs, this.buildTab, (id) => {
+    wrap.append(this.buildTabBar(tabs, STRINGS.buildingTabs, this.buildTab, (id) => {
       this.buildTab = id as BuildTabId | UtilityBuildTabId;
     }));
     const grid = el('div', 'palette-grid');
-    const tab = allBuildTabs().find((t) => t.id === this.buildTab) ?? allBuildTabs()[0]!;
+    const tab = tabs.find((t) => t.id === this.buildTab) ?? tabs[0]!;
     for (const kind of tab.kinds) {
       // Phase 2 (utilities): the new kinds live in ui/utilities.ts until
       // the sim registers them in BUILDING_DEFS — same visible greyed-out
@@ -881,10 +1124,12 @@ export class HUD {
   }
 
   /**
-   * Research panel: the 12 upgrades in Military/Economy groups (spec §8).
-   * Each row shows the localized name, funds + research cost, and the
-   * one-line effect; unavailable upgrades grey out with the reason.
-   * Researched upgrades get a checkmark and stay listed.
+   * Research panel: the 19 upgrades in Military/Economy/Infrastructure/
+   * Logistics groups (spec §8). Each row shows the localized name, funds
+   * + research cost, and the one-line effect; unavailable upgrades grey
+   * out with the reason. Researched upgrades get a checkmark and stay
+   * listed. Shown in the Management tab whenever the player owns a
+   * completed lab (spec §8), and for a selected completed lab.
    */
   private appendResearchPanel(panel: HTMLElement, world: World): void {
     const p = STRINGS.palettes;
