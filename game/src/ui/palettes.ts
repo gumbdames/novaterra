@@ -19,8 +19,9 @@
  * data and availability logic (roster expansion).
  *
  * Responsibilities:
- *  - The tab groupings (spec §8): 5 train tabs for the 66 units, 11 build
- *    tabs for the 67 buildings, 2 research groups for the 12 upgrades.
+ *  - The tab groupings (spec §8): 6 train tabs for the 96 units, 13
+ *    build tabs for the 99 buildings, 5 research groups for the 21
+ *    upgrades.
  *  - Availability checks that mirror the sim's command validation so the
  *    UI greys out exactly what the sim would reject: `unitAvailability`
  *    mirrors `spawnUnit` validate (age → production building →
@@ -61,19 +62,22 @@ export interface TrainTab {
   kinds: readonly UnitKind[];
 }
 
-/** 66 units across 5 tabs (Phase 6 adds the 15-kind naval expansion to
- * the navy tab). Every unit kind appears in exactly one tab. */
+/** 94 units across 6 tabs (Phase 8 adds the 28 Mk II/III tech-level
+ * variants next to their base kinds). Every unit kind appears in
+ * exactly one tab. */
 export const TRAIN_TABS: readonly TrainTab[] = [
   {
     id: 'infantry',
-    kinds: ['engineer', 'rifles', 'sniperTeam', 'spectre', 'combatMedic', 'hauler'],
+    kinds: ['engineer', 'rifles', 'sniperTeam', 'spectre', 'combatMedic', 'hauler', 'haulerMk2', 'haulerMk3'],
   },
   {
     id: 'armor',
     // Grand-expansion Phase 3 (logistics): the supply trucks ride with
     // the land vehicles (no production gate — logistics must work from
     // the start, like the hauler precedent in infantry).
-    kinds: ['tank', 'apc', 'tankDestroyer', 'artillery', 'mlrs', 'aa', 'hq', 'supplyTruck', 'fuelTruck'],
+    // Grand-expansion Phase 8 (tech levels): Mk II/III variants sit
+    // next to their base kinds; `unitAvailability` hides locked ones.
+    kinds: ['tank', 'tankMk2', 'tankMk3', 'apc', 'apcMk2', 'apcMk3', 'tankDestroyer', 'artillery', 'artilleryMk2', 'artilleryMk3', 'mlrs', 'aa', 'aaMk2', 'aaMk3', 'hq', 'supplyTruck', 'fuelTruck'],
   },
   {
     id: 'air',
@@ -83,8 +87,14 @@ export const TRAIN_TABS: readonly TrainTab[] = [
     // civil airports add civilian training when they land).
     kinds: [
       'fighter',
+      'fighterMk2',
+      'fighterMk3',
       'fighterBomber',
+      'fighterBomberMk2',
+      'fighterBomberMk3',
       'attackHeli',
+      'attackHeliMk2',
+      'attackHeliMk3',
       'drone',
       'awacs',
       'transport',
@@ -94,6 +104,8 @@ export const TRAIN_TABS: readonly TrainTab[] = [
       'armedUAV',
       'reconPlane',
       'gunship',
+      'gunshipMk2',
+      'gunshipMk3',
       'tanker',
       'militaryCargo',
       'trainer',
@@ -115,12 +127,22 @@ export const TRAIN_TABS: readonly TrainTab[] = [
     kinds: [
       'patrolBoat',
       'missileBoat',
+      'missileBoatMk2',
+      'missileBoatMk3',
       'frigate',
+      'frigateMk2',
+      'frigateMk3',
       'submarine',
+      'submarineMk2',
+      'submarineMk3',
       'destroyer',
+      'destroyerMk2',
+      'destroyerMk3',
       'carrier',
       'commandShip',
       'transportShip',
+      'transportShipMk2',
+      'transportShipMk3',
       'fishingBoat',
       'coastalSub',
       'missileSub',
@@ -181,7 +203,7 @@ export interface BuildTab {
   kinds: readonly BuildingKind[];
 }
 
-/** 89 buildings across 13 tabs. Every building kind appears in exactly one. */
+/** 99 buildings across 13 tabs. Every building kind appears in exactly one. */
 export const BUILD_TABS: readonly BuildTab[] = [
   { id: 'housing', kinds: ['house', 'apartment'] },
   // Workstream Z (2026-09-30): the civic tab — the four education
@@ -191,10 +213,16 @@ export const BUILD_TABS: readonly BuildTab[] = [
   // join the civic tab — they raise nearby residential desirability.
   // Workstream P (ambient city life, 2026-09-30): civic parking joins
   // them — the same desirability story (convenience amenities).
-  { id: 'civic', kinds: ['kindergarten', 'school', 'college', 'university', 'library', 'park', 'parkingLot', 'parkingGarage'] },
+  // Grand-expansion Phase 8 (civilian deep-dive, workstream E,
+  // 2026-09-30): the amenity family grows — museum/theater/stadium/
+  // botanical garden as desirability drivers, fire station as a civic
+  // convenience tier.
+  { id: 'civic', kinds: ['kindergarten', 'school', 'college', 'university', 'library', 'park', 'parkingLot', 'parkingGarage', 'museum', 'theater', 'sportsStadium', 'botanicalGarden', 'fireStation'] },
   {
     id: 'commerce',
-    kinds: ['shop', 'market', 'lab', 'mediaCenter', 'hospital'],
+    // Phase 8 (workstream E): grand market (market's tech-level step),
+    // bank, office tower, and the clinic → medical center health ladder.
+    kinds: ['shop', 'market', 'grandMarket', 'bank', 'officeTower', 'lab', 'mediaCenter', 'hospital', 'clinic', 'medicalCenter'],
   },
   {
     id: 'industry',

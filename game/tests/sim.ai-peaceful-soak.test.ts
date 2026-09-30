@@ -210,7 +210,7 @@ describe('peaceful AI soak (marshal vs marshal)', () => {
   });
 
   it('same seed => identical digest', () => {
-    const run = (seed: number): string => {
+    const run = (seed: number): number => {
       const ctx = setupPeacefulSoak(seed);
       runTicks(ctx, SOAK_TICKS);
       return digestWorld(ctx.world);

@@ -46,8 +46,10 @@ Unarmed recon is the deliberate exception (civilian). Everything else is
 civilian, including dual-use logistics and the civilian airport/port
 pieces. Counts (pinned in `tests/sim.peaceful.test.ts`):
 
-- **Units: 68 — 47 military / 21 civilian.**
-- **Buildings: 89 — 21 military / 68 civilian.**
+- **Units: 96 — 71 military / 25 civilian** (28 Mk II/III variants: 24
+  military + 4 civilian hauler/transportShip).
+- **Buildings: 99 — 21 military / 78 civilian** (10 Phase 8 civilian
+  additions, all civilian).
 - **Upgrades: 21 — 11 military / 10 civilian.**
 
 ### Judgment calls (the non-obvious ones)
@@ -325,6 +327,11 @@ museum/theater/sportsStadium/botanicalGarden/fireStation → the civic
 tab; grandMarket/bank/officeTower/clinic/medicalCenter → the commerce
 tab.
 
+**Resolved 2026-09-30 (integration gate):** the 10 kinds were added to
+`BUILD_TABS` (5 civic + 5 commerce), `tests/sim.parking.test.ts` and
+`tests/ui.palettes.test.ts` grouping expectations updated — the full
+suite is green.
+
 ---
 
 # Workstream D — Tech-level variants: Mk II / Mk III across 14 unit lines (2026-09-30)
@@ -403,6 +410,9 @@ peaceful-mode tech path: a builder can still research upward.
   chevron, the Phase 3 provisional-glyph precedent) keep the
   tsc-enforced `Record<UnitKind, string>` complete; the UI workstream
   owns final art, TRAIN_TABS placement, and `STRINGS.unitNames` entries.
+  **Resolved 2026-09-30 (integration gate):** all 28 variants placed in
+  TRAIN_TABS next to their base kinds, all 28 `STRINGS.unitNames`
+  entries added ("<base> Mk II/III").
 
 ## D.5 Tests
 

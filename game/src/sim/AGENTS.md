@@ -32,7 +32,7 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   validation, growth. Registers `buildRoad`, `paintZone`,
   `placeBuilding`, `demolish`, `setTaxRate`. Grand-expansion Phase 8
   (peaceful mode, workstream A, 2026-09-30): `BuildingDef.military?:
-  boolean` — true on the 21 war-apparatus buildings (the full 89-kind
+  boolean` — true on the 21 war-apparatus buildings (the full 99-kind
   classification is pinned in tests/sim.peaceful.test.ts);
   `placeBuilding` validate rejects military defs loudly in peaceful
   worlds. Judgment calls in docs/research/phase8-civilian-peaceful.md:

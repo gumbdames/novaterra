@@ -1776,7 +1776,7 @@ export class HUD {
     }
   }
 
-  /** Tabbed train palette: 5 tabs for the 66 units (spec §8 + Phase 4 S7 transport). */
+  /** Tabbed train palette: 6 tabs for the 96 units (spec §8 + Phase 4 S7 transport). */
   private appendTrainPanel(panel: HTMLElement, world: World): void {
     const wrap = el('div', 'train-panel');
     wrap.append(el('div', 'hud-panel-title', loc(STRINGS.palettes.trainTitle)));

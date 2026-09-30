@@ -393,27 +393,27 @@ describe('transit stop desirability amenities', () => {
 
   it('a nearby bus stop adds exactly +3 to a residential cell', () => {
     const { terrain, world, target } = zoneWorld();
-    const base = cellDesirability(getDesirabilityModel(terrain, world), target);
+    const base = cellDesirability(getDesirabilityModel(terrain, world, 0), target);
     const { cx: zx, cz: zz } = findLandRect(getTerrain(), 40, 12);
     // Anchor 5 cells east of the target — inside the 8-cell radius.
     completed(world.city, { kind: 'busStop', owner: 0, cx: zx + 25, cz: zz + 5, facing: 0 });
-    const near = cellDesirability(getDesirabilityModel(getTerrain(), world), target);
+    const near = cellDesirability(getDesirabilityModel(getTerrain(), world, 0), target);
     expect(near - base).toBe(3);
   });
 
   it('a central station adds exactly +8; outside 18 cells it adds nothing', () => {
     const { terrain, world, target } = zoneWorld();
-    const base = cellDesirability(getDesirabilityModel(terrain, world), target);
+    const base = cellDesirability(getDesirabilityModel(terrain, world, 0), target);
     const { cx: zx, cz: zz } = findLandRect(getTerrain(), 40, 12);
     // Anchor 10 east of target: inside the 18-cell radius.
     completed(world.city, { kind: 'centralStation', owner: 0, cx: zx + 30, cz: zz + 5, facing: 0 });
-    const after = cellDesirability(getDesirabilityModel(getTerrain(), world), target);
+    const after = cellDesirability(getDesirabilityModel(getTerrain(), world, 0), target);
     expect(after - base).toBe(8);
   });
 
   it('transit types stack with the W amenities toward the same +20 cap', () => {
     const { terrain, world, target } = zoneWorld();
-    const base = cellDesirability(getDesirabilityModel(terrain, world), target);
+    const base = cellDesirability(getDesirabilityModel(terrain, world, 0), target);
     const { cx: zx, cz: zz } = findLandRect(getTerrain(), 40, 12);
     // centralStation (+8) + neighborhoodStation (+5) + busStop (+3) +
     // park (+5) = 21 → capped at +20.
@@ -421,17 +421,17 @@ describe('transit stop desirability amenities', () => {
     completed(world.city, { kind: 'neighborhoodStation', owner: 0, cx: zx + 26, cz: zz + 4, facing: 0 });
     completed(world.city, { kind: 'busStop', owner: 0, cx: zx + 24, cz: zz + 6, facing: 0 });
     completed(world.city, { kind: 'park', owner: 0, cx: zx + 22, cz: zz + 5, facing: 0 });
-    const after = cellDesirability(getDesirabilityModel(getTerrain(), world), target);
+    const after = cellDesirability(getDesirabilityModel(getTerrain(), world, 0), target);
     expect(after - base).toBe(AMENITY_BONUS_CAP);
   });
 
   it('unfinished stops add nothing', () => {
     const { terrain, world, target } = zoneWorld();
-    const base = cellDesirability(getDesirabilityModel(terrain, world), target);
+    const base = cellDesirability(getDesirabilityModel(terrain, world, 0), target);
     const { cx: zx, cz: zz } = findLandRect(getTerrain(), 40, 12);
     const half = placeBuilding(world.city, { kind: 'centralStation', owner: 0, cx: zx + 28, cz: zz + 5, facing: 0 });
     half.progress = 0.5;
-    const after = cellDesirability(getDesirabilityModel(getTerrain(), world), target);
+    const after = cellDesirability(getDesirabilityModel(getTerrain(), world, 0), target);
     expect(after).toBe(base);
   });
 });

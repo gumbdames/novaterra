@@ -30,6 +30,7 @@ import { describe, expect, it } from 'vitest';
 // `types: []` and @types/node is not a dependency).
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { menuTabsForWorld } from '../src/ui/peaceful';
 import { fileURLToPath } from 'node:url';
 
 import { createSession } from '../src/ui/session';
@@ -173,9 +174,13 @@ describe('every pre-existing control has a home under the 3-tab menu', () => {
 
   it('the menu tab bar renders Civilian / Military / Management with icons', () => {
     const body = methodBody('buildMenuTabBar');
-    for (const tab of ['civilian', 'military', 'management'] as const) {
-      expect(body, `menu tab '${tab}' missing from the tab bar`).toContain(`'${tab}'`);
-    }
+    // The tab bar iterates `menuTabsForWorld` (ui/peaceful.ts): a
+    // standard world shows all three tabs, a peaceful world hides
+    // Military. Check the helper directly (headless-testable) rather
+    // than grepping the method for the literal tab ids.
+    expect(menuTabsForWorld(false)).toEqual(['civilian', 'military', 'management']);
+    expect(menuTabsForWorld(true)).toEqual(['civilian', 'management']);
+    expect(body, 'tab bar must iterate menuTabsForWorld').toContain('menuTabsForWorld');
     for (const icon of ['tabCivilian', 'tabMilitary', 'tabManagement'] as const) {
       expect(body, `menu tab icon '${icon}' missing`).toContain(icon);
     }

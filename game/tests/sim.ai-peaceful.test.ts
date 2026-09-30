@@ -30,8 +30,8 @@ import { createCombatSystem, registerCombatCommands } from '../src/sim/combat';
 import { createEconomySystem } from '../src/sim/economy';
 import { registerAgeCommands } from '../src/sim/ages';
 import { addAIPlayer, createAISystem, canTrain } from '../src/sim/ai';
-import { BUILDING_DEFS } from '../src/sim/city';
-import { UNIT_DEFS } from '../src/sim/units';
+import { BUILDING_DEFS, type BuildingKind } from '../src/sim/city';
+import { UNIT_DEFS, type UnitKind } from '../src/sim/units';
 
 function findLandNear(t: any, x: number, z: number): { x: number; z: number } {
   for (let r = 0; r < 60; r += 2)
@@ -119,11 +119,11 @@ describe('peaceful AI: dispatch builds a civilian city', () => {
     const origEnqueue2 = (queue as any).enqueue;
     (queue as any).enqueue = (w: any, cmd: any) => {
       if (cmd.issuer === 'ai' && cmd.kind === 'placeBuilding') {
-        const def = BUILDING_DEFS[cmd.payload.kind];
+        const def = BUILDING_DEFS[cmd.payload.kind as BuildingKind];
         if (def?.military === true) militaryOrders++;
       }
       if (cmd.issuer === 'ai' && cmd.kind === 'trainUnit') {
-        const def = UNIT_DEFS[cmd.payload.kind];
+        const def = UNIT_DEFS[cmd.payload.kind as UnitKind];
         if (def?.military === true) militaryOrders++;
       }
       return origEnqueue2(w, cmd);

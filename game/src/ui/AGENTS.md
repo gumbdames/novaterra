@@ -264,11 +264,14 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `baseAircraft`; `buildLaunchOrder(unitId, owner)` → `launchAircraft`.
 - `palettes.ts` — headless-safe palette data + availability logic for
   the tabbed TRAIN/BUILD palettes and the research panel: `TRAIN_TABS`
-  (6 tabs, 68 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck;
+  (6 tabs, 96 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck;
   Phase 5 workstream B added the 16-aircraft air tab; the intel roster
-  workstream (§3.8/S6, 2026-09-30) added the intel tab: spy + reconTeam),
-  `BUILD_TABS` (13 tabs, 89 buildings — workstream W added library+park, workstream P added the two parking buildings,
-  the intel roster workstream added the intel tab: intelHQ/listeningPost/signalsStation/satelliteUplink),
+  workstream (§3.8/S6, 2026-09-30) added the intel tab: spy + reconTeam;
+  Phase 8 workstream D added the 28 Mk II/III tech variants next to their
+  base kinds),
+  `BUILD_TABS` (13 tabs, 99 buildings — workstream W added library+park, workstream P added the two parking buildings,
+  the intel roster workstream added the intel tab: intelHQ/listeningPost/signalsStation/satelliteUplink;
+  Phase 8 workstream E added 10 civilian buildings: 5 civic + 5 commerce),
   `UPGRADE_GROUPS` (military 8 / economy 4 / infrastructure 6 / logistics 1 / intel 2), `unitAvailability` /
   `buildingAvailability` / `upgradeAvailability` (ready | reason), cost
   formatters, and the
@@ -436,7 +439,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `icons.ts` — **hand-drawn inline SVG icon set (pure, tested,
   `tests/ui.icons.test.ts`).** Every button shows icon AND text (user
   directive 2026-09-30) — icons are `aria-hidden`, never icon-only.
-  `unitIcon` / `buildingIcon` cover all 68 units + 89 buildings
+  `unitIcon` / `buildingIcon` cover all 96 units + 99 buildings
   (`Record<UnitKind, string>` so a missing glyph is a compile error);
   `toolIcon` for the build tools row (incl. the Phase 2 powerLine /
   waterPipe tools); `viewIcon` for the top-bar view toggles (Phase 4
@@ -468,7 +471,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `LocalizedString` (`{en}` — the localization indirection, kept as the
   extension point), module-level language
   state (`setUiLanguage` / `getUiLanguage` / `loc` / `fillLoc`). Covers
-  all 68 unit names, 89 building names, palette/upgrade tab names, the
+  all 96 unit names, 99 building names, palette/upgrade tab names, the
   21 upgrade names + one-line effects, cost labels, and lock reasons.
   Legacy Phase 3 strings are still English-only; they were never localized.
   Grand-expansion Phase 8 (peaceful, workstream B, 2026-09-30):

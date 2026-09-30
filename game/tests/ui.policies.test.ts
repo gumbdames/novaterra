@@ -103,7 +103,7 @@ describe('policyRows', () => {
       expect(row.name.length).toBeGreaterThan(0);
       expect(row.effect.length).toBeGreaterThan(0);
     }
-    expect(policyRows(world, 0)[0].name).toBe('Green Initiative');
+    expect(policyRows(world, 0)[0]!.name).toBe('Green Initiative');
   });
 });
 

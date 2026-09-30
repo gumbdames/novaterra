@@ -34,8 +34,8 @@ land, sea and air — or play a fully peaceful game with war disabled.
   after 1800 ticks; radar/SIGINT/recon sight wired into AI perception),
   and the Classic AI intel play (virtual intel construction, spy
   training to quota, target-value-directed infiltration/steal/sabotage,
-  counter-intel surge). Phase 8 (peaceful mode) sim core + UI panel are
-  in: `world.peaceful` + the def-level `military` predicate lock out all
+  counter-intel surge). Phase 8 (peaceful mode + tech levels + civilian
+  deep-dive) is complete: `world.peaceful` + the def-level `military` predicate lock out all
   war apparatus at the command layer (the AI rival keeps playing
   peacefully), conquest is bypassed, and the builder's victory is
   8,000 housed residents — the skirmish-setup toggle, the hidden
@@ -62,7 +62,7 @@ land, sea and air — or play a fully peaceful game with war disabled.
 
 - City building with visible zoning, terrain-following roads, and
   power/water utility networks you drag-paint across the map
-- 99 buildings and 68 units across land, sea, and air, with tech ages
+- 99 buildings and 96 units across land, sea, and air, with tech ages
 - City ordinances (Phase 8): five city-wide policies on the Management
   tab — Green Initiative, Transit Subsidy, Business Incentives,
   Nightlife Ordinance, Education Grants — each with real per-second

@@ -87,14 +87,27 @@ describe('train tabs', () => {
       'spectre',
       'combatMedic',
       'hauler',
+      // Grand-expansion Phase 8 (tech levels, 2026-09-30): the hauler's
+      // Mk II/III civilian tech path.
+      'haulerMk2',
+      'haulerMk3',
     ]);
     expect(byId.get('armor')).toEqual([
       'tank',
+      // Phase 8 (tech levels): variants sit next to their base kinds.
+      'tankMk2',
+      'tankMk3',
       'apc',
+      'apcMk2',
+      'apcMk3',
       'tankDestroyer',
       'artillery',
+      'artilleryMk2',
+      'artilleryMk3',
       'mlrs',
       'aa',
+      'aaMk2',
+      'aaMk3',
       'hq',
       // Phase 3 (logistics, UI workstream 2026-09-30): the supply trucks
       // ride with the land vehicles — no production gate, like the hauler.
@@ -103,8 +116,14 @@ describe('train tabs', () => {
     ]);
     expect(byId.get('air')).toEqual([
       'fighter',
+      'fighterMk2',
+      'fighterMk3',
       'fighterBomber',
+      'fighterBomberMk2',
+      'fighterBomberMk3',
       'attackHeli',
+      'attackHeliMk2',
+      'attackHeliMk3',
       'drone',
       'awacs',
       'transport',
@@ -116,6 +135,9 @@ describe('train tabs', () => {
       'armedUAV',
       'reconPlane',
       'gunship',
+      // Phase 8 (tech levels): the gunship's Mk II/III.
+      'gunshipMk2',
+      'gunshipMk3',
       'tanker',
       'militaryCargo',
       'trainer',
@@ -130,12 +152,23 @@ describe('train tabs', () => {
     expect(byId.get('navy')).toEqual([
       'patrolBoat',
       'missileBoat',
+      'missileBoatMk2',
+      'missileBoatMk3',
       'frigate',
+      'frigateMk2',
+      'frigateMk3',
       'submarine',
+      'submarineMk2',
+      'submarineMk3',
       'destroyer',
+      'destroyerMk2',
+      'destroyerMk3',
       'carrier',
       'commandShip',
       'transportShip',
+      // Phase 8 (tech levels): the transport ship's civilian Mk II/III.
+      'transportShipMk2',
+      'transportShipMk3',
       'fishingBoat',
       // Grand-expansion Phase 6 — naval expansion (workstream C,
       // 2026-09-30): the 15 new sea kinds.
@@ -187,13 +220,23 @@ describe('build tabs', () => {
     // buildings together; the hospital stays in Commerce.
     // Workstream W (2026-09-30): the two civic amenities (library/park).
     // Workstream P (ambient city life, 2026-09-30): civic parking.
-    expect(byId.get('civic')).toEqual(['kindergarten', 'school', 'college', 'university', 'library', 'park', 'parkingLot', 'parkingGarage']);
+    // Grand-expansion Phase 8 (civilian deep-dive, workstream E,
+    // 2026-09-30): museum/theater/stadium/botanical garden + fire
+    // station join the civic amenities.
+    expect(byId.get('civic')).toEqual(['kindergarten', 'school', 'college', 'university', 'library', 'park', 'parkingLot', 'parkingGarage', 'museum', 'theater', 'sportsStadium', 'botanicalGarden', 'fireStation']);
     expect(byId.get('commerce')).toEqual([
       'shop',
       'market',
+      // Phase 8 (workstream E): the market's tech-level step, the bank,
+      // the office tower, and the clinic → medical center health ladder.
+      'grandMarket',
+      'bank',
+      'officeTower',
       'lab',
       'mediaCenter',
       'hospital',
+      'clinic',
+      'medicalCenter',
     ]);
     expect(byId.get('industry')).toEqual([
       'factory',
