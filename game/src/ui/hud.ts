@@ -994,9 +994,11 @@ export class HUD {
       sec.append(row);
       // Covert actions against enemy buildings in reach. Skipped in
       // peaceful games (see the note above) — the sim would reject
-      // them loudly, so offering the buttons would be a lie.
+      // them loudly, so offering the buttons would be a lie. The
+      // no-targets hint is skipped too: in peaceful mode the note above
+      // already explains why there is nothing to do.
       const targets = peaceful ? [] : opTargetsOf(world, spy);
-      if (targets.length === 0) {
+      if (targets.length === 0 && !peaceful) {
         sec.append(el('div', 'panel-status', loc(s.noTargets)));
       }
       for (const target of targets) {

@@ -118,8 +118,9 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   missile on stand), missileSilo (concrete silo + dome), ordnanceDepot
   (crate stacks + sandbag ring), fuelDepot (twin horizontal tanks), plus
   the 6 grand-expansion Phase 5 (S5+S8) airport models:
-  runwayS/runwayM/runwayL (one parametric builder — 6/9/12-unit strips
-  with threshold bars and centerline dashes), controlTower (tapered
+  runwayS/runwayM/runwayL (one parametric builder — 10/14/18-unit strips
+  that fill their 5×1/7×1/9×1 plots, with threshold bars and centerline
+  dashes), controlTower (tapered
   shaft, mullioned glass cab, whip antenna), passengerTerminal (glass
   curtain wall, roof skylight, landside canopy, two jet bridges),
   cargoTerminal (ribbed warehouse, dock canopy, roller doors, yard

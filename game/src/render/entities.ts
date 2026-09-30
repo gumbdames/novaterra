@@ -817,9 +817,10 @@ export function hullSizeFor(kind: string): { x: number; y: number; z: number } {
     case 'yacht':
       return { x: 2.6, y: 1.8, z: 6.5 };
     // Grand-expansion Phase 6 — intel roster (workstream 5, art). The
-    // §3.8 sim defs do not exist yet; these sizes pin the footprint
-    // convention the MODEL_PATHS scales above were measured against,
-    // plus selection-ring sizing when the defs arrive.
+    // §3.8 sim defs landed in sim/city.ts + sim/units.ts (intel phase,
+    // 2026-09-30); these sizes pin the footprint convention the
+    // MODEL_PATHS scales above were measured against, plus
+    // selection-ring sizing.
     case 'spy':
       return { x: 1.4, y: 1.8, z: 1.4 };
     case 'reconTeam':

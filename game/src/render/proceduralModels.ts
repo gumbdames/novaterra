@@ -193,6 +193,17 @@ class ModelBuilder {
   }
 }
 
+/**
+ * Uniformly scale every geometry of an already-built model. Used for
+ * footprint-fitting oversized builders (the sim footprint is the
+ * gameplay contract — art must sit inside it, never spill into the
+ * neighbor's plot). Normals survive `BufferGeometry.scale` unharmed.
+ */
+function scaleBuiltModel(model: LoadedModel, s: number): LoadedModel {
+  for (const g of model.geometries) g.scale(s, s, s);
+  return model;
+}
+
 // ---------------------------------------------------------------------------
 // artillery — tracked howitzer (target hull {3.0, 1.6, 5.2})
 // ---------------------------------------------------------------------------
@@ -1200,19 +1211,19 @@ export function buildRunwayStrip(): LoadedModel {
 
 /**
  * Grand-expansion Phase 5 (S5): parametric runway module. One builder
- * serves the three runway classes — the strip grows with class (light
- * 6×1.2, medium 9×1.6, heavy 12×2.2) in the same markings language as
- * the airfield's runwayStrip prop (edge lines, threshold bars,
- * centerline dashes). Base y=0; entities.ts places it beside the
- * terminal cluster.
+ * serves the three runway classes — the strip fills its sim plot and
+ * grows with class (light 10×1.6 on 5×1, medium 14×1.8 on 7×1, heavy
+ * 18×2 on 9×1) in the same markings language as the airfield's
+ * runwayStrip prop (edge lines, threshold bars, centerline dashes).
+ * Base y=0; entities.ts places it beside the terminal cluster.
  */
 export function buildRunwayModule(cls: AircraftClass): LoadedModel {
   const dims =
     cls === 'light'
-      ? { l: 6.0, w: 1.2 }
+      ? { l: 10.0, w: 1.6 }
       : cls === 'medium'
-        ? { l: 9.0, w: 1.6 }
-        : { l: 12.0, w: 2.2 };
+        ? { l: 14.0, w: 1.8 }
+        : { l: 18.0, w: 2.0 };
   const b = new ModelBuilder();
   const asphalt = smat('concrete', { color: 0x3a3d42 });
   const white = smat('paintedMetal');
@@ -1282,6 +1293,11 @@ export function buildControlTower(): LoadedModel {
  * Grand-expansion Phase 5 (S5): passenger terminal — long landside hall
  * with a glass curtain wall, a curved-ish roof slab, a departures
  * canopy, and two jet bridges reaching airside. Base y=0.
+ *
+ * Footprint-fit (polish 2026-09-30): the sim footprint is 3×3 (6×6
+ * world units) but the builder authors a 12.8×10.4 hall — unscaled it
+ * would swallow the neighboring plots. The whole composition scales by
+ * 0.45 so it sits inside its plot (5.8×4.7).
  */
 export function buildPassengerTerminal(): LoadedModel {
   const b = new ModelBuilder();
@@ -1310,13 +1326,16 @@ export function buildPassengerTerminal(): LoadedModel {
     b.add(new THREE.BoxGeometry(1.5, 1.4, 1.2), bridge, tr(bx, 1.9, 5.2));
     b.add(new THREE.CylinderGeometry(0.16, 0.2, 1.6, 8), bridge, tr(bx, 0.8, 4.6));
   }
-  return b.build();
+  return scaleBuiltModel(b.build(), 0.45);
 }
 
 /**
  * Grand-expansion Phase 5 (S5): cargo terminal — corrugated warehouse
  * box with a loading-dock canopy, roller doors, and a small yard crane.
  * Base y=0.
+ *
+ * Footprint-fit (polish 2026-09-30): authored 11.4×8.7 against a 3×3
+ * (6×6 world) footprint — scaled by 0.5 to sit inside the plot (5.7×4.4).
  */
 export function buildCargoTerminal(): LoadedModel {
   const b = new ModelBuilder();
@@ -1346,7 +1365,7 @@ export function buildCargoTerminal(): LoadedModel {
   b.add(new THREE.BoxGeometry(4.2, 0.4, 0.4), smat('paintedMetal', { color: 0xc7a23a }), tr(4.0, 5.0, 2.0));
   b.add(new THREE.BoxGeometry(0.12, 1.4, 0.12), dark, tr(2.2, 4.2, 2.0));
   b.add(new THREE.BoxGeometry(0.5, 0.4, 0.5), dark, tr(2.2, 3.4, 2.0));
-  return b.build();
+  return scaleBuiltModel(b.build(), 0.5);
 }
 
 

@@ -451,6 +451,62 @@ describe('procedural gap models', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Airport footprint fit (polish 2026-09-30): the Phase 5 airport
+// procedural builders must sit inside their sim footprints —
+// passengerTerminal/cargoTerminal used to author 2×-footprint halls
+// that swallowed neighboring plots, and the runway strips floated
+// well short of their plots. One world unit of tolerance covers thin
+// trim; anything more is a spill.
+// ---------------------------------------------------------------------------
+
+describe('airport procedural footprint fit', () => {
+  const CELL_WORLD = 2; // world units per sim cell
+  const cases: Array<{ kind: string; tol: number }> = [
+    { kind: 'passengerTerminal', tol: 1 },
+    { kind: 'cargoTerminal', tol: 1 },
+    { kind: 'controlTower', tol: 1 },
+    { kind: 'runwayS', tol: 1 },
+    { kind: 'runwayM', tol: 1 },
+    { kind: 'runwayL', tol: 1 },
+  ];
+  for (const { kind, tol } of cases) {
+    it(`${kind}: model fits inside its sim footprint`, () => {
+      const model = buildProceduralModel(kind);
+      expect(model).toBeDefined();
+      const box = new THREE.Box3();
+      for (const g of model?.geometries ?? []) {
+        g.computeBoundingBox();
+        box.union(g.boundingBox as THREE.Box3);
+      }
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const def = (BUILDING_DEFS as Record<string, { footprintW: number; footprintH: number }>)[kind];
+      if (def === undefined) throw new Error(`no BUILDING_DEFS for ${kind}`);
+      expect(size.x).toBeLessThanOrEqual(def.footprintW * CELL_WORLD + tol);
+      expect(size.z).toBeLessThanOrEqual(def.footprintH * CELL_WORLD + tol);
+    });
+  }
+
+  it('runway strips span their plots (no short-strip float)', () => {
+    // The strip should cover at least 90% of the plot length — a
+    // centered short strip on a long cleared plot reads broken.
+    for (const kind of ['runwayS', 'runwayM', 'runwayL']) {
+      const model = buildProceduralModel(kind);
+      const box = new THREE.Box3();
+      for (const g of model?.geometries ?? []) {
+        g.computeBoundingBox();
+        box.union(g.boundingBox as THREE.Box3);
+      }
+      const size = new THREE.Vector3();
+      box.getSize(size);
+      const def = (BUILDING_DEFS as Record<string, { footprintW: number }>)[kind];
+      if (def === undefined) throw new Error(`no BUILDING_DEFS for ${kind}`);
+      expect(size.x).toBeGreaterThanOrEqual(def.footprintW * CELL_WORLD * 0.9);
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Empty-model fallback: playable with zero GLBs loaded.
 // ---------------------------------------------------------------------------
 
