@@ -1,0 +1,719 @@
+/*!
+ * NOVATERRA — Copyright (C) 2026 Gumb Dames
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published
+ * by the Free Software Foundation, version 3 of the License.
+ */
+
+/**
+ * NOVATERRA — docs/grand-expansion/PLAN.md
+ *
+ * Master phased implementation plan for the grand expansion (utilities,
+ * transport, airports/airline, naval, aircraft, logistics, intel,
+ * veterancy, peaceful mode, tech levels). Version 0.1 Alpha.
+ *
+ * Grounding: RESEARCH.md (synthesis), research-utilities.md,
+ * research-logistics-veterancy.md, research-transport-intel.md,
+ * audit-sim.md (11 systems mapped to exact hooks), audit-render-ui.md,
+ * content-inventory.md (28/28/12 roster + per-pillar gaps).
+ * Every hook name below was verified against the source (2026-09-30);
+ * nothing is invented.
+ *
+ * Rules of the road (repo AGENTS.md): the step gate applies to every
+ * phase step — own tests green, full build green, regression of prior
+ * steps re-run, docs updated, committed on main (always deployable).
+ * Deterministic fixed-timestep sim; no Math.random; English-only UI
+ * with the {en} localization indirection kept.
+ */
+
+# Grand Expansion — Master Plan
+
+## 0. How to read this plan
+
+- **Pillars** (§1) are the user's brief, turned into concrete rosters
+  (§3) and systems (§4).
+- **Phases** (§9) are independently deployable: each ends with `main`
+  green, tests green, and a shippable build. Nothing merges untested.
+- **Budgets** (§10) are hard: startup download ≤8 MiB, 60 fps on a
+  mid-range laptop. Two binding constraints gate the roster growth:
+  the draw-call ceiling and the download budget — both decided in
+  Phase 0 before new keys are added.
+- **Non-goals** (§13) are explicit: things the research says to avoid
+  are listed so no one re-litigates them mid-implementation.
+
+## 1. Scope — the pillars
+
+1. **Utilities.** Power/water production across tech levels, buildable
+   power lines and water pipes, zone-level hookup (a hooked-up zone
+   serves every building in it), storage, map-edge import/export.
+2. **Logistics.** Missile/fuel chains: production → specialization →
+   transport → reload. Nuclear subs/carriers exempt.
+3. **Veterancy (military).** Per-unit XP, tiers, visible chevrons,
+   death erases. Civilian equivalent = building-level progression
+   (experienced crews, leveled infrastructure) — NOT per-worker XP.
+4. **Transport variety.** Road classes, rail, trams/buses/ferries,
+   marinas. Civilian transport feeds a visible town-growth loop.
+5. **Airports + airline.** Airport zones with capability-gated tiers,
+   hangars per aircraft type, civilian/military/mixed airports,
+   airline routes and cargo.
+6. **Naval expansion.** Sub variants, more surface combatants,
+   carriers as empty hulls with assigned air wings, logistics ships,
+   civilian sea, port types.
+7. **Aircraft expansion.** Strategic bomber, maritime patrol, UAV
+   family, recon, gunship, tanker, carrier-capable variants.
+8. **Intel.** Tech + named spies + recon feeding a deterministic
+   asset economy; mixed-use discovery as a warned, counterable event.
+9. **Peaceful mode.** No-military skirmish with civilian objectives.
+10. **Tech levels.** Versions of everything (plant ladder, unit marks,
+    building tiers) via research and ages.
+
+## 2. Architecture decisions (the big calls — decided, not open)
+
+**AD1. Utility connectivity = integer flood fill over conductor tiles**
+(`economy.ts` `allocateUtilities` replacement). Roads conduct power
+and water automatically; power lines and water pipes are drag-painted
+long-hop links. Recompute on build/destroy only. Per-network supply
+sums; consumers draw in fixed order (network id, distance from source,
+entity id — fully ordered, no ties); demand counts only reached
+buildings. Diagnosis split: `disconnected` vs `shortage` icons;
+stranded generators flag themselves. No agent-based flow, ever.
+
+**AD2. The global pool stays as fallback during the cutover.** A hard
+connectivity requirement silently starves the AI (its virtual
+buildings bypass placement) and breaks every balance test. The
+flood-fill network is authoritative when lines exist; until the AI
+learns line-building, unreached buildings fall back to the pool.
+A hard-requirement game option comes later, never as the default.
+
+**AD3. One abstract supply resource per carrier** (not a global
+`ammo` stockpile). Supply trucks/ships hold generic supply points
+(one float); per-weapon supply costs paid per shot; per-service
+toggles (repair/rearm/refuel). Depot inventories live on
+`BuildingRecord`. Automate the last mile: depots auto-load, vehicles
+auto-shuttle, field units draw in radius. Out-of-supply degrades
+(shared evenly), never hard-stops.
+
+**AD4. Veterancy = per-unit `xp` + `vetLevel` on `UnitRecord`;**
+crew-flavored bonuses (reload speed, sight, small damage efficiency;
+auto-regen at max tier); XP weighted by target cost; maxed-unit XP
+overflows to nearby allies; death erases. Civilian progression lives
+on buildings (crew training levels, infrastructure tiers).
+
+**AD5. Carriers = empty hulls + `embarkedOn` linkage.** Aircraft side
+holds the reference (single source of truth); carrier keeps no list.
+Embarked units skip movement/combat; carrier death destroys the wing
+(simplest, deterministic). Only carrier-capable kinds embark.
+
+**AD6. Hangars gate aircraft production.** `BuildingRecord` gets
+optional hangar slot state; `registerUnitCommands` validate/apply
+share one pure `findHangarSlot(world, owner, class)` (lowest-id
+building with room) — validate≡apply agreement under same-tick
+contention is unit-tested. `killUnit` releases the slot.
+
+**AD7. Airport zones = new `ZoneType.AIRPORT = 3`.** Tier = modules
+built inside (runway class → stands → hangars → fuel depot →
+terminal/cargo). Runway class visibly gates plane class in the build
+UI. `PlayerState.taxRates` becomes a 4-tuple (decode-time default —
+see §11). Hangar capacity stays on buildings (§AD6), not on cells.
+
+**AD8. Intel = deterministic asset economy per region**
+(surveillance / operational / counter-intel). Spies are named
+promotable units building networks over deterministic timers;
+detection is a pure function of positions (no stored state, no
+snapshot/digest impact); all perception flows through
+`getVisibleEnemies()`.
+
+**AD9. Snapshots: additive optional fields with neutral decode
+defaults, no version bump.** v6→v7 ONLY for shape changes (road
+classes: `roads: number[]` → `{cell, cls}[]`; tax-rate 4-tuple).
+Digest covers every new behavior-affecting field; the gate is
+`digest(restore(take(w))) === digest(w)`. New RNG streams are named
+(`'logistics'`, `'intel'`, …); thinks draw nothing.
+
+**AD10. One generic linear-network gesture pipeline.** Power lines,
+pipes, and rail share the road tool's drag pattern (pointerdown →
+accumulate cells → one order on pointerup) with the network kind as a
+parameter — no copy-pasting `roadDragCells` three times.
+
+**AD11. UI digest contract.** Every new panel digests its rendered
+values in `ui/paletteDigest.ts` (the 2026-09-30 click-bug lesson).
+A test asserts every hud panel branch is digest-covered.
+
+**AD12. Roster growth is art-budgeted.** Tech-level variants share
+one `MODEL_PATHS` key (Mk II reuses the Mk I GLB); infrastructure is
+procedural-first; the vendored spares pool is mined before new
+sourcing (`kenney-roads/` poles/wires/signs/bridges,
+`kenney-watercraft/` cargo ships, `kenney-industrial/`
+turbines/tanks). New CC0 only for hero entities with the full
+license-evidence workflow.
+
+## 3. Concrete rosters per pillar
+
+Naming is English-only; icons + text labels always (icons.ts
+compile-enforced). Balance numbers are Phase-1 engineering choices —
+tune them, keep tests green.
+
+### 3.1 Utilities (buildings; all new unless noted)
+
+Power plants — `coalPlant` (cheap, strong, polluting), `gasPlant`
+(mid), `windFarm` (weak, clean, intermittent on a seeded cycle),
+`hydroDam` (terrain-gated: river/coast adjacency), `geothermalPlant`
+(late, steady), `fusionPlant` (ascendance research, ultimate).
+Existing `powerPlant` (oil burner), `solarFarm` (day-only), and
+`nuclearPlant` (mighty, expensive, tiny seeded meltdown risk, needs a
+water hookup) stay.
+
+Water — `waterWell` (cheap, low output), `waterPump` (exists),
+`desalination` (exists; seawater-adjacent, needs power, 2× output),
+`waterTower` (storage buffer), `waterTreatment` (system capacity +
+scrubs one fouled source, needs power, no pipe adjacency required),
+`reservoir` (large storage).
+
+Network — `powerLine` (drag tool), `powerSubstation` (step-down onto
+road grid), `waterPipe` (drag tool), `pumpingStation`, `batteryStation`
+(power storage).
+
+Unlock ladder (research via lab, `upgrades.ts`): wind/solar baseline →
+`combustionTech` (coal/gas) → `advancedNuclear` → `fusionResearch`;
+`groundwaterSurvey` (wells), `desalinationTech`, `gridStorage`
+(batteries/towers). Cross-utility hooks: desalination and treatment
+need power; nuclear needs water.
+
+### 3.2 Logistics (buildings + units)
+
+Buildings — `oilWell`/`oilRig` (crude extraction),
+`munitionsFactory` (ammo/supply-point production),
+`missilePlant` (specialization: heavy ordnance), `missileSilo`
+(storage), `ordnanceDepot` (forward staging), `fuelDepot` (storage).
+Upgrades: `advancedLogistics` (capacity/reload).
+
+Units — `supplyTruck` (generic supply points, per-service toggles),
+`fuelTruck`, `cargoTruck` (the `hauler` gains a real cargo role).
+Ammo consumers get `ammoCapacity`/`ammoPerShot` (mlrs, missileBoat,
+submarine, strategicBomber); mechanized units get
+`fuelCapacity`/`fuelPerSecond`; `fuelType: 'nuclear'` on the
+missile-sub and carrier (exempt). New command: `resupply`
+(unit + depot); proximity refill aura like `runHarvest`.
+
+### 3.3 Veterancy
+
+No new units. New building: `militaryAcademy` (new units start at
+Veteran; station max-tier veterans as trainers to accelerate a
+garrison's XP). Record fields: `xp`, `vetLevel` (0–3). Tiers:
+Trained → Hardened → Veteran → Elite; effects per level: −8% cooldown,
++8% sight, +10% damage efficiency; Elite: +1 HP/s auto-regen and
+overflow XP sharing to nearby allies. Chevrons on the unit view.
+Death erases. Civilian building progression: `crewTraining` levels on
+production buildings (productivity +, flavorful tradeoff), depot/port
+infrastructure tiers (capacity, loading speed, service radius).
+
+### 3.4 Transport variety
+
+Road classes (data, not entities): `dirt` → `country` → `paved` →
+`highway` — per-class cost and speed cap in `cellMoveCost`,
+upgradeable in place; `bridges`/`tunnels` as later tools.
+Rail: `rails` network layer + `buildRail` order; `railStation`;
+`passengerTrain`, `freightTrain`; track classes
+standard → electric → high-speed gate train quality.
+Urban transit: `bus`, `tram` (slow, huge capacity, street-running),
+`busDepot`. Water: `ferry` + `ferryTerminal` (cheap crossings),
+`marina` (civilian docks, coastal). Civilian income via
+`runHarvest`-style "on-network" earnings feeding the zone-growth
+demand loop.
+
+### 3.5 Airports + airline
+
+Zone: `ZoneType.AIRPORT`. Buildings: `civilAirport`, `militaryAirbase`
+(existing `airfield` stays as the military production building),
+`mixedAirport`, `passengerTerminal`, `cargoTerminal`, `controlTower`,
+`hangarS`/`hangarM`/`hangarL` (per aircraft class — §AD6),
+`fuelFarm`, `maintenanceHangar`, `runway` modules per class.
+Civilian aircraft: `airliner`, `jumboAirliner`, `regionalJet`,
+`cargoPlane`, `passengerHeli`, `seaplane`. Airline management:
+routes between civil airports with static ticket/cargo income first
+(the `market` precedent); schedules and pricing later only if the
+static game proves fun.
+
+### 3.6 Naval expansion
+
+Units — `coastalSub` (small), `missileSub` (large, nuclear-exempt),
+`corvette`, `cruiser`, `battleship` (heavy), `heavyDestroyer`
+(second destroyer class, different role), `cargoFreighter`,
+`fuelTanker`, `ammoShip`, `repairShip`, `minelayer` (+ deployable
+`navalMine`), `coastGuardCutter`, `cruiseLiner`, `yacht`.
+Carrier: existing `carrier` becomes the empty hull; wing via §AD5.
+Buildings — `commercialPort`, `containerPort`, `fishingHarbor`,
+`navalBase` (military port distinct from the `navalYard` production
+building), `marina` (also §3.4). Existing `shipyard`/`navalYard` stay.
+
+### 3.7 Aircraft expansion
+
+`strategicBomber` (long-range heavy strike), `maritimePatrol`
+(anti-sub from the air, pairs with `sonarSuite`), `reconUAV`,
+`armedUAV`, `reconPlane` (photo/signals), `gunship` (heavy close air
+support), `tanker` (extends range — feeds the logistics range game),
+`militaryCargo`, `trainer`, `navalFighter` (carrier-capable).
+Existing fighter/fighterBomber/attackHeli/drone/awacs/transport stay.
+
+### 3.8 Intel
+
+Buildings — `intelHQ`, `listeningPost`, `satelliteUplink`,
+`signalsStation` (economy/sight/detection outputs). Units — `spy`
+(stealth, infiltrate/sabotage/steal), `reconTeam`. Upgrades —
+`signalsIntel`, `counterIntel` (detection radius, sabotage
+resistance). `BuildingRecord.sabotagedUntil` tick (plain number,
+snapshotted/digested). New Intel panel UI (digested per §AD11).
+
+### 3.9 Peaceful mode + tech levels
+
+Peaceful: `world.peaceful` flag (tick 0, never toggled mid-game;
+snapshotted, digested, defaults false) + `SessionOptions.peaceful`;
+military lockout in `registerUnitCommands`/`placeBuilding`/
+`researchUpgrade` via a def-level `military: boolean` predicate;
+no AI rival (`hasAIRival = false`, the `'none'` precedent); victory
+checks bypassed; peaceful objectives = population / influence /
+scenario goals (UI/campaign work, not sim).
+Tech levels: Mk II/III variants as distinct `UnitKind`s sharing art
+(§AD12) gated by `minAge` + `requiredBuilding`; plant ladder §3.1;
+building tiers via upgrades (`upgrades.ts` patterns).
+
+## 4. New sim systems — data, commands, hooks
+
+### S1. Utility networks
+- Data: per-player conductor cell sets (roads + powerLine cells +
+  pipe cells; sorted-array discipline like `roads`), flood-fill
+  network ids per zone cell (derived, recomputed on structural
+  change), per-network supply/stock integers.
+- Commands: `buildPowerLine`/`buildPipe` (`CommandSpec`s, cell arrays
+  ≤512, per-cell cost, `sortedInsert`), demolish extended cell-wise.
+- Hooks: `economy.ts: allocateUtilities` (rewritten per AD1/AD2),
+  `city.ts: BuildingDef/BuildingRecord/validatePlacement`
+  (`powered`/`watered` flags already exist — keep names),
+  `economy.ts: runGrowth/growthDesirability` (unchanged signature),
+  `ai.ts: thinkConstruction` (AI line-building phase).
+- Determinism: integer BFS in id order; `canonicalizeWorld` includes
+  line/pipe cells sorted; unfunded plants drop out before the flood.
+
+### S2. Logistics
+- Data: `UnitDef`: optional `fuelCapacity`, `fuelPerSecond`,
+  `ammoCapacity`, `ammoPerShot`, `fuelType: 'fossil'|'nuclear'|'none'`;
+  `UnitRecord`: `fuel`, `ammo` (snapshotted, digested via
+  `canonicalNumber`); depot inventories on `BuildingRecord`.
+- Commands: `resupply` (unit + depot); supply aura auto-refill in
+  `runHarvest` order.
+- Hooks: `combat.ts: createCombatSystem` (ammo gate before
+  `fireWeapon` — out of ammo holds like an unarmed unit);
+  `movement.ts` (fuel burn; fuel 0 → loud `failUnitOrder`, never
+  silent); `economy.ts: runProduction` (depot/refinery chains);
+  `units.ts: spawnUnit` (full tanks on spawn).
+- Import discipline: logistics hooks in combat read plain world data
+  only (the `world.superweapons` precedent) — no combat→economy import.
+
+### S3. Veterancy
+- Data: `UnitRecord.xp`, `vetLevel` (decode default 0; digest-covered).
+- Hooks: `combat.ts: killUnit` (credit killer before removal, id
+  order), `damageMultiplier` (level bonus), `applyHealAuras` cap +
+  a new pure `vetAdjustedMaxHp(unit)` helper (vet HP applies to
+  *living* units — `effectiveMaxHp` is spawn-only today).
+- `militaryAcademy` building: `spawnUnit` reads stationed trainers.
+
+### S4. Hangars + carriers
+- Data: `BuildingRecord.hangars` (optional; legacy airfield decodes to
+  N generic slots — **document the exact default, pin in test**);
+  `UnitRecord.hangarBuildingId`, `UnitRecord.embarkedOn` (0 = none;
+  digest-covered); def flags `hangarClass`, `carrierCapable`,
+  `wingCapacity`.
+- Commands: `embarkAircraft`/`launchAircraft` (same owner,
+  carrier-capable, free slot, in-range); hangar reservation inside
+  `registerUnitCommands` via shared `findHangarSlot`.
+- Hooks: `movement.ts` (skip embarked units; sync position = carrier's
+  in id order, before combat); `combat.ts: acquireTarget` (skip
+  embarked); `killUnit` (release hangar slot; destroy wing with
+  carrier).
+
+### S5. Airport/port types
+- Data: `BuildingDef.airportType/portType:
+  'civilian'|'military'|'mixed'`; `countsAs: BuildingKind[]` so mixed
+  sites satisfy any-of production gates without changing
+  `hasProductionBuilding(world, owner, kind)`'s signature.
+- Civilian income via `runHarvest` (`fishingBoat` precedent).
+
+### S6. Intel
+- Data: per-region asset counters on player state (surveillance /
+  operational / counter-intel; plain numbers, digested); spy network
+  progress (deterministic timers); `sabotagedUntil` on buildings.
+- Commands: `infiltrateBuilding`, `sabotage` (adjacency-validated;
+  research transfer via `addStock`).
+- Hooks: `ai.ts: getVisibleEnemies` (radar/listening-post building
+  sight term — think cadence only, never per-tick combat);
+  `combat.ts: acquireTarget` (stealthed unless detected);
+  `upgrades.ts: effectiveSight` (intel tech).
+- Detection: pure function of positions — zero snapshot/digest cost.
+
+### S7. Transport networks
+- Data: `roads` → `RoadCell[]` `{cell, cls}` sorted by cell
+  (**shape change — v6→v7 migration**); `rails: number[]` sorted set +
+  dedicated 1-D rail router (BFS over the rail set between stations —
+  do NOT bend the flow-field A*); ferry `route: {a, b}` on unit
+  records (loop advanced in the movement system, id order).
+- `cellMoveCost` becomes a per-class table; `buildRoad` takes a class
+  payload; `buildRail` mirrors `buildRoad`.
+- Civilian earnings: `runHarvest` with an on-network check (pure
+  function of position).
+
+### S8. Airport zones
+- `ZoneType.AIRPORT = 3`; `paintZone` validation extended;
+  `validatePlacement` requires airport zone for airport buildings;
+  `tryAutoDevelop` never auto-builds on airport zones (player-placed
+  infrastructure only). Tax-rate 4-tuple decode default.
+
+### S9. Peaceful mode
+- `world.peaceful` + `SessionOptions.peaceful`; validate gates;
+  victory/defeat bypass. No AI work (no rival).
+
+## 5. UI/UX plan
+
+- **Palettes:** new tabs as rosters grow (split naval/air; add
+  logistics/intel tabs) — the 6-tab BUILD grouping will not survive
+  60+ buildings unchanged. Entries stay data-only; availability
+  grey-out follows defs automatically.
+- **New panels (all digest-covered per §AD11):** utility overlay
+  (coverage + disconnected/shortage icons + night-lamp feedback),
+  logistics overlay (depot stocks, supply ranges), airline management,
+  intel panel (operatives, networks, assets), veterancy display
+  (chevrons + XP bar), peaceful objectives panel. Follow the
+  research-panel precedent (`hud.ts` appendResearch pattern).
+- **New tools:** power-line, pipe, rail drag tools via the generic
+  gesture pipeline (§AD10); airport zone paint tool; all with
+  icon+text buttons.
+- **Class rules are shown before purchase:** plane↔runway class,
+  ship↔port size, train↔track class — visible in build UI, never
+  hidden (research: hidden punishing rules are a documented fun-killer).
+- **Overlays** are render views of sim data (the superweapon-FX
+  precedent: sim-published records → per-frame read-only views),
+  never sim state in the UI.
+- **Strings:** English-only via `ui/strings.ts` `{en}` indirection;
+  icons for every new kind (compile-enforced).
+
+## 6. AI integration (per phase, no cliff)
+
+Rule: every new unit/building ships with its AI mix/priority entry in
+the same change (the roster-expansion precedent). `canTrain`
+auto-skips locked kinds, so new content is *safe* but *dead* until
+each think function learns it — AI-vs-AI soak tests must show the AI
+actually using new systems before a phase is declared done.
+
+- **Veterancy:** no AI changes needed (XP accrues from combat the AI
+  already does); later: AI protects Elite units (retreat threshold).
+- **Utilities:** AI builds lines/pipes to connect stranded plants
+  (new `thinkConstruction` sub-phase); virtual buildings get virtual
+  connectivity (or stay on the pool fallback — §AD2).
+- **Logistics:** AI builds depots near fronts, trains supply trucks
+  per combat-unit ratio, retreats ammo-dry missile units.
+- **Hangars/carriers:** `canTrain` becomes hangar-aware; virtual
+  airfields get virtual capacity; AI fills carrier wings before
+  sailing (never sails empty into combat).
+- **Intel:** AI assigns spies to regions, spends operational assets on
+  sabotage vs. the human's plants, surges counter-intel when warned.
+- **Transport/airline/peaceful:** civilian AI trader rival is a later
+  feature; peaceful mode has no rival (nothing to change).
+- Soak metric per phase: AI-vs-AI games at marshal level must show
+  non-zero usage of the phase's headline system (hangar fills,
+  embarked wings, depot stocks drawn, spy networks active).
+
+## 7. Tech progression
+
+Five ages stay (foundation → connectivity → industry → information →
+ascendance); new content gates via `minAge` (verified:
+`isUnitAvailableForAge`, `isBuildingAgeMet`). A 6th age is allowed
+but not required — prefer depth within ages first. Research
+(`upgrades.ts`, lab-gated) carries the plant ladder, logistics,
+intel, and carrier-ops unlocks (§3.1, §3.8). Tech-level variants
+(Mk II/III) share art and gate on age + production building — the
+existing gates already express "better version unlocks later"; no
+per-unit tech-level record field.
+
+## 8. Peaceful mode
+
+`world.peaceful` (§4 S9). Skirmish setup gains a Peaceful toggle; the
+setup screen already scrolls (2026-09-30 fix). Military production
+buildings/units/upgrades are rejected with human-readable reasons
+(the `placement.ts` resolver pattern — nothing fails silently).
+Peaceful objectives (population, influence, scenario goals) are
+UI/campaign work. Intel races and airline/economic competition give
+peaceful mode its conflict (RESEARCH.md §1).
+
+## 9. Phases (independently deployable)
+
+Each phase: **Goal → Contents → Deployable when → Tests → Budget
+delta → AI work.** Step gate (§0) applies to every step inside.
+
+### Phase 0 — Binding-constraint decisions (no new entities)
+- **Goal:** de-risk the two budget ceilings and the gesture pipeline
+  BEFORE any roster growth.
+- **Contents:** (a) benchmark entity views (`?bench=1`); decide:
+  instancing path for entity views vs. visible-entity caps vs. far-
+  field impostors — prototype, measure, record in
+  docs/research/tech-stack.md; (b) decide the download mechanism:
+  per-tab/per-age lazy loading and/or gltf-transform optimize
+  (meshopt) — record the choice; (c) generalize the linear-network
+  gesture pipeline (§AD10); (d) add the panel-digest coverage test
+  (§AD11).
+- **Deployable when:** decisions recorded, prototype measured, tests
+  green. No player-visible change required (pipeline refactor only).
+- **Tests:** existing suite + new digest-coverage test + gesture-
+  pipeline unit tests.
+- **Budget delta:** 0 keys.
+- **AI work:** none.
+
+### Phase 1 — Veterancy + military academy (S–M)
+- **Goal:** first player-visible expansion win; exercises the
+  snapshot/digest/checklist machinery the later phases need.
+- **Contents:** `UnitRecord.xp/vetLevel`, kill crediting,
+  `vetAdjustedMaxHp`, chevron views, `militaryAcademy` building,
+  civilian building-level progression (crew training levels,
+  depot/port tiers).
+- **Deployable when:** units visibly gain chevrons in combat; death
+  erases; academy produces Veteran units; digest round-trips.
+- **Tests:** XP award order, level thresholds, overflow sharing,
+  kill-releases, academy gating, save/load round-trip with vet
+  fields, AI-vs-AI soak (XP accrues, no crashes).
+- **Budget delta:** +1 building key (~80 KB).
+- **AI work:** none required (later: Elite retreat threshold).
+
+### Phase 2 — Utility networks (XL)
+- **Goal:** flood-fill connectivity, lines/pipes, plant ladder,
+  storage, zone servicing, map-edge trade.
+- **Contents:** S1 (§4) + §3.1 roster + utility overlay UI +
+  disconnected/shortage icons + research ladder for plants.
+- **Deployable when:** a player can power a far zone via lines OR
+  roads; brownouts are local and diagnosable; AI connects its own
+  stranded plants (or stays on the pool fallback per §AD2 —
+  explicitly tested either way).
+- **Tests:** flood-fill determinism (order independence), per-network
+  allocation, stranded-generator flagging, storage smoothing,
+  meltdown seeded reproducibility, save/load with network state,
+  legacy saves load (decode defaults).
+- **Budget delta:** ~12 building keys (~1 MB) + 2 drag tools.
+- **AI work:** `thinkConstruction` line-building; virtual-building
+  connectivity handling.
+
+### Phase 3 — Logistics chains (L; XL only if physical road/rail freight)
+- **Goal:** ammo/fuel as a tempo constraint; supply trucks, depots,
+  missile/fuel chains; nuclear exemption.
+- **Contents:** S2 (§4) + §3.2 roster + logistics overlay + resupply
+  command + per-service toggles.
+- **Deployable when:** missile units run dry and must resupply;
+  interdiction (killing supply trucks) visibly degrades offensives;
+  nuclear sub/carrier ignore fuel.
+- **Tests:** ammo gating, fuel burn order-stability, depot
+  inventories, out-of-supply degradation (no hard stops),
+  validate≡apply for resupply, round-trip.
+- **Budget delta:** ~6 buildings + 3 units (~9 keys).
+- **AI work:** depot placement, supply-truck ratios, ammo-dry
+  retreats. Soak: AI draws depot stocks.
+
+### Phase 4 — Transport variety (L)
+- **Goal:** road classes, rail, trams/buses/ferries, marinas; civilian
+  transport feeds town growth.
+- **Contents:** S7 (§4) + §3.4 roster; **v6→v7 snapshot migration**
+  for road classes (explicit `migrateRoadsV6ToV7`, unit-tested
+  separately from the sim).
+- **Deployable when:** upgrading a road visibly speeds trips; trains
+  run station-to-station; ferries loop; trams grow zones; legacy saves
+  migrate (roads → default class).
+- **Tests:** migration unit tests, rail router determinism, ferry
+  loop advancement, class speed caps, digest shape change handled
+  deliberately (AGENTS.md: investigate, don't update blindly).
+- **Budget delta:** ~5 units + 5 buildings (~10 keys) — lazy loading
+  from Phase 0 should be live by here.
+- **AI work:** AI uses road classes for its own growth; later: AI
+  civilian routes.
+
+### Phase 5 — Airports + airline (M–L)
+- **Goal:** airport zones, capability-gated tiers, hangars, civilian
+  airline income, mixed-use airports.
+- **Contents:** S4 (hangars) + S5 + S8 (§4) + §3.5 roster + airline
+  panel + airport overlay.
+- **Deployable when:** first-plane moment works (build runway →
+  plane lands); runway class visibly gates plane class pre-purchase;
+  mixed airport shows civilian until discovered.
+- **Tests:** hangar validate≡apply under contention, kill-releases
+  slot, zone placement rules, tax-rate 4-tuple decode, airline income
+  determinism.
+- **Budget delta:** ~9 buildings + ~14 aircraft (~23 keys) — the
+  phase that forces the Phase-0 download decision to be real.
+- **AI work:** hangar-aware `canTrain`; AI builds civil airports and
+  runs routes (static income).
+
+### Phase 6 — Naval expansion + carrier wings (M)
+- **Goal:** sub variants, surface combatants, logistics ships,
+  civilian sea, ports; carriers as empty hulls with air wings.
+- **Contents:** §4 S4 (embark) + §3.6 + §3.7 (carrier-capable kinds,
+  maritime patrol, tanker) + naval mines.
+- **Deployable when:** carrier sails empty, embarks a wing, projects
+  air power at range; escorts matter; mines threaten straits.
+- **Tests:** embark/launch commands, embarked-unit combat/movement
+  guards, carrier-death wing disposition, mine trigger determinism.
+- **Budget delta:** ~14 units + 5 buildings (~19 keys; hero CC0 for
+  carrier/battleship/airliner-grade hulls).
+- **AI work:** AI fills wings before sailing; builds escorts;
+  minesweeping (later).
+
+### Phase 7 — Intel + spies + recon (M; L with full actions)
+- **Goal:** deterministic asset economy, named spies, recon value,
+  mixed-use discovery with warning + grace period.
+- **Contents:** S6 (§4) + §3.8 roster + intel panel UI.
+- **Deployable when:** spies build networks over visible timers;
+  sabotage/steal spend assets; discovery warns before consequences;
+  counter-intel blocks visibly.
+- **Tests:** asset accrual/spend determinism, detection pure-function
+  property tests, sabotage timers, grace-period behavior, no digest
+  impact from stealth.
+- **Budget delta:** ~4 buildings + 2 units (~6 keys).
+- **AI work:** AI assigns spies, spends operational assets, surges
+  counter-intel on warning. **Prototype the mixed-use discovery UX
+  early in this phase** (RESEARCH.md open question #1).
+
+### Phase 8 — Tech-level roster pass + peaceful mode (M + S)
+- **Goal:** Mk II/III variants across the roster (art-shared,
+  §AD12); peaceful skirmish mode.
+- **Contents:** §3.9; variant defs gated by age/building; peaceful
+  toggle + lockout + objectives panel.
+- **Deployable when:** late-age armies look and feel advanced;
+  peaceful mode plays start-to-finish with civilian objectives and
+  no military options.
+- **Tests:** variant gating, art-sharing (no new keys), peaceful
+  lockout rejections, peaceful save/load (`world.peaceful`
+  round-trip), victory-check bypass.
+- **Budget delta:** ~0 keys (art-shared by design).
+- **AI work:** none (no rival in peaceful mode).
+
+### Phase 9 — Soak, balance, polish (ongoing)
+AI-vs-AI headline-system usage metrics per phase (§6); balance pass
+on plant ladder and supply costs; visual review per asset batch;
+player-docs (HOW_TO_PLAY, GAME_MECHANICS) updated per phase as
+mechanics land — a doc that lags reality is a bug.
+
+## 10. Budget accounting
+
+**Download (startup, ≤8 MiB gate).** Today ~5.45 MiB (4.62 GLB +
+0.83 tree textures); ~30 average keys of headroom. Planned new keys:
+~1 (P1) + ~12 (P2) + ~9 (P3) + ~10 (P4) + ~23 (P5) + ~19 (P6) +
+~6 (P7) + ~0 (P8) ≈ **~80 keys ≈ ~6.4 MiB** — does NOT fit
+all-at-boot. The Phase-0 download decision (lazy per-tab/per-age
+loading and/or meshopt optimize) must be implemented no later than
+Phase 4, before the airport/naval waves land. Procedural-first
+infrastructure and art-shared variants are already assumed in the
+counts above.
+
+**Draw calls (≤100–200 at 60 fps).** ~2–8 per entity view today; no
+entity instancing path. Phase 0 decides the mechanism; entity-count
+growth in Phases 4–6 must stay under the chosen ceiling or the
+instancing path must land first. This is the binding constraint —
+it can make the expansion's core promise unshippable, so it is
+decided before the roster grows, not after.
+
+**Sim tick.** Flood fill and allocation run on structural change
+only; detection is a pure function; asset counters are integers.
+Per-tick costs stay O(entities) with small constants — the existing
+30 Hz fixed timestep is not threatened by any phase's design.
+
+**Tests.** 852 green at plan time; every phase adds its own suites
+and re-runs prior phases' smoke tests (step gate). Digest additions
+are deliberate per field (AGENTS.md rule).
+
+## 11. Snapshot/digest migration plan
+
+- **No bump:** veterancy fields, fuel/ammo, embarkedOn,
+  hangarBuildingId, hangar slots (with documented legacy-airfield
+  default), sabotagedUntil, ferry routes, intel asset counters,
+  `world.peaceful`, utility network cell sets — all decode to neutral
+  defaults (step-7 AI-personality precedent).
+- **Bump v6→v7:** road classes (shape change `number[]` →
+  `{cell, cls}[]`, `migrateRoadsV6ToV7`) and the tax-rate 4-tuple
+  (`migrateTaxRates` pads the 4th rate). When bumping, decide whether
+  v5 support drops (today: 6 and 5 load; the if-chain extends).
+- **Digest:** every new behavior-affecting field is encoded
+  (sorted owners, id-ordered arrays, `canonicalNumber` for floats).
+  Digest changes are investigated, never blindly updated.
+- **RNG:** new named streams per system; stream state already
+  snapshotted/digested verbatim.
+
+## 12. Risks (top 5, with mitigations)
+
+**R1. Utility cutover breaks AI/balance (scope risk).** Mitigation:
+pool fallback (§AD2), AI line-building as its own phase, hard
+requirement gated behind a game option — never default until the AI
+copes.
+
+**R2. Import cycles as systems interleave.** Logistics wants
+combat↔economy hooks; intel wants combat→perception. Mitigation:
+"data on `World`, logic in the owning module, direct reads with
+comments" (existing discipline); add a test asserting the known
+cycle pairs stay cycle-free.
+
+**R3. Digest drift.** Every new field must reach `canonicalizeWorld`
+or same-seed replays desync silently. Mitigation: mechanical
+checklist per change (snapshot copy → decode default → digest
+encoding → round-trip test); floats via `canonicalNumber`.
+
+**R4. AI capability cliff.** New systems the AI doesn't use are free
+human exploits. Mitigation: AI entries ship in the same change;
+AI-vs-AI soak measures headline-system usage before "done".
+
+**R5. Validate-vs-apply divergence in reservations.** Hangar slots,
+wing slots, depot inventory, network capacity. Mitigation: validate
+at enqueue AND apply with the *identical* pure function; the slot-
+choice function is shared and unit-tested under same-tick
+contention.
+
+## 13. Non-goals (explicit — do not build)
+
+- Agent-based power/water flow; per-building mandatory wiring.
+- Per-plant funding sliders; plant aging/degradation timers.
+- Proportional brownouts; hidden pressure/utility mechanics.
+- Civilian fuel-logistics chains (civilian utilities never depend on
+  delivered fuel).
+- Itemized per-shell/per-missile physical inventory on the field.
+- Manual load/unload; per-convoy driving; any logistics step that
+  requires per-truck handling.
+- Hard failure states from empty supply (dead-instant units).
+- Compounding multiplicative supply penalties.
+- Global espionage point pools; instant dice-roll spy missions;
+  hyper-lethal counter-intel; bolt-from-the-blue intel punishments.
+- Decorative airport/modules that change no number or capability;
+  time-based (level-by-waiting) progression.
+- Per-vehicle/per-staff micromanagement; per-worker civilian XP.
+- Placebo mechanics of any kind (RESEARCH.md §2).
+- Generated/AI-made 3D models (license provenance unverifiable).
+- New commercial game-title references anywhere outside
+  docs/grand-expansion/research-*.md citations.
+- Force-pushes or history rewrites, ever.
+
+## 14. Phase 1 recommendation (honest)
+
+**Do Phase 0 first, then Phase 1 = Veterancy.** The brief lists
+utilities first, but the engineering order is:
+
+1. **Phase 0** decides the two ceilings (draw calls, download) and
+   builds the shared gesture pipeline — all cheap, all blocking
+   everything behind them. Skipping this is how the roster becomes
+   unshippable.
+2. **Phase 1 (Veterancy)** is the right first *playable* phase: S–M
+   complexity, self-contained (no cross-system hooks), zero
+   architectural risk (additive fields, no snapshot bump), high
+   player visibility (chevrons, Elite auto-regen, academy choice),
+   and it exercises the digest/snapshot/AI-soak machinery that the
+   XL phases will lean on.
+3. **Phase 2 (Utilities)** follows as the first big system, with the
+   pool fallback (§AD2) keeping the game playable throughout the
+   cutover.
+
+The riskiest unknowns to attack early regardless of order:
+mixed-use discovery UX (prototype before systems — no precedent
+exists), the draw-call decision (Phase 0), and the download
+mechanism (real before Phase 5).
+
+*End of plan.*
