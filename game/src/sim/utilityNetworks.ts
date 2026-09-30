@@ -115,33 +115,40 @@ function hash32(seed: number, id: number, tick: number): number {
 }
 
 /**
- * Meltdown risk denominator: a nuclear plant triggers a meltdown when
- * hash32(seed, id, e) % denominator === 0 for some economy tick e in
- * the offline window. 1/20000 per sim-second ≈ one meltdown per ~5.5
- * sim-hours per plant — tiny, as specified. advancedNuclear quadruples
- * the denominator (applied by the caller).
+ * Workstream M (user correction 2026-09-30): nuclear meltdowns happen
+ * ONLY when a nuclear plant is attacked — the old per-tick seeded
+ * random trigger is gone. When a plant takes attack damage (today: a
+ * Storm Engine strike; tomorrow: the building-damage path in combat),
+ * call `attackMeltdownRoll`: a seeded hash roll (no RNG draw, fully
+ * deterministic). A 1/20 chance per attack keeps meltdowns possible
+ * but rare — never a surprise, always earned by the attacker.
  */
-export const MELTDOWN_RISK_DENOMINATOR = 20000;
+export const MELTDOWN_ATTACK_DENOMINATOR = 20;
 /** Sim-seconds a melted-down plant stays offline. */
 export const MELTDOWN_OFFLINE_SECONDS = 180;
 
 /**
- * True when the plant is in a meltdown outage at this economy tick: any
- * trigger in the trailing MELTDOWN_OFFLINE_SECONDS window takes it
- * offline. Pure function of (seed, id, tick) — seeded-reproducible,
- * no RNG draws.
+ * True when an attack on this plant triggers a meltdown. Pure function
+ * of (seed, building id, tick) — seeded-reproducible, no RNG draws.
+ * `advancedNuclear` research quarters the risk (denominator × 4).
  */
-export function meltdownOffline(
+export function attackMeltdownRoll(
   seed: number,
   buildingId: number,
-  economyTickIndex: number,
-  denominator: number = MELTDOWN_RISK_DENOMINATOR,
+  tick: number,
+  denominator: number = MELTDOWN_ATTACK_DENOMINATOR,
 ): boolean {
-  const from = Math.max(0, economyTickIndex - MELTDOWN_OFFLINE_SECONDS + 1);
-  for (let e = from; e <= economyTickIndex; e++) {
-    if (hash32(seed, buildingId, e) % denominator === 0) return true;
-  }
-  return false;
+  return hash32(seed, buildingId, tick) % denominator === 0;
+}
+
+/**
+ * True while the plant is in a meltdown outage: `meltdownUntilTick` is
+ * set by the attack path above; the economy treats the plant as offline
+ * until that tick passes. Stored on the building record (snapshotted,
+ * digested) — no derived state.
+ */
+export function isMeltedDown(meltdownUntilTick: number | undefined, tick: number): boolean {
+  return tick < (meltdownUntilTick ?? 0);
 }
 
 // ---------------------------------------------------------------------------

@@ -68,9 +68,11 @@ reaches, which gets underground pipes for free).
   build more supply.
 - **Keep it clean.** Coal, gas, and oil plants foul adjacent wells and
   pumps (output halved). Water treatment works scrub the fouling away.
-- **Respect the atom.** Nuclear plants need water cooling and can melt
-  down (rare, seeded) — offline for 3 minutes when they do. Advanced
-  Nuclear (research) cuts the risk 4x.
+- **Respect the atom.** Nuclear plants need water cooling and melt down
+  only when attacked (a Storm Engine strike on the plant is the current
+  attack path) — never at random. A meltdown takes the plant offline for
+  3 minutes; the 1-in-20 risk per attack is seeded and reproducible.
+  Advanced Nuclear (research) cuts the risk 4x.
 - **Mind the sky.** Solar farms only produce by day (4-minute day);
   wind farms rise and fall with the wind.
 

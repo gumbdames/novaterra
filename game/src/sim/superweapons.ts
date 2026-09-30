@@ -51,8 +51,15 @@ import type { World } from './world';
 import { rngBank } from './world';
 import type { CommandQueue, CommandSpec } from './commands';
 import type { SimSystem } from './tick';
-import { BUILDING_DEFS, getPlayer } from './city';
+import { BUILDING_DEFS, getPlayer, CELL_WORLD_SIZE, MAP_HALF_SIZE } from './city';
 import { killUnit } from './combat';
+import { hasUpgrade } from './upgrades';
+import {
+  attackMeltdownRoll,
+  MELTDOWN_ATTACK_DENOMINATOR,
+  MELTDOWN_OFFLINE_SECONDS,
+} from './utilityNetworks';
+import { TICK_HZ } from './tick';
 
 /** Aegis shield duration: 60 seconds at 30 Hz. */
 export const AEGIS_DURATION_TICKS = 1800;
@@ -416,6 +423,26 @@ export function createSuperweaponSystem(): SimSystem {
           if (isAegisActive(world, unit.owner)) continue; // shield holds
           unit.hp -= STORM_DAMAGE;
           if (unit.hp <= 0) killUnit(world, unit);
+        }
+        // Workstream M (user correction 2026-09-30): buildings have no HP
+        // system yet, so strikes don't destroy them — but a strike on a
+        // nuclear plant is an ATTACK, and attacks are the only meltdown
+        // trigger. (When unit-vs-building combat lands, call
+        // attackMeltdownRoll from the building-damage path too.)
+        for (const b of world.city.buildings) {
+          if (b.owner === strike.owner || b.kind !== 'nuclearPlant') continue;
+          if (b.progress < 1) continue;
+          if (isAegisActive(world, b.owner)) continue; // shield holds
+          const def = BUILDING_DEFS[b.kind];
+          const bx = (b.cx + def.footprintW / 2) * CELL_WORLD_SIZE - MAP_HALF_SIZE;
+          const bz = (b.cz + def.footprintH / 2) * CELL_WORLD_SIZE - MAP_HALF_SIZE;
+          if (Math.hypot(bx - sx, bz - sz) > STORM_RADIUS) continue;
+          const denom = hasUpgrade(world, b.owner, 'advancedNuclear')
+            ? MELTDOWN_ATTACK_DENOMINATOR * 4
+            : MELTDOWN_ATTACK_DENOMINATOR;
+          if (attackMeltdownRoll(world.seed, b.id, world.tick, denom)) {
+            b.meltdownUntilTick = world.tick + MELTDOWN_OFFLINE_SECONDS * TICK_HZ;
+          }
         }
         sw.fx.push({ kind: 'storm', x: sx, z: sz, untilTick: world.tick + STORM_FX_TICKS });
       }

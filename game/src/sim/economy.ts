@@ -68,8 +68,7 @@ import {
   networkStorageCapacity,
   daylightFactor,
   windFactor,
-  meltdownOffline,
-  MELTDOWN_RISK_DENOMINATOR,
+  isMeltedDown,
   POWER_EXPORT_FUNDS_PER_UNIT,
   WATER_EXPORT_FUNDS_PER_UNIT,
   type UtilityKind,
@@ -267,16 +266,15 @@ function allocateUtilities(world: World, city: CityState): UtilityAllocation {
     const onlinePower: number[] = [];
     const onlineWater: number[] = [];
     const meltedDown = new Set<number>();
-    const advancedNuclear = hasUpgrade(world, player.id, 'advancedNuclear');
-    const meltdownDenom = advancedNuclear ? MELTDOWN_RISK_DENOMINATOR * 4 : MELTDOWN_RISK_DENOMINATOR;
     for (const b of completed) {
       if (!funded.has(b.id)) continue;
       const def = BUILDING_DEFS[b.kind];
       if (def.fouling) foulers.push(b.id);
       if (b.kind === 'waterTreatment' && b.powered) treatments.push(b.id);
-      // Nuclear meltdown: pure seeded function of (seed, id, tick).
-      // A melted-down plant supplies nothing for 180 sim-seconds.
-      if (b.kind === 'nuclearPlant' && meltdownOffline(world.seed, b.id, eIdx, meltdownDenom)) {
+      // Workstream M (user correction 2026-09-30): meltdowns are
+      // attack-triggered only — no random per-tick trigger. A melted-down
+      // plant supplies nothing until its outage window passes.
+      if (b.kind === 'nuclearPlant' && isMeltedDown(b.meltdownUntilTick, world.tick)) {
         meltedDown.add(b.id);
         continue;
       }

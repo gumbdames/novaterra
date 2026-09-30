@@ -40,6 +40,8 @@ import {
 } from '../src/sim/terrain';
 import {
   BUILDING_DEFS,
+  CELL_WORLD_SIZE,
+  MAP_HALF_SIZE,
   bumpUtilityEpoch,
   cellIndex,
   cellIsWater,
@@ -64,7 +66,9 @@ import {
   decodeUpgrades,
   registerUpgradeCommands,
 } from '../src/sim/upgrades';
-import { meltdownOffline } from '../src/sim/utilityNetworks';
+import { attackMeltdownRoll } from '../src/sim/utilityNetworks';
+import { createSuperweaponSystem } from '../src/sim/superweapons';
+import { TICK_DT } from '../src/sim/tick';
 import type { Age } from '../src/sim/ages';
 
 let cachedTerrain: TerrainData | null = null;
@@ -459,32 +463,44 @@ describe('fouling and scrubbing', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Nuclear meltdown
+// Nuclear meltdown — workstream M (user correction 2026-09-30):
+// meltdowns happen ONLY when a plant is attacked. There is no random
+// trigger anymore, so a plant left alone stays online forever.
 // ---------------------------------------------------------------------------
 
 describe('nuclear meltdown', () => {
-  // Seed 6855: building id 1 melts down at economy tick 5, clean before.
-  it('takes a melting plant offline with a shortage flag', () => {
-    const { terrain, world } = setup(6855);
+  const layout = (seed: number) => {
+    const { terrain, world } = setup(seed);
     const { cx, cz } = findLandRect(terrain, 40, 12);
     const rz = cz + 5;
     lay(world.city, 'roads', row(cx, rz, 40));
-    // The nuclear plant MUST be building id 1 for the seeded meltdown,
-    // and adjacent to the road so the pump can water it.
+    // The nuclear plant MUST be building id 1 for the seeded roll.
     const nuke = completed(world, 'nuclearPlant', 0, cx + 1, rz - 4);
     expect(nuke.id).toBe(1);
     const pump = completed(world, 'waterPump', 0, cx + 7, rz + 1);
     const house = completed(world, 'house', 0, cx + 12, rz - 2);
     void pump;
+    return { terrain, world, nuke, house };
+  };
+
+  it('never melts down on its own — no random trigger', () => {
+    // Seed 6855 melted at economy tick 5 under the old random trigger.
+    const { terrain, world, nuke } = layout(6855);
+    runSeconds(world, terrain, 200); // well past the old 180 s window
+    expect(nuke.meltdownUntilTick ?? 0).toBe(0);
+    expect(nuke.powerDiag).toBe('ok');
+  });
+
+  it('a triggered meltdown takes the plant offline for 180 s, then recovers', () => {
+    const { terrain, world, nuke, house } = layout(20260930);
     // Tick 1: 1-tick bootstrap (assumed watered) -> online.
     runSeconds(world, terrain, 1);
     expect(nuke.powerDiag).toBe('ok');
     expect(house.powered).toBe(true);
-    // Ticks 2-4: watered for real, no meltdown -> online.
-    runSeconds(world, terrain, 3);
-    expect(nuke.powerDiag).toBe('ok');
-    expect(house.powered).toBe(true);
-    // Tick 5: meltdown -> offline for 180 s, shortage flag, dark houses.
+    // Simulate an attack-triggered meltdown (the roll lives in the
+    // superweapon system test below; here we test the outage window).
+    nuke.meltdownUntilTick = world.tick + 180 * 30;
+    // Tick 2: meltdown -> offline, shortage flag, dark houses.
     // (The house reads 'disconnected': with its only plant melted the
     // network collapses, so the house is unreached, not reached-short.)
     runSeconds(world, terrain, 1);
@@ -492,24 +508,41 @@ describe('nuclear meltdown', () => {
     expect(house.powered).toBe(false);
     expect(house.powerDiag).toBe('disconnected');
     // Still offline much later (180-second outage).
-    runSeconds(world, terrain, 60);
+    runSeconds(world, terrain, 178);
     expect(nuke.powerDiag).toBe('shortage');
+    // Outage over -> back online.
+    runSeconds(world, terrain, 2);
+    expect(nuke.powerDiag).toBe('ok');
+    expect(house.powered).toBe(true);
+  });
+
+  it('a storm strike on a nuclear plant can trigger a meltdown (seeded)', () => {
+    const { terrain, world, nuke } = layout(6855);
+    void terrain;
+    // Find a world tick where the seeded roll triggers for this plant.
+    let strikeTick = -1;
+    for (let t = 0; t < 100000 && strikeTick < 0; t++) {
+      if (attackMeltdownRoll(world.seed, nuke.id, t)) strikeTick = t;
+    }
+    expect(strikeTick).toBeGreaterThanOrEqual(0);
+    // Aim at the footprint center; scatter (<= 4.24) stays inside the
+    // strike radius (10), so the plant is always hit.
+    const def = BUILDING_DEFS[nuke.kind];
+    const px = (nuke.cx + def.footprintW / 2) * CELL_WORLD_SIZE - MAP_HALF_SIZE;
+    const pz = (nuke.cz + def.footprintH / 2) * CELL_WORLD_SIZE - MAP_HALF_SIZE;
+    world.tick = strikeTick;
+    world.superweapons.strikes.push({ owner: 1, x: px, z: pz, atTick: strikeTick });
+    createSuperweaponSystem()(world, TICK_DT);
+    expect(nuke.meltdownUntilTick).toBe(strikeTick + 180 * 30);
   });
 
   it('is seeded-reproducible across identical runs', () => {
     const run = (): string => {
-      const { terrain, world } = setup(6855);
-      const { cx, cz } = findLandRect(terrain, 40, 12);
-      const rz = cz + 5;
-      lay(world.city, 'roads', row(cx, rz, 40));
-      completed(world, 'nuclearPlant', 0, cx + 1, rz - 4);
-      completed(world, 'waterPump', 0, cx + 7, rz + 1);
-      completed(world, 'house', 0, cx + 12, rz - 2);
+      const { terrain, world, nuke } = layout(6855);
       const diags: string[] = [];
       for (let s = 0; s < 8; s++) {
         runSeconds(world, terrain, 1);
-        const nuke = world.city.buildings[0]!;
-        diags.push(`${nuke.powerDiag}:${nuke.powered}`);
+        diags.push(`${nuke.powerDiag}:${nuke.powered}:${nuke.meltdownUntilTick ?? 0}`);
       }
       return diags.join('|');
     };

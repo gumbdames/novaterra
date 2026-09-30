@@ -48,7 +48,9 @@ import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
 import {
   daylightFactor,
   windFactor,
-  meltdownOffline,
+  attackMeltdownRoll,
+  isMeltedDown,
+  MELTDOWN_ATTACK_DENOMINATOR,
   getUtilityModel,
   getNetworkStock,
   POWER_EXPORT_FUNDS_PER_UNIT,
@@ -678,23 +680,27 @@ describe('flood-fill performance', () => {
 // Meltdown pure function
 // ---------------------------------------------------------------------------
 
-describe('meltdownOffline', () => {  it('is a deterministic function of (seed, id, tick)', () => {
-    for (const [seed, id, e] of [
+describe('attackMeltdownRoll', () => {
+  it('is a deterministic function of (seed, id, tick)', () => {
+    for (const [seed, id, t] of [
       [1, 1, 0],
       [6855, 1, 5],
       [12345, 999, 777],
     ] as Array<[number, number, number]>) {
-      expect(meltdownOffline(seed, id, e)).toBe(meltdownOffline(seed, id, e));
+      expect(attackMeltdownRoll(seed, id, t)).toBe(attackMeltdownRoll(seed, id, t));
     }
   });
 
-  it('triggers with a tiny denominator and never with a huge one', () => {
+  it('triggers with denominator 1 and is rare at the default denominator', () => {
+    // Denominator 1: every attack melts down (test hook, not gameplay).
+    expect(attackMeltdownRoll(42, 7, 3, 1)).toBe(true);
+    // Default 1/20: some attacks in a sweep trigger, most don't.
     let hits = 0;
-    for (let e = 0; e < 200; e++) {
-      if (meltdownOffline(42, 7, e, 7)) hits++;
-      expect(meltdownOffline(42, 7, e, 2147483647)).toBe(false);
+    for (let t = 0; t < 2000; t++) {
+      if (attackMeltdownRoll(42, 7, t)) hits++;
     }
     expect(hits).toBeGreaterThan(0);
+    expect(hits).toBeLessThan(500);
   });
 
   it('advancedNuclear (x4 denominator) triggers a subset of meltdowns', () => {
@@ -703,9 +709,9 @@ describe('meltdownOffline', () => {  it('is a deterministic function of (seed, i
     let base = 0;
     let reduced = 0;
     let reducedNotBase = 0;
-    for (let e = 0; e < 200000; e += 7) {
-      const b = meltdownOffline(seed, id, e, 20000);
-      const r = meltdownOffline(seed, id, e, 80000);
+    for (let t = 0; t < 200000; t += 7) {
+      const b = attackMeltdownRoll(seed, id, t, MELTDOWN_ATTACK_DENOMINATOR);
+      const r = attackMeltdownRoll(seed, id, t, MELTDOWN_ATTACK_DENOMINATOR * 4);
       if (b) base++;
       if (r) reduced++;
       if (r && !b) reducedNotBase++;
@@ -713,5 +719,14 @@ describe('meltdownOffline', () => {  it('is a deterministic function of (seed, i
     expect(base).toBeGreaterThan(0);
     expect(reduced).toBeLessThan(base);
     expect(reducedNotBase).toBe(0);
+  });
+});
+
+describe('isMeltedDown', () => {
+  it('is true only inside the outage window', () => {
+    expect(isMeltedDown(undefined, 100)).toBe(false);
+    expect(isMeltedDown(0, 100)).toBe(false);
+    expect(isMeltedDown(200, 100)).toBe(true);
+    expect(isMeltedDown(200, 200)).toBe(false);
   });
 });
