@@ -365,6 +365,25 @@ describe('age-gated units', () => {
       cruiser: 'information', battleship: 'information',
       // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30).
       reconTeam: 'connectivity', spy: 'information',
+      // Grand-expansion tech-level variants (PLAN §3.9, workstream D,
+      // 2026-09-30): Mk II unlocks one age above its base, floored at
+      // industry (foundation-base lines jump straight to industry);
+      // Mk III unlocks one age above Mk II. The top of each line lands
+      // in information or ascendance.
+      tankMk2: 'industry', tankMk3: 'information',
+      artilleryMk2: 'industry', artilleryMk3: 'information',
+      aaMk2: 'industry', aaMk3: 'information',
+      haulerMk2: 'industry', haulerMk3: 'information',
+      apcMk2: 'industry', apcMk3: 'information',
+      fighterMk2: 'industry', fighterMk3: 'information',
+      attackHeliMk2: 'industry', attackHeliMk3: 'information',
+      missileBoatMk2: 'industry', missileBoatMk3: 'information',
+      fighterBomberMk2: 'information', fighterBomberMk3: 'ascendance',
+      gunshipMk2: 'information', gunshipMk3: 'ascendance',
+      destroyerMk2: 'information', destroyerMk3: 'ascendance',
+      frigateMk2: 'information', frigateMk3: 'ascendance',
+      submarineMk2: 'information', submarineMk3: 'ascendance',
+      transportShipMk2: 'information', transportShipMk3: 'ascendance',
     };
     expect(Object.keys(UNIT_DEFS).sort()).toEqual(Object.keys(expected).sort());
     for (const [kind, age] of Object.entries(expected)) {

@@ -20,14 +20,13 @@
  * Responsibilities:
  *  - Plain-data records for mobile entities (units): id, owner, kind,
  *    position, speed, order state, and combat state (hp, cooldown,
- *    target). The roster is 21 land + 22 air + 25 sea (68 kinds; the sea
- *    count grew in grand-expansion Phase 6's naval expansion —
- *    workstream C, 2026-09-30: coastalSub, missileSub, corvette,
- *    cruiser, battleship, heavyDestroyer, cargoFreighter, fuelTanker,
- *    ammoShip, repairShip, minelayer, navalMine, coastGuardCutter,
- *    cruiseLiner, yacht — 15 new sea kinds; the land count grew with
- *    the grand-expansion intel roster (§3.8/S6, workstream 2,
- *    2026-09-30): spy, reconTeam).
+ *    target). The roster is 31 land + 30 air + 35 sea (96 kinds: the 68
+ *    base kinds plus the grand-expansion Phase 8 Mk II/Mk III tech-level
+ *    variants, workstream D, 2026-09-30 — land gained tank/artillery/aa/
+ *    apc/hauler Mk II+III, air gained fighter/fighterBomber/attackHeli/
+ *    gunship Mk II+III, sea gained destroyer/frigate/submarine/
+ *    missileBoat/transportShip Mk II+III; variants share the base kind's
+ *    art — see `variantOf` on UnitDef and sim/variants.ts).
  *  - Unit ids come from `world.nextId` (the same counter as entities), so
  *    they are stable, never reused, and never collide with entity ids.
  *  - Movement state lives here too (`path`, `fieldId`, `destX/Z`); the
@@ -53,10 +52,14 @@ import { isUnitAvailableForAge } from './ages';
 import { effectiveMaxHp, effectiveSpeed } from './upgrades';
 
 /**
- * The full 68-unit roster (spec docs/research/roster-expansion.md §2,
- * plus Phase 3 logistics trucks, Phase 4 transports, Phase 5 aircraft
- * expansion, Phase 6 naval expansion, and the grand-expansion intel
- * roster §3.8/S6 workstream 2).
+ * The full 96-unit roster: the 68 base kinds (spec
+ * docs/research/roster-expansion.md §2, plus Phase 3 logistics trucks,
+ * Phase 4 transports, Phase 5 aircraft expansion, Phase 6 naval
+ * expansion, and the grand-expansion intel roster §3.8/S6 workstream 2)
+ * plus the 28 grand-expansion Phase 8 tech-level variants (workstream D,
+ * 2026-09-30 — Mk II/Mk III of tank, artillery, aa, apc, hauler,
+ * fighter, fighterBomber, attackHeli, gunship, destroyer, frigate,
+ * submarine, missileBoat, transportShip).
  * Land (21): engineer, rifles, tank, artillery, aa, hauler, supplyTruck,
  * fuelTruck, spectre, hq, apc, tankDestroyer, mlrs, sniperTeam, combatMedic,
  * passengerTrain, freightTrain, bus, tram, spy, reconTeam.
@@ -163,6 +166,46 @@ export const UNIT_KINDS = [
   // ------------------------------------------------------------------
   'spy',
   'reconTeam',
+  // ------------------------------------------------------------------
+  // Grand-expansion Phase 8 — tech-level variants (workstream D,
+  // 2026-09-30). 28 kinds: Mk II / Mk III of the 14 workhorse kinds
+  // (land: tank, artillery, aa, apc, hauler; air: fighter,
+  // fighterBomber, attackHeli, gunship; sea: destroyer, frigate,
+  // submarine, missileBoat, transportShip). Distinct UnitKinds sharing
+  // the base kind's art via `variantOf` (§AD12 — zero new model keys);
+  // gated by `minAge` (Mk II one age above the base, floored at
+  // industry — foundation-base lines jump straight to industry; Mk III
+  // one age above Mk II) + the base's `requiredBuilding`. See
+  // sim/variants.ts for the gating helpers.
+  // ------------------------------------------------------------------
+  'tankMk2',
+  'tankMk3',
+  'artilleryMk2',
+  'artilleryMk3',
+  'aaMk2',
+  'aaMk3',
+  'apcMk2',
+  'apcMk3',
+  'haulerMk2',
+  'haulerMk3',
+  'fighterMk2',
+  'fighterMk3',
+  'fighterBomberMk2',
+  'fighterBomberMk3',
+  'attackHeliMk2',
+  'attackHeliMk3',
+  'gunshipMk2',
+  'gunshipMk3',
+  'destroyerMk2',
+  'destroyerMk3',
+  'frigateMk2',
+  'frigateMk3',
+  'submarineMk2',
+  'submarineMk3',
+  'missileBoatMk2',
+  'missileBoatMk3',
+  'transportShipMk2',
+  'transportShipMk3',
 ] as const;
 export type UnitKind = (typeof UNIT_KINDS)[number];
 
@@ -402,6 +445,23 @@ export interface UnitDef {
    * the judgment calls.
    */
   military?: boolean;
+  // ------------------------------------------------------------------
+  // Grand-expansion Phase 8 (tech levels, workstream D, 2026-09-30):
+  // Mk II / Mk III tech-level variants. A variant is a DISTINCT UnitKind
+  // (its own def, its own train command, its own record kind id) that
+  // shares the base kind's art: `variantArtBase` in sim/variants.ts
+  // resolves it to `variantOf` for the render layer, so the variant
+  // reuses the base's MODEL_SOURCES entry — zero new MODEL_PATHS keys
+  // (§AD12). Gating is def-driven, not code-driven: `minAge` +
+  // `requiredBuilding` are checked by the existing spawnUnit validator,
+  // and `military` variants are locked out in peaceful worlds by the
+  // WS-A lockout. `variantTier` is 2 (Mk II) or 3 (Mk III); base kinds
+  // leave both fields undefined.
+  // ------------------------------------------------------------------
+  /** The base kind this variant upgrades (e.g. 'tankMk2' → 'tank'). */
+  variantOf?: UnitKind;
+  /** Tech tier of a variant: 2 = Mk II, 3 = Mk III. */
+  variantTier?: number;
 }
 
 /** Mobile HQ command aura: radius and friendly damage bonus. */
@@ -1080,6 +1140,259 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 2, trainFunds: 150, trainMaterials: 15, requiredBuilding: 'barracks',
     recon: true, // dedicated recon asset — overflight can discover mixed airports
     military: true,
+  },
+  // ------------------------------------------------------------------
+  // Grand-expansion Phase 8 — tech-level variants (workstream D,
+  // 2026-09-30). Mk II / Mk III of the 14 workhorse kinds. Each tier is
+  // a REAL upgrade, not a placebo: Mk II = hp ×1.3, damage ×1.25,
+  // speed ×1.1, fuel ×1.2, cost ×1.6 (manpower +1); Mk III = hp ×1.6,
+  // damage ×1.5, speed ×1.2, fuel ×1.4, cost ×2.5 (manpower +2), plus
+  // role-specific bumps (artillery/aa/sub range, aa/fighter vsAir,
+  // missile magazines, hauler cargo). Gating: minAge one age above the
+  // base for Mk II, two ages above for Mk III; the base's
+  // requiredBuilding is kept (train from the same production line).
+  // Art: `variantOf` routes the render layer to the base kind's model
+  // (zero new MODEL_PATHS keys, §AD12). Military variants carry
+  // `military: true` (peaceful lockout); hauler/transportShip variants
+  // are civilian — the peaceful-mode tech progression path.
+  // ------------------------------------------------------------------
+  tankMk2: {
+    kind: 'tankMk2', name: 'Main Battle Tank Mk II', domain: 'land', hp: 650, speed: 11, armor: 'heavy',
+    damage: 63, range: 19, minRange: 0, cooldownTicks: 50, targets: 'ground',
+    vsLight: 1.3, vsMedium: 1.0, vsHeavy: 0.9, vsAir: 1.0, sight: 28, minAge: 'industry',
+    manpowerCost: 6, trainFunds: 640, trainMaterials: 100, requiredBuilding: 'warFactory',
+    fuelCapacity: 72, fuelPerSecond: 0.15, fuelType: 'fossil',
+    military: true, variantOf: 'tank', variantTier: 2,
+  },
+  tankMk3: {
+    kind: 'tankMk3', name: 'Main Battle Tank Mk III', domain: 'land', hp: 800, speed: 12, armor: 'heavy',
+    damage: 75, range: 20, minRange: 0, cooldownTicks: 50, targets: 'ground',
+    vsLight: 1.3, vsMedium: 1.0, vsHeavy: 0.9, vsAir: 1.0, sight: 30, minAge: 'information',
+    manpowerCost: 7, trainFunds: 1000, trainMaterials: 150, requiredBuilding: 'warFactory',
+    fuelCapacity: 84, fuelPerSecond: 0.15, fuelType: 'fossil',
+    military: true, variantOf: 'tank', variantTier: 3,
+  },
+  artilleryMk2: {
+    kind: 'artilleryMk2', name: 'Artillery Mk II', domain: 'land', hp: 210, speed: 7, armor: 'medium',
+    damage: 120, range: 50, minRange: 12, cooldownTicks: 100, targets: 'ground',
+    vsLight: 1.0, vsMedium: 1.4, vsHeavy: 1.6, vsAir: 1.0, sight: 32, minAge: 'industry',
+    manpowerCost: 5, trainFunds: 720, trainMaterials: 130, requiredBuilding: 'warFactory',
+    fuelCapacity: 48, fuelPerSecond: 0.10, fuelType: 'fossil',
+    military: true, variantOf: 'artillery', variantTier: 2,
+  },
+  artilleryMk3: {
+    kind: 'artilleryMk3', name: 'Artillery Mk III', domain: 'land', hp: 260, speed: 7, armor: 'medium',
+    damage: 145, range: 52, minRange: 12, cooldownTicks: 100, targets: 'ground',
+    vsLight: 1.0, vsMedium: 1.4, vsHeavy: 1.6, vsAir: 1.0, sight: 34, minAge: 'information',
+    manpowerCost: 6, trainFunds: 1150, trainMaterials: 200, requiredBuilding: 'warFactory',
+    fuelCapacity: 56, fuelPerSecond: 0.10, fuelType: 'fossil',
+    military: true, variantOf: 'artillery', variantTier: 3,
+  },
+  aaMk2: {
+    kind: 'aaMk2', name: 'Mobile AA Mk II', domain: 'land', hp: 260, speed: 11, armor: 'medium',
+    damage: 50, range: 30, minRange: 0, cooldownTicks: 25, targets: 'air',
+    vsLight: 0.3, vsMedium: 0.3, vsHeavy: 0.3, vsAir: 2.4, sight: 36, minAge: 'industry',
+    manpowerCost: 5, trainFunds: 560, trainMaterials: 100, requiredBuilding: 'warFactory',
+    fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil',
+    military: true, variantOf: 'aa', variantTier: 2,
+  },
+  aaMk3: {
+    kind: 'aaMk3', name: 'Mobile AA Mk III', domain: 'land', hp: 320, speed: 12, armor: 'medium',
+    damage: 60, range: 32, minRange: 0, cooldownTicks: 25, targets: 'air',
+    vsLight: 0.3, vsMedium: 0.3, vsHeavy: 0.3, vsAir: 2.6, sight: 38, minAge: 'information',
+    manpowerCost: 6, trainFunds: 900, trainMaterials: 150, requiredBuilding: 'warFactory',
+    fuelCapacity: 70, fuelPerSecond: 0.15, fuelType: 'fossil',
+    military: true, variantOf: 'aa', variantTier: 3,
+  },
+  apcMk2: {
+    kind: 'apcMk2', name: 'Armored Personnel Carrier Mk II', domain: 'land', hp: 420, speed: 13, armor: 'medium',
+    damage: 18, range: 16, minRange: 0, cooldownTicks: 25, targets: 'ground',
+    vsLight: 1.3, vsMedium: 0.8, vsHeavy: 0.5, vsAir: 1.0, sight: 26, minAge: 'industry',
+    manpowerCost: 5, trainFunds: 400, trainMaterials: 65, requiredBuilding: 'warFactory',
+    fuelCapacity: 58, fuelPerSecond: 0.16, fuelType: 'fossil',
+    military: true, variantOf: 'apc', variantTier: 2,
+  },
+  apcMk3: {
+    kind: 'apcMk3', name: 'Armored Personnel Carrier Mk III', domain: 'land', hp: 510, speed: 14, armor: 'medium',
+    damage: 21, range: 17, minRange: 0, cooldownTicks: 25, targets: 'ground',
+    vsLight: 1.3, vsMedium: 0.8, vsHeavy: 0.5, vsAir: 1.0, sight: 28, minAge: 'information',
+    manpowerCost: 6, trainFunds: 650, trainMaterials: 100, requiredBuilding: 'warFactory',
+    fuelCapacity: 67, fuelPerSecond: 0.16, fuelType: 'fossil',
+    military: true, variantOf: 'apc', variantTier: 3,
+  },
+  haulerMk2: {
+    kind: 'haulerMk2', name: 'Hauler Mk II', domain: 'land', hp: 210, speed: 10, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 18, minAge: 'industry',
+    manpowerCost: 0, trainFunds: 200, trainMaterials: 35,
+    fuelCapacity: 72, fuelPerSecond: 0.12, fuelType: 'fossil',
+    cargoFuelCapacity: 70, cargoAmmoCapacity: 35, // bigger field holds
+    variantOf: 'hauler', variantTier: 2, // civilian: the peaceful tech path
+  },
+  haulerMk3: {
+    kind: 'haulerMk3', name: 'Hauler Mk III', domain: 'land', hp: 260, speed: 11, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'information',
+    manpowerCost: 0, trainFunds: 320, trainMaterials: 60,
+    fuelCapacity: 84, fuelPerSecond: 0.12, fuelType: 'fossil',
+    cargoFuelCapacity: 100, cargoAmmoCapacity: 50,
+    variantOf: 'hauler', variantTier: 3, // civilian: the peaceful tech path
+  },
+  fighterMk2: {
+    kind: 'fighterMk2', name: 'Fighter Mk II', domain: 'air', hp: 220, speed: 29, armor: 'light',
+    damage: 40, range: 24, minRange: 0, cooldownTicks: 28, targets: 'both',
+    vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 1.8, sight: 42, minAge: 'industry',
+    manpowerCost: 4, trainFunds: 1300, trainMaterials: 190, requiredBuilding: 'airfield',
+    fuelCapacity: 54, fuelPerSecond: 0.5, fuelType: 'fossil',
+    hangarClass: 'medium',
+    military: true, variantOf: 'fighter', variantTier: 2,
+  },
+  fighterMk3: {
+    kind: 'fighterMk3', name: 'Fighter Mk III', domain: 'air', hp: 270, speed: 31, armor: 'light',
+    damage: 48, range: 26, minRange: 0, cooldownTicks: 28, targets: 'both',
+    vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 2.0, sight: 44, minAge: 'information',
+    manpowerCost: 5, trainFunds: 2000, trainMaterials: 300, requiredBuilding: 'airfield',
+    fuelCapacity: 63, fuelPerSecond: 0.5, fuelType: 'fossil',
+    hangarClass: 'medium',
+    military: true, variantOf: 'fighter', variantTier: 3,
+  },
+  fighterBomberMk2: {
+    kind: 'fighterBomberMk2', name: 'Fighter-Bomber Mk II', domain: 'air', hp: 260, speed: 31, armor: 'medium',
+    damage: 150, range: 22, minRange: 0, cooldownTicks: 90, targets: 'ground',
+    vsLight: 0.8, vsMedium: 1.0, vsHeavy: 1.8, vsAir: 1.0, sight: 34, minAge: 'information',
+    manpowerCost: 5, trainFunds: 1600, trainMaterials: 240, requiredBuilding: 'airfield',
+    fuelCapacity: 66, fuelPerSecond: 0.55, fuelType: 'fossil',
+    hangarClass: 'medium',
+    military: true, variantOf: 'fighterBomber', variantTier: 2,
+  },
+  fighterBomberMk3: {
+    kind: 'fighterBomberMk3', name: 'Fighter-Bomber Mk III', domain: 'air', hp: 320, speed: 34, armor: 'medium',
+    damage: 180, range: 24, minRange: 0, cooldownTicks: 90, targets: 'ground',
+    vsLight: 0.8, vsMedium: 1.0, vsHeavy: 2.0, vsAir: 1.0, sight: 36, minAge: 'ascendance',
+    manpowerCost: 6, trainFunds: 2500, trainMaterials: 375, requiredBuilding: 'airfield',
+    fuelCapacity: 77, fuelPerSecond: 0.55, fuelType: 'fossil',
+    hangarClass: 'medium',
+    military: true, variantOf: 'fighterBomber', variantTier: 3,
+  },
+  attackHeliMk2: {
+    kind: 'attackHeliMk2', name: 'Attack Helicopter Mk II', domain: 'air', hp: 195, speed: 33, armor: 'light',
+    damage: 75, range: 22, minRange: 0, cooldownTicks: 55, targets: 'ground',
+    vsLight: 0.9, vsMedium: 1.1, vsHeavy: 1.6, vsAir: 1.0, sight: 32, minAge: 'industry',
+    manpowerCost: 5, trainFunds: 1150, trainMaterials: 160, requiredBuilding: 'airfield',
+    fuelCapacity: 48, fuelPerSecond: 0.5, fuelType: 'fossil',
+    hangarClass: 'light',
+    military: true, variantOf: 'attackHeli', variantTier: 2,
+  },
+  attackHeliMk3: {
+    kind: 'attackHeliMk3', name: 'Attack Helicopter Mk III', domain: 'air', hp: 240, speed: 36, armor: 'light',
+    damage: 90, range: 24, minRange: 0, cooldownTicks: 55, targets: 'ground',
+    vsLight: 0.9, vsMedium: 1.1, vsHeavy: 1.8, vsAir: 1.0, sight: 34, minAge: 'information',
+    manpowerCost: 6, trainFunds: 1750, trainMaterials: 250, requiredBuilding: 'airfield',
+    fuelCapacity: 56, fuelPerSecond: 0.5, fuelType: 'fossil',
+    hangarClass: 'light',
+    military: true, variantOf: 'attackHeli', variantTier: 3,
+  },
+  gunshipMk2: {
+    kind: 'gunshipMk2', name: 'Gunship Mk II', domain: 'air', hp: 365, speed: 24, armor: 'medium',
+    damage: 115, range: 22, minRange: 0, cooldownTicks: 55, targets: 'ground',
+    vsLight: 1.5, vsMedium: 1.1, vsHeavy: 0.7, vsAir: 1.0, sight: 32, minAge: 'information',
+    manpowerCost: 5, trainFunds: 2250, trainMaterials: 340, requiredBuilding: 'airfield',
+    fuelCapacity: 78, fuelPerSecond: 0.5, fuelType: 'fossil',
+    hangarClass: 'medium',
+    military: true, variantOf: 'gunship', variantTier: 2,
+  },
+  gunshipMk3: {
+    kind: 'gunshipMk3', name: 'Gunship Mk III', domain: 'air', hp: 450, speed: 26, armor: 'medium',
+    damage: 135, range: 24, minRange: 0, cooldownTicks: 55, targets: 'ground',
+    vsLight: 1.5, vsMedium: 1.1, vsHeavy: 0.7, vsAir: 1.0, sight: 34, minAge: 'ascendance',
+    manpowerCost: 6, trainFunds: 3500, trainMaterials: 525, requiredBuilding: 'airfield',
+    fuelCapacity: 91, fuelPerSecond: 0.5, fuelType: 'fossil',
+    hangarClass: 'medium',
+    military: true, variantOf: 'gunship', variantTier: 3,
+  },
+  destroyerMk2: {
+    kind: 'destroyerMk2', name: 'Destroyer Mk II', domain: 'sea', hp: 780, speed: 12, armor: 'heavy',
+    damage: 56, range: 28, minRange: 0, cooldownTicks: 40, targets: 'seaAir',
+    vsLight: 1.3, vsMedium: 1.1, vsHeavy: 1.0, vsAir: 2.0, sight: 36, minAge: 'information',
+    manpowerCost: 7, trainFunds: 2400, trainMaterials: 640, requiredBuilding: 'navalYard',
+    fuelCapacity: 144, fuelPerSecond: 0.25, fuelType: 'fossil',
+    military: true, variantOf: 'destroyer', variantTier: 2,
+  },
+  destroyerMk3: {
+    kind: 'destroyerMk3', name: 'Destroyer Mk III', domain: 'sea', hp: 960, speed: 13, armor: 'heavy',
+    damage: 68, range: 30, minRange: 0, cooldownTicks: 40, targets: 'seaAir',
+    vsLight: 1.3, vsMedium: 1.1, vsHeavy: 1.0, vsAir: 2.2, sight: 38, minAge: 'ascendance',
+    manpowerCost: 8, trainFunds: 3750, trainMaterials: 1000, requiredBuilding: 'navalYard',
+    fuelCapacity: 168, fuelPerSecond: 0.25, fuelType: 'fossil',
+    military: true, variantOf: 'destroyer', variantTier: 3,
+  },
+  frigateMk2: {
+    kind: 'frigateMk2', name: 'Frigate Mk II', domain: 'sea', hp: 550, speed: 14, armor: 'medium',
+    damage: 38, range: 26, minRange: 0, cooldownTicks: 35, targets: 'seaAir',
+    vsLight: 1.2, vsMedium: 1.7, vsHeavy: 0.8, vsAir: 1.2, sight: 34, minAge: 'information',
+    manpowerCost: 6, trainFunds: 1450, trainMaterials: 350, requiredBuilding: 'navalYard',
+    fuelCapacity: 132, fuelPerSecond: 0.25, fuelType: 'fossil',
+    military: true, variantOf: 'frigate', variantTier: 2,
+  },
+  frigateMk3: {
+    kind: 'frigateMk3', name: 'Frigate Mk III', domain: 'sea', hp: 670, speed: 16, armor: 'medium',
+    damage: 45, range: 28, minRange: 0, cooldownTicks: 35, targets: 'seaAir',
+    vsLight: 1.2, vsMedium: 1.8, vsHeavy: 0.8, vsAir: 1.2, sight: 36, minAge: 'ascendance',
+    manpowerCost: 7, trainFunds: 2250, trainMaterials: 550, requiredBuilding: 'navalYard',
+    fuelCapacity: 154, fuelPerSecond: 0.25, fuelType: 'fossil',
+    military: true, variantOf: 'frigate', variantTier: 3,
+  },
+  submarineMk2: {
+    kind: 'submarineMk2', name: 'Submarine Mk II', domain: 'sea', hp: 390, speed: 11, armor: 'medium',
+    damage: 115, range: 32, minRange: 0, cooldownTicks: 80, targets: 'sea',
+    vsLight: 0.8, vsMedium: 1.5, vsHeavy: 2.1, vsAir: 1.0, sight: 28, minAge: 'information',
+    manpowerCost: 7, trainFunds: 1900, trainMaterials: 480, requiredBuilding: 'navalYard',
+    ammoCapacity: 16, ammoPerShot: 1, // deeper torpedo room
+    fuelType: 'nuclear', // nuclear exemption inherited — user directive 2026-09-30
+    military: true, variantOf: 'submarine', variantTier: 2,
+  },
+  submarineMk3: {
+    kind: 'submarineMk3', name: 'Submarine Mk III', domain: 'sea', hp: 480, speed: 12, armor: 'medium',
+    damage: 135, range: 34, minRange: 0, cooldownTicks: 80, targets: 'sea',
+    vsLight: 0.8, vsMedium: 1.5, vsHeavy: 2.2, vsAir: 1.0, sight: 30, minAge: 'ascendance',
+    manpowerCost: 8, trainFunds: 3000, trainMaterials: 750, requiredBuilding: 'navalYard',
+    ammoCapacity: 20, ammoPerShot: 1,
+    fuelType: 'nuclear',
+    military: true, variantOf: 'submarine', variantTier: 3,
+  },
+  missileBoatMk2: {
+    kind: 'missileBoatMk2', name: 'Missile Boat Mk II', domain: 'sea', hp: 235, speed: 20, armor: 'light',
+    damage: 88, range: 24, minRange: 0, cooldownTicks: 70, targets: 'sea',
+    vsLight: 1.0, vsMedium: 1.1, vsHeavy: 1.5, vsAir: 1.0, sight: 30, minAge: 'industry',
+    manpowerCost: 5, trainFunds: 800, trainMaterials: 190, requiredBuilding: 'shipyard',
+    ammoCapacity: 12, ammoPerShot: 1, // three 4-packs
+    fuelCapacity: 96, fuelPerSecond: 0.25, fuelType: 'fossil',
+    military: true, variantOf: 'missileBoat', variantTier: 2,
+  },
+  missileBoatMk3: {
+    kind: 'missileBoatMk3', name: 'Missile Boat Mk III', domain: 'sea', hp: 290, speed: 22, armor: 'light',
+    damage: 105, range: 26, minRange: 0, cooldownTicks: 70, targets: 'sea',
+    vsLight: 1.0, vsMedium: 1.1, vsHeavy: 1.5, vsAir: 1.0, sight: 32, minAge: 'information',
+    manpowerCost: 6, trainFunds: 1250, trainMaterials: 300, requiredBuilding: 'shipyard',
+    ammoCapacity: 16, ammoPerShot: 1,
+    fuelCapacity: 112, fuelPerSecond: 0.25, fuelType: 'fossil',
+    military: true, variantOf: 'missileBoat', variantTier: 3,
+  },
+  transportShipMk2: {
+    kind: 'transportShipMk2', name: 'Transport Ship Mk II', domain: 'sea', hp: 455, speed: 10, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 24, minAge: 'information',
+    manpowerCost: 2, trainFunds: 650, trainMaterials: 160,
+    fuelCapacity: 144, fuelPerSecond: 0.25, fuelType: 'fossil',
+    variantOf: 'transportShip', variantTier: 2, // civilian: the peaceful tech path
+  },
+  transportShipMk3: {
+    kind: 'transportShipMk3', name: 'Transport Ship Mk III', domain: 'sea', hp: 560, speed: 11, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 26, minAge: 'ascendance',
+    manpowerCost: 3, trainFunds: 1000, trainMaterials: 250,
+    fuelCapacity: 168, fuelPerSecond: 0.25, fuelType: 'fossil',
+    variantOf: 'transportShip', variantTier: 3, // civilian: the peaceful tech path
   },
 };
 

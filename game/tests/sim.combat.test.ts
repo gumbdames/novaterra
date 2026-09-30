@@ -155,7 +155,7 @@ function advanceToConnectivity(ctx: Ctx, owner = 0): void {
 }
 
 describe('roster', () => {
-  it('has exactly the 68 kinds (21 land + 22 air + 25 sea: Phase 4 added 4 land + 1 sea transports, Phase 6 adds 15 sea, the aircraft workstream adds 16 air, the intel roster workstream adds 2 land)', () => {
+  it('has exactly the 96 kinds (31 land + 30 air + 35 sea: Phase 4 added 4 land + 1 sea transports, Phase 6 adds 15 sea, the aircraft workstream adds 16 air, the intel roster workstream adds 2 land, the Phase 8 tech-level workstream adds 28 Mk II/III variants)', () => {
     const kinds = Object.keys(UNIT_DEFS).sort();
     expect(kinds).toEqual(
       [
@@ -186,14 +186,23 @@ describe('roster', () => {
         // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
         // the 2 new land intel kinds.
         'spy', 'reconTeam',
+        // Grand-expansion Phase 8 — tech-level variants (workstream D,
+        // 2026-09-30): 28 Mk II/Mk III defs across 14 unit lines.
+        'tankMk2', 'tankMk3', 'artilleryMk2', 'artilleryMk3',
+        'aaMk2', 'aaMk3', 'apcMk2', 'apcMk3', 'haulerMk2', 'haulerMk3',
+        'fighterMk2', 'fighterMk3', 'fighterBomberMk2', 'fighterBomberMk3',
+        'attackHeliMk2', 'attackHeliMk3', 'gunshipMk2', 'gunshipMk3',
+        'destroyerMk2', 'destroyerMk3', 'frigateMk2', 'frigateMk3',
+        'submarineMk2', 'submarineMk3', 'missileBoatMk2', 'missileBoatMk3',
+        'transportShipMk2', 'transportShipMk3',
       ].sort(),
     );
     const land = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'land');
     const air = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'air');
     const sea = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'sea');
-    expect(land).toHaveLength(21);
-    expect(air).toHaveLength(22);
-    expect(sea).toHaveLength(25);
+    expect(land).toHaveLength(31);
+    expect(air).toHaveLength(30);
+    expect(sea).toHaveLength(35);
   });
 
   it('spawns with full hp, zero cooldown, no target', () => {
