@@ -55,7 +55,14 @@ land, sea and air — or play a fully peaceful game with war disabled.
   builds a civilian city (districts → utilities → factories → housing →
   civic), issues zero military orders, and never forms them — the
   `canTrain` gate and the peaceful dispatch (`thinkPeaceful`) keep the
-  rival's entire play peaceful. See the live plan:
+  rival's entire play peaceful. Phase 9 (soak, balance, polish) is
+  complete: long AI-vs-AI soaks to game conclusion with usage metrics
+  (`game/tests/sim.phase9-longsoak.test.ts`,
+  `docs/research/phase9-soak-metrics.md`) fixed an `advanceAge` race
+  crash, water-sited forward bases, and the peaceful-AI death spiral,
+  and tuned AI mixes (dead roster 82 → 73 kinds); polish fixed
+  oversized airport terminals and undersized runway strips.
+  See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
 ## What the game has today (0.1 Alpha)

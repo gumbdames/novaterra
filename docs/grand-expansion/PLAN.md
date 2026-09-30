@@ -1087,7 +1087,21 @@ integration gate is green (full suite 2100/2100, tsc clean).
   `thinkPeaceful`; zero military orders formed, let alone rejected).
 
 ### Phase 9 — Soak, balance, polish (ongoing)
-AI-vs-AI headline-system usage metrics per phase (§6); balance pass
+- **Status: COMPLETE (2026-09-30, 0.1 Alpha).** Dedicated final pass.
+  Long AI-vs-AI soaks to game conclusion (marshal/commander/general,
+  standard + peaceful, multiple seeds) with headline-usage metrics
+  (`game/tests/sim.phase9-longsoak.test.ts`, report
+  `docs/research/phase9-soak-metrics.md`). Found and fixed: an
+  `advanceAge` same-tick race that crashed the tick (human-vs-AI too),
+  commander forward bases placed in water, and the peaceful-AI death
+  spiral (treasury floor, fouling-avoidant siting, paced fuel).
+  Balance: dead roster 82 → 73; marshal builds mediaCenter (industry
+  unlock); commander mix gains reconTeam/hq. Polish: oversized
+  airport terminals scaled to footprints, runway strips filled to
+  plots, stale comments and a peaceful-mode intel-panel contradiction
+  fixed. Save/load digests stay stable. Budgets: startup ≈3.5 MiB
+  (1.63 MiB JS+CSS+HTML + pinned 33-key boot GLB set) vs 8 MiB gate.
+  AI-vs-AI headline-system usage metrics per phase (§6); balance pass
 on plant ladder and supply costs; visual review per asset batch;
 player-docs (HOW_TO_PLAY, GAME_MECHANICS) updated per phase as
 mechanics land — a doc that lags reality is a bug.
