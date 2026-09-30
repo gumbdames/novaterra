@@ -62,7 +62,7 @@ export interface TrainTab {
   kinds: readonly UnitKind[];
 }
 
-/** 94 units across 6 tabs (Phase 8 adds the 28 Mk II/III tech-level
+/** 96 units across 6 tabs (Phase 8 adds the 28 Mk II/III tech-level
  * variants next to their base kinds). Every unit kind appears in
  * exactly one tab. */
 export const TRAIN_TABS: readonly TrainTab[] = [
