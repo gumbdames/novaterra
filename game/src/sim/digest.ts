@@ -215,6 +215,13 @@ export function canonicalizeWorld(world: World): string {
     // Phase 3 logistics (workstream 3): virtual depot stocks. Behavior-
     // affecting (they refill AI units) ⇒ digest-covered (PLAN §11).
     out += `vls=${canonicalNumber(p.virtualAmmoStock ?? 0)},${canonicalNumber(p.virtualFuelStock ?? 0)},`;
+    // Grand-expansion Phase 7 (AI intel play): the virtual intel queue —
+    // construction slot, surge latch, and ordered-op counts all drive
+    // future behavior ⇒ digest-covered (PLAN §11).
+    const aiIntel = p.intel;
+    out += `int=${aiIntel?.constructing ? `${aiIntel.constructing.kind}:${aiIntel.constructing.readyTick}` : '-'},`;
+    out += `${aiIntel?.counterIntelSurge ? 1 : 0},`;
+    out += `${aiIntel?.ops.infiltrate ?? 0}.${aiIntel?.ops.sabotage ?? 0}.${aiIntel?.ops.steal ?? 0},`;
     // Personality (per-match seeded playstyle): covered so same-seed
     // replays digest identically and different seeds digest differently.
     const pers = p.personality;

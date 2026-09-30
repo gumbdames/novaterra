@@ -247,6 +247,15 @@ export function buildingCenterWorld(b: BuildingRecord): { x: number; z: number }
  * post is blind (same "completed and working" gate as accrual, so
  * sabotaging a detector blinds it). Pure function of
  * positions — zero snapshot/digest cost (PLAN §4 S6).
+ *
+ * Grand-expansion Phase 7 (AI intel play): the AI's VIRTUAL intel
+ * buildings contribute too — see `virtualDetectorEntries`. The AI
+ * owns no physical buildings in 0.1 Alpha; its completed virtual
+ * listeningPost/signalsStation detect from the AI's base. Virtual
+ * detectors are never sabotaged or unpowered, so they always accrue
+ * (the human player's counter-play is that the coverage is
+ * base-centered and the intel panel shows when a spy stands inside
+ * rival coverage — the detection is telegraphed, not invisible).
  */
 export function detectionRadiusAt(world: World, owner: number, x: number, z: number): number {
   const radiusBonus = hasUpgradeId(world, owner, 'counterIntel') ? COUNTER_INTEL_RADIUS_BONUS : 0;
@@ -266,7 +275,42 @@ export function detectionRadiusAt(world: World, owner: number, x: number, z: num
       best = effective;
     }
   }
+  // Grand-expansion Phase 7: the AI's virtual detectors (base-anchored).
+  for (const v of virtualDetectorEntries(world, owner)) {
+    const dx = v.x - x;
+    const dz = v.z - z;
+    if (dx * dx + dz * dz <= v.radius * v.radius && v.radius > best) {
+      best = v.radius;
+    }
+  }
   return best;
+}
+
+/**
+ * Grand-expansion Phase 7 (AI intel play): the AI's completed virtual
+ * detection buildings (listeningPost, signalsStation — kinds with
+ * `BuildingDef.detectionRadius`) detect from the AI's base
+ * (`baseX`, `baseZ`). Virtual buildings are never sabotaged or
+ * unpowered, so no operational gate applies; the `counterIntel`
+ * upgrade's radius bonus applies exactly like the physical sources.
+ * Returns the empty list for non-AI owners (humans own no virtual
+ * buildings). Read through the `World` type only — no ai.ts
+ * value-import (the import-discipline rule R2).
+ */
+function virtualDetectorEntries(
+  world: World,
+  owner: number,
+): { x: number; z: number; radius: number }[] {
+  const ai = world.ai.players.find((p) => p.owner === owner);
+  if (!ai) return [];
+  const radiusBonus = hasUpgradeId(world, owner, 'counterIntel') ? COUNTER_INTEL_RADIUS_BONUS : 0;
+  const out: { x: number; z: number; radius: number }[] = [];
+  for (const kind of ai.virtualBuildings.completed) {
+    const radius = BUILDING_DEFS[kind]?.detectionRadius;
+    if (radius === undefined || radius <= 0) continue;
+    out.push({ x: ai.baseX, z: ai.baseZ, radius: radius + radiusBonus });
+  }
+  return out;
 }
 
 /**
@@ -379,6 +423,14 @@ export function buildingSightCoverage(world: World, owner: number): BuildingSigh
     if (radar > 0) {
       out.push({ x: c.x, z: c.z, radius: radar, seesStealth: false });
     }
+  }
+  // Grand-expansion Phase 7 (AI intel play): the AI's virtual SIGINT
+  // detectors (base-anchored) see everything inside, including
+  // stealthed units — consistent with the virtual term in
+  // `detectionRadiusAt`. Building id order is preserved (the virtual
+  // terms append after the physical ones — deterministic).
+  for (const v of virtualDetectorEntries(world, owner)) {
+    out.push({ x: v.x, z: v.z, radius: v.radius, seesStealth: true });
   }
   return out;
 }
@@ -839,9 +891,9 @@ const stealTechSpec = {
     if (!withinAdjacency(spy as UnitRecord, building as BuildingRecord)) {
       return `stealTech: spy ${unitId} is not adjacent to building ${buildingId}`;
     }
-    if (pickStealableTech(world, owner, (building as BuildingRecord).owner) === null) {
-      return `stealTech: nothing left to steal from player ${(building as BuildingRecord).owner}`;
-    }
+    // NOTE: no "nothing left to steal" check — the apply is idempotent
+    // (fizzles if the tech was acquired between enqueue and apply). The
+    // AI checks pickStealableTech before ordering; the race is benign.
     if (getIntelAssets(world, owner).surveillance < STEAL_COST_SURVEILLANCE) {
       return `stealTech: need ${STEAL_COST_SURVEILLANCE} surveillance assets`;
     }
@@ -852,8 +904,16 @@ const stealTechSpec = {
     const building = world.city.buildings.find((b) => b.id === (cmd.payload['buildingId'] as number)) as BuildingRecord;
     const owner = cmd.payload['owner'] as number;
     spy.failReason = null;
+    // Idempotent: if the tech was acquired (researched) between enqueue
+    // and apply, the op fizzles — no assets spent, no throw. The
+    // enqueue-time validate already ensured there was something to steal
+    // when ordered; the AI cannot predict its own lab finishing a tech
+    // on the exact tick the steal lands.
+    const tech = pickStealableTech(world, owner, building.owner);
+    if (tech === null) {
+      return { tech: null, success: false, grantedResearch: 0, fizzled: true };
+    }
     spendIntelAsset(world, owner, 'surveillance', STEAL_COST_SURVEILLANCE);
-    const tech = pickStealableTech(world, owner, building.owner) as string;
     // Steal success, rolled on the THIEF's stream. signalsIntel sharpens
     // the operation; the victim's counterIntel (upgrade + stockpiled
     // assets) blunts it — see stealSuccessChance.

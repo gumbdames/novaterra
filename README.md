@@ -27,12 +27,14 @@ land, sea and air — or play a fully peaceful game with war disabled.
   missile sub, 4 ports, deployable naval mines, ambient airliners and
   cargo ships, the v8 snapshot migration, and hangar-aware AI that
   fills carrier wings before sailing. Phase 7 (intel + spies + recon)
-  is underway: the intel sim core (asset economy, stealth, sabotage,
+  is complete: the intel sim core (asset economy, stealth, sabotage,
   tech steal), the roster (spy, recon team, 4 intel buildings,
-  2 upgrades), the Intelligence panel (Management tab), and mixed-airport
+  2 upgrades), the Intelligence panel (Management tab), mixed-airport
   discovery (observation → warning with 60-second countdown → reveal
-  after 1800 ticks; radar/SIGINT/recon sight wired into AI perception)
-  are in; still to come: AI spy play. See the live plan:
+  after 1800 ticks; radar/SIGINT/recon sight wired into AI perception),
+  and the Classic AI intel play (virtual intel construction, spy
+  training to quota, target-value-directed infiltration/steal/sabotage,
+  counter-intel surge). See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
 ## What the game has today (0.1 Alpha)
@@ -61,10 +63,12 @@ land, sea and air — or play a fully peaceful game with war disabled.
   upgrades (Signals Intelligence, Counter-Intelligence) — plus the
   covert-op sim core: infiltrate/sabotage/tech-steal missions,
   detection coverage, burned-spy visibility, radar/SIGINT/recon
-  surveillance wired into AI perception, and mixed-airport discovery
+  surveillance wired into AI perception, mixed-airport discovery
   (observation → "suspicious military activity" warning with a
   60-second countdown → reveal; a mixed site reads civilian until
-  discovered). Still to come: AI spy play.
+  discovered), and the Classic AI intel play (virtual intel
+  construction, spy quotas, target-value-directed ops, counter-intel
+  surge).
   Art mappings done (Phase 6 workstream 5): all 6 kinds map to vendored
   CC0 — spy as a civilian lookalike, recon SUV, HQ block + roof antenna,
   listening-post hut + roof dish, big uplink dish, signals shed +

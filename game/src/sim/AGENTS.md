@@ -144,7 +144,31 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   (city.ts) covers real + virtual buildings for units and upgrade prereqs.
   Completed virtual buildings yield their def.output (the lab's research
   income is what funds AI research); upkeep is waived — the AI's abstract
-  economy has no tax loop to pay it from. Upgrade research (commander+,
+  economy has no tax loop to pay it from. Intel play (grand-expansion
+  Phase 7, S6 intel, workstream 3, 2026-09-30): commander+ virtually
+  constructs intel buildings (listeningPost → intelHQ → signalsStation;
+  marshal adds satelliteUplink) via `thinkIntelConstruction` — gated on
+  a completed production base, 2× cost funds buffer, and age; the build
+  queue is parallel (one per kind) and completed kinds join
+  `virtualBuildings.completed`. `creditVirtualIntel` (1 Hz) accrues
+  intel assets from virtual intel buildings, mirroring `runIntelAccrual`
+  upgrade multipliers. Spy doctrine (`thinkIntelSpies`): marshal trains
+  to quota (commander 1, general 2, marshal 3; cadet/citizen none),
+  directs free spies to the highest-value visible enemy building
+  (`intelTargetValue`: intel 100 > airports 80 > production 70 > depots
+  65 > power/water 60), infiltrates on adjacency, then steals tech
+  (intel first, 15 surveillance) or sabotages (disruption second, 25
+  operational, high-value unsabotaged hosts). Counter-intel surge latches
+  when a rival spy is spotted. Intel research (signalsIntel/counterIntel)
+  runs in `thinkIntelResearch`, separate from the personality-ordered
+  economy line. Per-think spend ledger (`ThinkLedger`, WeakMap by AI):
+  every fund/intel-asset spend is reserved before enqueue, so a think's
+  command batch never goes stale at apply (stale commands throw by
+  design). Covers research+production+spy+age double-spends; intel
+  asset costs (sabotage 25 operational, steal 15 surveillance) and
+  per-think sabotage/steal target sets prevent cross-spy races.
+  `stealTech` apply is idempotent (fizzles if the tech was researched
+  between enqueue and apply). Upgrade research (commander+,
   spec §7.4): AP Rounds → Composite Armor → Engine Tuning (4+ vehicles) →
   Sonar Suite (subs seen) → Advanced Avionics (3+ aircraft) → the economy
   line in per-match personality order, one per think, age/building/

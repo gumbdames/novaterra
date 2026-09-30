@@ -934,7 +934,7 @@ delta → AI work.** Step gate (§0) applies to every step inside.
 - **AI work:** AI assigns spies, spends operational assets, surges
   counter-intel on warning. **Prototype the mixed-use discovery UX
   early in this phase** (RESEARCH.md open question #1).
-- **Status: IN PROGRESS (2026-09-30, 0.1 Alpha)** — workstream 2
+- **Status: COMPLETE (2026-09-30, 0.1 Alpha)** — workstream 2
   (intel roster defs) landed: 4 intel buildings + 2 units (spy,
   reconTeam) + 2 upgrades (signalsIntel, counterIntel), the
   `sim/intel.ts` contract surface (`runIntelAccrual`, `isDetected`,
@@ -972,8 +972,16 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   digest + snapshot covered, stays v8); the UI seam
   (`discoveryStateOf` / `airportDisplayType` / `discoveryWarnings` /
   real-state rival airports), 22 tests in
-  `tests/sim.intel-sight.test.ts`. Remaining for Phase 7: AI spy
-  assignment.
+  `tests/sim.intel-sight.test.ts`. Workstream 3b (AI intel play) landed
+  (2026-09-30, 0.1 Alpha): the Classic AI runs the full intel doctrine
+  (`game/src/sim/ai.ts` — virtual intel construction, spy training to
+  quota + target-value-directed infiltration/steal/sabotage,
+  counter-intel surge, intel research, per-think spend ledger so the
+  command batch never goes stale at apply), 30 tests in
+  `tests/sim.ai-intel.test.ts` + a 3600-tick marshal-vs-marshal soak in
+  `tests/sim.ai-intel-soak.test.ts` (8 infiltrations, 8 steals,
+  4 sabotages, digest-stable across save/load).
+- **Status: COMPLETE (2026-09-30, 0.1 Alpha).**
 
 ### Phase 8 — Tech-level roster pass + peaceful mode (M + S)
 - **Goal:** Mk II/III variants across the roster (art-shared,

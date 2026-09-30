@@ -46,8 +46,14 @@
  *
  * Fairness (no cheating, no fog-of-war omniscience):
  *  - The AI only "sees" enemy units within sight range of its own units.
- *    All decisions flow through `getVisibleEnemies()` — the AI never reads
- *    enemy positions directly.
+ *    All unit decisions flow through `getVisibleEnemies()` — the AI never
+ *    reads enemy positions directly. ENEMY BUILDING positions are public
+ *    knowledge, not omniscience: there is no fog of war in 0.1 Alpha (the
+ *    whole map is visible to the human player), so the AI's spy targeting
+ *    reads the same building list the human sees. What stays hidden is
+ *    the mixed airport's true nature: the AI learns it only through its
+ *    own `BuildingRecord.discovery` viewer records (suspected/revealed),
+ *    never by reading the true airportType.
  *  - The AI issues the same commands a human player would (spawnUnit,
  *    moveUnit, moveGroup, attackUnit, researchUpgrade) through the command
  *    queue. It does not mutate world state directly (except its own
@@ -57,6 +63,38 @@
  *    attempting real fishing-boat spawns around its base. Failed probes
  *    cost nothing (rejected at enqueue); a successful probe IS the first
  *    fishing boat.
+ *
+ * Grand-expansion Phase 7 (AI intel play, 2026-09-30):
+ *  - The AI's intel infrastructure is VIRTUAL (a second one-at-a-time
+ *    construction queue, `ai.intel.constructing`, parallel to the
+ *    production queue so intel never stalls the war pipeline).
+ *    Construction starts only after the production base is complete
+ *    (barracks + warFactory) AND the AI holds twice the building's cost
+ *    (the other half stays in the war chest) — documented priority:
+ *    intel never starves the early economy. Per difficulty: cadet/
+ *    citizen build none; commander/general build
+ *    listeningPost → intelHQ → signalsStation; marshal adds
+ *    satelliteUplink. Completed virtual intel buildings join
+ *    `virtualBuildings.completed` (unlocking spy training via
+ *    `hasProductionBuilding`) and accrue intel assets through
+ *    `creditVirtualIntel` (the `creditVirtualEconomy` mirror, same
+ *    cadence, same upgrade multipliers). Their SIGINT detection is
+ *    anchored at the AI's base — see `sim/intel.ts`
+ *    `virtualDetectorEntries`.
+ *  - Spy doctrine (commander+, quota 1/2/3): train spies while under
+ *    the army cap; free spies move to the highest-value enemy building
+ *    (id-order tiebreak) and infiltrate on arrival; embedded spies
+ *    steal tech when surveillance ≥ 15 and a stealable tech exists,
+ *    sabotage the host when operational ≥ 25 and the host is a
+ *    high-value unsabotaged building. The AI also researches
+ *    signalsIntel (with listeningPost) and counterIntel (with
+ *    signalsStation) through the queue.
+ *  - Counter-intel defense: `ai.intel.counterIntelSurge` latches when a
+ *    burned/detected rival spy enters `getVisibleEnemies` or when the
+ *    AI's own discovery records warn of a suspected/revealed rival
+ *    mixed airport — signalsStation then jumps the intel build queue,
+ *    and the AI's stockpiled counter-intel sharpens its spot checks
+ *    (the sim-core rule in sim/intel.ts).
  *
  * Per-match personality (seeded, deterministic — not "entirely deterministic"
  * across matches):
@@ -102,7 +140,22 @@ import type { RngBank } from './rng';
 import { canTarget } from './combat';
 import { isUnitAvailableForAge, getSightBonus, AGE_PROGRESSION } from './ages';
 import { effectiveSight, hasUpgrade, registerUpgradeCommands, UPGRADE_DEFS, type UpgradeId } from './upgrades';
-import { isDetected, isStealthAsset, buildingSightCoverage } from './intel';
+import {
+  isDetected,
+  isStealthAsset,
+  buildingSightCoverage,
+  isSpyUnit,
+  getIntelAssets,
+  pickStealableTech,
+  isSabotaged,
+  buildingCenterWorld,
+  registerIntelCommands,
+  INTEL_ADJACENCY,
+  SABOTAGE_COST_OPERATIONAL,
+  STEAL_COST_SURVEILLANCE,
+  SIGNALS_INTEL_SURVEILLANCE_MULT,
+  COUNTER_INTEL_ASSET_MULT,
+} from './intel';
 import { vetSightMult } from './veterancy';
 import {
   getPlayer,
@@ -112,7 +165,9 @@ import {
   BUILDING_DEFS,
   MAP_HALF_SIZE,
   type BuildingKind,
+  type BuildingRecord,
   type HangarClass,
+  type IntelAssets,
 } from './city';
 import { isAegisReady, isStormReady } from './superweapons';
 import { CommandRejectedError } from './commands';
@@ -340,6 +395,45 @@ export interface AIPlayerState {
    * but never draw from it. Plain data — snapshotted + digested.
    */
   personality: AIPersonality;
+  /**
+   * Grand-expansion Phase 7 (AI intel play, 2026-09-30): the AI's
+   * virtual intel infrastructure. The AI owns no physical buildings in
+   * 0.1 Alpha, so its listeningPost / intelHQ / signalsStation /
+   * satelliteUplink are virtual — a SECOND one-at-a-time construction
+   * queue (parallel to `virtualBuildings`, so intel never stalls the
+   * war-production pipeline) whose completed kinds join
+   * `virtualBuildings.completed` (unlocking spy training and the
+   * virtual SIGINT detection that `sim/intel.ts` anchors at the AI's
+   * base). `counterIntelSurge` latches when a rival spy is spotted or
+   * a discovery warning arrives, and jumps signalsStation to the head
+   * of the intel queue. `ops` counts covert ops the AI ordered
+   * (infiltrate/sabotage/steal) — soak metrics, snapshotted + digested.
+   * Plain data — snapshotted + digested (AD9: missing decodes to the
+   * default below).
+   */
+  intel: AIIntelState;
+}
+
+/**
+ * Grand-expansion Phase 7 (AI intel play, 2026-09-30): the AI player's
+ * virtual intel state. See the `intel` field on `AIPlayerState`.
+ */
+export interface AIIntelState {
+  /** Virtual intel construction slot (one at a time, parallel to production). */
+  constructing: { kind: BuildingKind; readyTick: number } | null;
+  /** Latched on spotted rival spy / discovery warning: signalsStation jumps the queue. */
+  counterIntelSurge: boolean;
+  /** Covert ops ordered (infiltrate/sabotage/steal) — soak metrics. */
+  ops: { infiltrate: number; sabotage: number; steal: number };
+}
+
+/** Default intel state (AD9: pre-Phase-6 snapshots decode to this). */
+export function defaultAIIntelState(): AIIntelState {
+  return {
+    constructing: null,
+    counterIntelSurge: false,
+    ops: { infiltrate: 0, sabotage: 0, steal: 0 },
+  };
 }
 
 /** AI state for the world. Plain data — snapshotted + digested. */
@@ -388,6 +482,9 @@ export function addAIPlayer(
     virtualAmmoStock: 0,
     virtualFuelStock: 0,
     personality,
+    // Grand-expansion Phase 7 (AI intel play): the virtual intel queue
+    // starts empty; cadet/citizen never touch it (empty priority table).
+    intel: defaultAIIntelState(),
   });
 }
 
@@ -423,7 +520,7 @@ export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
   const sightBonus = getSightBonus(world);
   for (const e of world.units) {
     if (e.owner === owner || e.hp <= 0) continue;
-    // Grand-expansion Phase 6 (S6 intel): stealthed units (spies) are
+    // Grand-expansion Phase 7 (S6 intel): stealthed units (spies) are
     // invisible to the AI unless detected — the AI perceives exactly
     // what its side can see (the `isDetected` stealth contract in
     // intel.ts). No omniscience, no cheating.
@@ -502,23 +599,119 @@ function issue(world: World, queue: CommandQueue, kind: string, payload: Record<
 }
 
 /**
+ * Per-think spend ledger (grand-expansion Phase 7).
+ *
+ * The AI can enqueue several resource-spending commands in one think
+ * (research + spy + production unit + age advancement). Each checks
+ * affordability at ENQUEUE against the live stockpile — but the
+ * commands apply at the NEXT tick start, sequentially, each deducting.
+ * Without a ledger, two commands whose SUM exceeds the stockpile both
+ * pass enqueue and the second goes stale at apply — and a stale
+ * command THROWS (the queue's loud-rejection contract), which would
+ * crash the tick. The ledger reserves each committed spend for the
+ * rest of the think, so a think's batch can never go stale at apply.
+ *
+ * Pure scratch: reset at the start of every think (see
+ * createAISystem), never snapshotted — thinks run synchronously, so no
+ * snapshot can observe a mid-think ledger. Keyed by the AI player
+ * object (WeakMap): no cross-match leakage, no digest cost. An
+ * over-reservation (enqueue rejected after reserving) only makes the
+ * AI underspend one think — safe, never a crash.
+ */
+interface ThinkLedger {
+  funds: number;
+  materials: number;
+  manpower: number;
+  research: number;
+  influence: number;
+  // Intel assets reserved by queued ops this think (sabotage spends
+  // operational, steal spends surveillance — prevents the second op
+  // going stale at apply when the first spends the assets).
+  operational: number;
+  surveillance: number;
+}
+
+const thinkLedgers = new WeakMap<AIPlayerState, ThinkLedger>();
+
+/** The current think's ledger for `ai` (created on first use). */
+function thinkLedger(ai: AIPlayerState): ThinkLedger {
+  let l = thinkLedgers.get(ai);
+  if (!l) {
+    l = { funds: 0, materials: 0, manpower: 0, research: 0, influence: 0, operational: 0, surveillance: 0 };
+    thinkLedgers.set(ai, l);
+  }
+  return l;
+}
+
+/**
+ * Can the AI pay an immediate (non-queued) construction cost right
+ * now? The payment must leave the stockpile covering the think's
+ * queued commits (the ledger) — the AI mixes immediate deductions
+ * (virtual construction) with queued commands (spawns), and an
+ * immediate payment that undercuts an earlier enqueue would make that
+ * command go stale at apply, throwing and crashing the tick.
+ */
+function canPayImmediate(
+  ai: AIPlayerState,
+  player: { funds: number; materials: number },
+  costFunds: number,
+  costMaterials: number,
+): boolean {
+  const l = thinkLedger(ai);
+  return (
+    player.funds - costFunds >= l.funds &&
+    player.materials - costMaterials >= l.materials
+  );
+}
+
+/**
  * Issue a spawnUnit command through the queue. Skips if the AI lacks
- * manpower or cannot afford the training cost.
+ * manpower or cannot afford the training cost — affordability is
+ * checked against the live stockpile MINUS this think's committed
+ * spends (the per-think ledger), and the cost is reserved on issue so
+ * a later spend in the same think can't push this command stale.
  */
 function spawn(
   world: World,
   queue: CommandQueue,
-  owner: number,
+  ai: AIPlayerState,
   kind: UnitKind,
   x: number,
   z: number,
 ): void {
   const def = UNIT_DEFS[kind];
-  const player = getPlayer(world.city, owner);
+  const player = getPlayer(world.city, ai.owner);
   if (!player) return;
-  if (player.manpower < def.manpowerCost) return;
-  if (player.funds < def.trainFunds || player.materials < def.trainMaterials) return;
-  issue(world, queue, 'spawnUnit', { kind, owner, x, z });
+  const l = thinkLedger(ai);
+  if (player.manpower - l.manpower < def.manpowerCost) return;
+  if (player.funds - l.funds < def.trainFunds) return;
+  if (player.materials - l.materials < def.trainMaterials) return;
+  issue(world, queue, 'spawnUnit', { kind, owner: ai.owner, x, z });
+  l.manpower += def.manpowerCost;
+  l.funds += def.trainFunds;
+  l.materials += def.trainMaterials;
+}
+
+/**
+ * Issue a researchUpgrade command through the queue, reserving the
+ * cost in the per-think ledger (see thinkLedger). Skips when the live
+ * stockpile minus this think's commits can't cover it.
+ */
+function researchForAI(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  id: UpgradeId,
+): void {
+  const def = UPGRADE_DEFS[id];
+  const player = getPlayer(world.city, ai.owner);
+  if (!player) return;
+  const l = thinkLedger(ai);
+  if (player.funds - l.funds < def.costFunds) return;
+  if (player.research - l.research < def.costResearch) return;
+  issue(world, queue, 'researchUpgrade', { owner: ai.owner, upgrade: id });
+  l.funds += def.costFunds;
+  l.research += def.costResearch;
 }
 
 /**
@@ -530,24 +723,33 @@ function spawn(
 function trySpawn(
   world: World,
   queue: CommandQueue,
-  owner: number,
+  ai: AIPlayerState,
   kind: UnitKind,
   x: number,
   z: number,
 ): string | null {
   const def = UNIT_DEFS[kind];
-  const player = getPlayer(world.city, owner);
+  const player = getPlayer(world.city, ai.owner);
   if (!player) return 'trySpawn: unknown owner';
-  if (player.manpower < def.manpowerCost) return `spawnUnit: not enough manpower (need ${def.manpowerCost})`;
-  if (player.funds < def.trainFunds || player.materials < def.trainMaterials) {
+  const l = thinkLedger(ai);
+  if (player.manpower - l.manpower < def.manpowerCost) {
+    return `spawnUnit: not enough manpower (need ${def.manpowerCost})`;
+  }
+  if (
+    player.funds - l.funds < def.trainFunds ||
+    player.materials - l.materials < def.trainMaterials
+  ) {
     return `spawnUnit: cannot afford training cost for ${kind}`;
   }
   try {
-    queue.enqueue(world, { issuer: 'ai', kind: 'spawnUnit', payload: { kind, owner, x, z } });
+    queue.enqueue(world, { issuer: 'ai', kind: 'spawnUnit', payload: { kind, owner: ai.owner, x, z } });
   } catch (e) {
     if (e instanceof CommandRejectedError) return e.reason;
     throw e;
   }
+  l.manpower += def.manpowerCost;
+  l.funds += def.trainFunds;
+  l.materials += def.trainMaterials;
   return null;
 }
 
@@ -721,7 +923,9 @@ function thinkConstruction(world: World, ai: AIPlayerState): void {
     if (!isBuildingAgeMet(world.ages.age, def.minAge)) continue;
     // Naval production only makes sense with a coast to use it from.
     if ((kind === 'shipyard' || kind === 'navalYard') && ai.navalStatus !== 'coastal') continue;
-    if (player.funds < def.costFunds || player.materials < def.costMaterials) continue;
+    // Ledger-aware: the payment must not undercut commands already
+    // queued this think (see canPayImmediate).
+    if (!canPayImmediate(ai, player, def.costFunds, def.costMaterials)) continue;
     // Pay the full cost upfront (superweapon virtual-construction precedent).
     player.funds -= def.costFunds;
     player.materials -= def.costMaterials;
@@ -839,7 +1043,9 @@ function thinkVirtualDepot(world: World, ai: AIPlayerState, kind: BuildingKind):
   if (!isBuildingAgeMet(world.ages.age, def.minAge)) return;
   const player = getPlayer(world.city, ai.owner);
   if (!player) return;
-  if (player.funds < def.costFunds || player.materials < def.costMaterials) return;
+  // Ledger-aware (see canPayImmediate): the facility payment must not
+  // undercut commands already queued this think.
+  if (!canPayImmediate(ai, player, def.costFunds, def.costMaterials)) return;
   // Pay the full cost upfront (the virtual-construction precedent).
   player.funds -= def.costFunds;
   player.materials -= def.costMaterials;
@@ -867,11 +1073,11 @@ function thinkSupplyTrucks(
   const wantFuel = Math.ceil(fuelConsumers / FUEL_TRUCK_RATIO);
   if ((counts.get('supplyTruck') ?? 0) < wantSupply && n < cap && canTrain(world, ai.owner, 'supplyTruck')) {
     const p = spawnPoint(ai, 'supplyTruck', n);
-    spawn(world, queue, ai.owner, 'supplyTruck', p.x, p.z);
+    spawn(world, queue, ai, 'supplyTruck', p.x, p.z);
     ai.builtCounts['supplyTruck'] = (ai.builtCounts['supplyTruck'] ?? 0) + 1;
   } else if ((counts.get('fuelTruck') ?? 0) < wantFuel && n < cap && canTrain(world, ai.owner, 'fuelTruck')) {
     const p = spawnPoint(ai, 'fuelTruck', n);
-    spawn(world, queue, ai.owner, 'fuelTruck', p.x, p.z);
+    spawn(world, queue, ai, 'fuelTruck', p.x, p.z);
     ai.builtCounts['fuelTruck'] = (ai.builtCounts['fuelTruck'] ?? 0) + 1;
   }
   // Role-specialize via the real command (rejections — e.g. the truck
@@ -1267,7 +1473,7 @@ function thinkProduction(
   if (n >= AI_MAX_UNITS[ai.difficulty]) return;
   const kind = chooseUnitKind(world, ai, counts, visible);
   const p = spawnPoint(ai, kind, n);
-  spawn(world, queue, ai.owner, kind, p.x, p.z);
+  spawn(world, queue, ai, kind, p.x, p.z);
   ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
 }
 
@@ -1352,14 +1558,13 @@ function researchOrderFor(ai: AIPlayerState): ResearchCandidate[] {
 function thinkResearch(world: World, queue: CommandQueue, ai: AIPlayerState, counts: Map<UnitKind, number>): void {
   // Research happens at the lab (real or virtually constructed).
   if (!hasProductionBuilding(world, ai.owner, 'lab')) return;
-  const player = getPlayer(world.city, ai.owner);
-  if (!player) return;
   for (const { id, when } of researchOrderFor(ai)) {
     if (hasUpgrade(world, ai.owner, id)) continue;
     if (!when(world, ai, counts)) continue;
-    // Mirror researchUpgrade's own validation (age, building prereqs,
-    // affordability) so we only enqueue commands that should pass; the
-    // enqueue is still guarded — a rejection just means "not this tick".
+    // Mirror researchUpgrade's own validation (age, building prereqs)
+    // so we only enqueue commands that should pass; affordability is
+    // checked against the per-think ledger inside researchForAI, and a
+    // rejection just means "not this tick".
     const def = UPGRADE_DEFS[id];
     if (!isUnitAvailableForAge(world, def.minAge)) continue;
     let prereqsMet = true;
@@ -1370,10 +1575,447 @@ function thinkResearch(world: World, queue: CommandQueue, ai: AIPlayerState, cou
       }
     }
     if (!prereqsMet) continue;
-    if (player.funds < def.costFunds || player.research < def.costResearch) continue;
-    issue(world, queue, 'researchUpgrade', { owner: ai.owner, upgrade: id });
+    researchForAI(world, queue, ai, id);
     return;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Grand-expansion Phase 7: AI intel play (spies, sabotage, counter-intel).
+//
+// The AI owns no physical buildings in 0.1 Alpha, so its intel
+// infrastructure is virtual: a second one-at-a-time construction queue
+// (`ai.intel.constructing`) that runs PARALLEL to the production queue —
+// intel construction never stalls the war-production pipeline, and the
+// production queue never stalls intel. Completed virtual intel kinds
+// join `virtualBuildings.completed` (so `hasProductionBuilding`
+// unlocks spy training) and accrue intel assets through
+// `creditVirtualIntel` (the `creditVirtualEconomy` mirror).
+// ---------------------------------------------------------------------------
+
+/**
+ * Virtual intel construction priority per difficulty, in order. Cadet
+ * and citizen build no intel — consistent with their profiles.
+ * Exported for tests.
+ */
+export const INTEL_CONSTRUCTION_PRIORITY: Record<AIDifficulty, BuildingKind[]> = {
+  cadet: [],
+  citizen: [],
+  commander: ['listeningPost', 'intelHQ', 'signalsStation'],
+  general: ['listeningPost', 'intelHQ', 'signalsStation'],
+  marshal: ['listeningPost', 'intelHQ', 'signalsStation', 'satelliteUplink'],
+};
+
+/**
+ * Spy quotas per difficulty: how many spies the AI keeps in the field.
+ * Spies count against the army cap (`AI_MAX_UNITS`) like any unit.
+ */
+export const INTEL_SPY_QUOTA: Record<AIDifficulty, number> = {
+  cadet: 0,
+  citizen: 0,
+  commander: 1,
+  general: 2,
+  marshal: 3,
+};
+
+/** The production base that must be complete before intel construction starts. */
+const INTEL_PRODUCTION_BASE: BuildingKind[] = ['barracks', 'warFactory'];
+
+/**
+ * Funds buffer for intel construction: the AI only starts an intel
+ * building while holding INTEL_COST_BUFFER_MULT × its cost — the other
+ * half stays in the war chest. Documented priority: intel never
+ * starves the early economy.
+ */
+const INTEL_COST_BUFFER_MULT = 2;
+
+/**
+ * The intel build order for this AI: the difficulty's priority table
+ * minus completed kinds, with signalsStation jumped to the head while
+ * the counter-intel surge is latched (and not yet answered).
+ */
+function intelBuildOrder(ai: AIPlayerState): BuildingKind[] {
+  const order = INTEL_CONSTRUCTION_PRIORITY[ai.difficulty].filter(
+    (k) => !ai.virtualBuildings.completed.includes(k),
+  );
+  if (ai.intel.counterIntelSurge) {
+    const idx = order.indexOf('signalsStation');
+    if (idx > 0) {
+      order.splice(idx, 1);
+      order.unshift('signalsStation');
+    }
+  }
+  return order;
+}
+
+/**
+ * Virtual intel construction (commander+). Gates, in order: the AI has
+ * an intel queue at all (cadet/citizen: none), the production base is
+ * complete (barracks + warFactory — intel never starves the early
+ * economy), the kind's age is met, and the funds buffer holds (2× the
+ * cost). Pays the full cost upfront and completes after the real build
+ * time — the production virtual-construction precedent.
+ */
+function thinkIntelConstruction(world: World, ai: AIPlayerState): void {
+  const intel = ai.intel;
+  // Complete whatever finished building.
+  if (intel.constructing && world.tick >= intel.constructing.readyTick) {
+    ai.virtualBuildings.completed.push(intel.constructing.kind);
+    intel.constructing = null;
+  }
+  // One intel building at a time (parallel to the production queue).
+  if (intel.constructing) return;
+  if (INTEL_CONSTRUCTION_PRIORITY[ai.difficulty].length === 0) return;
+  // Don't starve the early economy: the production base comes first.
+  for (const kind of INTEL_PRODUCTION_BASE) {
+    if (!hasProductionBuilding(world, ai.owner, kind)) return;
+  }
+  const player = getPlayer(world.city, ai.owner);
+  if (!player) return;
+  for (const kind of intelBuildOrder(ai)) {
+    if (hasProductionBuilding(world, ai.owner, kind)) continue;
+    const def = BUILDING_DEFS[kind];
+    if (!def) continue;
+    if (!isBuildingAgeMet(world.ages.age, def.minAge)) continue;
+    // The funds buffer: keep 2× the cost on hand (materials 1× — the
+    // buffer guards the war chest, which is funds-denominated).
+    // Ledger-aware: the buffer is measured against funds not already
+    // committed to queued commands (the 2× buffer implies the payment
+    // can't undercut the ledger — see canPayImmediate).
+    const l = thinkLedger(ai);
+    if (player.funds - l.funds < def.costFunds * INTEL_COST_BUFFER_MULT) continue;
+    if (player.materials - l.materials < def.costMaterials) continue;
+    player.funds -= def.costFunds;
+    player.materials -= def.costMaterials;
+    intel.constructing = { kind, readyTick: world.tick + def.buildSeconds * 30 };
+    return;
+  }
+}
+
+/**
+ * The virtual intel asset credit: completed virtual intel buildings
+ * accrue surveillance/operational/counter-intel assets into the AI
+ * player's stockpile — the `creditVirtualEconomy` mirror (same 1 Hz
+ * cadence, same upgrade multipliers as `runIntelAccrual` in
+ * sim/intel.ts). Called from `createAISystem`, not from a think.
+ */
+function creditVirtualIntel(world: World): void {
+  if (world.tick % 30 !== 0) return;
+  for (const ai of world.ai.players) {
+    const player = getPlayer(world.city, ai.owner);
+    if (!player) continue;
+    const survMult = hasUpgrade(world, ai.owner, 'signalsIntel')
+      ? SIGNALS_INTEL_SURVEILLANCE_MULT
+      : 1;
+    const counterMult = hasUpgrade(world, ai.owner, 'counterIntel')
+      ? COUNTER_INTEL_ASSET_MULT
+      : 1;
+    for (const kind of ai.virtualBuildings.completed) {
+      const rates = BUILDING_DEFS[kind]?.intelOutput;
+      if (!rates) continue;
+      // Virtual buildings are never sabotaged or unpowered — they
+      // always accrue (the "completed + operational" gate in
+      // runIntelAccrual is trivially met).
+      player.intel.operational += rates.operational ?? 0;
+      player.intel.surveillance += (rates.surveillance ?? 0) * survMult;
+      player.intel.counterIntel += (rates.counterIntel ?? 0) * counterMult;
+    }
+  }
+}
+
+/**
+ * Enemy buildings the AI knows about. There is no fog of war in 0.1
+ * Alpha — the whole map is visible to the human player — so building
+ * POSITIONS are public knowledge, and the AI reads the same building
+ * list the human sees. What stays hidden is the mixed airport's true
+ * NATURE: the AI learns it only through its own
+ * `BuildingRecord.discovery` viewer records (suspected/revealed),
+ * never by reading the true `airportType`. Completed buildings only —
+ * a construction site is not a target.
+ */
+export function getVisibleEnemyBuildings(world: World, owner: number): BuildingRecord[] {
+  const out: BuildingRecord[] = [];
+  for (const b of world.city.buildings) {
+    if (b.owner !== owner && b.progress >= 1) out.push(b);
+  }
+  return out;
+}
+
+/**
+ * Covert-op target value of an enemy building kind (higher = the AI's
+ * spies prefer it). Intel buildings top the list (blinding the rival's
+ * intel hurts most), then airports (military-capable infrastructure —
+ * an undiscovered mixed airport values as an airport: the AI knows the
+ * SITE is an airport, only its true nature is hidden), then
+ * production, then depots and power/water plants; everything else is
+ * opportunistic. Exported for tests.
+ */
+export function intelTargetValue(kind: BuildingKind): number {
+  const def = BUILDING_DEFS[kind];
+  if (def?.intelOutput) return 100;
+  if (def?.airportType !== undefined) return 80;
+  if (
+    kind === 'barracks' ||
+    kind === 'warFactory' ||
+    kind === 'airfield' ||
+    kind === 'navalYard' ||
+    kind === 'shipyard' ||
+    kind === 'lab' ||
+    kind === 'missilePlant'
+  ) {
+    return 70;
+  }
+  if (kind === 'ordnanceDepot' || kind === 'fuelDepot') return 65;
+  if ((def?.powerSupply ?? 0) > 0 || (def?.waterSupply ?? 0) > 0) return 60;
+  return 10;
+}
+
+/**
+ * Issue an intel command and count it as an ordered op (soak metrics).
+ * Rejections are swallowed like every other AI-issued command; only a
+ * successfully enqueued op is counted.
+ *
+ * Intel asset costs (sabotage: 25 operational, steal: 15 surveillance)
+ * are reserved in the per-think ledger BEFORE enqueue: two spies acting
+ * in one think each pass the enqueue-time affordability check, but the
+ * second would go stale at apply after the first spends the assets
+ * (stale commands throw). The ledger makes the second spy see the
+ * reservation and skip. Over-reservation (enqueue rejected after
+ * reserving) only makes the AI underspend one think — safe, never a
+ * crash.
+ */
+function issueIntelOp(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  op: 'infiltrate' | 'sabotage' | 'steal',
+  kind: string,
+  payload: Record<string, unknown>,
+): void {
+  // Reserve intel asset costs in the ledger before enqueue.
+  const ledger = thinkLedger(ai);
+  const assets = getIntelAssets(world, ai.owner);
+  if (op === 'sabotage') {
+    if (assets.operational - ledger.operational < SABOTAGE_COST_OPERATIONAL) return;
+  } else if (op === 'steal') {
+    if (assets.surveillance - ledger.surveillance < STEAL_COST_SURVEILLANCE) return;
+  }
+  try {
+    queue.enqueue(world, { issuer: 'ai', kind, payload });
+    ai.intel.ops[op]++;
+    // Reserve on successful enqueue only.
+    if (op === 'sabotage') ledger.operational += SABOTAGE_COST_OPERATIONAL;
+    else if (op === 'steal') ledger.surveillance += STEAL_COST_SURVEILLANCE;
+  } catch (e) {
+    if (e instanceof CommandRejectedError) return;
+    throw e;
+  }
+}
+
+/**
+ * Pick the highest-value enemy building (id-order tiebreak — no RNG in
+ * thinks). Returns null when there is nothing worth infiltrating.
+ */
+function pickSpyTarget(world: World, owner: number): BuildingRecord | null {
+  let target: BuildingRecord | null = null;
+  let best = -1;
+  for (const b of getVisibleEnemyBuildings(world, owner)) {
+    const v = intelTargetValue(b.kind);
+    if (v > best) {
+      best = v;
+      target = b;
+    }
+  }
+  return target;
+}
+
+/**
+ * Direct one spy (commander+ doctrine):
+ *  - Embedded: steal tech when surveillance ≥ 15 and a stealable tech
+ *    exists (intel first), otherwise sabotage the host when
+ *    operational ≥ 25 and the host is high-value and not already
+ *    sabotaged (disruption second). Otherwise hold — the spy keeps its
+ *    cover while assets accrue.
+ *  - Free: move to the highest-value enemy building; infiltrate on
+ *    arrival (INTEL_ADJACENCY). A mission in progress is left alone;
+ *    a spy already moving keeps its orders (no churn).
+ */
+function directSpy(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  spy: UnitRecord,
+  sabotagedThisThink: Set<number>,
+  stolenThisThink: Set<string>,
+): void {
+  const owner = ai.owner;
+  // A mission in progress (infiltration embedding) is left alone.
+  if ((spy.missionEndsAt ?? 0) > world.tick) return;
+  const embeddedId = spy.embeddedIn ?? 0;
+  if (embeddedId > 0) {
+    const host = world.city.buildings.find((b) => b.id === embeddedId);
+    if (!host || host.owner === owner) return;
+    const assets = getIntelAssets(world, owner);
+    const c = buildingCenterWorld(host);
+    const dx = c.x - spy.x;
+    const dz = c.z - spy.z;
+    const adjacent = dx * dx + dz * dz <= INTEL_ADJACENCY * INTEL_ADJACENCY;
+    if (!adjacent) return;
+    // Intel first: steal when a tech is stealable and assets cover it.
+    // The per-think set prevents two spies queueing a steal of the same
+    // tech (the second would find "nothing left to steal" at apply and
+    // throw).
+    const stealable = pickStealableTech(world, owner, host.owner);
+    if (
+      assets.surveillance >= STEAL_COST_SURVEILLANCE &&
+      stealable !== null &&
+      !stolenThisThink.has(host.owner + ':' + stealable)
+    ) {
+      issueIntelOp(world, queue, ai, 'steal', 'stealTech', {
+        unitId: spy.id,
+        buildingId: host.id,
+        owner,
+      });
+      stolenThisThink.add(host.owner + ':' + stealable);
+      return;
+    }
+    // Disruption second: sabotage a high-value unsabotaged host.
+    // The per-think set prevents two spies from queueing sabotage on
+    // the same building (the second would go stale at apply and throw).
+    if (
+      assets.operational >= SABOTAGE_COST_OPERATIONAL &&
+      !isSabotaged(host, world.tick) &&
+      !sabotagedThisThink.has(host.id) &&
+      intelTargetValue(host.kind) >= 60
+    ) {
+      issueIntelOp(world, queue, ai, 'sabotage', 'sabotage', {
+        unitId: spy.id,
+        buildingId: host.id,
+        owner,
+      });
+      sabotagedThisThink.add(host.id);
+    }
+    return;
+  }
+  // Free spy: converge on the highest-value enemy building.
+  const target = pickSpyTarget(world, owner);
+  if (!target) return;
+  const c = buildingCenterWorld(target);
+  const dx = c.x - spy.x;
+  const dz = c.z - spy.z;
+  if (dx * dx + dz * dz <= INTEL_ADJACENCY * INTEL_ADJACENCY) {
+    issueIntelOp(world, queue, ai, 'infiltrate', 'infiltrateBuilding', {
+      unitId: spy.id,
+      buildingId: target.id,
+      owner,
+    });
+  } else if (spy.state === 'idle') {
+    moveTo(world, queue, owner, spy.id, c.x, c.z);
+  }
+}
+
+/**
+ * Spy doctrine (commander+): train spies up to the difficulty quota
+ * while under the army cap (spies need a completed intelHQ — real or
+ * virtual — via `canTrain`), then direct each spy in id order. Also
+ * scans for counter-intel triggers: a burned/detected rival spy in
+ * `getVisibleEnemies`, or a suspected/revealed discovery record on a
+ * rival mixed airport with this AI as viewer — either latches
+ * `counterIntelSurge`, jumping signalsStation to the head of the
+ * intel build queue.
+ */
+function thinkIntelSpies(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  visible: UnitRecord[],
+): void {
+  const quota = INTEL_SPY_QUOTA[ai.difficulty];
+  if (quota === 0) return;
+  const owner = ai.owner;
+  const spies: UnitRecord[] = [];
+  for (const u of world.units) {
+    if (u.owner === owner && u.hp > 0 && isSpyUnit(u)) spies.push(u);
+  }
+  // Train up to quota (spies count against the army cap like any unit).
+  if (spies.length < quota && canTrain(world, owner, 'spy')) {
+    if (totalUnits(world, owner) < AI_MAX_UNITS[ai.difficulty]) {
+      const p = spawnPoint(ai, 'spy', spies.length);
+      spawn(world, queue, ai, 'spy', p.x, p.z);
+      ai.builtCounts['spy'] = (ai.builtCounts['spy'] ?? 0) + 1;
+    }
+  }
+  // Counter-intel triggers (latch — the surge is answered when
+  // signalsStation completes).
+  if (!ai.intel.counterIntelSurge) {
+    if (visible.some((e) => isStealthAsset(e))) {
+      ai.intel.counterIntelSurge = true;
+    } else {
+      for (const b of world.city.buildings) {
+        const discovery = b.discovery;
+        if (!discovery) continue;
+        for (const d of discovery) {
+          if (
+            d.viewer === owner &&
+            (d.state === 'suspected' || d.state === 'revealed')
+          ) {
+            ai.intel.counterIntelSurge = true;
+            break;
+          }
+        }
+        if (ai.intel.counterIntelSurge) break;
+      }
+    }
+  }
+  // Direct each spy (world.units is id order — no RNG in thinks).
+  // The per-think sets stop two spies queueing sabotage on the same
+  // building or a steal of the same tech (the second would go stale at
+  // apply and throw).
+  const sabotagedThisThink = new Set<number>();
+  const stolenThisThink = new Set<string>();
+  for (const spy of spies) directSpy(world, queue, ai, spy, sabotagedThisThink, stolenThisThink);
+}
+
+/**
+ * Intel research (commander+): signalsIntel once a listeningPost is
+ * held (real or virtual), counterIntel once a signalsStation is held —
+ * both need the information age and a lab, like every upgrade. Handled
+ * here (not in the personality-shuffled RESEARCH_PRIORITY tail) so the
+ * intel upgrades never shift the personality stream's draws.
+ */
+function thinkIntelResearch(world: World, queue: CommandQueue, ai: AIPlayerState): void {
+  if (INTEL_SPY_QUOTA[ai.difficulty] === 0) return;
+  if (!hasProductionBuilding(world, ai.owner, 'lab')) return;
+  const order: { id: UpgradeId; prereq: BuildingKind }[] = [
+    { id: 'signalsIntel', prereq: 'listeningPost' },
+    { id: 'counterIntel', prereq: 'signalsStation' },
+  ];
+  for (const { id, prereq } of order) {
+    if (hasUpgrade(world, ai.owner, id)) continue;
+    if (!hasProductionBuilding(world, ai.owner, prereq)) continue;
+    const def = UPGRADE_DEFS[id];
+    if (!isUnitAvailableForAge(world, def.minAge)) continue;
+    // Affordability runs through the per-think ledger (researchForAI):
+    // the intel upgrades share the think's budget with the main
+    // research line and production.
+    researchForAI(world, queue, ai, id);
+    return;
+  }
+}
+
+/**
+ * The intel think (commander+): virtual construction, spy doctrine,
+ * intel research. Cadet/citizen skip everything (empty tables).
+ */
+function thinkIntel(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  visible: UnitRecord[],
+): void {
+  thinkIntelConstruction(world, ai);
+  thinkIntelSpies(world, queue, ai, visible);
+  thinkIntelResearch(world, queue, ai);
 }
 
 // ---------------------------------------------------------------------------
@@ -1408,7 +2050,7 @@ function thinkNavalProbe(world: World, queue: CommandQueue, ai: AIPlayerState): 
       ai.navalProbeIndex++;
       continue;
     }
-    const reason = trySpawn(world, queue, ai.owner, 'fishingBoat', p.x, p.z);
+    const reason = trySpawn(world, queue, ai, 'fishingBoat', p.x, p.z);
     if (reason === null) {
       ai.navalStatus = 'coastal';
       ai.navalWater = { x: p.x, z: p.z };
@@ -1601,7 +2243,7 @@ export function thinkCarrierWings(world: World, queue: CommandQueue, ai: AIPlaye
       n < AI_MAX_UNITS[ai.difficulty] &&
       canTrain(world, ai.owner, 'carrier')
     ) {
-      spawn(world, queue, ai.owner, 'carrier', ai.navalWater.x, ai.navalWater.z);
+      spawn(world, queue, ai, 'carrier', ai.navalWater.x, ai.navalWater.z);
       ai.builtCounts['carrier'] = (ai.builtCounts['carrier'] ?? 0) + 1;
     }
     return;
@@ -1615,7 +2257,7 @@ export function thinkCarrierWings(world: World, queue: CommandQueue, ai: AIPlaye
     const kind = capKinds[0]!;
     if (n < AI_MAX_UNITS[ai.difficulty] && canTrain(world, ai.owner, kind)) {
       const p = spawnPoint(ai, kind, n);
-      spawn(world, queue, ai.owner, kind, p.x, p.z);
+      spawn(world, queue, ai, kind, p.x, p.z);
       ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
     }
     // 2b. Idle carrier-capable aircraft converge on the carrier:
@@ -1670,7 +2312,7 @@ export function thinkCarrierEscorts(world: World, queue: CommandQueue, ai: AIPla
       canTrain(world, ai.owner, pool[0]!)
     ) {
       const p = spawnPoint(ai, pool[0]!, n);
-      spawn(world, queue, ai.owner, pool[0]!, p.x, p.z);
+      spawn(world, queue, ai, pool[0]!, p.x, p.z);
       ai.builtCounts[pool[0]!] = (ai.builtCounts[pool[0]!] ?? 0) + 1;
     }
     // Idle escorts station near the carrier.
@@ -1728,7 +2370,7 @@ function thinkCadet(
   // Rifles only: cadet builds no production buildings, so gated kinds
   // (tank, …) could never unlock — ordering them would stall the AI.
   const p = spawnPoint(ai, 'rifles', n);
-  spawn(world, queue, ai.owner, 'rifles', p.x, p.z);
+  spawn(world, queue, ai, 'rifles', p.x, p.z);
   ai.builtCounts['rifles'] = (ai.builtCounts['rifles'] ?? 0) + 1;
   // Phase 4 transport (S7): civilian-transport AI hook — a documented
   // no-op in 0.1 Alpha (see thinkCivilianTransport).
@@ -1838,7 +2480,7 @@ function thinkCommander(
   const scouts = (counts.get('drone') ?? 0) + (counts.get('awacs') ?? 0) + (counts.get('fighter') ?? 0);
   if (scouts === 0 && n < AI_MAX_UNITS[ai.difficulty] && canTrain(world, ai.owner, scoutKind)) {
     const p = spawnPoint(ai, scoutKind, n);
-    spawn(world, queue, ai.owner, scoutKind, p.x, p.z);
+    spawn(world, queue, ai, scoutKind, p.x, p.z);
     ai.builtCounts[scoutKind] = (ai.builtCounts[scoutKind] ?? 0) + 1;
   } else {
     // Order idle scouts to waypoints (cycle through 4 compass points at
@@ -1889,6 +2531,12 @@ function thinkCommander(
   thinkCarrierWings(world, queue, ai);
   thinkCarrierEscorts(world, queue, ai);
   thinkNavalMines(world, ai);
+
+  // --- Grand-expansion Phase 7 (AI intel play): virtual intel
+  //     construction, spy doctrine, intel research, counter-intel
+  //     surge. Runs before production so a spy training order lands
+  //     in the same think as the regular unit.
+  thinkIntel(world, queue, ai, visible);
 
   // --- Production: one unit per think, counters then base mix.
   thinkProduction(world, queue, ai, counts, n, visible);
@@ -2048,13 +2696,16 @@ function thinkMarshal(
 
   // --- Age advancement: if we can afford the next age, take it.
   // Choose programs that boost military: Heavy Industry, Cyber Command, Arsenal.
+  // Affordability is ledger-aware: the age cost shares the think's
+  // budget with research and production (see thinkLedger).
   const prog = getAgeProgression(world.ages.age);
-  if (prog.next && canAffordAge(world, ai.owner, prog.cost)) {
+  if (prog.next && canAffordAgeLedger(world, ai, prog.cost)) {
     let program: string;
     if (prog.next === 'industry') program = 'heavyIndustry';
     else if (prog.next === 'information') program = 'cyberCommand';
     else if (prog.next === 'ascendance') program = 'arsenalProgram';
     else program = prog.programs[0] ?? 'fiberGrid';
+    reserveAgeCost(ai, prog.cost);
     advanceAge(world, queue, ai.owner, program);
   }
 
@@ -2120,15 +2771,29 @@ function getAgeProgression(age: string): { next: string | null; cost: Record<str
   return prog ?? { next: null, cost: {}, programs: [] };
 }
 
-/** Check if the player can afford an age advancement. */
-function canAffordAge(world: World, owner: number, cost: Record<string, number>): boolean {
-  const player = getPlayer(world.city, owner);
+/**
+ * Ledger-aware age affordability (grand-expansion Phase 6): the age
+ * cost shares the think's budget with research and production (see
+ * thinkLedger), so the think's batch can never go stale at apply.
+ */
+function canAffordAgeLedger(world: World, ai: AIPlayerState, cost: Record<string, number>): boolean {
+  const player = getPlayer(world.city, ai.owner);
   if (!player) return false;
+  const l = thinkLedger(ai);
   for (const [res, amt] of Object.entries(cost)) {
     const have = (player as unknown as Record<string, number>)[res] ?? 0;
-    if (have < amt) return false;
+    const committed = (l as unknown as Record<string, number>)[res] ?? 0;
+    if (have - committed < amt) return false;
   }
   return true;
+}
+
+/** Reserve an age cost in the per-think ledger (call after a successful check). */
+function reserveAgeCost(ai: AIPlayerState, cost: Record<string, number>): void {
+  const l = thinkLedger(ai) as unknown as Record<string, number>;
+  for (const [res, amt] of Object.entries(cost)) {
+    l[res] = (l[res] ?? 0) + amt;
+  }
 }
 
 /** Issue an age advancement command. */
@@ -2153,8 +2818,20 @@ export function createAISystem(queue: CommandQueue): SimSystem {
   } catch (e) {
     if (!(e instanceof Error) || !e.message.includes('already registered')) throw e;
   }
+  // Grand-expansion Phase 7 (AI intel play): the AI issues covert-op
+  // commands (infiltrateBuilding/sabotage/stealTech) through the queue —
+  // make sure the intel commands are registered too (same
+  // already-registered tolerance; the UI wires them independently).
+  try {
+    registerIntelCommands(queue);
+  } catch (e) {
+    if (!(e instanceof Error) || !e.message.includes('already registered')) throw e;
+  }
   return (world: World) => {
     creditVirtualEconomy(world);
+    // Grand-expansion Phase 6: the virtual intel asset credit (same
+    // 1 Hz cadence as the virtual economy credit).
+    creditVirtualIntel(world);
     // Deterministic iteration: AI players in fixed owner order. A sorted
     // COPY — the stored registration order is never mutated; the player
     // objects (and their nextThinkTick updates) are shared references.
@@ -2162,6 +2839,9 @@ export function createAISystem(queue: CommandQueue): SimSystem {
     for (const ai of players) {
       if (world.tick < ai.nextThinkTick) continue;
       ai.nextThinkTick = world.tick + AI_THINK_TICKS[ai.difficulty];
+      // Reset the per-think spend ledger (see thinkLedger): the think's
+      // command batch must never go stale at apply.
+      thinkLedgers.set(ai, { funds: 0, materials: 0, manpower: 0, research: 0, influence: 0, operational: 0, surveillance: 0 });
       switch (ai.difficulty) {
         case 'cadet':
           thinkCadet(world, queue, ai);
@@ -2291,6 +2971,10 @@ export function encodeAIState(ai: AIState): unknown {
       // pre-logistics snapshots decode to empty — no version bump (AD9).
       virtualAmmoStock: p.virtualAmmoStock ?? 0,
       virtualFuelStock: p.virtualFuelStock ?? 0,
+      // Grand-expansion Phase 7 (AI intel play): the virtual intel
+      // queue. Missing (pre-Phase-6 snapshots) decodes to the default —
+      // no version bump (AD9).
+      intel: encodeAIIntelState(p.intel),
       personality: encodePersonality(p.personality ?? NEUTRAL_PERSONALITY),
       builtCounts: Object.keys(p.builtCounts).sort().reduce<Record<string, number>>(
         (acc, k) => {
@@ -2328,6 +3012,13 @@ export function decodeAIState(data: unknown): AIState {
       virtualAmmoStock?: number;
       virtualFuelStock?: number;
       personality?: unknown;
+      // Grand-expansion Phase 7 (AI intel play): pre-Phase-6 snapshots
+      // have no intel block — it decodes to the default (AD9).
+      intel?: {
+        constructing?: { kind: BuildingKind; readyTick: number } | null;
+        counterIntelSurge?: boolean;
+        ops?: { infiltrate?: number; sabotage?: number; steal?: number };
+      };
     }[];
   };
   return {
@@ -2358,8 +3049,44 @@ export function decodeAIState(data: unknown): AIState {
       // loading with empty virtual stocks — no version bump (AD9).
       virtualAmmoStock: p.virtualAmmoStock ?? 0,
       virtualFuelStock: p.virtualFuelStock ?? 0,
+      // Grand-expansion Phase 7 (AI intel play): missing (pre-Phase-6
+      // snapshots) decodes to the default — no version bump (AD9).
+      intel: decodeAIIntelState(p.intel),
       personality: decodePersonality(p.personality),
     })),
+  };
+}
+
+/** Encode the AI's virtual intel state (plain data, AD9-safe). */
+export function encodeAIIntelState(intel: AIIntelState | undefined): unknown {
+  const d = intel ?? defaultAIIntelState();
+  return {
+    constructing: d.constructing ? { ...d.constructing } : null,
+    counterIntelSurge: d.counterIntelSurge,
+    ops: { ...d.ops },
+  };
+}
+
+/** Decode the AI's virtual intel state (missing ⇒ default, AD9). */
+export function decodeAIIntelState(
+  data:
+    | {
+        constructing?: { kind: BuildingKind; readyTick: number } | null;
+        counterIntelSurge?: boolean;
+        ops?: { infiltrate?: number; sabotage?: number; steal?: number };
+      }
+    | undefined,
+): AIIntelState {
+  const d = defaultAIIntelState();
+  if (!data) return d;
+  return {
+    constructing: data.constructing ? { ...data.constructing } : null,
+    counterIntelSurge: data.counterIntelSurge ?? false,
+    ops: {
+      infiltrate: data.ops?.infiltrate ?? 0,
+      sabotage: data.ops?.sabotage ?? 0,
+      steal: data.ops?.steal ?? 0,
+    },
   };
 }
 

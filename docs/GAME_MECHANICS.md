@@ -600,12 +600,16 @@ In skirmish you face the **Classic AI** at one of five levels:
   rifles, tanks, artillery and AA, and builds AA when you bring air power.
 - **Commander** — ruthless. A research lab, upgrade research, drone
   scouts, full counter-play (tank destroyers vs your armor, spectres vs
-  your artillery, frigates vs your submarines), and a forward base.
+  your artillery, frigates vs your submarines), a forward base, and the
+  intel game: listening posts, an intel HQ, and a spy that infiltrates
+  your best buildings to steal tech or sabotage production.
 - **General** — combined arms. Everything the Commander does, faster and
   bigger, plus a working navy (fishing boats, patrol boats) on maps with
-  usable water.
+  usable water, and two spies working your territory.
 - **Marshal** — all-out war. The largest armies, age advancement, the full
-  navy, and fair superweapon use.
+  navy, fair superweapon use, and the full intel apparatus: signals
+  stations, satellite uplinks, three spies, and counter-intel surges when
+  it catches your spies.
 
 The AI never cheats: it sees only what its own units see, finds water by
 scouting (never maphack), pays full price for everything it builds —

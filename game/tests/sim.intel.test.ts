@@ -514,11 +514,18 @@ describe('stealTech', () => {
       unitId: spy.id, buildingId: target, owner: 0,
     })).toMatch(/not embedded/);
     spy.embeddedIn = target;
-    // Nothing left to steal.
+    // Nothing left to steal: the apply fizzles idempotently (no throw,
+    // no assets spent) instead of rejecting — the AI cannot predict its
+    // own lab finishing the tech on the exact tick the steal lands.
     research(ctx.world, 0, 'apRounds');
-    expect(rejectionReason(ctx, 'stealTech', {
-      unitId: spy.id, buildingId: target, owner: 0,
-    })).toMatch(/nothing left to steal/);
+    ctx.queue.enqueue(ctx.world, {
+      issuer: 'test', kind: 'stealTech',
+      payload: { unitId: spy.id, buildingId: target, owner: 0 },
+    });
+    const results = applyDue(ctx);
+    expect(results[0]).toMatchObject({ fizzled: true, success: false });
+    // Surveillance untouched by the fizzled steal.
+    expect(getIntelAssets(ctx.world, 0).surveillance).toBe(100);
   });
 });
 
