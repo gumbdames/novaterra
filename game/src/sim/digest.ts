@@ -88,7 +88,9 @@ export function canonicalizeWorld(world: World): string {
     // Phase 2 utility diagnostics (legacy decode default 'disconnected').
     out += `${b.powerDiag ?? 'disconnected'},${b.waterDiag ?? 'disconnected'},`;
     // Phase 3 logistics stocks (integers; legacy decode default 0).
-    out += `${b.ammoStock ?? 0},${b.fuelStock ?? 0};`;
+    out += `${b.ammoStock ?? 0},${b.fuelStock ?? 0},`;
+    // Phase 3 resupply reservations (legacy decode default 0).
+    out += `${b.reservedAmmo ?? 0},${b.reservedFuel ?? 0};`;
   }
   out += '|players:';
   for (const p of world.city.players) {
@@ -113,7 +115,9 @@ export function canonicalizeWorld(world: World): string {
     // absent = all on). Behavior-affecting ⇒ digest-covered (PLAN §11).
     const svc = u.supplyServices ?? { repair: true, rearm: true, refuel: true };
     out += `${canonicalNumber(u.fuel ?? 0)},${canonicalNumber(u.ammo ?? 0)},`;
-    out += `${svc.repair ? 1 : 0}${svc.rearm ? 1 : 0}${svc.refuel ? 1 : 0};`;
+    out += `${svc.repair ? 1 : 0}${svc.rearm ? 1 : 0}${svc.refuel ? 1 : 0},`;
+    // Phase 3 resupply linkage (0 = none).
+    out += `${u.resupplyDepotId ?? 0};`;
   }
   // Pathfinding: queues in FIFO order, fields in creation order; dirs are
   // small ints so they join cheaply. The active build's dist array is

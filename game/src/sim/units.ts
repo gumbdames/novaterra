@@ -452,6 +452,12 @@ export interface UnitRecord {
    * means all services on. Reads go through `supplyServicesOf` below.
    */
   supplyServices?: { repair: boolean; rearm: boolean; refuel: boolean };
+  /**
+   * Phase 3: id of the depot this unit is traveling to for a `resupply`
+   * order (0 = none). Set by the resupply command, cleared when the
+   * refill aura fulfills it or the reservation times out.
+   */
+  resupplyDepotId?: number;
 }
 
 /** Spawn a unit into the world. Returns the new record. Caller validates. */

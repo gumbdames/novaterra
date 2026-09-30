@@ -134,6 +134,9 @@ function copyBuilding(b: BuildingRecord): BuildingRecord {
     // empty depots — no version bump, stays v6 (same precedent).
     ammoStock: b.ammoStock ?? 0,
     fuelStock: b.fuelStock ?? 0,
+    // Phase 3 resupply reservations (0 = none reserved). ?? 0 keeps v6.
+    reservedAmmo: b.reservedAmmo ?? 0,
+    reservedFuel: b.reservedFuel ?? 0,
   };
 }
 
@@ -184,6 +187,8 @@ function copyUnit(u: UnitRecord): UnitRecord {
     // supplyServices is player config; absent = all services on.
     fuel: u.fuel ?? 0, ammo: u.ammo ?? 0,
     supplyServices: u.supplyServices ? { ...u.supplyServices } : undefined,
+    // Phase 3 resupply linkage (0 = none). ?? 0 keeps v6 decoding.
+    resupplyDepotId: u.resupplyDepotId ?? 0,
   };
 }
 

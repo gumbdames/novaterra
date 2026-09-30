@@ -552,9 +552,10 @@ describe('veterancy snapshots and digests', () => {
     u.vetLevel = 0;
     const after = digestWorld(ctx.world);
     expect(after).not.toBe(before);
-    // Phase 3 logistics: the unit segment now carries fuel, ammo and the
-    // 3-bit service toggles after vetLevel (all defaults here: 0,0,111).
-    expect(canonicalizeWorld(ctx.world)).toContain(`,60,0,0,0,111;`);
+    // Phase 3 logistics: the unit segment now carries fuel, ammo, the
+    // 3-bit service toggles and the resupply depot id after vetLevel
+    // (all defaults here: 0,0,111,0).
+    expect(canonicalizeWorld(ctx.world)).toContain(`,60,0,0,0,111,0;`);
   });
 
   it('same seed + same commands ⇒ identical digest (veterancy included)', () => {

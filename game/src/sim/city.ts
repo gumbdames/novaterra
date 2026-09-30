@@ -802,6 +802,14 @@ export interface BuildingRecord {
    */
   ammoStock?: number;
   fuelStock?: number;
+  /**
+   * Phase 3: stock reserved by in-flight `resupply` orders (see
+   * commands.ts). Reservations are atomic at apply time and released on
+   * fulfillment or timeout — validate≡apply agreement (AD6 lesson).
+   * Optional, reads use `?? 0`.
+   */
+  reservedAmmo?: number;
+  reservedFuel?: number;
 }
 
 /** One player's stockpiles and policy. */
