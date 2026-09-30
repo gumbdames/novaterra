@@ -1728,6 +1728,8 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
         for (const u of world.units) {
           if ((u.resupplyDepotId ?? 0) === b.id) {
             u.resupplyDepotId = 0;
+            u.resupplyReservedAmmo = 0;
+            u.resupplyReservedFuel = 0;
           }
         }
         return { removed: 'building', id: demolishBuilding(world.city, b.id) ? b.id : -1 };
