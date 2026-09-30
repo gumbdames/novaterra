@@ -55,7 +55,9 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   share the `industrialStack` / `industrialTank` pieces across kinds —
   one key each, loaded once). ~4.6 MiB of GLB downloads at startup
   (58 keys, 55 unique files; rifleman.glb is keyed 3×, building-e.glb
-  2× — per-key normalization, same as the pre-expansion mapping).
+  2× — per-key normalization, same as the pre-expansion mapping), plus
+  ~0.83 MiB of CC0 tree textures for the procedural nature trees (see
+  the Nature scatter section below).
 - `loadModels(paths, { timeoutMs })` fetches the GLBs CONCURRENTLY via a
   dynamically imported `GLTFLoader` (separate chunk — only downloaded when
   models load), each raced against `withTimeout` (default 15s, same
@@ -112,14 +114,23 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 ## Nature scatter (`render/nature.ts`, 0.1 Alpha)
 
 - Deterministic render-only decoration: `buildNatureView({ terrain,
-  models, isOccupied, seed })` scatters Kenney nature props (trees,
-  rocks, bushes) as one `InstancedMesh` per prop geometry/material over
+  models, isOccupied, seed })` scatters nature props (trees, rocks,
+  bushes) as one `InstancedMesh` per prop geometry/material over
   scatter cells, rejecting water, shoreline, and occupied cells
   (buildings/roads/starting units at build time). Missing prop models
   degrade to no decoration. Returns null when nothing qualifies.
   `NatureView.dispose()` releases ONLY instance attributes — shared
   prop geometry/materials stay with the models map. Built once at game
   start in `ui/game.ts`; never affects the sim.
+- Trees are NOT Kenney GLBs anymore: `ui/game.ts` `loadEntityModels`
+  overlays the procedural textured trees from `render/natureTrees.ts`
+  (lathe trunks with root flare, alpha-cut leaf-card canopies over dark
+  cores, needle-frond conifers; Quaternius CC0 bark/leaf textures from
+  `game/public/models/quaternius-nature/textures/`, ~0.83 MiB) onto the
+  six `propTree*` map keys. The Kenney tree GLBs remain in `MODEL_PATHS`
+  purely as a silent fallback if the texture fetch fails. Scatter
+  placement is untouched (same keys, same weights, same order), so the
+  same seed grows the same forest.
 
 ## Entity rendering conventions (`render/entities.ts`, 0.1 Alpha)
 

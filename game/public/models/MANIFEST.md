@@ -1049,3 +1049,17 @@ Source: https://quaternius.com/ · License: CC0 1.0 Universal
 | `quaternius/tank-2.glb` | Battle tank, variant 2 — in-game MBT | 7,220 | 320 KiB |
 | `quaternius/tank-3.glb` | Battle tank, variant 3 | 6,544 | 293 KiB |
 | `quaternius/tank-4.glb` | Battle tank, variant 4 (largest) | 11,402 | 506 KiB |
+
+## quaternius-nature/textures/ — Quaternius "Textured LowPoly Trees" textures (manually added 2026-09-30, not part of the generated GLB inventory above)
+
+Source: https://opengameart.org/content/lowpoly-textured-trees · License: CC0 1.0 Universal
+(5 files, ~0.83 MiB — textures for the procedural nature-scatter trees, `game/src/render/natureTrees.ts`;
+license evidence: `quaternius-nature/LICENSE-CC0.txt`, THIRD_PARTY_NOTICES.md)
+
+| File | Depicts | Size |
+|---|---|---|
+| `quaternius-nature/textures/tree_bark.jpg` | Hand-painted bark, vertical fissures (oak/pine trunks) | 241 KiB |
+| `quaternius-nature/textures/birch_bark.png` | White birch bark with lenticels | 207 KiB |
+| `quaternius-nature/textures/tree_leaves.png` | Leaf-cluster sprite, alpha (broadleaf canopies) | 129 KiB |
+| `quaternius-nature/textures/birch_leaves_green.png` | Leaf-cluster sprite, alpha (birch canopy) | 126 KiB |
+| `quaternius-nature/textures/pine_leaves.png` | Needle frond, alpha (conifer tiers) | 125 KiB |

@@ -262,7 +262,12 @@ fallbacks so the game is never blank:
 - **Nature scatter** (`game/src/render/nature.ts`): deterministic
   render-only decoration (trees/rocks/bushes as InstancedMesh) from the
   map seed; rejects water, shoreline, buildings, roads, and starting
-  units. Pure decoration — never affects the sim.
+  units. Trees render from procedural textured models
+  (`game/src/render/natureTrees.ts`: lathe trunks, alpha-cut leaf-card
+  canopies, needle-frond conifers; Quaternius CC0 textures, ~0.83 MiB)
+  overlaid onto the `propTree*` keys at game start — the Kenney tree
+  GLBs stay mapped as a silent fallback. Pure decoration — never
+  affects the sim.
 
 ## 7. Decision log
 

@@ -17,7 +17,8 @@
 /**
  * NOVATERRA — render/nature.ts — decorative nature scatter (0.1 Alpha).
  *
- * Purpose: scatter Kenney nature GLBs (trees, rocks, bushes) over land
+ * Purpose: scatter nature props (procedural textured trees from
+ * render/natureTrees.ts, Kenney rock/bush GLBs) over land
  * that has no building, road, or unit — pure decoration, zero sim
  * impact. Render-only: the sim never knows these props exist.
  *
@@ -46,11 +47,11 @@ import { heightAt, isWater } from '../sim/terrain';
 /** Weighted prop pick list: [model key, weight]. */
 const PROP_TABLE: Array<readonly [string, number]> = [
   ['propTreeOak', 0.14],
-  ['propTreeCone', 0.1],
+  ['propTreeBirch', 0.1],
   ['propTreePineTall', 0.1],
-  ['propTreeBlocks', 0.07],
-  ['propTreeDetailed', 0.07],
-  ['propTreePlateau', 0.07],
+  ['propTreePine', 0.07],
+  ['propTreeOldOak', 0.07],
+  ['propTreePoplar', 0.07],
   ['propRockLarge', 0.07],
   ['propRockTall', 0.07],
   ['propRockSmall', 0.06],

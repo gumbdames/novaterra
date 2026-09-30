@@ -169,3 +169,28 @@ shipped in every pack directory.
 - License: CC0 1.0 Universal
 - New files: `kenney-watercraft/arrow-standing.glb`, `kenney-watercraft/arrow.glb`, `kenney-watercraft/boat-fan.glb`, `kenney-watercraft/boat-fishing-small.glb`, `kenney-watercraft/boat-house-a.glb`, `kenney-watercraft/boat-house-b.glb`, `kenney-watercraft/boat-house-c.glb`, `kenney-watercraft/boat-house-d.glb`, `kenney-watercraft/boat-row-large.glb`, `kenney-watercraft/boat-row-small.glb`, `kenney-watercraft/boat-sail-a.glb`, `kenney-watercraft/boat-sail-b.glb`, `kenney-watercraft/boat-speed-b.glb`, `kenney-watercraft/boat-speed-c.glb`, `kenney-watercraft/boat-speed-d.glb`, `kenney-watercraft/boat-speed-e.glb`, `kenney-watercraft/boat-speed-f.glb`, `kenney-watercraft/boat-speed-g.glb`, `kenney-watercraft/boat-speed-h.glb`, `kenney-watercraft/boat-speed-i.glb`, `kenney-watercraft/boat-speed-j.glb`, `kenney-watercraft/boat-tow-a.glb`, `kenney-watercraft/boat-tow-b.glb`, `kenney-watercraft/boat-tug-a.glb`, `kenney-watercraft/boat-tug-b.glb`, `kenney-watercraft/boat-tug-c.glb`, `kenney-watercraft/buoy-flag.glb`, `kenney-watercraft/buoy.glb`, `kenney-watercraft/cargo-container-a.glb`, `kenney-watercraft/cargo-container-b.glb`, `kenney-watercraft/cargo-container-c.glb`, `kenney-watercraft/cargo-pile-a.glb`, `kenney-watercraft/cargo-pile-b.glb`, `kenney-watercraft/gate-finish.glb`, `kenney-watercraft/gate.glb`, `kenney-watercraft/ramp-wide.glb`, `kenney-watercraft/ramp.glb`, `kenney-watercraft/ship-cargo-b.glb`, `kenney-watercraft/ship-cargo-c.glb`, `kenney-watercraft/ship-large.glb`, `kenney-watercraft/ship-ocean-liner-small.glb`, `kenney-watercraft/ship-ocean-liner.glb`, `kenney-watercraft/ship-small-ghost.glb`, `kenney-watercraft/ship-small.glb`
 
+### Quaternius tree textures (added 2026-09-30)
+
+5 files, ~0.83 MiB, unmodified. Hand-painted textures from Quaternius'
+"Textured LowPoly Trees" pack, used on the procedural nature-scatter
+trees (`game/src/render/natureTrees.ts`). Author: Quaternius
+(https://quaternius.com). License: **CC0 1.0 Universal**
+(https://creativecommons.org/publicdomain/zero/1.0/) — the pack page and
+the individually linked file pages show "License(s): CC0", author
+quaternius (verified 2026-09-30), and the author's own page
+(https://quaternius.itch.io/textured-lowpoly-trees) states CC0 1.0
+Universal. Per-file license evidence saved in
+`game/public/models/quaternius-nature/LICENSE-CC0.txt`.
+
+| File | Source |
+|---|---|
+| `quaternius-nature/textures/tree_bark.jpg` | https://opengameart.org/content/lowpoly-textured-trees-treebarkjpg |
+| `quaternius-nature/textures/birch_bark.png` | pack page (below) |
+| `quaternius-nature/textures/tree_leaves.png` | pack page (below) |
+| `quaternius-nature/textures/birch_leaves_green.png` | https://opengameart.org/node/160779 |
+| `quaternius-nature/textures/pine_leaves.png` | pack page (below) |
+
+Pack page: https://opengameart.org/content/lowpoly-textured-trees
+("License(s): CC0", author quaternius — verified 2026-09-30; the pack's
+texture files are served anonymously).
+

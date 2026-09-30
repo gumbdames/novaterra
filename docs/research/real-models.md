@@ -268,10 +268,16 @@ fails on completeness (no city buildings) and verifiability at this budget.
 | 2 | City Kit (Suburban) | https://kenney.nl/assets/city-kit-suburban | `building-type-f.glb`, `Textures/colormap.png` | ~0.2 MB |
 | 3 | City Kit (Industrial) | https://kenney.nl/assets/city-kit-industrial | `building-e.glb` + chimney/water-tower candidates (verify), `Textures/colormap.png` | ~0.5 MB |
 | 4 | Factory Kit | https://kenney.nl/assets/factory-kit | crane/machinery candidates (verify), `Textures/colormap.png` | ~0.5 MB |
-| 5 | Nature Kit | https://kenney.nl/assets/nature-kit | ~6 `tree-*.glb`, ~3 `rock-*.glb`, ~3 `bush-*.glb`, `Textures/colormap.png` | ~1.0 MB |
-| 6 | Car Kit | https://kenney.nl/assets/car-kit | `truck.glb` (+1 variant for hq), `Textures/colormap.png` | ~0.3 MB |
+| 5 | Nature Kit | https://kenney.nl/assets/nature-kit | ~6 `tree-*.glb`, ~3 `rock-*.glb`, ~3 `bush-*.glb`, `Textures/colormap.png` | ~1.0 MB || 6 | Car Kit | https://kenney.nl/assets/car-kit | `truck.glb` (+1 variant for hq), `Textures/colormap.png` | ~0.3 MB |
 | 7 | Watercraft Kit | https://kenney.nl/assets/watercraft-kit | `boat-speed-a.glb` + cargo-boat candidate (verify), `Textures/colormap.png` | ~0.4 MB |
 | 8 | Space Kit | https://kenney.nl/assets/space-kit | `craft_racer.glb`, `Textures/colormap.png` | ~0.3 MB |
+
+> **Note (2026-09-30):** the tree evaluation in this doc is superseded by
+> `docs/research/trees.md` — the Kenney nature trees picked here were
+> judged too crude (cones/blobs, no textures) and replaced at game start
+> by procedural textured trees (`game/src/render/natureTrees.ts`) using
+> 5 CC0 Quaternius textures. The Kenney tree GLBs stay in the mapping
+> only as a silent fallback. Rocks/bushes still use the Kenney GLBs.
 
 Direct zip URL pattern (resolve the current hash per pack from its page at
 download time):

@@ -126,9 +126,10 @@ describe('MODEL_PATHS real mapping', () => {
       'oilRefineryTank', 'industrialTank', 'recyclingCenter', 'market',
       'solarFarmA', 'solarFarmB', 'nuclearPlantMain', 'desalinationHall',
       'hospital', 'university', 'school',
-      // nature props
-      'propTreeOak', 'propTreeCone', 'propTreePineTall', 'propTreeBlocks',
-      'propTreeDetailed', 'propTreePlateau', 'propRockLarge', 'propRockTall',
+      // nature props (tree keys are overlaid by render/natureTrees.ts at
+      // game start; the GLB paths here are the silent fallback)
+      'propTreeOak', 'propTreeBirch', 'propTreePineTall', 'propTreePine',
+      'propTreeOldOak', 'propTreePoplar', 'propRockLarge', 'propRockTall',
       'propRockSmall', 'propBushDetailed', 'propBushLarge',
     ];
     expect(Object.keys(MODEL_PATHS).sort()).toEqual([...expected].sort());

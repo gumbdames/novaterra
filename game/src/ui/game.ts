@@ -58,6 +58,7 @@ import { buildTerrainView } from '../render/terrain';
 import { EntityRenderer } from '../render/entities';
 import { createRenderer } from '../render/renderer';
 import { buildNatureView, type NatureView } from '../render/nature';
+import { loadNatureTreeModels } from '../render/natureTrees';
 import {
   disposeModels,
   loadModels,
@@ -278,10 +279,11 @@ const MODEL_LOAD_ALL_TIMEOUT_MS = 20000;
 
 /**
  * Load the CC0 entity models (bounded by MODEL_LOAD_ALL_TIMEOUT_MS —
- * whatever finished in time is used; the rest fall back), construct
- * the EntityRenderer with the resulting map, and build the
- * deterministic render-only nature scatter for the session terrain.
- * An empty model map is fully supported: entities resolve GLB →
+ * whatever finished in time is used; the rest fall back), overlay the
+ * procedural textured trees (same bound; Kenney tree GLBs stay as the
+ * silent fallback), construct the EntityRenderer with the resulting map,
+ * and build the deterministic render-only nature scatter for the session
+ * terrain. An empty model map is fully supported: entities resolve GLB →
  * procedural → placeholder and the game stays playable.
  */
 async function loadEntityModels(
@@ -291,8 +293,25 @@ async function loadEntityModels(
   const timeout = new Promise<null>((resolve) => {
     setTimeout(() => resolve(null), MODEL_LOAD_ALL_TIMEOUT_MS);
   });
-  const loaded = await Promise.race([loadModels(MODEL_PATHS), timeout]);
+  const loadAll = (async () => {
+    const [loaded, trees] = await Promise.all([
+      loadModels(MODEL_PATHS),
+      // Textured trees replace the Kenney tree GLBs in the map below.
+      // A texture failure throws → caught here → the GLB fallbacks stay.
+      loadNatureTreeModels().catch((err: unknown) => {
+        console.warn('[game] textured tree models unavailable (Kenney GLB fallback in use):', err);
+        return null;
+      }),
+    ]);
+    return { loaded, trees };
+  })();
+  const result = await Promise.race([loadAll, timeout]);
+  const loaded = result?.loaded ?? null;
   const modelMap = loaded?.models ?? new Map<string, LoadedModel>();
+  const trees = result?.trees ?? null;
+  if (trees !== null) {
+    for (const [key, model] of trees) modelMap.set(key, model);
+  }
   if (loaded === null) {
     console.warn('[game] model loading exceeded the startup budget; using fallbacks');
   } else if (loaded.failed.length > 0) {

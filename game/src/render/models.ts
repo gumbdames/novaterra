@@ -147,12 +147,16 @@ export const MODEL_PATHS: Record<string, ModelSpec> = {
   shipyardMachine: { path: 'kenney-factory/machine.glb', scale: 2.0 },
 
   // ---- nature props (render-only scatter, render/nature.ts) ----
+  // The six tree keys are Kenney GLBs ONLY as a silent fallback: at game
+  // start ui/game.ts overlays the procedural textured trees from
+  // render/natureTrees.ts (same keys) over these map entries, so the
+  // scatter draws textured trees whenever the texture fetch succeeds.
   propTreeOak: { path: 'kenney-nature/tree_oak.glb', scale: 4.89 },
-  propTreeCone: { path: 'kenney-nature/tree_cone.glb', scale: 4.2 },
+  propTreeBirch: { path: 'kenney-nature/tree_cone.glb', scale: 4.2 },
   propTreePineTall: { path: 'kenney-nature/tree_pineTallA.glb', scale: 4.58 },
-  propTreeBlocks: { path: 'kenney-nature/tree_blocks.glb', scale: 4.22 },
-  propTreeDetailed: { path: 'kenney-nature/tree_detailed.glb', scale: 4.5 },
-  propTreePlateau: { path: 'kenney-nature/tree_plateau.glb', scale: 4.0 },
+  propTreePine: { path: 'kenney-nature/tree_blocks.glb', scale: 4.22 },
+  propTreeOldOak: { path: 'kenney-nature/tree_detailed.glb', scale: 4.5 },
+  propTreePoplar: { path: 'kenney-nature/tree_plateau.glb', scale: 4.0 },
   propRockLarge: { path: 'kenney-nature/rock_largeA.glb', scale: 1.76 },
   propRockTall: { path: 'kenney-nature/rock_tallA.glb', scale: 1.84 },
   propRockSmall: { path: 'kenney-nature/rock_smallH.glb', scale: 2.93 },
