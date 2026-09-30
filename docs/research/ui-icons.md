@@ -32,7 +32,7 @@ vetting 56 licenses is more work than drawing a coherent set.
 
 - `unitIcon`: 28 units — silhouette reads the domain at a glance
   (person / tracked hull / aircraft / ship hull).
-- `buildingIcon`: 28 buildings.
+- `buildingIcon`: 30 buildings (28 roster-expansion + kindergarten/college, Workstream Z).
 - `toolIcon`: road, zoneR, zoneC, zoneI, demolish.
 - `mapIcon(waterFraction)`: 5 terrain buckets (pond / river / lakes /
   coast / isles) covering the 8 map presets.

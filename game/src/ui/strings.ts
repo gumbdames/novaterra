@@ -313,11 +313,14 @@ export const STRINGS = {
     transportShip: { en: 'Transport Ship' },
     fishingBoat: { en: 'Fishing Boat' },
   } as Record<UnitKind, LocalizedString>,
-  /** Localized display names for all 28 building kinds (tab palettes). */
+  /** Localized display names for all 30 building kinds (tab palettes). */
   buildingNames: {
     house: { en: 'House' },
     apartment: { en: 'Apartment Block' },
     school: { en: 'School' },
+    // Workstream Z (2026-09-30): the education ladder.
+    kindergarten: { en: 'Kindergarten' },
+    college: { en: 'College' },
     shop: { en: 'Shop' },
     market: { en: 'Market' },
     lab: { en: 'Research Lab' },
@@ -355,6 +358,8 @@ export const STRINGS = {
   /** Build-palette tab names (spec §8). */
   buildingTabs: {
     housing: { en: 'Housing' },
+    // Workstream Z (2026-09-30): the civic tab (education buildings).
+    civic: { en: 'Civic' },
     commerce: { en: 'Commerce' },
     industry: { en: 'Industry' },
     utilities: { en: 'Utilities' },
@@ -435,9 +440,11 @@ export const STRINGS = {
     researchTitle: { en: 'Research' },
     researchVerb: { en: 'Research' },
     toolRoad: { en: 'Road' },
-    toolZoneR: { en: 'Homes' },
-    toolZoneC: { en: 'Shops' },
-    toolZoneI: { en: 'Industry' },
+    // Workstream Z (2026-09-30): zone tools say what they paint.
+    toolZoneR: { en: 'Zone: Homes' },
+    toolZoneC: { en: 'Zone: Shops' },
+    toolZoneI: { en: 'Zone: Industry' },
+    toolSectionZoning: { en: 'Zoning' },
     toolDemolish: { en: 'Demolish' },
     cancelPlacement: { en: 'Cancel (Esc)' },
     placeLandHint: { en: 'Click the map to place' },

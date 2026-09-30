@@ -545,6 +545,37 @@ delta → AI work.** Step gate (§0) applies to every step inside.
     "promoted above Recruit" loosely — the locked rule is Regular
     (200 XP / level 1), per the coordinator's numbers.
 
+### Workstream Z — Zone overlay + education + zone-tool clarity (2026-09-30, 0.1 Alpha)
+- **Goal:** make zoning visible on the map, give education its own
+  ladder and tab, and make the zone tools self-explanatory.
+- **Contents:**
+  - **Zone overlay (render only):** translucent green/blue/orange
+    ground decals per zone type (0.28 opacity, classic colors), draped
+    on the terrain per corner via `heightAt` (+0.05 offset, under the
+    road ribbons), one merged mesh (1 draw call), rebuilt only when the
+    FNV zone digest changes. Owned by `EntityRenderer`
+    (`game/src/render/zoneOverlay.ts`); visible by default.
+  - **Education ladder:** new `kindergarten` (150/50, 12s, research
+    0.1/s) and `college` (400/120, 30s, research 0.5/s) buildings;
+    `school` moved RESIDENTIAL→UTILITY_ZONE (research stays 0.25/s),
+    `university` moved COMMERCIAL→UTILITY_ZONE (research stays 1.0/s);
+    the hospital is untouched. New **Civic** build tab holds the four
+    (hospital stays in Commerce). Each completed kindergarten/school
+    gives its owner +0.05 residential growth desirability, additive,
+    capped at +0.25 (`educationGrowthBonus` in `city.ts`).
+  - **Zone tools obvious:** palette labels are now "Zone: Homes" /
+    "Zone: Shops" / "Zone: Industry", grouped under a static "Zoning"
+    section header in the tools row.
+- **Budget delta:** +2 building keys (~240 KB measured: kindergarten
+  142 KB + college 97 KB; both foundation-age, in the boot set — 61
+  keys / 4.56 MiB total, boot set 31 keys ≈ 2.77 MiB).
+- **Tests:** `render.zoneOverlay` (digest/geometry/overlay, 13),
+  `sim.education` (ladder/bonus/cap/zone moves/seeded growth-pulse
+  integration, 11), `ui.zoning` (labels/header, 2); pinned counts
+  updated (31 buildings, 61 MODEL_PATHS keys, 31 boot keys, civic tab
+  grouping). Player docs: education section in
+  `docs/GAME_MECHANICS.md`.
+
 ### Phase 2 — Utility networks (XL)
 - **Goal:** flood-fill connectivity, lines/pipes, plant ladder,
   storage, zone servicing, map-edge trade.

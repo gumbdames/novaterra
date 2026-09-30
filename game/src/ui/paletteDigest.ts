@@ -272,10 +272,17 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
   {
     id: 'tools-row',
     renderedIn: 'appendBuildPanel',
-    domClasses: ['palette-tools', 'palette-label', 'build-btn'],
+    domClasses: [
+      'palette-tools',
+      'palette-zones',
+      'palette-section-title',
+      'palette-label',
+      'build-btn',
+    ],
     digestLabels: [],
     noDigestReason:
-      'Static tool buttons (road/zones/demolish): labels and icons never change at runtime.',
+      'Static tool buttons (road/zones/demolish) and the static "Zoning" ' +
+      'section header: labels and icons never change at runtime.',
   },
   {
     id: 'research-panel',

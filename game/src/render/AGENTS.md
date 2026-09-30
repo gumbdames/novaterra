@@ -40,7 +40,7 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 
 ## Model loading (`render/models.ts`, 0.1 Alpha)
 
-- `MODEL_PATHS` is the key -> GLB mapping: **59 real CC0 entries**
+- `MODEL_PATHS` is the key -> GLB mapping: **61 real CC0 entries**
   (Kenney + Quaternius; see THIRD_PARTY_NOTICES.md for the per-file
   listing). `path` is relative to `game/public/models/` (served at
   `<import.meta.env.BASE_URL>models/<file>`); `scale` is the uniform
@@ -53,8 +53,8 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   assemble several keys at per-piece offsets (`warFactory`,
   `airfield`, `navalYard`, `oilRefinery`, `solarFarm`, `desalination`
   share the `industrialStack` / `industrialTank` pieces across kinds —
-  one key each, loaded once). ~4.6 MiB of GLB downloads at startup
-  (59 keys, 56 unique files; rifleman.glb is keyed 3×, building-e.glb
+  one key each, loaded once). 4.56 MiB of GLB downloads at startup
+  (61 keys, 58 unique files; rifleman.glb is keyed 3×, building-e.glb
   2× — per-key normalization, same as the pre-expansion mapping), plus
   ~0.83 MiB of CC0 tree textures for the procedural nature trees (see
   the Nature scatter section below).
@@ -129,7 +129,7 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   back to up-facing; never emits NaNs. `ensureBoxUVs` projects only when no
   `uv` attribute exists.
 - Wired in by the texture-integration phase (`render/entitySurfaces.ts`,
-  0.1 Alpha): `KEY_TREATMENTS` maps all 58 `MODEL_PATHS` keys to surface
+  0.1 Alpha): `KEY_TREATMENTS` maps all 61 `MODEL_PATHS` keys to surface
   categories; `applySurfaceTreatment` runs once at load in `models.ts`
   (per-material, never per-view); procedural builders tag materials via
   `surfaceMaterial()` in `proceduralModels.ts`; roads emit world-scale UVs
@@ -195,6 +195,28 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   (bottom-anchored, so every level starts at the same height).
 - `EntityRenderer` owns one `ChevronOverlay`: constructed in the
   constructor, synced at the end of `sync()`, disposed in `dispose()`.
+
+## Zone overlay (`render/zoneOverlay.ts`, 0.1 Alpha)
+
+- Zone readability (grand-expansion Workstream Z): zoning was
+  previously invisible on the map. One translucent ground decal per
+  zone cell — green (residential `0x43a047`), blue (commercial
+  `0x1e88e5`), orange (industrial `0xfb8c00`) at 0.28 opacity so the
+  terrain shows through. Visible by default.
+- Pure builders, Node-testable: `zoneDigest` (FNV-1a over cell+zone
+  pairs, order-independent) and `buildZoneDecalGeometry` (one
+  up-facing quad per cell, per-corner vertex colors, sorted emission
+  like the road ribbon). Corners drape on the terrain via the same
+  `heightAt` callback the roads use (+0.05 offset — below the road
+  ribbons' +0.08, so zones never z-fight paved cells); without the
+  callback the decals stay flat at `ZONE_Y` (headless path).
+- `ZoneOverlay` owns one merged `BufferGeometry` mesh (1 draw call, 0
+  when no zones are painted) and rebuilds ONLY when the digest
+  changes — repainting one cell rebuilds, an unchanged sync is a
+  no-op. `EntityRenderer` constructs it in the constructor, syncs it
+  in `sync()` with the terrain's `heightAt` sampler, and disposes it
+  in `dispose()`. Tested in `tests/render.zoneOverlay.test.ts`
+  (13 tests).
 
 ## Entity rendering conventions (`render/entities.ts`, 0.1 Alpha)
 

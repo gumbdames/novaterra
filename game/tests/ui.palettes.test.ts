@@ -140,14 +140,16 @@ describe('build tabs', () => {
 
   it('matches the spec §8 grouping', () => {
     const byId = new Map(BUILD_TABS.map((t) => [t.id, [...t.kinds]]));
-    expect(byId.get('housing')).toEqual(['house', 'apartment', 'school']);
+    expect(byId.get('housing')).toEqual(['house', 'apartment']);
+    // Workstream Z (2026-09-30): the civic tab — the four education
+    // buildings together; the hospital stays in Commerce.
+    expect(byId.get('civic')).toEqual(['kindergarten', 'school', 'college', 'university']);
     expect(byId.get('commerce')).toEqual([
       'shop',
       'market',
       'lab',
       'mediaCenter',
       'hospital',
-      'university',
     ]);
     expect(byId.get('industry')).toEqual([
       'factory',

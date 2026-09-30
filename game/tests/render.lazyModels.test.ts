@@ -170,8 +170,10 @@ describe('kind → key resolution', () => {
 });
 
 describe('bootModelKeys', () => {
-  /** The pinned boot set: 29 keys. Growing this list costs startup
-   * download, so it changes only deliberately (update this test too). */
+  /** The pinned boot set: 31 keys. Growing this list costs startup
+   * download, so it changes only deliberately (update this test too).
+   * Workstream Z (2026-09-30): +2 keys (kindergarten, college — both
+   * foundation-age, ~80 KB each, inside the 8 MiB gate headroom). */
   const EXPECTED_BOOT_KEYS = [
     // foundation-age units (1:1 keys)
     'engineer',
@@ -192,6 +194,9 @@ describe('bootModelKeys', () => {
     // Phase 1 (veterancy): the academy is foundation-age like the barracks.
     'militaryAcademy',
     'school',
+    // Workstream Z: the education ladder (foundation-age, like the school).
+    'kindergarten',
+    'college',
     // farm / powerPlant / shipyard / warFactory composite pieces
     'farmBarn',
     'farmSilo',

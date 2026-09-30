@@ -713,7 +713,8 @@ age-lock display (`hud.ts` train panel).
 *Note:* production buildings sit under Industry and naval/air under
 their own tab, so no separate Military tab is needed — the palette is
 6 tabs. Tab counts stay ≤9 entries; each tab fits one screen without
-scrolling at 1080p.
+scrolling at 1080p. (Workstream Z, 2026-09-30: a 7th tab — Civic —
+holds the four education buildings; still ≤9 entries per tab.)
 
 ### Upgrade panel
 

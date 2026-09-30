@@ -24,10 +24,10 @@
 - **Industry chain**: **Quarry** digs raw materials → Factory refines
   them → **Oil Refinery** makes fuel → **Recycling Center** turns
   goods back into materials.
-- **Services**: **School** and **University** produce research,
-  **Hospital** supports manpower, **Market** turns surplus food and
-  goods into funds, **Radar Station** feeds your intel upgrades, and
-  the **Monument** is pure prestige for the late game.
+- **Services**: **Hospital** supports manpower, **Market** turns surplus
+  food and goods into funds, **Radar Station** feeds your intel upgrades,
+  and the **Monument** is pure prestige for the late game. Education
+  buildings (below) are their own family.
 
 ## The eight resources
 
@@ -68,6 +68,24 @@ need to, not for profit. (Goods, influence, and manpower can't be traded.)
 A healthy city grows on its own: new buildings appear in zoned areas
 every few seconds, as long as people are fed and you can afford them.
 If food runs out, growth stops until farms catch up.
+
+## Education
+
+Four buildings form the education ladder, all found on the **Civic**
+tab of the build palette. They need no zone — place them anywhere on
+land:
+
+- **Kindergarten** (150 Funds, 50 Materials): researches 0.1 per second.
+- **School** (was on the Housing tab, now Civic): researches 0.25 per
+  second.
+- **College** (400 Funds, 120 Materials): researches 0.5 per second.
+- **University** (was on the Commerce tab, now Civic): researches 1.0
+  per second.
+
+Each finished **Kindergarten** or **School** also makes your city a
+nicer place to live: +0.05 residential growth desirability per
+building, stacking up to +0.25. (The Hospital stays on the Commerce
+tab and is unchanged.)
 
 ## Ages: Foundation → Connectivity → Industry → Information → Ascendance
 

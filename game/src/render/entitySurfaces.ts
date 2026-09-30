@@ -381,6 +381,10 @@ export const KEY_TREATMENTS: Record<string, KeyTreatment> = {
   // ---- suburban ----
   house: { default: T.brickBld },
   school: { default: T.brickBld },
+  // Workstream Z (2026-09-30): the education ladder wears the school's
+  // brick treatment (Kenney suburban houses, colormap texture).
+  kindergarten: { default: T.brickBld },
+  college: { default: T.brickBld },
 
   // ---- commercial / civic ----
   apartment: { default: T.concreteBld },

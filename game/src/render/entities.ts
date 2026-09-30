@@ -38,6 +38,10 @@
  *    with three instanced meshes (one per vetLevel 1..3) reading
  *    `world.units` directly — at most 3 draw calls, independent of the
  *    unit-body render path.
+ *  - Zone-tint ground decals (Workstream Z): a `ZoneOverlay`
+ *    (`render/zoneOverlay.ts`) reading `world.city.zones` directly —
+ *    one merged translucent mesh (1 draw call), rebuilt only when the
+ *    zone digest changes.
  *  - Superweapon FX: the Aegis energy dome and Storm Engine strikes,
  *    driven by the sim's deterministic `world.superweapons.fx` records
  *    (animation phase derives from `world.tick`, never wall clock).
@@ -86,6 +90,7 @@ import {
 } from './roads';
 import { surfaceRoughnessTexture } from './surfaceTextures';
 import { ChevronOverlay } from './chevrons';
+import { ZoneOverlay } from './zoneOverlay';
 import {
   groundYAt,
   unitHoverY,
@@ -227,6 +232,9 @@ export type ModelSource =
   hospital: { type: 'glb', pieces: [piece('hospital')] },
   university: { type: 'glb', pieces: [piece('university')] },
   school: { type: 'glb', pieces: [piece('school')] },
+  // Workstream Z (2026-09-30): the education ladder.
+  kindergarten: { type: 'glb', pieces: [piece('kindergarten')] },
+  college: { type: 'glb', pieces: [piece('college')] },
   monument: { type: 'procedural' },
 };
 
@@ -704,6 +712,8 @@ export class EntityRenderer {
    * render path (legacy or Phase 0 instanced).
    */
   private readonly chevrons: ChevronOverlay;
+  // Workstream Z: zone-tint ground decals (visible by default).
+  private readonly zoneOverlay: ZoneOverlay;
   /** Live superweapon FX views, keyed by fx identity. */
   private readonly superweaponFx = new Map<string, SuperweaponFxView>();
   // ---- shared model assets (one copy per kind, never disposed per view) ----
@@ -801,6 +811,7 @@ export class EntityRenderer {
     ctx.fillRect(0, 0, 1, 1);
     this.barTexture = new THREE.CanvasTexture(c);
     this.chevrons = new ChevronOverlay(scene);
+    this.zoneOverlay = new ZoneOverlay(scene);
   }
 
   /** Create/update/remove meshes to match the world. Render-side only. */
@@ -809,6 +820,7 @@ export class EntityRenderer {
     this.syncUnits(world);
     this.syncBuildings(world);
     this.syncRoads(world);
+    this.syncZoneOverlay(world);
     this.syncSuperweaponFx(world);
     this.syncChevrons(world);
     this.instancer?.endFrame(this.camera ?? undefined);
@@ -892,6 +904,18 @@ export class EntityRenderer {
       (kind) => this.modelTopForKind(kind),
       this.camera,
     );
+  }
+
+  /**
+   * Workstream Z: zone-tint ground decals. Reads `world.city.zones`
+   * directly (zoning was previously invisible on the map); the overlay
+   * rebuilds only when the zone digest changes (node-stable).
+   */
+  private syncZoneOverlay(world: World): void {
+    const t = this.terrain;
+    const heightFn =
+      t === null ? undefined : (x: number, z: number): number => heightAt(t, x, z);
+    this.zoneOverlay.sync(world.city.zones, heightFn);
   }
 
   /**
@@ -1032,6 +1056,7 @@ export class EntityRenderer {
     this.ringMat.dispose();
     this.barTexture.dispose();
     this.chevrons.dispose();
+    this.zoneOverlay.dispose();
     // Shared per-kind assets (never per-view): release once here.
     for (const m of this.proceduralCache.values()) {
       for (const g of m.geometries) g.dispose();

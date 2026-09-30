@@ -235,6 +235,12 @@ export const MODEL_PATHS: Record<string, ModelSpec> = {
   university: { path: 'kenney-commercial/building-f.glb', scale: 5.33 },
   // school 4×4 / 4 tall: suburban building-type-h (1.30×0.74×0.92) ⇒ 3.08.
   school: { path: 'kenney-suburban/building-type-h.glb', scale: 3.08 },
+  // Workstream Z (2026-09-30): the education ladder reuses Kenney
+  // suburban houses like the school does (militaryAcademy precedent):
+  // kindergarten 4×4 / 2 tall: building-type-e (1.30×1.14×1.02) ⇒ 3.08.
+  kindergarten: { path: 'kenney-suburban/building-type-e.glb', scale: 3.08 },
+  // college 4×4 / 3 tall: building-type-j (1.38×1.04×0.92) ⇒ 2.90.
+  college: { path: 'kenney-suburban/building-type-j.glb', scale: 2.9 },
   // ── NOVATERRA Phase 1 (veterancy) ──────────────────────────────────
   // militaryAcademy 3×3 footprint / 4 tall: industrial building-h
   // (1.32×0.73×1.31) ⇒ 4.54, footprint-constrained — a low parade hall

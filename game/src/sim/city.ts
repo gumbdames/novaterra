@@ -154,7 +154,8 @@ export const ZoneType = {
 } as const;
 export type ZoneType = (typeof ZoneType)[keyof typeof ZoneType];
 
-/** 'utility' buildings (power/water) skip the zone-matching rule. */
+/** 'utility' buildings (power/water AND civic infrastructure like schools)
+ * skip the zone-matching rule — they are placeable anywhere on land. */
 export const UTILITY_ZONE = 'utility' as const;
 
 /** Phase 3: city specialization focus. Plain string — snapshot-safe. */
@@ -208,6 +209,10 @@ export const BuildingKind = {
   HOSPITAL: 'hospital',
   UNIVERSITY: 'university',
   SCHOOL: 'school',
+  /** Workstream Z (2026-09-30): education ladder — early childhood. */
+  KINDERGARTEN: 'kindergarten',
+  /** Workstream Z (2026-09-30): education ladder — tertiary. */
+  COLLEGE: 'college',
   MONUMENT: 'monument',
 } as const;
 export type BuildingKind = (typeof BuildingKind)[keyof typeof BuildingKind];
@@ -466,7 +471,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     minAge: 'connectivity',
   },
   university: {
-    kind: 'university', name: 'University', zone: ZoneType.COMMERCIAL,
+    kind: 'university', name: 'University', zone: UTILITY_ZONE,
     footprintW: 4, footprintH: 3, costFunds: 1400, costMaterials: 500,
     buildSeconds: 60, upkeepFundsPerSec: 1.8,
     powerDemand: 5, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -474,11 +479,31 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     minAge: 'connectivity',
   },
   school: {
-    kind: 'school', name: 'School', zone: ZoneType.RESIDENTIAL,
+    kind: 'school', name: 'School', zone: UTILITY_ZONE,
     footprintW: 2, footprintH: 2, costFunds: 250, costMaterials: 80,
     buildSeconds: 20, upkeepFundsPerSec: 0.4,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
     output: { research: 0.25 }, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'foundation',
+  },
+  // Workstream Z (2026-09-30): the education research ladder. Kindergarten
+  // (0.1/s) < school (0.25/s) < college (0.5/s) < university (1.0/s).
+  // Completed kindergartens/schools also boost residential growth
+  // (see `educationGrowthBonus`).
+  kindergarten: {
+    kind: 'kindergarten', name: 'Kindergarten', zone: UTILITY_ZONE,
+    footprintW: 2, footprintH: 2, costFunds: 150, costMaterials: 50,
+    buildSeconds: 12, upkeepFundsPerSec: 0.2,
+    powerDemand: 1, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: { research: 0.1 }, input: {}, population: 0, taxBasePerSec: 1.0,
+    minAge: 'foundation',
+  },
+  college: {
+    kind: 'college', name: 'College', zone: UTILITY_ZONE,
+    footprintW: 2, footprintH: 2, costFunds: 400, costMaterials: 120,
+    buildSeconds: 30, upkeepFundsPerSec: 0.8,
+    powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: { research: 0.5 }, input: {}, population: 0, taxBasePerSec: 3.0,
     minAge: 'foundation',
   },
   monument: {
@@ -821,6 +846,24 @@ export function growthDesirability(taxRate: number, powerHeadroom: number, water
   return 0.55 * taxFactor * powerFactor * waterFactor;
 }
 
+/**
+ * Workstream Z (2026-09-30): the education growth lever. Each completed
+ * (progress >= 1) kindergarten or school owned by `owner` adds +0.05
+ * residential growth desirability, additive and capped at +0.25.
+ * Unfinished or demolished buildings contribute nothing. Pure and
+ * deterministic — used in `tryAutoDevelop` (residential samples only).
+ */
+export function educationGrowthBonus(world: World, owner: number): number {
+  let count = 0;
+  for (const b of world.city.buildings) {
+    if (b.owner !== owner) continue;
+    if (b.kind !== 'kindergarten' && b.kind !== 'school') continue;
+    if ((b.progress ?? 0) < 1) continue;
+    count += 1;
+  }
+  return Math.min(0.25, 0.05 * count);
+}
+
 /** Cheapest def for a zone the player can afford AND has unlocked, or undefined. */
 function affordableDefForZone(world: World, zone: ZoneType, owner: number): BuildingDef | undefined {
   const city = world.city;
@@ -844,6 +887,10 @@ function tryAutoDevelop(t: TerrainData, world: World, owner: number, powerHeadro
   const player = getPlayer(city, owner);
   if (!player || city.zones.length === 0) return false;
   const bank = rngBank(world);
+  // Workstream Z: completed kindergartens/schools make residential zones
+  // more attractive to organic growth (computed once per pulse, not per
+  // attempt — it only changes when a building completes or is demolished).
+  const eduBonus = educationGrowthBonus(world, owner);
   // Sample a few zoned cells; each sample is one development attempt.
   const attempts = Math.min(8, city.zones.length);
   for (let a = 0; a < attempts; a++) {
@@ -853,7 +900,9 @@ function tryAutoDevelop(t: TerrainData, world: World, owner: number, powerHeadro
     if (buildingAtCell(city, zrec.cell) || sortedHas(city.roads, zrec.cell)) continue;
     // No road gate (user directive 2026-09-30): zoned houses develop with
     // or without roads; the desirability roll below is the only filter.
-    const desirability = growthDesirability(player.taxRates[zrec.zone] as number, powerHeadroom, waterHeadroom);
+    let desirability = growthDesirability(player.taxRates[zrec.zone] as number, powerHeadroom, waterHeadroom);
+    // Workstream Z: education bonus applies to residential growth only.
+    if (zrec.zone === ZoneType.RESIDENTIAL) desirability += eduBonus;
     if (bank.next('city') >= desirability) continue;
     const def = affordableDefForZone(world, zrec.zone, owner);
     if (!def) return false; // broke: can't afford anything in this zone

@@ -228,7 +228,7 @@ building keeps its fade).
 ## 6. Tests
 
 `game/tests/render.lazyModels.test.ts` (27 tests): boot-set pinning
-(exact 28 keys, exclusions, determinism), kind→key resolution,
+(exact 31 keys since Workstream Z, exclusions, determinism), kind→key resolution,
 state transitions (idle→loading→loaded / →failed), request dedupe,
 failure-no-retry, unknown keys, concurrency bound, `adopt()`,
 dispose semantics (late arrival after dispose is dropped cleanly),
@@ -266,3 +266,11 @@ nondeterministically across runs).
 - Download-budget accounting for phase plans: startup ≈ 3.5 MiB
   today; a late-game session that touches every key approaches
   ~5.5 MiB + new keys, all cache-served after first fetch.
+- **Workstream Z addendum (2026-09-30):** the education ladder added
+  2 foundation-age keys (`kindergarten`, `college` — Kenney suburban
+  houses, 142 KB + 97 KB measured). Both joined the boot set
+  deliberately (education buildings render in the opening minutes),
+  so the pinned boot set is now 31 keys ≈ 2.77 MiB and the full map is
+  61 keys / 58 unique files / 4.56 MiB measured. `bootModelKeys()`
+  derives from foundation-age kinds, so this needed only the pinned
+  test update.

@@ -18,7 +18,7 @@
  * NOVATERRA — ui/icons.ts — inline SVG icon set for menus and palettes.
  *
  * Responsibilities:
- *  - One glyph per palette/menu item: all 28 units, all 28 buildings, the
+ *  - One glyph per palette/menu item: all 28 units, all 30 buildings, the
  *    5 build tools, map presets (by water fraction), AI difficulties
  *    (rank chevrons), and the main/pause menu actions.
  *  - Icons are returned as SVG markup strings (24×24 viewBox, stroke =
@@ -159,7 +159,7 @@ const UNIT_ICONS: Record<UnitKind, string> = {
 };
 
 // ---------------------------------------------------------------------------
-// Buildings — 28 glyphs, one per BuildingKind.
+// Buildings — 30 glyphs, one per BuildingKind.
 // ---------------------------------------------------------------------------
 
 /** Every BuildingKind must appear here exactly once (tsc enforces it). */
@@ -173,6 +173,16 @@ const BUILDING_ICONS: Record<BuildingKind, string> = {
   school:
     '<rect x="5" y="10" width="14" height="10"/><path d="M12 10V4"/>' +
     '<path d="M12 4.5h5.5L16 6.5l1.5 2H12"/><path d="M9 20v-4h6v4"/>',
+  // Workstream Z (2026-09-30): the education ladder. Kindergarten reads
+  // as a small house with a playground ball (distinct from the school's
+  // flag); college reads as a domed hall (distinct from the
+  // university's columns).
+  kindergarten:
+    '<path d="M4 11 12 4l8 7"/><rect x="6" y="11" width="12" height="9"/>' +
+    '<path d="M10 20v-4.5h4V20"/><circle cx="18.2" cy="5.2" r="2.3"/>',
+  college:
+    '<rect x="5" y="11" width="14" height="9"/><path d="M5 11a7 7 0 0 1 14 0"/>' +
+    '<path d="M10.5 20v-4h3v4"/><path d="M12 4V2.5"/>',
   shop:
     '<path d="M4 9.5 6 5h12l2 4.5"/><path d="M4 9.5h16"/>' +
     '<rect x="5" y="9.5" width="14" height="10.5"/><path d="M10 20v-5h4v5"/>',

@@ -28,8 +28,9 @@
  *  - Train palette: 4 tabs (spec §8) for the 28 units; production-gated
  *    units show greyed with the required building named; costs show
  *    funds + materials + manpower.
- *  - Build palette: tool row (road/zones/demolish) + 6 tabs (spec §8) for
- *    the 28 buildings; unaffordable buildings grey out; navalYard's coast
+ *  - Build palette: tool row (road/zones/demolish, with a "Zoning"
+ *    section header) + 7 tabs (spec §8 + the civic tab) for the 30
+ *    buildings; unaffordable buildings grey out; navalYard's coast
  *    rule is surfaced in its tooltip.
  *  - Research panel: at a completed Research Lab (or listed in the HUD
  *    when the player owns one), the 12 upgrades with funds + research
@@ -582,28 +583,40 @@ export class HUD {
     panel.append(wrap);
   }
 
-  /** Tabbed build palette: tool row + 6 tabs for the 28 buildings (spec §8). */
+  /** Tabbed build palette: tool row + 7 tabs for the 30 buildings (spec §8 + civic). */
   private appendBuildPanel(panel: HTMLElement, world: World): void {
     const p = STRINGS.palettes;
     const wrap = el('div', 'build-panel');
     wrap.append(el('div', 'hud-panel-title', loc(p.buildTitle)));
     // Tools are not buildings: road, zones and demolish sit above the tabs.
+    // Workstream Z: the three zone tools are grouped under a small
+    // "Zoning" section header so their purpose is obvious at a glance.
     const toolsRow = el('div', 'palette-tools');
-    const tools: Array<{ tool: BuildTool; label: string; icon: PaletteToolIcon }> = [
-      { tool: 'road', label: loc(p.toolRoad), icon: 'road' },
-      { tool: 'zoneR', label: loc(p.toolZoneR), icon: 'zoneR' },
-      { tool: 'zoneC', label: loc(p.toolZoneC), icon: 'zoneC' },
-      { tool: 'zoneI', label: loc(p.toolZoneI), icon: 'zoneI' },
-      { tool: 'demolish', label: loc(p.toolDemolish), icon: 'demolish' },
-    ];
-    for (const { tool, label, icon } of tools) {
+    const makeToolButton = (
+      tool: BuildTool,
+      label: string,
+      icon: PaletteToolIcon,
+    ): HTMLButtonElement => {
       const b = document.createElement('button');
       b.className = 'build-btn';
       b.prepend(iconSpan(toolIcon(icon)));
       b.append(el('span', 'palette-label', label));
       b.addEventListener('click', () => this.actions.onBuildTool(tool));
-      toolsRow.append(b);
+      return b;
+    };
+    toolsRow.append(makeToolButton('road', loc(p.toolRoad), 'road'));
+    const zoneGroup = el('div', 'palette-zones');
+    zoneGroup.append(el('div', 'palette-section-title', loc(p.toolSectionZoning)));
+    const zoneTools = [
+      { tool: 'zoneR', label: loc(p.toolZoneR), icon: 'zoneR' },
+      { tool: 'zoneC', label: loc(p.toolZoneC), icon: 'zoneC' },
+      { tool: 'zoneI', label: loc(p.toolZoneI), icon: 'zoneI' },
+    ] as const;
+    for (const { tool, label, icon } of zoneTools) {
+      zoneGroup.append(makeToolButton(tool, label, icon));
     }
+    toolsRow.append(zoneGroup);
+    toolsRow.append(makeToolButton('demolish', loc(p.toolDemolish), 'demolish'));
     wrap.append(toolsRow);
     wrap.append(this.buildTabBar(BUILD_TABS, STRINGS.buildingTabs, this.buildTab, (id) => {
       this.buildTab = id as BuildTabId;

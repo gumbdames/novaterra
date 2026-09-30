@@ -126,8 +126,8 @@
 //
 // STEP 5 — palette registration (ui/palettes.ts).
 //   Add the kind to `TRAIN_TABS` (4 tabs: infantry/armor/air/navy) or
-//   `BUILD_TABS` (6 tabs: housing/commerce/industry/utilities/navalAir/
-//   special). Every kind must appear in exactly one tab; a missing entry
+//   `BUILD_TABS` (7 tabs: housing/civic/commerce/industry/utilities/
+//   navalAir/special). Every kind must appear in exactly one tab; a missing entry
 //   means the entity exists in the sim but no UI can train/place it.
 //   `unitAvailability` / `buildingAvailability` mirror the sim command
 //   validation (age → production building → affordability → manpower) so

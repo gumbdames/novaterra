@@ -77,9 +77,9 @@ describe('unit icons', () => {
 });
 
 describe('building icons', () => {
-  it('covers all 29 building kinds (28 + Phase 1 militaryAcademy)', () => {
+  it('covers all 31 building kinds (28 + Phase 1 militaryAcademy + Workstream Z education pair)', () => {
     const kinds = Object.values(BuildingKind);
-    expect(kinds).toHaveLength(29);
+    expect(kinds).toHaveLength(31);
     for (const kind of kinds) {
       expectValidIcon(buildingIcon(kind as (typeof kinds)[number]));
     }
@@ -88,7 +88,7 @@ describe('building icons', () => {
   it('gives every building a distinct glyph', () => {
     const kinds = Object.values(BuildingKind);
     const glyphs = new Set(kinds.map((k) => buildingIcon(k)));
-    expect(glyphs.size).toBe(29);
+    expect(glyphs.size).toBe(31);
   });
 });
 

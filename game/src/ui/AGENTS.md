@@ -53,8 +53,9 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   button nodes stay stable across frames (recreating them every sim tick
   broke real clicks: pointerdown + pointerup landed on different nodes and
   no click event ever fired). TRAIN palette has 4 tabs (Infantry / Armor / Air / Navy),
-  BUILD palette has 6 tabs (Housing / Commerce / Industry / Utilities /
-  Naval & Air / Special) — the exact spec groupings, see `palettes.ts`.
+  BUILD palette has 7 tabs (Housing / Civic / Commerce / Industry /
+  Utilities / Naval & Air / Special) — the spec groupings plus the
+  Workstream Z civic tab (education buildings), see `palettes.ts`.
   Unavailable entries stay visible but disabled, with tooltip reasons
   (age, production building, cost, manpower, Naval Yard coast rule).
   Train buttons show funds + materials + manpower cost; build buttons
@@ -97,7 +98,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `buildResearchUpgradeOrder(owner, upgrade)` for the research panel.
 - `palettes.ts` — headless-safe palette data + availability logic for
   the tabbed TRAIN/BUILD palettes and the research panel: `TRAIN_TABS`
-  (4 tabs, 28 units), `BUILD_TABS` (6 tabs, 28 buildings),
+  (4 tabs, 28 units), `BUILD_TABS` (7 tabs, 30 buildings),
   `UPGRADE_GROUPS` (military 8 / economy 4), `unitAvailability` /
   `buildingAvailability` / `upgradeAvailability` (ready | reason), cost
   formatters, and the
@@ -143,7 +144,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `icons.ts` — **hand-drawn inline SVG icon set (pure, tested,
   `tests/ui.icons.test.ts`).** Every button shows icon AND text (user
   directive 2026-09-30) — icons are `aria-hidden`, never icon-only.
-  `unitIcon` / `buildingIcon` cover all 28 units + 28 buildings
+  `unitIcon` / `buildingIcon` cover all 28 units + 30 buildings
   (`Record<UnitKind, string>` so a missing glyph is a compile error);
   `toolIcon` for the build tools row; `mapIcon(waterFraction)` for the
   8 map presets (5 terrain buckets); `difficultyIcon` (1–5 rank

@@ -20,7 +20,7 @@
  *
  * Responsibilities:
  *  - The tab groupings (spec §8): 4 train tabs for the 28 units, 6 build
- *    tabs for the 28 buildings, 2 research groups for the 12 upgrades.
+ *    tabs for the 30 buildings, 2 research groups for the 12 upgrades.
  *  - Availability checks that mirror the sim's command validation so the
  *    UI greys out exactly what the sim would reject: `unitAvailability`
  *    mirrors `spawnUnit` validate (age → production building →
@@ -93,6 +93,7 @@ export const TRAIN_TABS: readonly TrainTab[] = [
 
 export type BuildTabId =
   | 'housing'
+  | 'civic'
   | 'commerce'
   | 'industry'
   | 'utilities'
@@ -104,12 +105,16 @@ export interface BuildTab {
   kinds: readonly BuildingKind[];
 }
 
-/** 28 buildings across 6 tabs. Every building kind appears in exactly one. */
+/** 30 buildings across 7 tabs. Every building kind appears in exactly one. */
 export const BUILD_TABS: readonly BuildTab[] = [
-  { id: 'housing', kinds: ['house', 'apartment', 'school'] },
+  { id: 'housing', kinds: ['house', 'apartment'] },
+  // Workstream Z (2026-09-30): the civic tab — the four education
+  // buildings (kindergarten/school/college/university) together. The
+  // hospital stays in Commerce (leave-hospital-alone rule).
+  { id: 'civic', kinds: ['kindergarten', 'school', 'college', 'university'] },
   {
     id: 'commerce',
-    kinds: ['shop', 'market', 'lab', 'mediaCenter', 'hospital', 'university'],
+    kinds: ['shop', 'market', 'lab', 'mediaCenter', 'hospital'],
   },
   {
     id: 'industry',
