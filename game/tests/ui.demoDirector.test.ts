@@ -40,7 +40,7 @@ import { ZoneType } from '../src/sim/city';
 function runMovie(): DemoDirector {
   const director = new DemoDirector(createDemoSession());
   let guard = 0;
-  while (!director.done && guard < 60) {
+  while (!director.done && guard < 70) {
     stepDemo(director, { ticksPerFrame: 1000, msPerFrame: 120_000 });
     guard += 1;
   }
@@ -49,7 +49,7 @@ function runMovie(): DemoDirector {
 }
 
 describe('demoDirector — living menu demo', () => {
-  it('plays the same movie for the same seed', () => {
+  it('plays the same movie for the same seed', { timeout: 120_000 }, () => {
     const a = runMovie();
     const b = runMovie();
     expect(b.commandLog).toEqual(a.commandLog);
@@ -57,7 +57,7 @@ describe('demoDirector — living menu demo', () => {
     expect(digestWorld(b.session.world)).toBe(digestWorld(a.session.world));
   });
 
-  it('issues the full scripted arc with zero failures', () => {
+  it('issues the full scripted arc with zero failures', { timeout: 120_000 }, () => {
     const d = runMovie();
     expect(d.failures).toEqual([]);
 
@@ -103,17 +103,23 @@ describe('demoDirector — living menu demo', () => {
     expect(built('shop')).toBeGreaterThanOrEqual(1);
     expect(built('factory')).toBeGreaterThanOrEqual(1);
     expect(built('powerPlant')).toBe(1);
-    expect(built('waterPump')).toBe(1);
+    expect(built('waterPump')).toBe(2);
     expect(built('barracks')).toBe(1);
     expect(built('warFactory')).toBe(1);
     expect(built('fuelDepot')).toBe(1);
-    // The director trained exactly 4 units (2 rifles, truck, tank); the
-    // sandbox's own starting forces are separate (spawned at tick 0).
-    expect(kinds.filter((k) => k === 'spawnUnit').length).toBe(4);
+    expect(built('nuclearPlant')).toBe(2);
+    expect(built('oilRefinery')).toBe(1);
+    expect(built('airfield')).toBe(1);
+    // The director trained 32 units across the ten orbits (infantry,
+    // armor, aircraft, support); the sandbox's own starting forces are
+    // separate (spawned at tick 0).
+    expect(kinds.filter((k) => k === 'spawnUnit').length).toBe(32);
     const unitKinds = world.units.filter((u) => u.owner === 0).map((u) => u.kind);
     expect(unitKinds.filter((k) => k === 'rifles').length).toBeGreaterThanOrEqual(2);
     expect(unitKinds).toContain('supplyTruck');
     expect(unitKinds).toContain('tank');
+    expect(unitKinds).toContain('fighter');
+    expect(unitKinds).toContain('fuelTruck');
 
     // Act 4: the ages, then the storm.
     expect(world.ages.age).toBe('ascendance');
@@ -125,7 +131,21 @@ describe('demoDirector — living menu demo', () => {
     expect(storm?.cooldownUntil).toBeGreaterThan(0);
   });
 
-  it('keeps the director RNG off the world bank', () => {
+  it('sustains ten camera orbits before the finale', { timeout: 120_000 }, () => {
+    // One camera orbit is 2π/0.0011 ≈ 5,712 ticks; ten orbits ≈ 57,120
+    // ticks. The movie must still be playing then (the user report was
+    // that the old 13k-tick movie exhausted itself after ~2.3 orbits).
+    const d = new DemoDirector(createDemoSession());
+    while (d.session.world.tick < 57120) {
+      d.session.tick();
+      d.update();
+    }
+    expect(d.done).toBe(false);
+    expect(d.pendingChapters).toBeGreaterThan(0);
+    expect(d.failures).toEqual([]);
+  });
+
+  it('keeps the director RNG off the world bank', { timeout: 120_000 }, () => {
     const d = runMovie();
     // The 'demo' stream lives on the director's own bank only.
     expect('demo' in d.session.world.rng).toBe(false);
@@ -142,7 +162,7 @@ describe('demoDirector — living menu demo', () => {
     expect(session.hasRival).toBe(false);
   });
 
-  it('discards the demo completely: a fresh session is pristine', () => {
+  it('discards the demo completely: a fresh session is pristine', { timeout: 120_000 }, () => {
     const pristine = createSession({ seed: DEMO_SEED, mapPreset: 'Meridian Plains', sandbox: true });
     const pristineDigest = digestWorld(pristine.world);
     const pristineFunds = pristine.world.city.players[0]!.funds;
@@ -167,7 +187,7 @@ describe('demoDirector — living menu demo', () => {
     expect(DEMO_ISSUER).toBe('demo');
   });
 
-  it('menu-load cost stays within budget', () => {
+  it('menu-load cost stays within budget', { timeout: 120_000 }, () => {
     // One-time: session creation (terrain gen dominates, like the old
     // static backdrop).
     const t0 = Date.now();
@@ -177,7 +197,7 @@ describe('demoDirector — living menu demo', () => {
     // Sim: time 1000 ticks at the start, mid-movie, and at the finale.
     const stageMs: number[] = [];
     let simMs = 0;
-    for (let stage = 0; stage < 13 && !director.done; stage += 1) {
+    for (let stage = 0; stage < 61 && !director.done; stage += 1) {
       const s0 = Date.now();
       for (let i = 0; i < 1000; i += 1) {
         director.session.tick();
@@ -199,6 +219,6 @@ describe('demoDirector — living menu demo', () => {
     );
     // Generous VM-safe budgets (measured ~10-50× under on this machine).
     expect(createMs).toBeLessThan(10_000);
-    expect(simMs).toBeLessThan(60_000);
+    expect(simMs).toBeLessThan(120_000);
   });
 });

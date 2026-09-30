@@ -720,12 +720,16 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   `game/src/ui/demoDirector.ts`: `createDemoSession()` (canonical
   `createSession()` + designed opening stockpile, campaign
   `startingResources` precedent) and `DemoDirector`, a tick-gated
-  scripted "player" (`issuer: 'demo'`): zones → roads → houses/shop/
-  factory → powerPlant/waterPump + power-line/pipe runs → barracks/
-  warFactory/fuelDepot → 2 rifles + supplyTruck (long patrol burns
-  fuel) + tank → real `resupply` at the depot → four age advances
-  (connectivity → industry → information → ascendance) → Storm Array →
-  storm strike on empty land → `done`, and the menu restarts the movie.
+  scripted "player" (`issuer: 'demo'`) playing a ~59,400-tick movie
+  (~10.4 camera orbits at 0.0011 rad/tick) on a 44×44-cell town site:
+  zones → roads → houses/shops/factories → power/water plants +
+  power-line/pipe runs → barracks/warFactory/fuelDepot →
+  rifles/trucks/tanks/drones/fighters + resupply runs → four age
+  advances (connectivity → industry → information → ascendance) →
+  transit/rail/airport → Storm Array → storm strike on empty land →
+  `done`, and the menu restarts the movie. 128 commands, zero failures,
+  solvent on all resources; the suite pins the movie still playing at
+  tick 57,120 (ten orbits).
   Same `DEMO_SEED` (0xde407) → same movie every boot (chapters fire on
   `world.tick` only; director RNG is a director-owned bank — `world.rng`
   untouched). `main.ts` renders it with the production pipeline
@@ -741,12 +745,13 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   inside the city → world → pathfinding → city import cycle whenever
   pathfinding is first reached through city (the demo tripped it — first
   move order died `RangeError: Invalid array length`); now a lazy
-  `gridCells()`. Gate: 7 new tests
+  `gridCells()`. Gate: 8 tests
   (`game/tests/ui.demoDirector.test.ts`: determinism, full-arc effects,
-  zero failures, RNG isolation, discard guarantee, real-game sessions
-  untouched, cost), full suite 1422/1422, tsc clean, build clean +
-  license stamps. Cost: session creation ~50 ms, full 13,001-tick movie
-  ~200 ms in Node (~0.015 ms/tick).
+  zero failures, ten-orbit sustain, RNG isolation, discard guarantee,
+  real-game sessions
+  untouched, cost), full suite green, tsc clean, build clean +
+  license stamps. Cost: session creation ~50 ms, full 60,001-tick movie
+  ~10 s in Node (~0.17 ms/tick).
 - **Goal:** the menu feels alive and shows off real game systems.
 - **Deployable when:** the menu plays the same movie every boot, never
   stalls rendering, and real games are provably unaffected.

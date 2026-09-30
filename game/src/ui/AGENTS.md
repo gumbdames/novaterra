@@ -26,15 +26,20 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `createDemoSession()` = canonical `createSession()` (sandbox, fixed
   `DEMO_SEED`) + a designed opening stockpile (campaign
   `startingResources` precedent); `DemoDirector` then plays a scripted
-  movie through the REAL command queue (`issuer: 'demo'`): zones →
-  roads → buildings → power/water → barracks/warFactory/fuelDepot →
-  rifles/truck/tank + resupply → four age advances → Storm Array →
-  storm strike → `done` (the menu restarts the movie). Chapters fire on
-  `world.tick` only (never frames/wall clock); the director's RNG is a
-  director-owned `createRngBank(DEMO_SEED)` `'demo'` stream — `world.rng`
-  is never touched. Rejections are recorded loudly in `failures` +
-  console (never swallowed); the suite pins `failures` empty, command
-  log + digest identical across runs, and a fresh post-demo session
+  movie through the REAL command queue (`issuer: 'demo'`) paced to the
+  menu camera's orbit (0.0011 rad/tick → 5,712 ticks/orbit; the movie
+  sustains ~10.4 orbits, ~59,400 ticks): a 44×44-cell town site (zoned
+  RES/COM/IND/UTL quarters) → roads → buildings → power/water →
+  barracks/warFactory/fuelDepot → rifles/trucks/tanks/drones/fighters +
+  resupply → four age advances → transit/rail/airport → Storm Array →
+  storm strike → `done` (the menu restarts the movie). 128 commands,
+  zero failures; the trial's final economy is solvent on all resources.
+  Chapters fire on `world.tick` only (never frames/wall clock); the
+  director's RNG is a director-owned `createRngBank(DEMO_SEED)` `'demo'`
+  stream — `world.rng` is never touched. Rejections are recorded loudly
+  in `failures` + console (never swallowed); the suite pins `failures`
+  empty, command log + digest identical across runs, the movie still
+  playing at tick 57,120 (ten orbits), and a fresh post-demo session
   digest-identical to pristine (entering a game discards the demo
   completely — `startGame` always builds its own session). Headless-safe
   (no DOM/three.js); covered by `tests/ui.demoDirector.test.ts`.
