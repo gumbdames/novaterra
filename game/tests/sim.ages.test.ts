@@ -329,6 +329,7 @@ describe('age-gated units', () => {
     // Exact roster-expansion age assignments (docs/research/roster-expansion.md §6).
     const expected: Record<string, string> = {
       engineer: 'foundation', rifles: 'foundation', hauler: 'foundation',
+      supplyTruck: 'foundation', fuelTruck: 'foundation',
       drone: 'foundation', spectre: 'foundation', hq: 'foundation',
       tank: 'foundation', artillery: 'foundation', aa: 'foundation',
       fishingBoat: 'foundation',
