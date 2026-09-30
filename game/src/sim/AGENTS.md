@@ -36,7 +36,9 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   utility. Plants touching the conductor graph seed networks; zone
   regions conduct via underground pipes when any region cell is served.
   Pure functions: `daylightFactor` (240 s day), `windFactor` (seeded),
-  `meltdownOffline` (seeded hash). `getUtilityModel` caches on
+  `attackMeltdownRoll` (seeded hash — meltdowns are attack-triggered
+  ONLY, user correction 2026-09-30; no random trigger), `isMeltedDown`.
+  `getUtilityModel` caches on
   (utilityEpoch, online sets, foulers, treatments); storage stocks are
   keyed by plant set so charge survives rebuilds. DERIVED DATA ONLY —
   never snapshotted.

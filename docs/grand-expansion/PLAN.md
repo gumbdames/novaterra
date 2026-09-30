@@ -672,9 +672,18 @@ delta → AI work.** Step gate (§0) applies to every step inside.
     all local, not pushed.
 
 ### Phase 3 — Logistics chains (L; XL only if physical road/rail freight)
-- **Status: IN PROGRESS (2026-09-30, 0.1 Alpha)** — plus workstreams M
-  (attack-triggered meltdowns only), W (desirability, land value,
-  migration, library + park) and the marina-desirability hook for Phase 4.
+- **Status: COMPLETE (2026-09-30, 0.1 Alpha)** — 4 logistics workstreams
+  + M + delegation/superweapons/accessibility all landed and green:
+  `29db01a` (sim core: fuel/ammo defs, burn, ammo gate, degradation),
+  `8b44d54` (production/depots/refill aura), `dd5e1ee`+`f6ac0dc`
+  (resupply command + logistics AI), `a564c24` (render/UI: overlay,
+  palettes, HUD, truck models), `e1a401c` (M: attack-triggered
+  meltdowns). Gate: full suite 1283/1286 (3 perf-budget p95 failures
+  proven environmental — Phase 2 baseline 5/5, current HEAD 5/5 ×2,
+  failures move between runs), tsc clean, build clean + license stamps.
+  Queued follow-ups (separate briefs, not Phase 3 scope): W
+  (desirability/land value/migration, library + park), X (menu demo
+  director), Y (3-tab menu), V (camera controls), P (ambient city life).
 - **Goal:** ammo/fuel as a tempo constraint; supply trucks, depots,
   missile/fuel chains; nuclear exemption.
 - **Contents:** S2 (§4) + §3.2 roster + logistics overlay + resupply
