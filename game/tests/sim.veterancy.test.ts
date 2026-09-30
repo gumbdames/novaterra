@@ -552,7 +552,9 @@ describe('veterancy snapshots and digests', () => {
     u.vetLevel = 0;
     const after = digestWorld(ctx.world);
     expect(after).not.toBe(before);
-    expect(canonicalizeWorld(ctx.world)).toContain(`,60,0;`);
+    // Phase 3 logistics: the unit segment now carries fuel, ammo and the
+    // 3-bit service toggles after vetLevel (all defaults here: 0,0,111).
+    expect(canonicalizeWorld(ctx.world)).toContain(`,60,0,0,0,111;`);
   });
 
   it('same seed + same commands ⇒ identical digest (veterancy included)', () => {

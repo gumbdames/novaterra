@@ -130,6 +130,10 @@ function copyBuilding(b: BuildingRecord): BuildingRecord {
     // state — no version bump, stays v6 (the veterancy ?? 0 precedent).
     powerDiag: b.powerDiag ?? 'disconnected',
     waterDiag: b.waterDiag ?? 'disconnected',
+    // Phase 3 logistics stocks. ?? 0 so legacy v6 saves decode to
+    // empty depots — no version bump, stays v6 (same precedent).
+    ammoStock: b.ammoStock ?? 0,
+    fuelStock: b.fuelStock ?? 0,
   };
 }
 
@@ -175,6 +179,11 @@ function copyUnit(u: UnitRecord): UnitRecord {
     // Phase 1 veterancy. ?? 0 so legacy v6 saves (which lack these
     // fields) decode to Recruit — no version bump, stays v6.
     xp: u.xp ?? 0, vetLevel: u.vetLevel ?? 0,
+    // Phase 3 logistics. ?? 0 so legacy v6 saves decode to empty
+    // tanks/magazines — no version bump, stays v6 (same precedent).
+    // supplyServices is player config; absent = all services on.
+    fuel: u.fuel ?? 0, ammo: u.ammo ?? 0,
+    supplyServices: u.supplyServices ? { ...u.supplyServices } : undefined,
   };
 }
 

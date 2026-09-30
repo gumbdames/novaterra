@@ -320,6 +320,31 @@ export interface BuildingDef {
    */
   fouling?: boolean;
   foulable?: boolean;
+  /**
+   * Phase 3 logistics. Max ammo (missiles/ordnance) storable at this
+   * building when completed — depots, silos, factories. The integer
+   * stock lives on `BuildingRecord.ammoStock` (snapshotted, AD9).
+   */
+  ammoStorage?: number;
+  /**
+   * Phase 3 logistics. Max forward vehicle fuel storable — fuel depots
+   * cache the owner's fuel stockpile near the front. Stock lives on
+   * `BuildingRecord.fuelStock` (snapshotted, AD9).
+   */
+  fuelStorage?: number;
+  /**
+   * Phase 3 logistics. Ammo produced per sim-second when completed and
+   * operational — munitionsFactory (general) and missilePlant
+   * (specialized heavy ordnance). Consumed inputs stay on
+   * `input`/`output` like every other production building.
+   */
+  ammoProduction?: number;
+  /**
+   * Phase 3 logistics. When true, a completed building is a reload
+   * point: units inside its logistics radius draw ammo/fuel from its
+   * stocks (depots, bases, naval bases, ports, airports).
+   */
+  reloadPoint?: boolean;
 }
 
 export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
@@ -768,6 +793,15 @@ export interface BuildingRecord {
    */
   powerDiag?: UtilityDiag;
   waterDiag?: UtilityDiag;
+  /**
+   * Phase 3 logistics stocks (integer units). `ammoStock` = missiles /
+   * ordnance produced by munitions factories and missile plants;
+   * `fuelStock` = forward vehicle fuel cached from the owner's fuel
+   * stockpile. Optional so pre-Phase-3 record literals keep compiling;
+   * every read uses `?? 0` (AD9 — the veterancy `?? 0` precedent).
+   */
+  ammoStock?: number;
+  fuelStock?: number;
 }
 
 /** One player's stockpiles and policy. */
@@ -1068,6 +1102,10 @@ export function placeBuilding(city: CityState, p: Placement): BuildingRecord {
     // honest pre-first-tick state (nothing evaluated yet).
     powerDiag: 'disconnected',
     waterDiag: 'disconnected',
+    // Phase 3 logistics: depots start empty; the economy tick fills
+    // producer stocks and shuttles fuel from the owner's stockpile.
+    ammoStock: 0,
+    fuelStock: 0,
   };
   city.nextBuildingId += 1;
   city.buildings.push(record);

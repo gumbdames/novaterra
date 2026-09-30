@@ -156,6 +156,27 @@ export interface UnitDef {
    */
   requiredBuilding?: BuildingKind;
   /**
+   * Phase 3 logistics. Fuel tank size in fuel units; undefined = no fuel
+   * tracking (infantry, unmanned). `fuelPerSecond` burns only while the
+   * unit is actually moving (see movement.ts).
+   */
+  fuelCapacity?: number;
+  /** Fuel burned per sim-second of movement. */
+  fuelPerSecond?: number;
+  /**
+   * Missile/ordnance magazine size; undefined = no ammo tracking.
+   * `ammoPerShot` is consumed per shot in combat.ts.
+   */
+  ammoCapacity?: number;
+  /** Ammo consumed per shot (missile weapons: 1). */
+  ammoPerShot?: number;
+  /**
+   * 'fossil' burns fuel and must refuel; 'nuclear' is exempt from
+   * refueling (missile sub, carrier — user directive 2026-09-30);
+   * 'none'/undefined = no fuel system at all.
+   */
+  fuelType?: 'fossil' | 'nuclear' | 'none';
+  /**
    * Command aura: friendly attackers of `auraDomain` (or any domain when
    * undefined) within this radius get +`auraBonus` damage. Generalizes the
    * old HQ_AURA_* constants (hq: 20 / 0.25; commandShip: 24 / 0.25 sea).
@@ -418,6 +439,19 @@ export interface UnitRecord {
   xp: number;
   /** Veterancy level 0..3 (see `vetLevelForXp` in `veterancy.ts`). */
   vetLevel: number;
+  /**
+   * Phase 3 logistics. Current fuel in the tank (fossil-fuel units) and
+   * current ammo in the magazine. Full on spawn (see spawnUnit); legacy
+   * v6 saves decode to 0 via `?? 0` in snapshot.ts (AD9, no version bump).
+   */
+  fuel: number;
+  ammo: number;
+  /**
+   * Phase 3: per-service toggles on supply units — which field services
+   * this truck/ship offers (repair / rearm / refuel). Optional: absent
+   * means all services on. Reads go through `supplyServicesOf` below.
+   */
+  supplyServices?: { repair: boolean; rearm: boolean; refuel: boolean };
 }
 
 /** Spawn a unit into the world. Returns the new record. Caller validates. */
@@ -449,6 +483,11 @@ export function spawnUnit(world: World, kind: string, owner: number, x: number, 
     fieldId: 0,
     xp: 0,
     vetLevel: 0,
+    // Phase 3 logistics: full tanks and full magazines on spawn (S2 hook).
+    // Nuclear-fuel units (fuelType 'nuclear') never burn fuel, but still
+    // track ammo; 'none'/untracked kinds sit at 0/0.
+    fuel: def.fuelCapacity ?? 0,
+    ammo: def.ammoCapacity ?? 0,
   };
   world.nextId += 1;
   world.units.push(record);
@@ -469,6 +508,31 @@ export function spawnUnit(world: World, kind: string, owner: number, x: number, 
 /** Find a unit by id. Linear scan — fine until the ECS perf step. */
 export function findUnit(world: World, id: number): UnitRecord | undefined {
   return world.units.find((u) => u.id === id);
+}
+
+/**
+ * Phase 3 logistics: effective per-service toggles for a supply unit
+ * (repair / rearm / refuel). Absent `supplyServices` means all on.
+ */
+export function supplyServicesOf(u: UnitRecord): { repair: boolean; rearm: boolean; refuel: boolean } {
+  return u.supplyServices ?? { repair: true, rearm: true, refuel: true };
+}
+
+/**
+ * Phase 3 logistics: supply level 0..1 — the minimum fraction across the
+ * unit's tracked resources (fuel for fossil-fuel units, ammo for
+ * magazine units). 1 = fully supplied. Nuclear-fuel units and untracked
+ * kinds are always 1 (exempt from the supply system).
+ */
+export function supplyLevel(def: UnitDef, u: UnitRecord): number {
+  let level = 1;
+  if (def.fuelType === 'fossil' && (def.fuelCapacity ?? 0) > 0) {
+    level = Math.min(level, u.fuel / (def.fuelCapacity as number));
+  }
+  if ((def.ammoCapacity ?? 0) > 0) {
+    level = Math.min(level, u.ammo / (def.ammoCapacity as number));
+  }
+  return level;
 }
 
 /**
