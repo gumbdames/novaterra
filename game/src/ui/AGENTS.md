@@ -133,6 +133,14 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   Topbar (workstream W): a "Land value" toggle shows the desirability
   overlay — the residential ground tint, red (low) → green (prime)
   (see `render/desirabilityOverlay.ts`, data via `ui/desirability.ts`).
+  Topbar (Phase 4 RENDER workstream A, item 1): an "X-ray" toggle ghosts
+  the terrain + water so buried water pipes read (bright blue lines, no
+  depth test — see `render/xrayView.ts`); game.ts auto-enables it while
+  the water-pipe build tool is armed and never fights a manual toggle.
+  Topbar (Phase 4 RENDER workstream A, follow-up B): a "Grid" toggle
+  (icon+text via `viewIcon('grid')`, `G` key) shows the subtle draped
+  terrain grid — see `render/gridView.ts`. Both are registered in
+  `HUD_PANEL_BRANCHES` (AD11) and never rebuild topbar DOM.
   Selected residential buildings show their land-value line
   ("Land: Nice (64) · tax ×1.3", via `ui/desirability.ts`
   `landValueLine`); digest-covered (`bv:` segment, AD11).
@@ -269,10 +277,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `icons.ts` — **hand-drawn inline SVG icon set (pure, tested,
   `tests/ui.icons.test.ts`).** Every button shows icon AND text (user
   directive 2026-09-30) — icons are `aria-hidden`, never icon-only.
-  `unitIcon` / `buildingIcon` cover all 30 units + 55 buildings
+  `unitIcon` / `buildingIcon` cover all 35 units + 67 buildings
   (`Record<UnitKind, string>` so a missing glyph is a compile error);
   `toolIcon` for the build tools row (incl. the Phase 2 powerLine /
-  waterPipe tools); `mapIcon(waterFraction)` for the
+  waterPipe tools); `viewIcon` for the top-bar view toggles (Phase 4
+  RENDER workstream A: the terrain-grid toggle); `mapIcon(waterFraction)` for the
   8 map presets (5 terrain buckets); `difficultyIcon` (1–5 rank
   chevrons); `menuIcon` for skirmish/load/missions/settings/back/
   resume/save/exit plus the three main-tab icons (tabCivilian /

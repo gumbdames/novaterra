@@ -247,6 +247,17 @@ export const MODEL_PATHS: Record<string, ModelSpec> = {
   // 3.3 tall. File is 63.6 KB (Phase 1 budget: +1 key ~80 KB) and already
   // license-manifested (THIRD_PARTY_NOTICES.md, Kenney CC0).
   militaryAcademy: { path: 'kenney-industrial/building-h.glb', scale: 4.54 },
+  // ── NOVATERRA civilian pedestrians (Phase 4 RENDER workstream A) ────
+  // Quaternius CC0 humans for the ambient crowd (render/people.ts). These
+  // four keys are LAZY — never in the boot set (see bootModelKeys below):
+  // they load on first population through the store's self-triggering
+  // map, so the 8 MiB startup gate is unaffected (+1.05 MB lazy total).
+  // scale: 1 — render/people.ts normalizes each variant to person height
+  // itself (the four models are authored at wildly different scales).
+  personCasualMan: { path: 'quaternius-civilians/civilian-man.glb', scale: 1 },
+  personCasualWoman: { path: 'quaternius-civilians/civilian-woman.glb', scale: 1 },
+  personWorker: { path: 'quaternius-civilians/civilian-worker.glb', scale: 1 },
+  personWomanTwo: { path: 'quaternius-civilians/civilian-woman-2.glb', scale: 1 },
 };
 
 /** One successfully loaded + normalized model. */

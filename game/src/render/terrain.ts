@@ -164,6 +164,11 @@ export interface TerrainView {
   group: THREE.Group;
   /** Water plane mesh (caller animates it, e.g. gentle bobbing). */
   water: THREE.Mesh;
+  /**
+   * The single vertex-color material shared by all chunk meshes
+   * (exposed so the x-ray view in `render/xrayView.ts` can ghost it).
+   */
+  terrainMaterial: THREE.Material;
   /** Number of chunk meshes (draw calls for terrain). */
   chunkCount: number;
   /** Total triangles: chunks + water plane. */
@@ -215,5 +220,11 @@ export function buildTerrainView(t: TerrainData): TerrainView {
   group.add(water);
   triangles += 2;
 
-  return { group, water, chunkCount: P.chunksPerSide * P.chunksPerSide, triangles };
+  return {
+    group,
+    water,
+    terrainMaterial: material,
+    chunkCount: P.chunksPerSide * P.chunksPerSide,
+    triangles,
+  };
 }

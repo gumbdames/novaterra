@@ -99,11 +99,14 @@ import { surfaceRoughnessTexture } from './surfaceTextures';
 import { ChevronOverlay } from './chevrons';
 import { ZoneOverlay } from './zoneOverlay';
 import { AmbientCrowd, PavingOverlay } from './cityLife';
+import { XrayView } from './xrayView';
+import { GridView } from './gridView';
 // Phase 2 (utilities): the always-on network runs + the toggleable
 // diagnostic overlay. ui/utilities.ts is a pure contract module (no DOM,
 // no three.js) — safe to import from the render layer.
 import { NetworkOverlay } from './networks';
 import { UtilityOverlay } from './utilityOverlay';
+import { UtilityIndicators } from './utilityIndicators';
 import { DesirabilityOverlay } from './desirabilityOverlay';
 import { desirabilityOverlayData } from '../ui/desirability';
 // Phase 3 (logistics): the toggleable reload-coverage / low-supply
@@ -828,7 +831,24 @@ export class EntityRenderer {
    * overlay (coverage tints + diag markers, off by default).
    */
   private readonly networkOverlay: NetworkOverlay;
+  /**
+   * Phase 4 RENDER workstream A (item 1): underground/x-ray view — ghosts
+   * the terrain + water and lights up the water-pipe network. Materials
+   * are late-bound via `setXrayMaterials`.
+   */
+  private readonly xrayView: XrayView;
+  /**
+   * Phase 4 RENDER workstream A (follow-up B): the terrain grid overlay
+   * — one draped LineSegments, hidden by default.
+   */
+  private readonly gridView: GridView;
   private readonly utilityOverlay: UtilityOverlay;
+  /**
+   * Phase 4 RENDER workstream A (item 5): per-building utility
+   * indicators (bolt = power trouble, drop = water trouble) — always
+   * on, 0 draw calls when the city is fully supplied.
+   */
+  private readonly utilityIndicators: UtilityIndicators;
   private utilityOverlayVisible = false;
   /**
    * Phase 3 (logistics): the toggleable reload-coverage / low-supply
@@ -940,11 +960,28 @@ export class EntityRenderer {
     // Workstream P (ambient city life): paving is a sibling of the zone
     // decals (same digest cadence); the crowd reads zones/roads/seed.
     this.pavingOverlay = new PavingOverlay(scene);
-    this.ambientCrowd = new AmbientCrowd(scene);
+    // The crowd borrows the caller-owned models map so the civilian
+    // pedestrian GLBs can lazy-load through it (render/people.ts);
+    // without the map it keeps the capsule fallback.
+    this.ambientCrowd = new AmbientCrowd(scene, models);
     // Phase 2 (utilities): network runs render always; the diagnostic
     // overlay starts hidden (top-bar toggle flips it).
     this.networkOverlay = new NetworkOverlay(scene);
+    // Phase 4 RENDER workstream A (item 1): the underground/x-ray view.
+    // Terrain/water materials are late-bound via setXrayMaterials (the
+    // TerrainView is built before this renderer exists).
+    this.xrayView = new XrayView((on) => this.networkOverlay.setXray(on));
     this.utilityOverlay = new UtilityOverlay(scene);
+    this.utilityIndicators = new UtilityIndicators(scene);
+    // Phase 4 RENDER workstream A (follow-up B): the terrain grid —
+    // built once (terrain never changes), draped via heightAt, hidden
+    // by default (top-bar "Grid" button / G key).
+    this.gridView = new GridView(
+      scene,
+      this.terrain !== null
+        ? (x, z) => heightAt(this.terrain as TerrainData, x, z)
+        : undefined,
+    );
     this.logisticsOverlay = new LogisticsOverlay(scene);
     this.desirabilityOverlay = new DesirabilityOverlay(scene);
   }
@@ -959,6 +996,9 @@ export class EntityRenderer {
     this.syncCityLife(world);
     this.syncNetworks(world);
     this.syncUtilityOverlay(world);
+    // Phase 4 RENDER workstream A (item 5): per-building utility
+    // indicators — always on, 0 draw calls when fully supplied.
+    this.syncUtilityIndicators(world);
     this.syncLogisticsOverlay(world);
     this.syncDesirabilityOverlay(world);
     this.syncSuperweaponFx(world);
@@ -1120,6 +1160,25 @@ export class EntityRenderer {
   }
 
   /**
+   * Phase 4 RENDER workstream A (item 5): per-building utility
+   * indicators. Unlike the toggleable diagnosis overlay above, these
+   * are ALWAYS on — a lightning bolt over buildings whose power
+   * diagnosis is not ok, a water drop over buildings whose water
+   * diagnosis is not ok. 0 draw calls when fully supplied (the class
+   * keeps its meshes hidden until the first bad diagnosis).
+   */
+  private syncUtilityIndicators(world: World): void {
+    const t = this.terrain;
+    const heightFn =
+      t === null ? undefined : (x: number, z: number): number => heightAt(t, x, z);
+    this.utilityIndicators.sync(world.city.buildings, {
+      heightFn,
+      camera: this.camera ?? undefined,
+      buildingTop: (kind) => this.modelTopForKind(kind),
+    });
+  }
+
+  /**
    * Phase 3 (logistics): sync the reload-coverage / low-supply overlay.
    * Skipped entirely while hidden (like the utility overlay — the digest
    * pass is worth skipping).
@@ -1173,6 +1232,42 @@ export class EntityRenderer {
   setDesirabilityOverlayVisible(visible: boolean): void {
     this.desirabilityOverlayVisible = visible;
     this.desirabilityOverlay.setVisible(visible);
+  }
+
+  /**
+   * Phase 4 RENDER workstream A (item 1): late-bind the terrain + water
+   * materials the x-ray view ghosts. Called by the controller after
+   * construction (the TerrainView is built first).
+   */
+  setXrayMaterials(terrain: THREE.Material, water: THREE.Material): void {
+    this.xrayView.setTerrainMaterials(terrain, water);
+  }
+
+  /**
+   * Phase 4 RENDER workstream A (item 1): toggle the underground/x-ray
+   * view. Called by the controller from the top-bar button; game.ts also
+   * auto-enables it while the water-pipe tool is armed.
+   */
+  setXrayVisible(visible: boolean): void {
+    this.xrayView.setVisible(visible);
+  }
+
+  /** Phase 4 RENDER workstream A (item 1): x-ray state (HUD/digest). */
+  isXrayVisible(): boolean {
+    return this.xrayView.visible;
+  }
+
+  /**
+   * Phase 4 RENDER workstream A (follow-up B): toggle the terrain grid
+   * overlay (top-bar "Grid" button / G key; hidden by default).
+   */
+  setGridVisible(visible: boolean): void {
+    this.gridView.setVisible(visible);
+  }
+
+  /** Phase 4 RENDER workstream A (follow-up B): grid state. */
+  isGridVisible(): boolean {
+    return this.gridView.visible;
   }
 
   /**
@@ -1319,8 +1414,10 @@ export class EntityRenderer {
     this.ambientCrowd.dispose();
     this.networkOverlay.dispose();
     this.utilityOverlay.dispose();
+    this.utilityIndicators.dispose();
     this.logisticsOverlay.dispose();
     this.desirabilityOverlay.dispose();
+    this.gridView.dispose();
     // Shared per-kind assets (never per-view): release once here.
     for (const m of this.proceduralCache.values()) {
       for (const g of m.geometries) g.dispose();

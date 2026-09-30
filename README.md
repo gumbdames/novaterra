@@ -14,7 +14,10 @@ land, sea and air — or play a fully peaceful game with war disabled.
   library + park), the 3-tab menu restructure (Civilian / Military /
   Management bottom-left menu), and the living menu demo (a seeded world
   plays itself behind the main menu through the real command queue);
-  follow-ups queued (ambient city life, menu polish, camera). See the live plan:
+  follow-ups queued (ambient city life, menu polish, camera). Phase 4
+  (transport) is in progress — its render-polish workstream delivered the
+  underground x-ray view, per-building power/water indicators, proper
+  pedestrian models, and a terrain survey grid. See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
 ## What the game has today (0.1 Alpha)

@@ -790,6 +790,13 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   until the player's network exists (no routes ⇒ no vehicles, never a
   crash). Provider geometry should be instancing-friendly; the crowd
   never disposes provider-owned assets.
+- **Status: IN PROGRESS (2026-09-30, 0.1 Alpha).** Transport sim
+  workstream underway. RENDER workstream A delivered: underground/x-ray
+  view (ghosts terrain + water for buried pipes, auto-on with the
+  water-pipe tool), per-building power/water indicators (bolt/drop
+  billboards), proper Quaternius pedestrian models (4 lazy-loaded
+  variants replacing the capsules), and a terrain survey grid (topbar
+  "Grid" toggle / G key).
 
 ### Phase 5 — Airports + airline (M–L)
 - **Goal:** airport zones, capability-gated tiers, hangars, civilian

@@ -492,6 +492,23 @@ export function menuIcon(key: MenuIconKey): string {
 }
 
 /**
+ * View-toggle icons (Phase 4 RENDER workstream A, follow-up B).
+ * Hand-drawn in the established style (24×24, currentColor); always
+ * paired with the toggle's text label.
+ */
+export type ViewIconKey = 'grid';
+
+const VIEW_ICONS: Record<ViewIconKey, string> = {
+  // Survey grid: 3×3 lines.
+  grid: '<path d="M4 9.3h16M4 14.6h16M9.3 4v16M14.6 4v16"/>',
+};
+
+/** Inline SVG for a view toggle (top bar). */
+export function viewIcon(key: ViewIconKey): string {
+  return svg(VIEW_ICONS[key]);
+}
+
+/**
  * Inline SVG for a map preset, chosen by water fraction. Five glyphs:
  * pond (<8% water), river (<16%), lakes (<26%), coast (<38%), isles
  * (everything wetter). Fixed land/water fills — these read as terrain.

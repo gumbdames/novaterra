@@ -79,7 +79,11 @@ reaches, which gets underground pipes for free).
 If demand exceeds supply, the nearest buildings get served first. A
 building without power produces at 25%; without water, another 25%.
 The overlay shows each building's state: ok, shortage, or disconnected.
-Keep headroom as you grow.
+Keep headroom as you grow. Buried pipes are easy to lose on the normal
+map — the **X-ray** view (top bar) ghosts the terrain so pipes show as
+bright blue lines, and it switches on by itself while you paint pipes.
+The **Grid** view (top bar, or the **G** key) drapes a subtle survey grid
+over the terrain for planning distances.
 
 ## Upkeep and taxes
 
@@ -145,9 +149,12 @@ things happen automatically, purely as decoration:
 - **Pedestrians and cars.** Completed homes fill the streets with
   walkers and drivers — more people means a busier city (roughly one
   walker per 4 residents, one car per 20, up to 500 walkers and 150
-  cars). Walkers stroll between home, shops, and workplaces; cars
-  drive the roads. They are pure decoration: they can't be selected,
-  they don't affect the simulation, and pausing pauses them.
+  cars). Walkers are real 3D people (four civilian variants: man, two
+  women, worker — they stream in once their models load, until then a
+  simple figure stands in); they stroll between home, shops, and
+  workplaces; cars drive the roads. They are pure decoration: they
+  can't be selected, they don't affect the simulation, and pausing
+  pauses them.
 - **Civic parking.** The **Civic** tab also holds the **Parking Lot**
   (180 Funds, 60 Materials) and **Parking Garage** (450 Funds, 180
   Materials): 3×3 buildings that add a little desirability nearby

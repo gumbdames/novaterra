@@ -15,6 +15,8 @@
 import { describe, expect, it, afterEach, vi } from 'vitest';
 import * as THREE from 'three';
 import { createWorld, type World } from '../src/sim/world';
+import { PERSON_MODEL_KEYS } from '../src/render/people';
+import type { LoadedModel } from '../src/render/models';
 import { cellIndex, ZoneType, type BuildingKind, type BuildingRecord } from '../src/sim/city';
 import { BUILDING_DEFS } from '../src/sim/city';
 import { digestWorld } from '../src/sim/digest';
@@ -89,8 +91,8 @@ function makeCityWorld(): World {
   city.buildings.push(makeBuilding('house', 13, 13));
   city.buildings.push(makeBuilding('apartment', 14, 12));
   // A straight road so cars have something to drive on.
-  for (let cx = 8; cx < 24; cx++) city.roads.push(cellIndex(cx, 16));
-  city.roads.sort((a, b) => a - b);
+  for (let cx = 8; cx < 24; cx++) city.roads.push({ cell: cellIndex(cx, 16), cls: 'paved' });
+  city.roads.sort((a, b) => a.cell - b.cell);
   return world;
 }
 
@@ -488,8 +490,8 @@ describe('AmbientCrowd — no sim leakage', () => {
     for (let i = 0; i < 200; i++) {
       world.city.buildings.push(makeBuilding('apartment', i % 100, (i * 7) % 40));
     }
-    for (let cx = 0; cx < 120; cx++) world.city.roads.push(cellIndex(cx, 45));
-    world.city.roads.sort((a, b) => a - b);
+    for (let cx = 0; cx < 120; cx++) world.city.roads.push({ cell: cellIndex(cx, 45), cls: 'paved' });
+    world.city.roads.sort((a, b) => a.cell - b.cell);
     const pop = ambientCityPopulation(world);
     expect(pop).toBe(6000);
     const scene = new THREE.Scene();
@@ -615,5 +617,95 @@ describe('ambient transit hooks', () => {
     expect(crowd.drawCallCount()).toBe(2);
     geo.dispose();
     mat.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Civilian person models (Phase 4 RENDER workstream A, item 4): the crowd
+// upgrades pedestrians from capsules to the four Quaternius variants once
+// their GLBs lazy-load through the models map.
+// ---------------------------------------------------------------------------
+
+describe('AmbientCrowd — civilian person models', () => {
+  /** One mock person variant: two colored boxes, base at y=0. */
+  function mockPerson(color: number): LoadedModel {
+    const torso = new THREE.BoxGeometry(0.4, 0.9, 0.25);
+    torso.translate(0, 0.45, 0);
+    return {
+      geometries: [torso],
+      materials: [new THREE.MeshStandardMaterial({ color })],
+    };
+  }
+
+  function fullPersonMap(): Map<string, LoadedModel> {
+    const map = new Map();
+    PERSON_MODEL_KEYS.forEach((key, i) => map.set(key, mockPerson([0xc8a080, 0x804020, 0x406080, 0x908070][i] as number)));
+    return map;
+  }
+
+  it('builds four person layers when all person keys are present', () => {
+    const world = makeCityWorld();
+    const scene = new THREE.Scene();
+    crowd = new AmbientCrowd(scene, fullPersonMap());
+    crowd.sync(world, () => 0);
+    expect(crowd.debugPersonLayers()).toBe(4);
+    // 4 person layers + the car layer (makeCityWorld has roads ⇒ cars).
+    expect(crowd.drawCallCount()).toBe(5);
+  });
+
+  it('keeps the capsule fallback when no models map is passed', () => {
+    const world = makeCityWorld();
+    const scene = new THREE.Scene();
+    crowd = new AmbientCrowd(scene);
+    crowd.sync(world, () => 0);
+    expect(crowd.debugPersonLayers()).toBe(0);
+    expect(crowd.drawCallCount()).toBe(2); // capsule peds + cars
+  });
+
+  it('keeps the capsule fallback when only some person keys loaded', () => {
+    const world = makeCityWorld();
+    const scene = new THREE.Scene();
+    const map = fullPersonMap();
+    map.delete(PERSON_MODEL_KEYS[2]);
+    crowd = new AmbientCrowd(scene, map);
+    crowd.sync(world, () => 0);
+    expect(crowd.debugPersonLayers()).toBe(0);
+    expect(crowd.drawCallCount()).toBe(2);
+  });
+
+  it('keeps the capsule fallback when a variant fails to build', () => {
+    const world = makeCityWorld();
+    const scene = new THREE.Scene();
+    const map = fullPersonMap();
+    map.set(PERSON_MODEL_KEYS[0], { geometries: [], materials: [] });
+    crowd = new AmbientCrowd(scene, map);
+    crowd.sync(world, () => 0);
+    expect(crowd.debugPersonLayers()).toBe(0);
+  });
+
+  it('person layers are stable across syncs (built once)', () => {
+    const world = makeCityWorld();
+    const scene = new THREE.Scene();
+    crowd = new AmbientCrowd(scene, fullPersonMap());
+    crowd.sync(world, () => 0);
+    const before = crowd.debugRebuildCount();
+    crowd.sync(world, () => 0);
+    crowd.sync(world, () => 0);
+    expect(crowd.debugPersonLayers()).toBe(4);
+    expect(crowd.debugRebuildCount()).toBe(before); // no model churn
+  });
+
+  it('late-arriving models upgrade a capsule crowd in place', () => {
+    const world = makeCityWorld();
+    const scene = new THREE.Scene();
+    const map = new Map<string, LoadedModel>();
+    crowd = new AmbientCrowd(scene, map);
+    crowd.sync(world, () => 0);
+    expect(crowd.debugPersonLayers()).toBe(0);
+    // The lazy store delivers the models later — next sync picks them up.
+    for (const [k, v] of fullPersonMap()) map.set(k, v);
+    crowd.sync(world, () => 0);
+    expect(crowd.debugPersonLayers()).toBe(4);
+    expect(crowd.drawCallCount()).toBe(5);
   });
 });

@@ -55,7 +55,7 @@ import {
 } from '../sim/city';
 import type { AIDifficulty } from '../sim/ai';
 import { CommandRejectedError } from '../sim/commands';
-import { buildTerrainView } from '../render/terrain';
+import { buildTerrainView, type TerrainView } from '../render/terrain';
 import { EntityRenderer } from '../render/entities';
 import { createRenderer, applyEnvironmentLighting } from '../render/renderer';
 import { buildNatureView, type NatureView } from '../render/nature';
@@ -246,7 +246,7 @@ export async function startGame(
   renderer.setSize(window.innerWidth, window.innerHeight);
   applyQuality(renderer, opts.quality);
 
-  const scene = buildGameScene(session);
+  const { scene, terrainView } = buildGameScene(session);
   // Procedural environment map so metalness/roughness on entity
   // materials shade correctly (render/renderer.ts); subtle fill only,
   // the sun/hemi lights stay the key light.
@@ -261,6 +261,13 @@ export async function startGame(
   // Camera for instanced health-bar billboarding (Phase 0 draw-call
   // ceiling: `instanced: true` is set on the EntityRenderer above).
   entities.renderer.setCamera(camera);
+  // Phase 4 RENDER workstream A (item 1): the x-ray view borrows the
+  // terrain + water materials (late-bound — the TerrainView is built
+  // before the renderer).
+  entities.renderer.setXrayMaterials(
+    terrainView.terrainMaterial,
+    terrainView.water.material as THREE.Material,
+  );
 
   const controller = new GameController(
     container,
@@ -288,7 +295,7 @@ function applyQuality(
 }
 
 /** Daylight skirmish scene: sky, fog, lights, real terrain + water. */
-function buildGameScene(session: GameSession): THREE.Scene {
+function buildGameScene(session: GameSession): { scene: THREE.Scene; terrainView: TerrainView } {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x87a8c8);
   scene.fog = new THREE.Fog(0x87a8c8, 380, 1400);
@@ -300,7 +307,7 @@ function buildGameScene(session: GameSession): THREE.Scene {
 
   const view = buildTerrainView(session.terrain);
   scene.add(view.group);
-  return scene;
+  return { scene, terrainView: view };
 }
 
 /** Overall startup budget for ALL model loads (~20s): boot must never hang. */
@@ -459,6 +466,12 @@ class GameController {
   private logisticsOverlayVisible = false;
   /** Workstream W (desirability): land-value overlay visibility. */
   private desirabilityOverlayVisible = false;
+  /** Phase 4 RENDER workstream A (item 1): x-ray view visibility. */
+  private xrayVisible = false;
+  /** True when x-ray is on because the water-pipe tool armed it. */
+  private xrayAutoEnabled = false;
+  /** Phase 4 RENDER workstream A (follow-up B): terrain grid visibility. */
+  private gridVisible = false;
   private advisorItems: AdvisorItem[] = [];
   private lastAdvisorRefresh = 0;
   private readonly keys = new Set<string>();
@@ -580,9 +593,22 @@ class GameController {
             ? `${loc(STRINGS.palettes.buildToast)} ${networkToolHint()}`
             : loc(STRINGS.palettes.buildToast),
         );
+        // Phase 4 RENDER workstream A (item 1): the x-ray view follows
+        // the water-pipe tool so buried pipes are visible while painting.
+        if (tool === 'waterPipe') {
+          if (!this.xrayVisible) {
+            this.xrayAutoEnabled = true;
+            this.setXray(true);
+          }
+        } else {
+          this.clearXrayAuto();
+        }
       },
       onCancelPlacement: () => {
         this.placement = null;
+        // Phase 4 RENDER workstream A (item 1): the pipe tool's
+        // auto-enabled x-ray turns back off (never a manual toggle).
+        this.clearXrayAuto();
       },
       onResearchUpgrade: (id) => this.enqueue(buildResearchUpgradeOrder(HUMAN_PLAYER_ID, id)),
       onAdvanceAge: (program) => this.issueAdvanceAge(program),
@@ -603,6 +629,15 @@ class GameController {
         this.desirabilityOverlayVisible = !this.desirabilityOverlayVisible;
         this.entities.setDesirabilityOverlayVisible(this.desirabilityOverlayVisible);
         this.hud.setDesirabilityOverlayActive(this.desirabilityOverlayVisible);
+      },
+      // Phase 4 RENDER workstream A (item 1): the underground/x-ray view.
+      onToggleXray: () => {
+        this.xrayAutoEnabled = false; // the user took over explicitly
+        this.setXray(!this.xrayVisible);
+      },
+      // Phase 4 RENDER workstream A (follow-up B): the terrain grid.
+      onToggleGrid: () => {
+        this.setGrid(!this.gridVisible);
       },
       // Phase 3 (logistics): resupply + field-service toggles. The sim's
       // registerLogisticsCommands is wired at boot (ui/session.ts), so
@@ -1267,11 +1302,46 @@ class GameController {
   private cancelPlacement(): void {
     this.placement = null;
     this.networkDrag = null;
+    // Phase 4 RENDER workstream A (item 1): the pipe tool's
+    // auto-enabled x-ray turns back off (never a manual toggle).
+    this.clearXrayAuto();
     if (this.dragRect) {
       this.dragRect.remove();
       this.dragRect = null;
     }
     this.hud.toast('Cancelled.');
+  }
+
+  /**
+   * Phase 4 RENDER workstream A (item 1): single x-ray state writer
+   * (renderer + HUD toggle stay in sync).
+   */
+  private setXray(visible: boolean): void {
+    this.xrayVisible = visible;
+    this.entities.setXrayVisible(visible);
+    this.hud.setXrayActive(visible);
+  }
+
+  /**
+   * Phase 4 RENDER workstream A (item 1): turn x-ray off only when the
+   * water-pipe tool auto-enabled it — a manual user toggle is never
+   * fought.
+   */
+  private clearXrayAuto(): void {
+    if (this.xrayAutoEnabled) {
+      this.xrayAutoEnabled = false;
+      this.setXray(false);
+    }
+  }
+
+  /**
+   * Phase 4 RENDER workstream A (follow-up B): single grid state writer
+   * (renderer + HUD toggle stay in sync).
+   */
+  private setGrid(visible: boolean): void {
+    this.gridVisible = visible;
+    this.entities.setGridVisible(visible);
+    this.hud.setGridActive(visible);
   }
 
   /**
@@ -1590,6 +1660,12 @@ class GameController {
       }
       if (k === 's' && !e.repeat) {
         this.issueStop();
+        return;
+      }
+      // Phase 4 RENDER workstream A (follow-up B): G toggles the
+      // terrain grid (the top-bar "Grid" button does the same).
+      if (k === 'g' && !e.repeat) {
+        this.setGrid(!this.gridVisible);
         return;
       }
       this.keys.add(k);

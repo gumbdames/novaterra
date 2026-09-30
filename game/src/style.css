@@ -284,10 +284,13 @@ body {
   color: var(--accent);
 }
 
-/* Phase 2/3 overlay toggles (Utilities / Logistics): themed like the
-   other topbar buttons, with the same .active treatment as pause/speed. */
+/* Phase 2/3/4 view toggles (Utilities / Logistics / X-ray / Grid):
+   themed like the other topbar buttons, with the same .active treatment
+   as pause/speed. */
 .hud-util,
-.hud-logistics {
+.hud-logistics,
+.hud-xray,
+.hud-grid {
   appearance: none;
   border: 1px solid var(--panel-border);
   background: var(--panel);
@@ -302,13 +305,17 @@ body {
 }
 
 .hud-util.active,
-.hud-logistics.active {
+.hud-logistics.active,
+.hud-xray.active,
+.hud-grid.active {
   border-color: var(--accent);
   color: var(--accent);
 }
 
 .hud-util svg,
-.hud-logistics svg {
+.hud-logistics svg,
+.hud-xray svg,
+.hud-grid svg {
   width: 18px;
   height: 18px;
 }
@@ -375,7 +382,12 @@ body {
   position: absolute;
   left: 12px;
   bottom: 12px;
-  width: 300px;
+  /* Wide enough for 3-tab menu content without cramping; capped to the
+   * viewport so narrow windows never get a horizontal scrollbar (the
+   * panel scrolls vertically instead — the menu's own overflow-y rule
+   * above is the pattern to preserve). */
+  width: 360px;
+  max-width: calc(100vw - 24px);
   max-height: 44vh;
   overflow-y: auto;
   background: var(--panel);
@@ -384,6 +396,17 @@ body {
   padding: 10px 12px;
   pointer-events: auto;
   backdrop-filter: blur(6px);
+}
+
+/* Narrow windows: the selection panel hugs the corner and can grow
+ * taller instead of ever causing a horizontal scrollbar. */
+@media (max-width: 700px) {
+  .hud-selection {
+    left: 8px;
+    bottom: 8px;
+    max-width: calc(100vw - 16px);
+    max-height: 60vh;
+  }
 }
 
 .sel-empty {

@@ -47,9 +47,13 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   textures to `<name>.glbTextures/...`. Same fix in `natureTrees.ts`,
   which appended a second `models/` onto `modelBaseUrl()` (it already
   ends with `models/`). Pinned by `render.models.test.ts`.
-- `MODEL_PATHS` is the key -> GLB mapping: **61 real CC0 entries**
+- `MODEL_PATHS` is the key -> GLB mapping: **65 real CC0 entries**
   (Kenney + Quaternius; see THIRD_PARTY_NOTICES.md for the per-file
-  listing). `path` is relative to `game/public/models/` (served at
+  listing). Four of them (`personCasualMan`, `personCasualWoman`,
+  `personWorker`, `personWomanTwo` — the civilian pedestrians in
+  `game/public/models/quaternius-civilians/`) are LAZY-only, never in
+  the boot set (see `bootModelKeys` in `lazyModels.ts`), so the startup
+  download below is unchanged by them. `path` is relative to `game/public/models/` (served at
   `<import.meta.env.BASE_URL>models/<file>`); `scale` is the uniform
   fit-to-footprint scale measured with the module's own `normalizeModel`
   against the `hullSizeFor` footprint convention (see `entities.ts`).
@@ -64,7 +68,8 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   (61 keys, 58 unique files; rifleman.glb is keyed 3×, building-e.glb
   2× — per-key normalization, same as the pre-expansion mapping), plus
   ~0.83 MiB of CC0 tree textures for the procedural nature trees (see
-  the Nature scatter section below).
+  the Nature scatter section below). The 4 civilian-pedestrian keys add
+  ~1.05 MiB but load lazily on first population, never at startup.
 - `loadModels(paths, { timeoutMs })` fetches the GLBs CONCURRENTLY via a
   dynamically imported `GLTFLoader` (separate chunk — only downloaded when
   models load), each raced against `withTimeout` (default 15s, same
@@ -251,9 +256,13 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   the zone tint at 1, below the road ribbon), rebuilt only when the
   zone digest changes. 0/1 draw calls.
 - The crowd: `AmbientCrowd` owns one instanced layer for pedestrians
-  (capsule, ≤500) and one for cars (merged body+cabin, ≤150), each
-  with per-instance coat/paint colors set at rebuild. Density scales
-  with city population (1 walker per 4 residents, 1 car per 20).
+  (≤500) and one for cars (merged body+cabin, ≤150), each
+  with per-instance coat/paint colors set at rebuild. Pedestrians render
+  as capsules UNTIL the four Quaternius civilian GLBs lazy-load through
+  the models map (`render/people.ts` bakes each variant to one
+  vertex-colored geometry — 4 instanced layers max, all-or-nothing
+  upgrade; a plain-`Map` test harness keeps capsules forever). Density
+  scales with city population (1 walker per 4 residents, 1 car per 20).
   Poses are pure functions of (seed, index, tick) — ping-pong tracks
   with no per-agent state, so pause/seek/rebuild are exact.
   `EntityRenderer` constructs the overlay + crowd in its constructor,
@@ -295,6 +304,39 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   its constructor, synced in `sync()` from `world.city.powerLines` /
   `world.city.pipes`, disposed in `dispose()`. Tested in
   `tests/render.networks.test.ts`.
+
+## Underground / x-ray view (`render/xrayView.ts`, 0.1 Alpha)
+
+- Phase 4 RENDER workstream A (item 1): water pipes are hard to spot on
+  the normal map (thin ground-hugging ribbons in terrain colors), so the
+  x-ray mode ghosts the terrain (`XRAY_TERRAIN_OPACITY` 0.25, depthWrite
+  off) + water (opacity 0.15) and lights the pipe network bright cyan
+  (`NetworkOverlay.setXray`: emissive + depthTest off + renderOrder 10 —
+  re-applied on every pipe rebuild while the flag is set). Coexists with
+  every other overlay (zone/paving/utility/logistics/desirability/grid
+  decals keep drawing over the ghosted terrain; entities untouched).
+- `XrayView` owns no materials: terrain/water are late-bound borrowed
+  refs via `setTerrainMaterials` (the `TerrainView` is built before the
+  renderer), and the pipe treatment goes through a callback into the
+  `NetworkOverlay`. Owned by `EntityRenderer` (`setXrayVisible` /
+  `isXrayVisible` / `setXrayMaterials`); the HUD topbar owns the "X-ray"
+  toggle (icon+text, `setXrayActive`) and `ui/game.ts` auto-enables x-ray
+  while the water-pipe tool is armed (never fighting a manual toggle).
+  Tested in `tests/render.xray.test.ts`.
+
+## Terrain grid overlay (`render/gridView.ts`, 0.1 Alpha)
+
+- Phase 4 RENDER workstream A (follow-up B): a subtle survey grid for the
+  map — one draped `LineSegments` (1 draw call, hidden by default, topbar
+  "Grid" button with icon+text via `viewIcon('grid')`, or the `G` key).
+  Lines every 32 world units (16 cells) across the whole 512×512 map,
+  subdivided every 8 units so they hug hills (`heightAt` drape, +0.09
+  terrain offset — above the pipe (+0.06) and road (+0.08) ribbons, below
+  the utility diagnosis tints (+0.12)). Subtle white 0.22 opacity,
+  `depthWrite` off, never occludes entities. Unaffected by x-ray (stays
+  legible over ghosted terrain). Owned by `EntityRenderer`
+  (`setGridVisible` / `isGridVisible`); `buildGridGeometry` is pure and
+  Node-testable. Tested in `tests/render.grid.test.ts`.
 
 ## Utility diagnosis overlay (`render/utilityOverlay.ts`, 0.1 Alpha)
 

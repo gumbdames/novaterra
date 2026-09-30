@@ -298,6 +298,8 @@ export class NetworkOverlay {
   private pipeMesh: THREE.Mesh | null = null;
   private lastPowerDigest = -1;
   private lastPipeDigest = -1;
+  /** X-ray mode: pipes render bright with depth testing off. */
+  private xray = false;
   /** Rebuild counter (test/debug hook — the node-stability proof). */
   private rebuilds = 0;
 
@@ -377,7 +379,44 @@ export class NetworkOverlay {
     );
     this.pipeMesh.frustumCulled = false;
     this.group.add(this.pipeMesh);
+    this.applyPipeXray();
     this.rebuilds++;
+  }
+
+  /**
+   * X-ray treatment for the pipe network (driven by `XrayView`): pipes
+   * glow bright cyan and skip depth testing so they read through the
+   * ghosted terrain. Re-applied on every pipe rebuild while the flag
+   * is set. Test hook: `debugPipeXray()`.
+   */
+  setXray(on: boolean): void {
+    this.xray = on;
+    this.applyPipeXray();
+  }
+
+  /** X-ray flag (test/debug hook). */
+  debugPipeXray(): boolean {
+    return this.xray;
+  }
+
+  private applyPipeXray(): void {
+    const mesh = this.pipeMesh;
+    if (mesh === null) return;
+    const mat = mesh.material as THREE.MeshLambertMaterial;
+    if (this.xray) {
+      mat.emissive.setHex(0x35e0ff);
+      mat.emissiveIntensity = 1.4;
+      mat.depthTest = false;
+      mat.transparent = true;
+      mesh.renderOrder = 10;
+    } else {
+      mat.emissive.setHex(0x000000);
+      mat.emissiveIntensity = 1;
+      mat.depthTest = true;
+      mat.transparent = false;
+      mesh.renderOrder = 0;
+    }
+    mat.needsUpdate = true;
   }
 
   /** Test/debug hook: how many rebuilds have happened. */

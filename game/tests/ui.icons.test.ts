@@ -36,8 +36,10 @@ import {
   menuIcon,
   toolIcon,
   unitIcon,
+  viewIcon,
   type MenuIconKey,
   type PaletteToolIcon,
+  type ViewIconKey,
 } from '../src/ui/icons';
 
 const HEBREW = /[\u0590-\u05FF]/;
@@ -157,6 +159,14 @@ describe('menu icons', () => {
     ];
     for (const key of keys) {
       expectValidIcon(menuIcon(key));
+    }
+  });
+
+  it('covers every view-toggle icon', () => {
+    // Phase 4 RENDER workstream A (follow-up B): the terrain-grid toggle.
+    const keys: ViewIconKey[] = ['grid'];
+    for (const key of keys) {
+      expectValidIcon(viewIcon(key));
     }
   });
 });

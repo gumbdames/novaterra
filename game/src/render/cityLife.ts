@@ -44,8 +44,10 @@
  *  - Deterministic: same seed ⇒ same bustle, byte-identical poses.
  *  - No Math.random, no Date.now anywhere. All variation comes from
  *    32-bit integer hashes (the render/nature.ts pattern).
- *  - Draw calls: paving 0–1, pedestrians 0–1, cars 0–1, one per
- *    registered transit type (0 until a phase registers a provider).
+ *  - Draw calls: paving 0–1, pedestrians 0–1 (capsules) or 0–4 (one
+ *    per civilian person variant once their GLBs lazy-load —
+ *    render/people.ts), cars 0–1, one per registered transit type
+ *    (0 until a phase registers a provider).
  *    Per-frame CPU is O(agents) matrix writes (capped; measured below).
  *
  * Import-safe under Node/vitest (`three` core has no DOM at import;
@@ -63,9 +65,18 @@ import {
   cellCoords,
   cellIndex,
 } from '../sim/city';
+import { ROAD_CLASS_ORDER } from '../sim/city';
+import type { RoadCell } from '../sim/city';
 import type { World } from '../sim/world';
 import { surfaceTexture } from './surfaceTextures';
 import { zoneDigest, type ZoneAssignment } from './zoneOverlay';
+import {
+  PERSON_MODEL_KEYS,
+  PERSON_VARIANT_CAPACITY,
+  buildPersonVariantGeometry,
+  personVariantForIndex,
+} from './people';
+import type { LoadedModel } from './models';
 
 // ---------------------------------------------------------------------------
 // Deterministic hashing (the nature.ts pattern: integer math, [0, 1))
@@ -424,7 +435,7 @@ export const CAR_PAINT_COLORS = [
  */
 export function buildAmbientModel(
   zones: ReadonlyArray<ZoneAssignment>,
-  roads: ReadonlyArray<number>,
+  roads: ReadonlyArray<RoadCell>,
   seed: number,
   cityPop: number,
 ): AmbientModel {
@@ -498,8 +509,11 @@ export function buildAmbientModel(
 
   const cars: CarAgent[] = [];
   const carCount = ambientCarCount(cityPop);
-  const roadSet = new Set<number>(roads);
-  const sortedRoads = [...roads].sort((a, b) => a - b);
+  // Phase 4 (S7): roads are RoadCell[] now — project to cells (ambient
+  // cars drive every class the same way).
+  const roadCells = roads.map((r) => r.cell);
+  const roadSet = new Set<number>(roadCells);
+  const sortedRoads = [...roadCells].sort((a, b) => a - b);
   for (let i = 0; i < carCount; i++) {
     if (sortedRoads.length === 0) break;
     const anchor = sortedRoads[Math.floor(ambientHash(seed, i, 201) * sortedRoads.length)] as number;
@@ -667,13 +681,17 @@ export function carPoseAt(car: CarAgent, tick: number): AgentPose {
  */
 export function ambientModelDigest(
   zones: ReadonlyArray<ZoneAssignment>,
-  roads: ReadonlyArray<number>,
+  roads: ReadonlyArray<RoadCell>,
   completedBuildingIds: ReadonlyArray<number>,
   seed: number,
 ): number {
   let h = zoneDigest(zones) | 0;
   for (const c of roads) {
-    h ^= c | 0;
+    // Phase 4 (S7): digest the cell AND the class index — a road upgrade
+    // changes the ambient layer's rebuild key like any structural change.
+    h ^= c.cell | 0;
+    h = Math.imul(h, 16777619);
+    h ^= ROAD_CLASS_ORDER.indexOf(c.cls) | 0;
     h = Math.imul(h, 16777619);
   }
   for (const id of completedBuildingIds) {
@@ -790,7 +808,6 @@ const _c = new THREE.Color();
 const _zero = new THREE.Matrix4().makeScale(0, 0, 0);
 
 const EMPTY_ASSIGNMENTS: ReadonlyArray<ZoneAssignment> = [];
-const EMPTY_NUMBERS: ReadonlyArray<number> = [];
 
 /** Pedestrian body: a capsule, base at y=0 after the translate. */
 function buildPedGeometry(): THREE.BufferGeometry {
@@ -827,14 +844,19 @@ export class AmbientCrowd {
   private readonly group = new THREE.Group();
   private pedMesh: THREE.InstancedMesh | null = null;
   private carMesh: THREE.InstancedMesh | null = null;
+  /** One instanced layer per person variant (empty until the GLBs arrive). */
+  private personMeshes: THREE.InstancedMesh[] = [];
+  private personMat: THREE.MeshStandardMaterial | null = null;
   private transitMeshes = new Map<AmbientTransitType, THREE.InstancedMesh>();
   private model: AmbientModel | null = null;
+  private readonly models: Map<string, LoadedModel> | null;
   private lastDigest = -1;
   /** Rebuild counter (test/debug hook). */
   private rebuilds = 0;
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, models?: Map<string, LoadedModel>) {
     this.group.name = 'ambient';
+    this.models = models ?? null;
     scene.add(this.group);
   }
 
@@ -846,7 +868,7 @@ export class AmbientCrowd {
   sync(world: World, heightAt?: (x: number, z: number) => number): void {
     const city = world.city;
     const zones = city.zones ?? EMPTY_ASSIGNMENTS;
-    const roads = city.roads ?? EMPTY_NUMBERS;
+    const roads = city.roads ?? [];
     const pop = ambientCityPopulation(world);
     const completedIds: number[] = [];
     for (const b of city.buildings) {
@@ -862,15 +884,60 @@ export class AmbientCrowd {
       this.model = model;
       this.applyAgentColors();
     }
+    this.maybeBuildPersonLayers();
     this.writePedInstances(world.tick, heightAt);
     this.writeCarInstances(world.tick, heightAt);
     this.writeTransitInstances(world.tick);
+  }
+
+  /**
+   * Build the per-variant person layers once all four civilian GLBs have
+   * lazy-loaded. The map's `get` self-triggers the load on a
+   * `LazyModelMap` (production); on a plain `Map` (tests) the keys stay
+   * absent and pedestrians keep their capsule fallback forever.
+   * All-or-nothing: a partially loaded set keeps capsules — mixing
+   * capsules and people would read as a rendering bug.
+   */
+  private maybeBuildPersonLayers(): void {
+    if (this.models === null || this.personMeshes.length > 0) return;
+    if (this.model === null || this.model.peds.length === 0) return;
+    const geos: THREE.BufferGeometry[] = [];
+    for (const key of PERSON_MODEL_KEYS) {
+      const loaded = this.models.get(key);
+      if (loaded === undefined) return; // still loading (or failed) — retry next sync
+      const geo = buildPersonVariantGeometry(loaded);
+      if (geo === null) {
+        for (const g of geos) g.dispose();
+        return; // unusable variant — stay on capsules
+      }
+      geos.push(geo);
+    }
+    this.personMat = new THREE.MeshStandardMaterial({
+      vertexColors: true,
+      roughness: 0.9,
+      metalness: 0,
+    });
+    // Round-robin assignment ⇒ variant v holds every 4th ped (see
+    // PERSON_VARIANT_CAPACITY for the sizing math).
+    for (const geo of geos) {
+      const mesh = new THREE.InstancedMesh(geo, this.personMat, PERSON_VARIANT_CAPACITY);
+      mesh.frustumCulled = false;
+      this.group.add(mesh);
+      this.personMeshes.push(mesh);
+    }
+    // Capsules retire: the crowd is people now. (Crowd-owned geometry —
+    // safe to release; the map keeps the source models.)
+    this.disposeMesh(this.pedMesh, true);
+    this.pedMesh = null;
   }
 
   /** Visible instance layers = draw calls this frame. */
   drawCallCount(): number {
     let n = 0;
     if (this.pedMesh !== null && this.pedMesh.count > 0) n += 1;
+    for (const mesh of this.personMeshes) {
+      if (mesh.count > 0) n += 1;
+    }
     if (this.carMesh !== null && this.carMesh.count > 0) n += 1;
     for (const mesh of this.transitMeshes.values()) {
       if (mesh.count > 0) n += 1;
@@ -881,6 +948,11 @@ export class AmbientCrowd {
   /** Rebuilds since construction (test hook). */
   debugRebuildCount(): number {
     return this.rebuilds;
+  }
+
+  /** Person variant layers built (test hook). */
+  debugPersonLayers(): number {
+    return this.personMeshes.length;
   }
 
   /** Live agent counts (test hook). */
@@ -901,6 +973,16 @@ export class AmbientCrowd {
     this.pedMesh = null;
     this.disposeMesh(this.carMesh, true);
     this.carMesh = null;
+    for (const mesh of this.personMeshes) {
+      // Person geometries + the shared vertex-color material are
+      // crowd-owned (baked from the map's models at build time).
+      this.disposeMesh(mesh, true);
+    }
+    this.personMeshes = [];
+    if (this.personMat !== null) {
+      this.personMat.dispose();
+      this.personMat = null;
+    }
     for (const mesh of this.transitMeshes.values()) {
       // Transit geometry/material are provider-owned — release only
       // the instance attributes.
@@ -971,7 +1053,12 @@ export class AmbientCrowd {
 
   private writePedInstances(tick: number, heightAt?: (x: number, z: number) => number): void {
     const model = this.model;
-    if (model === null || this.pedMesh === null) return;
+    if (model === null) return;
+    if (this.personMeshes.length > 0) {
+      this.writePersonInstances(tick, heightAt);
+      return;
+    }
+    if (this.pedMesh === null) return;
     const n = model.peds.length;
     this.pedMesh.count = n;
     for (let i = 0; i < n; i++) {
@@ -987,6 +1074,44 @@ export class AmbientCrowd {
       this.pedMesh.setMatrixAt(i, _m);
     }
     this.pedMesh.instanceMatrix.needsUpdate = true;
+  }
+
+  /**
+   * Person-variant instance writes: ped `i` renders in variant
+   * `personVariantForIndex(i)` at slot `floor(i / 4)`. The authored
+   * clothing/skin colors carry the variety (no per-instance tint), and
+   * each walker gets a stepping bob — pure in (ped, tick), twice the
+   * sway frequency so it reads as footfalls.
+   */
+  private writePersonInstances(tick: number, heightAt?: (x: number, z: number) => number): void {
+    const model = this.model;
+    if (model === null) return;
+    const n = model.peds.length;
+    const variantCount = this.personMeshes.length;
+    const slots = new Array<number>(variantCount).fill(0);
+    for (let i = 0; i < n; i++) {
+      const ped = model.peds[i] as PedAgent;
+      const v = personVariantForIndex(i) % variantCount;
+      const mesh = this.personMeshes[v] as THREE.InstancedMesh;
+      const slot = slots[v] as number;
+      slots[v] = slot + 1;
+      if (slot >= PERSON_VARIANT_CAPACITY) continue; // capacity guard — never drops the sim, just the sprite
+      const pose = pedPoseAt(ped, tick);
+      const bob = 0.04 * Math.abs(Math.sin(tick * ped.wobbleFreq * 2 + ped.wobblePhase));
+      const y = (heightAt !== undefined ? heightAt(pose.x, pose.z) : 0) + 0.02 + bob;
+      _p.set(pose.x, y, pose.z);
+      _e.set(0, pose.yaw, 0);
+      _q.setFromEuler(_e);
+      const s = 0.9 + 0.25 * ambientHash(model.seed, i, 109);
+      _s.set(s, s, s);
+      _m.compose(_p, _q, _s);
+      mesh.setMatrixAt(slot, _m);
+    }
+    for (let v = 0; v < variantCount; v++) {
+      const mesh = this.personMeshes[v] as THREE.InstancedMesh;
+      mesh.count = slots[v] as number;
+      mesh.instanceMatrix.needsUpdate = true;
+    }
   }
 
   private writeCarInstances(tick: number, heightAt?: (x: number, z: number) => number): void {

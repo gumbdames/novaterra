@@ -1,0 +1,30 @@
+Quaternius game art — CC0 1.0 Universal (Public Domain Dedication)
+https://creativecommons.org/publicdomain/zero/1.0/
+
+All *.glb files in this directory were converted from OBJ sources authored by
+Quaternius (https://quaternius.com), downloaded 2026-09-29 from the official
+per-pack download folders linked on quaternius.com. Quaternius distributes
+these assets under CC0; the pack pages carry the badge "CC0" and the pack
+zips/drive folders ship the following license text (copied verbatim from the
+Animated Tanks Pack License.txt):
+
+    ------------------------------------------------------
+    LowPoly Models by @Quaternius
+    Consider supporting me on Patreon, even $1 helps me a lot!
+
+    https://www.patreon.com/quaternius
+    -------------------------------------------------------
+
+    License:
+    CC0 1.0 Universal (CC0 1.0)
+    Public Domain Dedication
+    https://creativecommons.org/publicdomain/zero/1.0/
+
+Source packs and URLs (models converted per CONVERSION.md):
+- Animated Tanks Pack (4 tanks) — https://quaternius.com/packs/animatedtanks.html
+- Animated Men Pack (Male_Shirt, Male_LongSleeve) — https://quaternius.com/packs/animatedmen.html
+- Farm Buildings Pack (BigBarn, Silo) — https://quaternius.com/packs/farmbuildings.html
+
+Conversion tool: obj2gltf 3.2.0 (Cesium, Apache-2.0) — see CONVERSION.md.
+
+Attribution is not required by CC0 and is provided here as a courtesy only.

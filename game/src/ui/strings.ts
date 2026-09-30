@@ -564,6 +564,24 @@ export const STRINGS = {
     /** Selection-panel land-value line for residential buildings. */
     landValueLine: { en: 'Land: {tier} ({score}) · tax ×{mult}' },
   },
+  /** Underground/x-ray view (Phase 4 RENDER workstream A, item 1). English-only. */
+  xray: {
+    /** Overlay toggle label (top bar). */
+    overlayToggle: { en: 'X-ray' },
+    /** Overlay legend (title attribute of the toggle). */
+    overlayLegend: {
+      en: 'Ghost the terrain to see buried water pipes (bright blue lines). Turns on automatically while the water-pipe tool is armed.',
+    },
+  },
+  /** Terrain grid overlay (Phase 4 RENDER workstream A, follow-up B). English-only. */
+  grid: {
+    /** Toggle label (top bar). */
+    toggle: { en: 'Grid' },
+    /** Toggle legend (title attribute). */
+    legend: {
+      en: 'Show a subtle survey grid draped on the terrain (G key).',
+    },
+  },
   /** Tabbed palettes, research panel, placement hints — all en-only. */
   palettes: {
     trainTitle: { en: 'Train' },

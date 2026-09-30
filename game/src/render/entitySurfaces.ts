@@ -351,7 +351,7 @@ const NATURE_ROCK: KeyTreatment = {
 };
 
 // ---------------------------------------------------------------------------
-// The table: one row per MODEL_PATHS key (58 total).
+// The table: one row per MODEL_PATHS key (65 total).
 // ---------------------------------------------------------------------------
 
 export const KEY_TREATMENTS: Record<string, KeyTreatment> = {
@@ -438,6 +438,16 @@ export const KEY_TREATMENTS: Record<string, KeyTreatment> = {
   propRockSmall: NATURE_ROCK,
   propBushDetailed: NATURE_BUSH,
   propBushLarge: NATURE_BUSH,
+
+  // ---- civilians (Quaternius, Phase 4 RENDER workstream A item 4) ----
+  // Lazy-only pedestrian variants: same fabric treatment as the
+  // infantry (matte cloth, no metal). The crowd bakes their colors to
+  // vertex colors (render/people.ts); this row keeps the coverage
+  // contract (every MODEL_PATHS key needs a treatment).
+  personCasualMan: INFANTRY_FABRIC,
+  personCasualWoman: INFANTRY_FABRIC,
+  personWorker: INFANTRY_FABRIC,
+  personWomanTwo: INFANTRY_FABRIC,
 };
 
 // ---------------------------------------------------------------------------

@@ -302,6 +302,8 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'hud-util',
       'hud-logistics',
       'hud-desirability',
+      'hud-xray',
+      'hud-grid',
       'hud-menu-btn',
     ],
     digestLabels: [],
@@ -309,10 +311,13 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'Built once in the constructor; per-frame updates are write-on-change ' +
       'text/property writes (setText) — nodes are never rebuilt, so no digest ' +
       'segment is needed. The utilities-overlay toggle (hud-util, Phase 2), ' +
-      'the logistics-overlay toggle (hud-logistics, Phase 3), and the ' +
-      'desirability-overlay toggle (hud-desirability, workstream W) flip ' +
+      'the logistics-overlay toggle (hud-logistics, Phase 3), the ' +
+      'desirability-overlay toggle (hud-desirability, workstream W), the ' +
+      'x-ray toggle (hud-xray, Phase 4 RENDER workstream A), and the ' +
+      'terrain-grid toggle (hud-grid, Phase 4 RENDER workstream A) flip ' +
       'their own active class on click via setUtilityOverlayActive / ' +
-      'setLogisticsOverlayActive / setDesirabilityOverlayActive. ' +
+      'setLogisticsOverlayActive / setDesirabilityOverlayActive / ' +
+      'setXrayActive / setGridActive. ' +
       'Invariant: never rebuild topbar DOM (the click-bug pattern).',
   },
   {

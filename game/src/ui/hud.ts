@@ -93,6 +93,7 @@ import {
   buildingIcon,
   toolIcon,
   menuIcon,
+  viewIcon,
   type PaletteToolIcon,
   type MenuIconKey,
 } from './icons';
@@ -160,6 +161,10 @@ export interface HUDActions {
   onToggleLogisticsOverlay(): void;
   /** Workstream W (desirability): toggle the land-value overlay. */
   onToggleDesirabilityOverlay(): void;
+  /** Phase 4 RENDER workstream A (item 1): toggle the underground/x-ray view. */
+  onToggleXray(): void;
+  /** Phase 4 RENDER workstream A (follow-up B): toggle the terrain grid. */
+  onToggleGrid(): void;
   /** Phase 3 (logistics): order a unit to resupply at a depot. */
   onResupplyUnit(unitId: number, depotId: number): void;
   /** Phase 3 (logistics): set a supply unit's field services. */
@@ -253,6 +258,10 @@ export class HUD {
   private readonly logisticsOverlayBtn: HTMLButtonElement;
   /** Workstream W (desirability): overlay toggle — built once, write-on-change. */
   private readonly desirabilityOverlayBtn: HTMLButtonElement;
+  /** Phase 4 RENDER workstream A (item 1): x-ray toggle — built once, write-on-change. */
+  private readonly xrayBtn: HTMLButtonElement;
+  /** Phase 4 RENDER workstream A (follow-up B): grid toggle — built once, write-on-change. */
+  private readonly gridBtn: HTMLButtonElement;
   private readonly advisorPanel: HTMLElement;
   private readonly advisorList: HTMLElement;
   private readonly selectionPanel: HTMLElement;
@@ -383,6 +392,30 @@ export class HUD {
       actions.onToggleDesirabilityOverlay(),
     );
     this.topbar.append(this.desirabilityOverlayBtn);
+
+    // Phase 4 RENDER workstream A (item 1): x-ray toggle — ghost the
+    // terrain so buried water pipes read (bright blue, no depth test).
+    // Same built-once / write-on-change pattern as the other overlay
+    // toggles (the topbar branch's noDigestReason invariant).
+    this.xrayBtn = document.createElement('button');
+    this.xrayBtn.className = 'hud-xray';
+    this.xrayBtn.title = loc(STRINGS.xray.overlayLegend);
+    this.xrayBtn.innerHTML = toolIcon('waterPipe');
+    this.xrayBtn.append(document.createTextNode(loc(STRINGS.xray.overlayToggle)));
+    this.xrayBtn.addEventListener('click', () => actions.onToggleXray());
+    this.topbar.append(this.xrayBtn);
+
+    // Phase 4 RENDER workstream A (follow-up B): terrain-grid toggle —
+    // a subtle draped survey grid, hidden by default (G key works too).
+    // Same built-once / write-on-change pattern as the other view
+    // toggles (the topbar branch's noDigestReason invariant).
+    this.gridBtn = document.createElement('button');
+    this.gridBtn.className = 'hud-grid';
+    this.gridBtn.title = loc(STRINGS.grid.legend);
+    this.gridBtn.innerHTML = viewIcon('grid');
+    this.gridBtn.append(document.createTextNode(loc(STRINGS.grid.toggle)));
+    this.gridBtn.addEventListener('click', () => actions.onToggleGrid());
+    this.topbar.append(this.gridBtn);
 
     const menuBtn = document.createElement('button');
     menuBtn.className = 'hud-menu-btn';
@@ -837,6 +870,22 @@ export class HUD {
    */
   setDesirabilityOverlayActive(active: boolean): void {
     this.desirabilityOverlayBtn.classList.toggle('active', active);
+  }
+
+  /**
+   * Phase 4 RENDER workstream A (item 1): flip the x-ray toggle's active
+   * state (write-on-change — the button is never rebuilt).
+   */
+  setXrayActive(active: boolean): void {
+    this.xrayBtn.classList.toggle('active', active);
+  }
+
+  /**
+   * Phase 4 RENDER workstream A (follow-up B): flip the grid toggle's
+   * active state (write-on-change — the button is never rebuilt).
+   */
+  setGridActive(active: boolean): void {
+    this.gridBtn.classList.toggle('active', active);
   }
 
   /** Show the two National Program choices (called by the age button). */

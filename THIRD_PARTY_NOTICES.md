@@ -107,6 +107,29 @@ shipped files are spares not currently referenced by the mapping.
   - `quaternius/tank-3.glb` (spare)
   - `quaternius/tank-4.glb` (spare)
 
+### Quaternius civilian pedestrians — CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)
+- Author: Quaternius (https://quaternius.com)
+- 4 files. Same CC0 author, but sourced from poly.pizza (direct CDN
+  downloads — quaternius.com's own packs are Google-Drive-hosted, which
+  is off-limits): `quaternius-civilians/civilian-man.glb`,
+  `quaternius-civilians/civilian-woman.glb`,
+  `quaternius-civilians/civilian-worker.glb`,
+  `quaternius-civilians/civilian-woman-2.glb`. License evidence: the
+  CC0/public-domain listing on each poly.pizza model page (verified
+  2026-09-30) plus the author's site-wide CC0 declaration on
+  quaternius.com — same evidence pattern as the tree-texture entry.
+- Preparation: the downloads are rigged (SkinnedMesh) with 11–24 embedded
+  animation tracks; NOVATERRA renders pedestrians as static InstancedMesh,
+  so the skinning was baked to vertex positions/normals with the exact
+  three.js skinning math and the rig, animations, skin and UV attributes
+  were dropped (triangle counts and rendered bounding boxes verified
+  identical to the downloads; 4.0 MB → 1.05 MB). Full provenance and the
+  verification numbers live in
+  `game/public/models/quaternius-civilians/SOURCING.md`.
+- Unlike the 8 files above, these four ARE rigged-then-baked (see
+  SOURCING.md) — but the vendored GLBs contain no rigging, animation, or
+  scripting; they are static meshes with flat PBR materials.
+
 No model includes rigging, animation, or scripting. Textures: the Kenney
 (non-nature) GLBs reference their pack's shared color atlas via a relative
 URI (`Textures/colormap.png`, resolved against each GLB's URL — the PNGs

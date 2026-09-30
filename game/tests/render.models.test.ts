@@ -116,9 +116,9 @@ function worldBox(root: THREE.Object3D): THREE.Box3 {
 }
 
 describe('MODEL_PATHS real mapping', () => {
-  it('maps 61 CC0 keys to .glb paths with positive finite scales', () => {
+  it('maps 65 CC0 keys to .glb paths with positive finite scales', () => {
     const keys = Object.keys(MODEL_PATHS);
-    expect(keys).toHaveLength(61);
+    expect(keys).toHaveLength(65);
     for (const [key, spec] of Object.entries(MODEL_PATHS)) {
       expect(typeof key).toBe('string');
       expect(spec.path).toMatch(/\.glb$/);
@@ -151,6 +151,9 @@ describe('MODEL_PATHS real mapping', () => {
       'militaryAcademy',
       // NOVATERRA Workstream Z (education ladder)
       'kindergarten', 'college',
+      // NOVATERRA Phase 4 RENDER workstream A (item 4): civilian
+      // pedestrian variants (lazy-only — never in the boot set)
+      'personCasualMan', 'personCasualWoman', 'personWorker', 'personWomanTwo',
       // nature props (tree keys are overlaid by render/natureTrees.ts at
       // game start; the GLB paths here are the silent fallback)
       'propTreeOak', 'propTreeBirch', 'propTreePineTall', 'propTreePine',
