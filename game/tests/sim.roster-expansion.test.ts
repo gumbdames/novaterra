@@ -273,8 +273,8 @@ function findCoastalFootprint(
 }
 
 describe('roster definitions (§2)', () => {
-  it('has exactly the 28 unit kinds from the spec table', () => {
-    expect(UNIT_KINDS).toHaveLength(28);
+  it('has exactly the 30 unit kinds (28 + Phase 3 workstream 3 supplyTruck/fuelTruck)', () => {
+    expect(UNIT_KINDS).toHaveLength(30);
     const expected = [
       'engineer', 'rifles', 'spectre', 'sniperTeam', 'combatMedic',
       'tank', 'apc', 'tankDestroyer', 'artillery', 'mlrs', 'aa',
@@ -282,6 +282,8 @@ describe('roster definitions (§2)', () => {
       'patrolBoat', 'transportShip', 'missileBoat', 'destroyer', 'frigate',
       'submarine', 'carrier', 'commandShip', 'fishingBoat',
       'hq', 'hauler',
+      // Phase 3 workstream 3 (2026-09-30): the supply-chain trucks.
+      'supplyTruck', 'fuelTruck',
     ];
     expect([...UNIT_KINDS].sort()).toEqual([...expected].sort());
   });
@@ -418,7 +420,10 @@ describe('building definitions (§3 + Phase 1 + Workstream Z)', () => {
     // Phase 2 (2026-09-30): +13 utility kinds (6 power plants, waterWell/
     // waterTower/waterTreatment/reservoir, powerSubstation/pumpingStation/
     // batteryStation) → 44.
-    expect(Object.keys(BUILDING_DEFS)).toHaveLength(44);
+    // Phase 3 workstream 2 (2026-09-30): +7 logistics kinds (oilWell,
+    // oilRig, munitionsFactory, missilePlant, missileSilo, ordnanceDepot,
+    // fuelDepot) → 51.
+    expect(Object.keys(BUILDING_DEFS)).toHaveLength(51);
     expect(BUILDING_DEFS.barracks).toMatchObject({
       costFunds: 700, costMaterials: 250, buildSeconds: 40, minAge: 'foundation',
     });
@@ -649,6 +654,9 @@ describe('command auras — mechanic 5 (§5.5)', () => {
     if (hqPos) {
       world.units.push({
         id: 4, kind: 'hq', owner: 0, x: hqPos.x, z: hqPos.z, hp: 400, domain: 'land',
+        // Phase 3: damageMultiplier now scales by supply level — a full tank
+        // keeps these aura tests at the legacy ×1.0 factor.
+        fuel: UNIT_DEFS.hq.fuelCapacity,
       } as UnitRecord);
     }
     return { world, land, target };
@@ -679,6 +687,7 @@ describe('command auras — mechanic 5 (§5.5)', () => {
     const world = createWorld(1);
     const sea = {
       id: 2, kind: 'destroyer', owner: 0, x: 0, z: 0, hp: 600, domain: 'sea',
+      fuel: UNIT_DEFS.destroyer.fuelCapacity, // Phase 3: full tank ⇒ ×1.0 supply factor
     } as UnitRecord;
     const land = {
       id: 1, kind: 'rifles', owner: 0, x: 0, z: 0, hp: 110, domain: 'land',
@@ -831,7 +840,9 @@ describe('upgrade effects (§4)', () => {
     // Phase 2 (2026-09-30): +6 infrastructure upgrades (combustionTech,
     // advancedNuclear, fusionResearch, groundwaterSurvey, desalinationTech,
     // gridStorage) → 18.
-    expect(UPGRADE_IDS).toHaveLength(18);
+    // Phase 3 workstream 2 (2026-09-30): +1 logistics upgrade
+    // (advancedLogistics) → 19.
+    expect(UPGRADE_IDS).toHaveLength(19);
     expect(UPGRADE_DEFS.apRounds).toMatchObject({
       costFunds: 800, costResearch: 60, minAge: 'industry',
       requiredBuildings: ['warFactory'],
@@ -850,7 +861,7 @@ describe('upgrade effects (§4)', () => {
 
   it('AP Rounds: +40% vsHeavy for tank/TD/apc', () => {
     const world = createWorld(1);
-    const tank = { id: 1, kind: 'tank', owner: 0, x: 0, z: 0, hp: 500, domain: 'land' } as UnitRecord;
+    const tank = { id: 1, kind: 'tank', owner: 0, x: 0, z: 0, hp: 500, domain: 'land', fuel: UNIT_DEFS.tank.fuelCapacity } as UnitRecord;
     const target = { id: 2, kind: 'tank', owner: 1, x: 1, z: 0, hp: 500, domain: 'land' } as UnitRecord;
     world.units.push(tank, target);
     expect(damageMultiplier(world, tank, UNIT_DEFS.tank, target)).toBeCloseTo(0.9, 9);

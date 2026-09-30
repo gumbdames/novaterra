@@ -312,7 +312,9 @@ describe('research gating', () => {
   });
 
   it('chains the research ladder combustionTech -> advancedNuclear -> fusionResearch', () => {
-    expect(UPGRADE_IDS).toHaveLength(18);
+    // Phase 3 workstream 2 (2026-09-30): +1 logistics upgrade
+    // (advancedLogistics) → 19.
+    expect(UPGRADE_IDS).toHaveLength(19);
     expect(UPGRADE_DEFS['advancedNuclear'].requiredUpgrade).toBe('combustionTech');
     expect(UPGRADE_DEFS['fusionResearch'].requiredUpgrade).toBe('advancedNuclear');
     expect(UPGRADE_DEFS['combustionTech'].requiredUpgrade).toBeUndefined();

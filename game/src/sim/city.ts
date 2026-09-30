@@ -238,6 +238,18 @@ export const BuildingKind = {
   POWER_SUBSTATION: 'powerSubstation',
   PUMPING_STATION: 'pumpingStation',
   BATTERY_STATION: 'batteryStation',
+  // Phase 3 (grand expansion, 2026-09-30): the logistics roster
+  // (PLAN §3.2) — crude extraction, ammo production (general vs
+  // specialized), and the depot/storage reload points. The four
+  // production bases (barracks/warFactory/airfield/navalYard) are
+  // marked `reloadPoint` in their defs below rather than here.
+  OIL_WELL: 'oilWell',
+  OIL_RIG: 'oilRig',
+  MUNITIONS_FACTORY: 'munitionsFactory',
+  MISSILE_PLANT: 'missilePlant',
+  MISSILE_SILO: 'missileSilo',
+  ORDNANCE_DEPOT: 'ordnanceDepot',
+  FUEL_DEPOT: 'fuelDepot',
 } as const;
 export type BuildingKind = (typeof BuildingKind)[keyof typeof BuildingKind];
 
@@ -343,6 +355,16 @@ export interface BuildingDef {
    * Phase 3 logistics. When true, a completed building is a reload
    * point: units inside its logistics radius draw ammo/fuel from its
    * stocks (depots, bases, naval bases, ports, airports).
+   *
+   * The full reload-point list (kept in sync here — grep `reloadPoint:
+   * true` to audit): the four production bases (barracks, warFactory,
+   * airfield, navalYard — valid resupply-order targets; their stocks
+   * arrive via the supply-truck chain), the two ammo producers
+   * (munitionsFactory, missilePlant — units resupply at the factory
+   * gate from the producer's own stock), and the three purpose-built
+   * depots (missileSilo, ordnanceDepot, fuelDepot). No port-like
+   * building exists in 0.1 Alpha — civilian ports/military harbors
+   * join this list when they land (Phases 5–6).
    */
   reloadPoint?: boolean;
 }
@@ -455,6 +477,9 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: { manpower: 0.8 }, input: {}, population: 0, taxBasePerSec: 4.0,
     minAge: 'foundation',
+    // Phase 3: army bases are reload points — units resupply here
+    // (stocks arrive via the supply-truck chain; see reloadPoint doc).
+    reloadPoint: true,
   },
   militaryAcademy: {
     kind: 'militaryAcademy', name: 'Military Academy', zone: ZoneType.INDUSTRIAL,
@@ -471,6 +496,8 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 6, powerSupply: 0, waterDemand: 3, waterSupply: 0,
     output: { materials: 0.5 }, input: {}, population: 0, taxBasePerSec: 6.0,
     minAge: 'foundation',
+    // Phase 3: army bases are reload points (see barracks note).
+    reloadPoint: true,
   },
   airfield: {
     kind: 'airfield', name: 'Airfield', zone: UTILITY_ZONE,
@@ -479,6 +506,9 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 5, powerSupply: 0, waterDemand: 2, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 5.0,
     minAge: 'connectivity',
+    // Phase 3: the airport is a reload point for aircraft (and any
+    // land unit parked on the field).
+    reloadPoint: true,
   },
   navalYard: {
     kind: 'navalYard', name: 'Naval Yard', zone: UTILITY_ZONE,
@@ -487,6 +517,8 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 6, powerSupply: 0, waterDemand: 3, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 5.0,
     minAge: 'industry',
+    // Phase 3: the naval base is a reload point for ships.
+    reloadPoint: true,
   },
   radarStation: {
     kind: 'radarStation', name: 'Radar Station', zone: UTILITY_ZONE,
@@ -724,6 +756,102 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     minAge: 'connectivity', requiredUpgrade: 'gridStorage',
     storageKind: 'power', storageCapacity: 300,
   },
+  // ------------------------------------------------------------------
+  // Phase 3 (grand expansion): the logistics roster (PLAN §3.2).
+  // Number rationale (all rates per sim-second, D11 conventions):
+  //  - oilWell vs oilRefinery (1.5 fuel/s at 900F/350M, 50 s build):
+  //    the well is the cheap primitive — 0.6 fuel/s (40% of the
+  //    refinery) at ~1/3 the cost, foundation age so the fuel economy
+  //    starts with the first tanks.
+  //  - oilRig: offshore (coastal gate, the navalYard/hydroDam
+  //    isCoastal precedent). 2.5 fuel/s ≈ 1.7× the refinery at
+  //    industry age, with a small materials upkeep (maintenance).
+  //  - munitionsFactory (general ammo): 2.0 ammo/s from materials +
+  //    funds inputs (gated by the existing starved-input path in
+  //    runProduction). ammoStorage 60 = 30 s of output — a working
+  //    buffer, not a stockpile (that is the silo's job).
+  //  - missilePlant (specialized heavy ordnance): 2.5× the general
+  //    rate at ~1.8× the funds cost and a munitionsFactory
+  //    prerequisite — the specialized line builds on the general one.
+  //    General-vs-specialized is ECONOMIC, not tracked per-shell:
+  //    both fill the same integer ammoStock pool (itemized per-shell
+  //    inventory is an explicit non-goal, PLAN §13).
+  //  - missileSilo: 400 ammo = ~80 s of missilePlant output (5/s) —
+  //    the strategic reserve. Materials-heavy (hardened).
+  //  - ordnanceDepot: 150 ammo = 75 s of munitionsFactory output —
+  //    the cheap forward buffer (~2.7× smaller than the silo).
+  //    (Supply trucks shuttle producer→depot in a later workstream.)
+  //  - fuelDepot: 250 fuel ≈ 2.5 vehicle tankfuls, cached forward
+  //    from the owner's stockpile by the economy tick (rate-limited).
+  // Every ammo producer carries ammoStorage in its def — production
+  // is never silently dropped (economy.ts runProduction contract).
+  // The two producers are reloadPoint: true as well: units resupply
+  // at the factory gate straight from the producer's own stock.
+  // ------------------------------------------------------------------
+  oilWell: {
+    kind: 'oilWell', name: 'Oil Well', zone: UTILITY_ZONE,
+    footprintW: 2, footprintH: 2, costFunds: 300, costMaterials: 120,
+    buildSeconds: 25, upkeepFundsPerSec: 0.5,
+    powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: { fuel: 0.6 }, input: {}, population: 0, taxBasePerSec: 1.0,
+    minAge: 'foundation',
+  },
+  oilRig: {
+    kind: 'oilRig', name: 'Offshore Oil Rig', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 1400, costMaterials: 600,
+    buildSeconds: 60, upkeepFundsPerSec: 2.0,
+    powerDemand: 4, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: { fuel: 2.5 }, input: { materials: 0.2 }, population: 0,
+    taxBasePerSec: 4.0,
+    minAge: 'industry',
+  },
+  munitionsFactory: {
+    kind: 'munitionsFactory', name: 'Munitions Factory', zone: ZoneType.INDUSTRIAL,
+    footprintW: 4, footprintH: 3, costFunds: 1200, costMaterials: 500,
+    buildSeconds: 55, upkeepFundsPerSec: 1.6,
+    powerDemand: 6, powerSupply: 0, waterDemand: 2, waterSupply: 0,
+    output: {}, input: { materials: 0.4, funds: 0.6 }, population: 0,
+    taxBasePerSec: 6.0,
+    minAge: 'industry',
+    ammoProduction: 2.0, ammoStorage: 60, reloadPoint: true,
+  },
+  missilePlant: {
+    kind: 'missilePlant', name: 'Missile Plant', zone: ZoneType.INDUSTRIAL,
+    footprintW: 4, footprintH: 3, costFunds: 2200, costMaterials: 900,
+    buildSeconds: 80, upkeepFundsPerSec: 2.5,
+    powerDemand: 10, powerSupply: 0, waterDemand: 4, waterSupply: 0,
+    output: {}, input: { materials: 0.8, funds: 1.0 }, population: 0,
+    taxBasePerSec: 8.0,
+    minAge: 'industry', requiredBuilding: 'munitionsFactory',
+    ammoProduction: 5.0, ammoStorage: 100, reloadPoint: true,
+  },
+  missileSilo: {
+    kind: 'missileSilo', name: 'Missile Silo', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 900, costMaterials: 700,
+    buildSeconds: 50, upkeepFundsPerSec: 1.2,
+    powerDemand: 3, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 3.0,
+    minAge: 'industry',
+    ammoStorage: 400, reloadPoint: true,
+  },
+  ordnanceDepot: {
+    kind: 'ordnanceDepot', name: 'Ordnance Depot', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 700, costMaterials: 400,
+    buildSeconds: 40, upkeepFundsPerSec: 1.0,
+    powerDemand: 3, powerSupply: 0, waterDemand: 1, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'industry',
+    ammoStorage: 150, reloadPoint: true,
+  },
+  fuelDepot: {
+    kind: 'fuelDepot', name: 'Fuel Depot', zone: UTILITY_ZONE,
+    footprintW: 3, footprintH: 3, costFunds: 600, costMaterials: 300,
+    buildSeconds: 40, upkeepFundsPerSec: 0.8,
+    powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 0,
+    output: {}, input: {}, population: 0, taxBasePerSec: 2.0,
+    minAge: 'foundation',
+    fuelStorage: 250, reloadPoint: true,
+  },
 };
 
 /** Defs in a fixed order (cheapest funds cost first) — used by growth. */
@@ -802,6 +930,14 @@ export interface BuildingRecord {
    */
   ammoStock?: number;
   fuelStock?: number;
+  /**
+   * Workstream M (user correction 2026-09-30): world tick until which a
+   * nuclear plant stays offline after an attack-triggered meltdown.
+   * 0/undefined = no meltdown. Set ONLY by the attack path
+   * (`attackMeltdownRoll` in utilityNetworks.ts, called from building
+   * damage); never by a timer. Snapshotted, digested (AD9).
+   */
+  meltdownUntilTick?: number;
   /**
    * Phase 3: stock reserved by in-flight `resupply` orders (see
    * commands.ts). Reservations are atomic at apply time and released on
@@ -1074,6 +1210,12 @@ export function validatePlacement(t: TerrainData, city: CityState, p: Placement)
   // footprint cell orthogonally adjacent to water.
   if (p.kind === 'hydroDam' && !isCoastal(t, p.cx, p.cz, def.footprintW, def.footprintH)) {
     return `${def.name}: must be built adjacent to water (river or coast)`;
+  }
+  // Phase 3: oil rigs are offshore — at least one footprint cell
+  // orthogonally adjacent to water (the navalYard/hydroDam isCoastal
+  // precedent; desalination carries no adjacency gate in 0.1 Alpha).
+  if (p.kind === 'oilRig' && !isCoastal(t, p.cx, p.cz, def.footprintW, def.footprintH)) {
+    return `${def.name}: must be built adjacent to water (offshore)`;
   }
   const player = getPlayer(city, p.owner) as PlayerState;
   if (player.funds < def.costFunds || player.materials < def.costMaterials) {
@@ -1574,7 +1716,22 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       const cell = cellIndex(cx, cz);
       const b = buildingAtCell(world.city, cell);
       // No refund (D11): demolition is pure loss, like the genre standard.
-      if (b) return { removed: 'building', id: demolishBuilding(world.city, b.id) ? b.id : -1 };
+      if (b) {
+        // Phase 3 logistics: release in-flight resupply reservations
+        // against the demolished depot. This loop mirrors
+        // releaseDepotReservations (commands.ts) inline on purpose: a
+        // static city→commands import would close a
+        // city→commands→movement→pathfinding cycle that evaluates
+        // pathfinding while city is still initializing (GRID_CELLS NaN
+        // under the SSR transform — caught by sim.ai-soak). If the
+        // release semantics ever change, update both.
+        for (const u of world.units) {
+          if ((u.resupplyDepotId ?? 0) === b.id) {
+            u.resupplyDepotId = 0;
+          }
+        }
+        return { removed: 'building', id: demolishBuilding(world.city, b.id) ? b.id : -1 };
+      }
       // demolishBuilding bumps the epoch for buildings; cell removal
       // below bumps it for conductors (Phase 2 structural changes).
       const i = world.city.roads.indexOf(cell);

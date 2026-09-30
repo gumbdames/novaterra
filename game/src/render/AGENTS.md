@@ -84,7 +84,7 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 
 ## Procedural gap models (`render/proceduralModels.ts`, 0.1 Alpha)
 
-- 30 entity kinds have no CC0 source: artillery (wheeled howitzer),
+- 37 entity kinds have no CC0 source: artillery (wheeled howitzer),
   aa (missile truck), fighter (jet), transport (helicopter), drone
   (quadcopter), destroyer (warship, keel below the waterline),
   mediaCenter (lattice broadcast tower), stormArray (dish), apc (6×6
@@ -99,7 +99,11 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   waterWell (A-frame derrick + pump house), waterTower (tank on legs),
   waterTreatment (clarifier basins), reservoir (embanked basin),
   powerSubstation (transformer yard), pumpingStation (pump hall),
-  batteryStation (container batteries). Each
+  batteryStation (container batteries), plus the 7 grand-expansion
+  Phase 3 logistics buildings: oilWell (derrick tower), oilRig (deck on
+  legs), munitionsFactory (hall + shell prop), missilePlant (hall +
+  missile on stand), missileSilo (concrete silo + dome), ordnanceDepot
+  (crate stacks + sandbag ring), fuelDepot (twin horizontal tanks). Each
   builder is a detailed smooth (never blocky) composite;
   `PROCEDURAL_KINDS` / `buildProceduralModel(kind)` is the registry.
   Builders rest at y=0 (destroyer / submarine / frigate / carrier

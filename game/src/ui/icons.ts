@@ -327,6 +327,34 @@ const BUILDING_ICONS: Record<BuildingKind, string> = {
     '<rect x="3" y="6" width="7" height="15" rx="1"/><path d="M3 11h7M3 16h7"/>' +
     '<rect x="12" y="10" width="9" height="11" rx="1"/><path d="M12 15h9"/>' +
     '<path d="M5 8.5h3M14.5 12.5h4"/>',
+  // Phase 3 (grand expansion, 2026-09-30): the logistics roster. Oil
+  // well = derrick (distinct from the refinery's tanks); oil rig =
+  // derrick on a platform over waves; munitions factory = factory with
+  // a shell; missile plant = factory with a missile; missile silo =
+  // silo with a missile tip; ordnance depot = crates; fuel depot =
+  // fuel drum. Each stays distinct from the existing glyphs.
+  oilWell:
+    '<path d="M10 3h4l3 18h-10Z"/><path d="M7 8h10M6 13h12M12 3v18"/>' +
+    '<path d="M4 21h16"/>',
+  oilRig:
+    '<path d="M10 2h4l2.5 12h-9Z"/><path d="M4 14h16v3H4Z"/>' +
+    '<path d="M3 20c1.5-1.5 3-1.5 4.5 0s3 1.5 4.5 0 3-1.5 4.5 0 3 1.5 4.5 0"/>',
+  munitionsFactory:
+    '<path d="M3 21V10l5 3.5V10l5 3.5V10l5 3.5V21Z"/>' +
+    '<path d="M6 21v-4M18 21v-4"/><ellipse cx="12" cy="8" rx="2.5" ry="1.2"/>' +
+    '<path d="M12 6.8V3"/>',
+  missilePlant:
+    '<path d="M3 21V10l5 3.5V10l5 3.5V10l5 3.5V21Z"/>' +
+    '<path d="M12 3c1.8 1.5 1.8 5 0 7-1.8-2-1.8-5.5 0-7Z"/><path d="M12 10v3"/>',
+  missileSilo:
+    '<rect x="8" y="8" width="8" height="13"/><path d="M8 8c0-4 8-4 8 0"/>' +
+    '<path d="M12 8V4"/><path d="M5 21h14"/>',
+  ordnanceDepot:
+    '<rect x="3" y="12" width="8" height="8"/><rect x="13" y="12" width="8" height="8"/>' +
+    '<path d="M3 12l4-4h6l4 4M7 4h10v4"/>',
+  fuelDepot:
+    '<rect x="7" y="5" width="10" height="15" rx="4"/>' +
+    '<path d="M7 10h10M7 14.5h10"/><circle cx="12" cy="7.5" r="0.9"/>',
 };
 
 // ---------------------------------------------------------------------------

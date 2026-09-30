@@ -155,7 +155,7 @@ function advanceToConnectivity(ctx: Ctx, owner = 0): void {
 }
 
 describe('roster', () => {
-  it('has exactly the 28 kinds (13 land + 6 air + 9 sea)', () => {
+  it('has exactly the 30 kinds (15 land + 6 air + 9 sea: Phase 3 workstream 3 added the land-domain supplyTruck/fuelTruck)', () => {
     const kinds = Object.keys(UNIT_DEFS).sort();
     expect(kinds).toEqual(
       [
@@ -167,12 +167,14 @@ describe('roster', () => {
         'fighterBomber', 'attackHeli', 'awacs',
         'missileBoat', 'frigate', 'submarine', 'carrier', 'commandShip',
         'fishingBoat',
+        // Phase 3 workstream 3 (2026-09-30): the supply-chain trucks.
+        'supplyTruck', 'fuelTruck',
       ].sort(),
     );
     const land = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'land');
     const air = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'air');
     const sea = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'sea');
-    expect(land).toHaveLength(13);
+    expect(land).toHaveLength(15);
     expect(air).toHaveLength(6);
     expect(sea).toHaveLength(9);
   });

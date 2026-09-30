@@ -93,6 +93,9 @@ describe('train tabs', () => {
       'mlrs',
       'aa',
       'hq',
+      // Phase 3 workstream 3 (2026-09-30): the supply-chain trucks.
+      'supplyTruck',
+      'fuelTruck',
     ]);
     expect(byId.get('air')).toEqual([
       'fighter',
@@ -171,6 +174,17 @@ describe('build tabs', () => {
     ]);
     expect(byId.get('navalAir')).toEqual(['shipyard', 'navalYard', 'airfield', 'radarStation']);
     expect(byId.get('special')).toEqual(['monument', 'aegisControl', 'stormArray']);
+    // Phase 3 workstream 2 (2026-09-30): the logistics tab — production
+    // (oil, munitions, missiles) followed by the depots.
+    expect(byId.get('logistics')).toEqual([
+      'oilWell',
+      'oilRig',
+      'munitionsFactory',
+      'missilePlant',
+      'missileSilo',
+      'ordnanceDepot',
+      'fuelDepot',
+    ]);
   });
 
   it('every tab has an English name', () => {
@@ -196,7 +210,7 @@ describe('research groups', () => {
     }
   });
 
-  it('groups are Military (8), Economy (4), and Infrastructure (6)', () => {
+  it('groups are Military (8), Economy (4), Infrastructure (6), and Logistics (1)', () => {
     const byId = new Map(UPGRADE_GROUPS.map((g) => [g.id, [...g.ids]]));
     expect(byId.get('military')).toHaveLength(8);
     expect(byId.get('economy')).toEqual([
@@ -214,6 +228,8 @@ describe('research groups', () => {
       'desalinationTech',
       'gridStorage',
     ]);
+    // Phase 3 workstream 2 (2026-09-30): the logistics group.
+    expect(byId.get('logistics')).toEqual(['advancedLogistics']);
   });
 });
 

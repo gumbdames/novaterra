@@ -264,6 +264,14 @@ export type ModelSource =
   powerSubstation: { type: 'procedural' },
   pumpingStation: { type: 'procedural' },
   batteryStation: { type: 'procedural' },
+  // Grand-expansion Phase 3 (logistics): gap models in proceduralModels.ts.
+  oilWell: { type: 'procedural' },
+  oilRig: { type: 'procedural' },
+  munitionsFactory: { type: 'procedural' },
+  missilePlant: { type: 'procedural' },
+  missileSilo: { type: 'procedural' },
+  ordnanceDepot: { type: 'procedural' },
+  fuelDepot: { type: 'procedural' },
 };
 
 /**
@@ -613,6 +621,21 @@ export function buildingHeightFor(kind: BuildingKind): number {
       return 4;
     case 'batteryStation':
       return 3;
+    // Grand-expansion Phase 3 (logistics): model heights for the 7 kinds.
+    case 'oilWell':
+      return 10;
+    case 'oilRig':
+      return 9;
+    case 'munitionsFactory':
+      return 6;
+    case 'missilePlant':
+      return 9;
+    case 'missileSilo':
+      return 9;
+    case 'ordnanceDepot':
+      return 3;
+    case 'fuelDepot':
+      return 4;
     default:
       return 4;
   }

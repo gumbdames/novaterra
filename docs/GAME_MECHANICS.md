@@ -388,3 +388,27 @@ are unaffected.
 **Trade routes**: establish routes with other players (500 funds setup).
 Each active route pays 3 funds/sec — but only while both you and your
 partner have working commercial buildings. Cancel anytime.
+
+## Phase 3: Logistics (fuel and ammo)
+
+Vehicles burn **fuel** and missile weapons spend **ammo**; infantry and
+nuclear-powered ships are exempt. Keep them supplied or they fight worse
+(damage ×0.6–1.0) and slower.
+
+**Make it.** The **Oil Well** (Foundation) pumps 0.6 fuel/s; the offshore
+**Oil Rig** (Industry, coastal) makes 2.5 fuel/s but eats materials. The
+**Munitions Factory** (Industry) produces 2.0 ammo/s; the **Missile Plant**
+(Industry, needs a finished Munitions Factory) makes 5.0 ammo/s. Both fill
+their own stockpile — units can even resupply at the factory gate.
+
+**Store it.** The **Missile Silo** holds 400 ammo, the **Ordnance Depot**
+150, and the **Fuel Depot** 250 fuel. Fuel depots pull from your stockpile
+automatically (5/s), caching fuel forward near the front.
+
+**Use it.** Any unit parked within 18 world units of a stocked reload
+point (barracks, war factory, naval yard, airfield, the two producers,
+and the three depots) refills its magazine and tank passively — no
+orders needed. Units on a resupply run are served first.
+
+**Advanced Logistics** (research, needs a Munitions Factory): +50% ammo
+production and +50% storage on every producer and depot.

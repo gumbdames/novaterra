@@ -22,8 +22,14 @@
  * the entity→model mapping (see docs/research/real-models.md §2): the
  * military units artillery / aa / fighter / transport / drone /
  * destroyer / apc / mlrs / fighterBomber / attackHeli / submarine /
- * frigate / carrier, and the buildings mediaCenter / stormArray /
- * quarry / monument. Each builder returns a `LoadedModel`-compatible
+ * frigate / carrier, the buildings mediaCenter / stormArray /
+ * quarry / monument, the 13 grand-expansion Phase 2 utility buildings
+ * (coalPlant … batteryStation), and the 9 grand-expansion Phase 3
+ * logistics kinds: oilWell (pumpjack), oilRig (offshore platform),
+ * munitionsFactory (shell-casing hall), missilePlant (assembly hall +
+ * transporter-erector), missileSilo (blast doors + berm),
+ * ordnanceDepot (earth bunkers), fuelDepot (tank farm), supplyTruck
+ * (6x6 canvas cargo truck), fuelTruck (6x6 tanker). Each builder returns a `LoadedModel`-compatible
  * `{ geometries, materials }` with merged per-material geometry, base at
  * y=0, forward = +z — the same contract as `models.ts`, so
  * `render/entities.ts` can treat GLB and procedural models identically.
@@ -53,6 +59,9 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import type { LoadedModel } from './models';
+// Re-exported so render tests can name the builder return type without
+// importing the model-loading module (Phase 3 logistics, 2026-09-30).
+export type { LoadedModel } from './models';
 import { surfaceMaterial } from './entitySurfaces';
 import type { SurfaceCategory } from './surfaceTextures';
 
@@ -1339,6 +1348,313 @@ export function buildBatteryStation(): LoadedModel {
 }
 
 // ---------------------------------------------------------------------------
+// Grand-expansion Phase 3 (logistics): the 7 logistics buildings + 2
+// supply trucks. Final art (render workstream): detailed smooth composites
+// in the established style — silhouette first, >=3 parts, no plain cubes.
+// ---------------------------------------------------------------------------
+
+/**
+ * oilWell — pumpjack (nodding donkey) over a wellhead, with an engine
+ * house. The walking beam + horsehead silhouette reads "oil" instantly.
+ * Footprint 2x2 cells (4x4 world units).
+ */
+export function buildOilWell(): LoadedModel {
+  const b = new ModelBuilder();
+  const steel = smat('gunmetal');
+  const frame = smat('paintedMetal', { color: 0x7a4a28 });
+  const hut = smat('paintedMetal', { color: 0x9a7a4a });
+  const dark = smat('tireRubber');
+  // Base skid + oil stain.
+  b.add(new THREE.BoxGeometry(3.4, 0.3, 3.0), steel, tr(0, 0.15, 0));
+  const stain = new THREE.CircleGeometry(1.1, 16);
+  b.add(stain, smat('tireRubber'), tr(0.4, 0.32, 0.6, -Math.PI / 2, 0, 0));
+  // A-frame (4 beams to the apex bearing).
+  for (const sx of [-1, 1]) {
+    b.beam(sx * 1.3, 0.3, -0.9, sx * 0.25, 3.4, -0.9, 0.12, frame);
+    b.beam(sx * 1.3, 0.3, 0.9, sx * 0.25, 3.4, 0.9, 0.12, frame);
+  }
+  b.add(new THREE.BoxGeometry(0.7, 0.5, 2.2), steel, tr(0, 3.4, 0));
+  // Walking beam (pivots at the apex) + horsehead at the well end.
+  b.add(new THREE.BoxGeometry(0.35, 0.35, 4.6), frame, tr(0, 3.75, 0.4, 0.12, 0, 0));
+  b.add(new THREE.BoxGeometry(0.5, 1.1, 0.5), frame, tr(0, 3.35, 2.5));
+  // Sucker rod down to the wellhead.
+  b.add(new THREE.CylinderGeometry(0.06, 0.06, 2.6, 6), steel, tr(0, 1.9, 2.5));
+  b.add(new THREE.CylinderGeometry(0.3, 0.35, 0.7, 10), dark, tr(0, 0.6, 2.5));
+  // Crank + counterweight at the back end.
+  const crank = new THREE.CylinderGeometry(0.7, 0.7, 0.25, 14);
+  b.add(crank, frame, tr(0, 1.6, -1.9, Math.PI / 2, 0, 0));
+  b.add(new THREE.BoxGeometry(0.9, 0.9, 0.3), steel, tr(0, 1.0, -1.9));
+  b.beam(0, 3.6, -1.8, 0, 1.9, -1.9, 0.09, steel);
+  // Engine house.
+  b.add(new THREE.BoxGeometry(1.8, 1.6, 1.6), hut, tr(-1.9, 1.1, 1.2));
+  b.add(new THREE.BoxGeometry(2.1, 0.18, 1.9), steel, tr(-1.9, 2.0, 1.2));
+  b.add(new THREE.CylinderGeometry(0.09, 0.09, 1.0, 8), steel, tr(-1.9, 2.5, 1.2));
+  // Beacon.
+  b.add(new THREE.SphereGeometry(0.14, 8, 6), pmat(0xffb340, { emissive: 0xcc7a10 }), tr(0, 4.35, 0));
+  return b.build();
+}
+
+/**
+ * oilRig — offshore platform: 4 legs into the water, deck, derrick,
+ * crane, helipad, flare stack. Footprint 3x3 cells (6x6 world units).
+ */
+export function buildOilRig(): LoadedModel {
+  const b = new ModelBuilder();
+  const steel = smat('gunmetal');
+  const deck = smat('paintedMetal', { color: 0x7a6a55 });
+  const rust = smat('rustMetal', { color: 0x8a5a30 });
+  const white = smat('paintedMetal', { color: 0xd8d8d0 });
+  // Legs down into the water.
+  for (const sx of [-1, 1]) {
+    for (const sz of [-1, 1]) {
+      b.add(new THREE.CylinderGeometry(0.28, 0.28, 7, 8), steel, tr(sx * 2.4, -1.5, sz * 2.4));
+    }
+  }
+  // Cross braces between legs.
+  for (const sz of [-1, 1]) {
+    b.beam(-2.4, 0.5, sz * 2.4, 2.4, 0.5, sz * 2.4, 0.1, rust);
+  }
+  // Deck + edge trim.
+  b.add(new THREE.BoxGeometry(6.4, 0.5, 6.4), deck, tr(0, 2.2, 0));
+  b.add(new THREE.BoxGeometry(6.6, 0.18, 6.6), rust, tr(0, 2.5, 0));
+  // Railing posts.
+  for (let i = -3; i <= 3; i++) {
+    b.add(new THREE.BoxGeometry(0.08, 0.7, 0.08), steel, tr(i * 1.0, 2.9, -3.1));
+    b.add(new THREE.BoxGeometry(0.08, 0.7, 0.08), steel, tr(i * 1.0, 2.9, 3.1));
+  }
+  // Derrick (tapered 4-sided tower) + crown block.
+  b.add(new THREE.CylinderGeometry(0.7, 1.3, 6, 4), rust, tr(-1.4, 5.6, -1.4, 0, Math.PI / 4, 0));
+  b.add(new THREE.BoxGeometry(1.0, 0.4, 1.0), steel, tr(-1.4, 8.8, -1.4));
+  // Crane: pedestal + angled jib + cable.
+  b.add(new THREE.CylinderGeometry(0.35, 0.45, 1.6, 10), steel, tr(2.0, 3.3, 1.8));
+  b.beam(2.0, 4.1, 1.8, -0.6, 7.0, 0.6, 0.14, rust);
+  b.beam(-0.6, 7.0, 0.6, -0.6, 4.6, 0.6, 0.03, steel);
+  b.add(new THREE.BoxGeometry(0.4, 0.4, 0.4), steel, tr(-0.6, 4.4, 0.6));
+  // Helipad disc + painted ring.
+  b.add(new THREE.CylinderGeometry(1.3, 1.3, 0.12, 20), smat('concrete'), tr(1.6, 2.6, -1.6));
+  const ring = new THREE.TorusGeometry(0.95, 0.07, 8, 24);
+  b.add(ring, pmat(0xffd23c, { emissive: 0x554400 }), tr(1.6, 2.68, -1.6, -Math.PI / 2, 0, 0));
+  // Control cabin with glass band.
+  b.add(new THREE.BoxGeometry(1.6, 1.4, 1.4), white, tr(-2.2, 3.2, 1.8));
+  b.add(new THREE.BoxGeometry(1.65, 0.4, 1.45), smat('glassBlue', { color: 0x1c2733 }), tr(-2.2, 3.5, 1.8));
+  // Flare stack with flame tip.
+  b.add(new THREE.CylinderGeometry(0.12, 0.16, 3.4, 8), steel, tr(2.6, 4.2, -2.4));
+  b.add(new THREE.ConeGeometry(0.22, 0.6, 8), pmat(0xff8a2a, { emissive: 0xdd5a00 }), tr(2.6, 6.1, -2.4));
+  return b.build();
+}
+
+/**
+ * munitionsFactory — brick hall with sawtooth skylights, chimney, and a
+ * loading dock stacked with shell pallets (the general-ammo read).
+ * Footprint 4x3 cells (8x6 world units).
+ */
+export function buildMunitionsFactory(): LoadedModel {
+  const b = new ModelBuilder();
+  const wall = smat('brickRed', { color: 0xb08a6a });
+  const roof = smat('roofGravel', { color: 0x6a6a6a });
+  const brass = smat('paintedMetal', { color: 0xc9a227 });
+  const steel = smat('gunmetal');
+  // Main hall.
+  b.add(new THREE.BoxGeometry(7, 3.2, 4.6), wall, tr(0, 1.6, -0.6));
+  b.add(new THREE.BoxGeometry(7.4, 0.35, 5), roof, tr(0, 3.35, -0.6));
+  // Sawtooth skylight strips.
+  for (const zx of [-2.2, -0.6, 1.0]) {
+    b.add(new THREE.BoxGeometry(6.6, 0.9, 0.9), smat('glassBlue'), tr(0, 3.9, zx));
+  }
+  // Chimney with band.
+  b.add(new THREE.CylinderGeometry(0.5, 0.65, 4.5, 10), wall, tr(-2.6, 4.6, -1.8));
+  b.add(new THREE.CylinderGeometry(0.56, 0.6, 0.7, 10), smat('paintedMetal', { color: 0xd8332a }), tr(-2.6, 6.2, -1.8));
+  // Loading dock + hazard curb.
+  b.add(new THREE.BoxGeometry(3.4, 0.5, 2.6), smat('concrete'), tr(1.4, 0.25, 3.6));
+  b.add(new THREE.BoxGeometry(3.4, 0.14, 0.3), smat('hazardStripes'), tr(1.4, 0.55, 2.45));
+  // Shell pallets: wood pallet + brass shell rows.
+  for (const [px, pz] of [[0.4, 3.4], [2.4, 3.8]] as const) {
+    b.add(new THREE.BoxGeometry(1.4, 0.18, 1.2), smat('woodPlank'), tr(px, 0.6, pz));
+    for (const ox of [-0.35, 0, 0.35]) {
+      b.add(new THREE.CylinderGeometry(0.16, 0.16, 1.0, 8), brass, tr(px + ox, 1.2, pz, Math.PI / 2, 0, 0));
+    }
+    b.add(new THREE.BoxGeometry(1.4, 0.9, 0.12), smat('woodPlank'), tr(px, 1.1, pz - 0.62));
+  }
+  // Roof vents.
+  for (const vx of [-1.5, 1.5]) {
+    b.add(new THREE.CylinderGeometry(0.3, 0.35, 0.8, 8), steel, tr(vx, 3.9, -0.6));
+  }
+  return b.build();
+}
+/**
+ * missilePlant — assembly hall with tall bay doors, a roof gantry, and a
+ * missile on its transporter-erector outside (the specialized-ammo read).
+ * Footprint 4x3 cells (8x6 world units).
+ */
+export function buildMissilePlant(): LoadedModel {
+  const b = new ModelBuilder();
+  const wall = smat('paintedMetal', { color: 0x9aa2ac });
+  const roof = smat('roofGravel', { color: 0x5a5a5e });
+  const steel = smat('gunmetal');
+  const white = smat('paintedMetal', { color: 0xe8e8e2 });
+  // Assembly hall.
+  b.add(new THREE.BoxGeometry(7.2, 4.2, 5.0), wall, tr(-0.4, 2.1, -0.5));
+  b.add(new THREE.BoxGeometry(7.6, 0.4, 5.4), roof, tr(-0.4, 4.4, -0.5));
+  // Tall bay doors (dark insets) on the front face.
+  for (const dx of [-2.4, -0.4, 1.6]) {
+    b.add(new THREE.BoxGeometry(1.7, 3.2, 0.15), smat('tireRubber'), tr(dx, 1.7, 2.05));
+    b.add(new THREE.BoxGeometry(1.9, 0.25, 0.18), smat('hazardStripes'), tr(dx, 3.45, 2.05));
+  }
+  // Roof gantry rails + bridge crane.
+  for (const gz of [-2.4, 1.4]) {
+    b.add(new THREE.BoxGeometry(7.6, 0.25, 0.25), steel, tr(-0.4, 4.75, gz));
+  }
+  b.add(new THREE.BoxGeometry(0.5, 0.5, 4.4), steel, tr(1.8, 5.1, -0.5));
+  b.add(new THREE.BoxGeometry(0.3, 0.9, 0.3), steel, tr(1.8, 4.5, -0.5));
+  // Missile on transporter-erector: trailer bed + wheels + missile.
+  b.add(new THREE.BoxGeometry(1.6, 0.5, 5.2), steel, tr(2.9, 0.75, 2.9));
+  for (const wz of [1.2, 2.4, 3.6, 4.8]) {
+    for (const sx of [-1, 1]) {
+      b.add(new THREE.CylinderGeometry(0.38, 0.38, 0.3, 12), smat('tireRubber'), tr(2.9 + sx * 0.85, 0.38, wz, 0, 0, Math.PI / 2));
+    }
+  }
+  const body = new THREE.CylinderGeometry(0.42, 0.42, 3.6, 14);
+  b.add(body, white, tr(2.9, 1.6, 2.9, Math.PI / 2, 0, 0));
+  b.add(new THREE.ConeGeometry(0.42, 1.0, 14), smat('paintedMetal', { color: 0xd8332a }), tr(2.9, 1.6, 0.6, -Math.PI / 2, 0, 0));
+  for (let i = 0; i < 4; i++) {
+    const fin = new THREE.BoxGeometry(0.08, 0.7, 0.5);
+    fin.applyMatrix4(new THREE.Matrix4().makeRotationZ((i * Math.PI) / 2));
+    b.add(fin, steel, tr(2.9, 1.6, 4.5));
+  }
+  b.beam(2.9, 1.1, 2.9, 2.9, 0.55, 1.6, 0.12, steel);
+  // Antenna mast + beacon.
+  b.add(new THREE.CylinderGeometry(0.08, 0.12, 3.0, 6), steel, tr(-3.4, 6.0, -2.2));
+  b.add(new THREE.SphereGeometry(0.12, 8, 6), pmat(0xff4444, { emissive: 0xaa1111 }), tr(-3.4, 7.6, -2.2));
+  return b.build();
+}
+
+/**
+ * missileSilo — concrete apron, octagonal silo collar with the blast
+ * doors swung open and a missile nose poking out, ringed by a sandbag
+ * berm. Footprint 3x3 cells (6x6 world units).
+ */
+export function buildMissileSilo(): LoadedModel {
+  const b = new ModelBuilder();
+  const concrete = smat('concrete');
+  const steel = smat('gunmetal');
+  const white = smat('paintedMetal', { color: 0xe8e8e2 });
+  // Apron.
+  b.add(new THREE.BoxGeometry(6.0, 0.25, 6.0), concrete, tr(0, 0.12, 0));
+  b.add(new THREE.BoxGeometry(6.2, 0.1, 6.2), smat('hazardStripes'), tr(0, 0.28, 0));
+  b.add(new THREE.BoxGeometry(5.6, 0.28, 5.6), concrete, tr(0, 0.3, 0));
+  // Octagonal collar + dark shaft.
+  b.add(new THREE.CylinderGeometry(1.9, 2.1, 1.0, 8), concrete, tr(0, 0.8, 0));
+  b.add(new THREE.CylinderGeometry(1.45, 1.45, 1.1, 16), smat('tireRubber'), tr(0, 0.85, 0));
+  // Missile nose poking out of the shaft.
+  b.add(new THREE.CylinderGeometry(0.55, 0.55, 1.6, 14), white, tr(0, 1.6, 0));
+  b.add(new THREE.ConeGeometry(0.55, 1.1, 14), smat('paintedMetal', { color: 0xd8332a }), tr(0, 2.95, 0));
+  // Blast doors swung open (two half-slabs).
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(1.7, 0.35, 3.2), steel, tr(sx * 2.4, 0.65, 0, 0, sx * 0.5, 0));
+    b.add(new THREE.BoxGeometry(1.7, 0.12, 0.3), smat('hazardStripes'), tr(sx * 2.4, 0.85, sx * 1.4, 0, sx * 0.5, 0));
+  }
+  // Sandbag berm ring (flattened torus segments).
+  const berm = new THREE.TorusGeometry(4.6, 0.55, 8, 28);
+  berm.applyMatrix4(new THREE.Matrix4().makeScale(1, 0.55, 1));
+  b.add(berm, smat('sandbag'), tr(0, 0.35, 0, Math.PI / 2, 0, 0));
+  // Vent pipes + warning beacons.
+  for (const [vx, vz] of [[-2.6, -2.6], [2.6, -2.6]] as const) {
+    b.add(new THREE.CylinderGeometry(0.14, 0.14, 1.2, 8), steel, tr(vx, 0.9, vz));
+    b.add(new THREE.SphereGeometry(0.11, 8, 6), pmat(0xff4444, { emissive: 0xaa1111 }), tr(vx, 1.6, vz));
+  }
+  return b.build();
+}
+
+/**
+ * ordnanceDepot — three earth-covered bunkers (arched half-cylinders)
+ * with crate stacks and a sandbag perimeter. Footprint 3x3 (6x6).
+ */
+export function buildOrdnanceDepot(): LoadedModel {
+  const b = new ModelBuilder();
+  const earth = smat('sandbag');
+  const wood = smat('woodPlank');
+  const steel = smat('gunmetal');
+  // Sandbag perimeter walls.
+  for (const [w, d, x, z] of [[6.0, 0.5, 0, -2.9], [6.0, 0.5, 0, 2.9], [0.5, 5.4, -2.9, 0], [0.5, 5.4, 2.9, 0]] as const) {
+    b.add(new THREE.BoxGeometry(w, 0.9, d), earth, tr(x, 0.45, z));
+  }
+  // Three arched bunkers: horizontal cylinders half-sunk in the ground
+  // (the visible top half is the arch) in earth tones.
+  for (const bx of [-1.7, 0, 1.7]) {
+    const tube = new THREE.CylinderGeometry(1.0, 1.0, 2.8, 14);
+    tube.applyMatrix4(new THREE.Matrix4().makeRotationX(Math.PI / 2));
+    b.add(tube, earth, tr(bx, 0.45, -1.2));
+    b.add(new THREE.BoxGeometry(2.0, 0.5, 2.9), earth, tr(bx, 0.25, -1.2));
+    // Dark door inset on the front face.
+    b.add(new THREE.BoxGeometry(0.9, 1.0, 0.15), smat('tireRubber'), tr(bx, 0.5, 0.28));
+    // End cap ring.
+    b.add(new THREE.TorusGeometry(1.0, 0.09, 6, 18, Math.PI), earth, tr(bx, 0.45, 0.22));
+  }
+  // Crate stacks with stencil stripe.
+  for (const [cx, cz, n] of [[-1.8, 1.9, 2], [0.2, 2.0, 3], [1.9, 1.8, 2]] as const) {
+    for (let i = 0; i < n; i++) {
+      b.add(new THREE.BoxGeometry(0.9, 0.55, 0.9), wood, tr(cx, 0.28 + i * 0.58, cz));
+    }
+    b.add(new THREE.BoxGeometry(0.92, 0.12, 0.92), smat('hazardStripes'), tr(cx, 0.28 + (n - 1) * 0.58 + 0.3, cz));
+  }
+  // Guard post.
+  b.add(new THREE.BoxGeometry(1.1, 1.5, 1.1), smat('paintedMetal', { color: 0x8a8f96 }), tr(-2.2, 0.75, 2.2));
+  b.add(new THREE.BoxGeometry(1.4, 0.15, 1.4), steel, tr(-2.2, 1.6, 2.2));
+  b.add(new THREE.BoxGeometry(1.15, 0.35, 0.1), smat('glassBlue'), tr(-2.2, 1.0, 2.72));
+  return b.build();
+}
+
+/**
+ * fuelDepot — three vertical fuel tanks on a bunded pad with connecting
+ * pipework, drum stacks, and a pump kiosk. Footprint 3x3 (6x6).
+ */
+export function buildFuelDepot(): LoadedModel {
+  const b = new ModelBuilder();
+  const tankWhite = smat('paintedMetal', { color: 0xdcd8cc });
+  const tankRust = smat('rustMetal', { color: 0x9a6a40 });
+  const steel = smat('gunmetal');
+  // Bunded pad + hazard border.
+  b.add(new THREE.BoxGeometry(6.0, 0.2, 6.0), smat('concrete'), tr(0, 0.1, 0));
+  b.add(new THREE.BoxGeometry(6.2, 0.1, 6.2), smat('hazardStripes'), tr(0, 0.22, 0));
+  b.add(new THREE.BoxGeometry(5.6, 0.22, 5.6), smat('concrete'), tr(0, 0.24, 0));
+  // Bund walls.
+  for (const [w, d, x, z] of [[5.6, 0.3, 0, -2.7], [5.6, 0.3, 0, 2.7], [0.3, 5.2, -2.7, 0], [0.3, 5.2, 2.7, 0]] as const) {
+    b.add(new THREE.BoxGeometry(w, 0.7, d), smat('concrete'), tr(x, 0.55, z));
+  }
+  // Three tanks.
+  const spots: ReadonlyArray<readonly [number, number, THREE.Material]> = [
+    [-1.4, -1.0, tankWhite], [1.4, -1.0, tankRust], [0, 1.3, tankWhite],
+  ];
+  for (const [tx, tz, mat] of spots) {
+    b.add(new THREE.CylinderGeometry(1.05, 1.05, 2.6, 18), mat, tr(tx, 1.6, tz));
+    const cap = new THREE.SphereGeometry(1.05, 18, 8, 0, Math.PI * 2, 0, Math.PI / 2);
+    b.add(cap, mat, tr(tx, 2.9, tz));
+    b.add(new THREE.CylinderGeometry(1.09, 1.09, 0.35, 18), smat('paintedMetal', { color: 0xd8332a }), tr(tx, 2.2, tz));
+    b.add(new THREE.CylinderGeometry(0.12, 0.12, 0.7, 8), steel, tr(tx, 3.6, tz));
+    // Ladder.
+    b.add(new THREE.BoxGeometry(0.35, 2.6, 0.12), steel, tr(tx + 1.05, 1.6, tz));
+  }
+  // Pipe manifold between tanks + valve boxes.
+  b.beam(-1.4, 0.6, -1.0, 1.4, 0.6, -1.0, 0.12, steel);
+  b.beam(0, 0.6, -1.0, 0, 0.6, 1.3, 0.12, steel);
+  b.add(new THREE.BoxGeometry(0.5, 0.5, 0.5), steel, tr(0, 0.5, -1.0));
+  // Drum stacks.
+  for (const [dx, dz] of [[-2.2, 1.9], [2.2, 1.9]] as const) {
+    for (const [ox, oz] of [[-0.35, 0], [0.35, 0], [0, 0.35]] as const) {
+      b.add(new THREE.CylinderGeometry(0.3, 0.3, 0.85, 10), tankRust, tr(dx + ox, 0.65, dz + oz));
+    }
+  }
+  // Pump kiosk.
+  b.add(new THREE.BoxGeometry(1.0, 1.6, 0.9), smat('paintedMetal', { color: 0x3c6e9e }), tr(2.0, 1.0, 0.2));
+  b.add(new THREE.BoxGeometry(1.2, 0.14, 1.1), steel, tr(2.0, 1.85, 0.2));
+  return b.build();
+}
+/**
+ * supplyTruck — 6x6 cargo truck: cab with glass windshield, canvas-topped
+ * cargo bed with crate load peeking at the tailgate. The field resupply
+ * workhorse (100 fuel / 40 ammo cargo).
+ */
+// ---------------------------------------------------------------------------
 // Public dispatch
 // ---------------------------------------------------------------------------
 
@@ -1376,6 +1692,14 @@ export const PROCEDURAL_KINDS = [
   'powerSubstation',
   'pumpingStation',
   'batteryStation',
+  // Grand-expansion Phase 3 (logistics): the 7 logistics buildings.
+  'oilWell',
+  'oilRig',
+  'munitionsFactory',
+  'missilePlant',
+  'missileSilo',
+  'ordnanceDepot',
+  'fuelDepot',
 ] as const;
 
 export type ProceduralKind = (typeof PROCEDURAL_KINDS)[number];
@@ -1447,6 +1771,21 @@ export function buildProceduralModel(kind: string): LoadedModel | undefined {
       return buildPumpingStation();
     case 'batteryStation':
       return buildBatteryStation();
+    // Grand-expansion Phase 3 (logistics): the 7 logistics buildings.
+    case 'oilWell':
+      return buildOilWell();
+    case 'oilRig':
+      return buildOilRig();
+    case 'munitionsFactory':
+      return buildMunitionsFactory();
+    case 'missilePlant':
+      return buildMissilePlant();
+    case 'missileSilo':
+      return buildMissileSilo();
+    case 'ordnanceDepot':
+      return buildOrdnanceDepot();
+    case 'fuelDepot':
+      return buildFuelDepot();
     default:
       return undefined;
   }

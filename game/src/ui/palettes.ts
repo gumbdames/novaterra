@@ -100,14 +100,16 @@ export type BuildTabId =
   | 'power'
   | 'waterNet'
   | 'navalAir'
-  | 'special';
+  | 'special'
+  // Grand-expansion Phase 3 (logistics): production + depots.
+  | 'logistics';
 
 export interface BuildTab {
   id: BuildTabId;
   kinds: readonly BuildingKind[];
 }
 
-/** 44 buildings across 9 tabs. Every building kind appears in exactly one. */
+/** 51 buildings across 10 tabs. Every building kind appears in exactly one. */
 export const BUILD_TABS: readonly BuildTab[] = [
   { id: 'housing', kinds: ['house', 'apartment'] },
   // Workstream Z (2026-09-30): the civic tab — the four education
@@ -161,17 +163,32 @@ export const BUILD_TABS: readonly BuildTab[] = [
     id: 'navalAir',
     kinds: ['shipyard', 'navalYard', 'airfield', 'radarStation'],
   },
+  // Grand-expansion Phase 3 (2026-09-30): the logistics roster — crude
+  // extraction, ammo production (general + specialized), and the three
+  // depot reload points — gets its own tab next to Naval & Air.
+  {
+    id: 'logistics',
+    kinds: [
+      'oilWell',
+      'oilRig',
+      'munitionsFactory',
+      'missilePlant',
+      'missileSilo',
+      'ordnanceDepot',
+      'fuelDepot',
+    ],
+  },
   { id: 'special', kinds: ['monument', 'aegisControl', 'stormArray'] },
 ];
 
-export type UpgradeGroupId = 'military' | 'economy' | 'infrastructure';
+export type UpgradeGroupId = 'military' | 'economy' | 'infrastructure' | 'logistics';
 
 export interface UpgradeGroup {
   id: UpgradeGroupId;
   ids: readonly UpgradeId[];
 }
 
-/** 18 upgrades in 3 research groups. */
+/** 19 upgrades in 4 research groups. */
 export const UPGRADE_GROUPS: readonly UpgradeGroup[] = [
   {
     id: 'military',
@@ -202,6 +219,12 @@ export const UPGRADE_GROUPS: readonly UpgradeGroup[] = [
       'desalinationTech',
       'gridStorage',
     ],
+  },
+  // Grand-expansion Phase 3 (2026-09-30): the logistics upgrade —
+  // its own group so the military (8) pin keeps its meaning.
+  {
+    id: 'logistics',
+    ids: ['advancedLogistics'],
   },
 ];
 

@@ -53,16 +53,17 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   button nodes stay stable across frames (recreating them every sim tick
   broke real clicks: pointerdown + pointerup landed on different nodes and
   no click event ever fired). TRAIN palette has 4 tabs (Infantry / Armor / Air / Navy),
-  BUILD palette has 9 tabs (Housing / Civic / Commerce / Industry /
-  Utilities / Power / Water / Naval & Air / Special) — the spec groupings
+  BUILD palette has 10 tabs (Housing / Civic / Commerce / Industry /
+  Utilities / Power / Water / Naval & Air / Special / Logistics) — the spec groupings
   plus the Workstream Z civic tab (education buildings), plus the Phase 2
-  utility tabs (the 13 new power/water buildings), see `palettes.ts`.
+  utility tabs (the 13 new power/water buildings), plus the Phase 3
+  logistics tab (the 7 new fuel/ammo production + depot buildings), see `palettes.ts`.
   Unavailable entries stay visible but disabled, with tooltip reasons
   (age, production building, cost, manpower, Naval Yard coast rule).
   Train buttons show funds + materials + manpower cost; build buttons
   show funds + materials. Selecting a completed Research Lab (or owning
-  one with nothing selected) opens the research panel: all 12 upgrades
-  in Military / Economy / Infrastructure groups with one-line effects, cost,
+  one with nothing selected) opens the research panel: all 19 upgrades
+  in Military / Economy / Infrastructure / Logistics groups with one-line effects, cost,
   researched checkmark, and disabled reasons (the Phase 2 Infrastructure
   group is the utility research ladder: combustion → advanced nuclear →
   fusion, groundwater survey, desalination tech, grid storage). Selected
@@ -109,11 +110,13 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `camera.ts` / `selection.ts` — pure state + transitions, fully tested.
 - `orders.ts` — gesture → `OrderIntent` (`NewCommand` minus issuer);
   the controller stamps `issuer: 'player'` at enqueue. Includes
+  validates. Until the sim wires registration at boot, enqueue throws
   `buildResearchUpgradeOrder(owner, upgrade)` for the research panel.
 - `palettes.ts` — headless-safe palette data + availability logic for
   the tabbed TRAIN/BUILD palettes and the research panel: `TRAIN_TABS`
-  (4 tabs, 28 units), `BUILD_TABS` (9 tabs, 44 buildings),
-  `UPGRADE_GROUPS` (military 8 / economy 4 / infrastructure 6), `unitAvailability` /
+  (4 tabs, 30 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck),
+  `BUILD_TABS` (10 tabs, 51 buildings),
+  `UPGRADE_GROUPS` (military 8 / economy 4 / infrastructure 6 / logistics 1), `unitAvailability` /
   `buildingAvailability` / `upgradeAvailability` (ready | reason), cost
   formatters, and the
   Naval Yard coast-rule tooltip. Availability mirrors sim validation
@@ -172,7 +175,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `icons.ts` — **hand-drawn inline SVG icon set (pure, tested,
   `tests/ui.icons.test.ts`).** Every button shows icon AND text (user
   directive 2026-09-30) — icons are `aria-hidden`, never icon-only.
-  `unitIcon` / `buildingIcon` cover all 28 units + 44 buildings
+  `unitIcon` / `buildingIcon` cover all 30 units + 51 buildings
   (`Record<UnitKind, string>` so a missing glyph is a compile error);
   `toolIcon` for the build tools row (incl. the Phase 2 powerLine /
   waterPipe tools); `mapIcon(waterFraction)` for the
@@ -203,7 +206,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   extension point), module-level language
   state (`setUiLanguage` / `getUiLanguage` / `loc` / `fillLoc`). Covers
   all 28 unit names, 44 building names, palette/upgrade tab names, the
-  18 upgrade names + one-line effects, cost labels, and lock reasons.
+  19 upgrade names + one-line effects, cost labels, and lock reasons.
   Legacy Phase 3 strings are still English-only; they were never localized.
 - Audio: `game.ts` owns an `AudioEngine` (see `src/audio/AGENTS.md`) —
   unlocked on first pointer/key gesture, `updateMusic(world, playerId)`

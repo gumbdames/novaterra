@@ -26,6 +26,13 @@
  *    allocation → production/consumption → food → taxes (every 60 s) →
  *    growth → population recount. Fixed order, id-ordered allocation —
  *    fully deterministic.
+ *  - Phase 3 logistics (grand expansion): `runProduction` also fills
+ *    ammo-producer stocks (capped at the def's `ammoStorage`, boosted by
+ *    the Advanced Logistics upgrade) and pulls fuel from the owner's
+ *    stockpile into fuelDepots (rate-limited); `runSupplyAura` (after
+ *    harvest) refills owner units inside `LOGISTICS_RADIUS` of each
+ *    completed reloadPoint in building-id order, honoring resupply
+ *    reservations before serving by lowest `supplyLevel`.
  *  - The market exchanges any stockpile for funds at fixed rates with a
  *    spread (buy at +20%, sell at −20%): a round trip always loses value,
  *    so the market is a lever, not free money. Dynamic pricing is a later
@@ -45,6 +52,9 @@ import {
   effectivePowerSupply,
   effectiveWaterSupply,
   effectiveWaterDemand,
+  effectiveAmmoProduction,
+  effectiveAmmoStorage,
+  effectiveFuelStorage,
   PRECISION_MANUFACTURING_MULT,
   VERTICAL_FARMING_FOOD_MULT,
   FREE_TRADE_MARKET_MULT,
@@ -66,13 +76,15 @@ import {
   type UtilityModel,
   type UtilitySideModel,
 } from './utilityNetworks';
-import { UNIT_DEFS } from './units';
+import { UNIT_DEFS, supplyLevel, type UnitRecord } from './units';
+import { createSpatialHash, shInsert, shQueryRadius } from './spatial';
 import {
   BUILDING_DEFS,
   UTILITY_PENALTY,
   FOOD_PER_POP_PER_SEC,
   UTILITY_ZONE,
   ZoneType,
+  cellCenterWorld,
   getPlayer,
   runGrowth,
   type BuildingRecord,
@@ -89,6 +101,26 @@ export const ECONOMY_TICKS = 30;
 export const TAX_PERIOD_ECONOMY_TICKS = 60;
 /** Seconds in one tax period (for the taxBase rates). */
 export const TAX_PERIOD_SECONDS = 60;
+
+/**
+ * Phase 3 logistics: how far (world units) a reload point's refill aura
+ * reaches. 18 ≈ 9 cells — the depot plus its immediate surroundings.
+ * Rationale: smaller than command auras (HQ 20, Command Ship 24) so
+ * supply stays a positioning decision rather than a map-wide buff, but
+ * larger than the biggest depot footprint (4x3 cells = 8x6 world units)
+ * so units parked at the gate are always in range.
+ */
+export const LOGISTICS_RADIUS = 18;
+
+/**
+ * Phase 3 logistics: fuel a single fuelDepot may pull from the owner's
+ * player-level stockpile per sim-second. 5/s fills the 250-cap depot in
+ * 50 s; even four depots together drain at most 20/s, so one depot can
+ * never empty the empire's stockpile instantly (refinery output is
+ * ~1.5/s for scale). Rate-limited pulls also keep the tick cost flat —
+ * no per-unit iteration, just one min() per depot.
+ */
+export const FUEL_DEPOT_PULL_RATE_PER_SEC = 5;
 
 /** Market resources (funds is the numeraire, never traded directly). */
 export const MarketResource = {
@@ -526,6 +558,38 @@ function runProduction(world: World, city: CityState): void {
       }
       if (gain > 0) addStock(player, key, gain);
     }
+    // Phase 3 logistics: ammo production fills the producer's own stock
+    // (per sim-second, same mult as output — utility penalty, level,
+    // specialization — plus the Advanced Logistics +50% production
+    // bonus). Capped at the effective ammo storage; every producer def
+    // carries ammoStorage, so production is never silently dropped.
+    // Runs after the input loop above: a factory starved of
+    // materials/funds (the `continue`) produces nothing this tick.
+    const ammoRate = effectiveAmmoProduction(world, b.owner, def);
+    if (ammoRate > 0) {
+      const cap = effectiveAmmoStorage(world, b.owner, def);
+      if (cap > 0) {
+        const cur = b.ammoStock ?? 0;
+        b.ammoStock = Math.min(cap, cur + ammoRate * mult);
+      }
+    }
+    // Phase 3 logistics: fuel depots cache the owner's fuel stockpile
+    // forward. Rate-limited (FUEL_DEPOT_PULL_RATE_PER_SEC) and capped
+    // at the effective fuel storage; never drives the player stockpile
+    // negative (pulled <= player.fuel). Not gated on powered/watered —
+    // it is a logistics transfer, not production.
+    if (b.kind === 'fuelDepot') {
+      const cap = effectiveFuelStorage(world, b.owner, def);
+      const cur = b.fuelStock ?? 0;
+      const headroom = cap - cur;
+      if (headroom > 0) {
+        const pulled = Math.min(headroom, FUEL_DEPOT_PULL_RATE_PER_SEC, player.fuel);
+        if (pulled > 0) {
+          b.fuelStock = cur + pulled;
+          player.fuel -= pulled;
+        }
+      }
+    }
   }
 }
 
@@ -545,6 +609,142 @@ function runHarvest(world: World, city: CityState): void {
       const rate = def.harvest[key] ?? 0;
       if (rate > 0) addStock(player, key, rate);
     }
+  }
+}
+
+/**
+ * Phase 3 logistics: the supply refill aura (PLAN S2 — "supply aura
+ * auto-refill in runHarvest order"). Once per economy tick, after
+ * production/harvest, every completed (`progress >= 1`, operational)
+ * reloadPoint building, in building-id order, refills the owner's
+ * living units inside LOGISTICS_RADIUS (unit-id order) from its stocks.
+ *
+ * Priority per depot: (1) units whose `resupplyDepotId` is this depot
+ * (outstanding resupply orders — set by the resupply command, another
+ * workstream), in id order; then (2) all other owner units, lowest
+ * `supplyLevel` first (id tiebreak) — the emptiest tanks/magazines
+ * drink first.
+ *
+ * Reservation accounting: a unit with a resupply order at this depot
+ * draws on the FULL stock — its reservation is honored first because
+ * it is served before anyone else at this depot. Every other unit sees
+ * `stock - reserved`: reserved stock is never touched except to
+ * fulfill a reservation. Fulfillment = any positive transfer: the
+ * unit's `resupplyDepotId` clears and exactly the transferred amount
+ * is released from the reservation pool (clamped; the resupply
+ * command's timeout sweeps residue). A dry depot transfers nothing and
+ * the order flag stays — the unit keeps waiting.
+ *
+ * Ammo transfers are whole units (ordnance is discrete); fuel
+ * transfers are exact (fuel is a fluid, burn is fractional
+ * per-second). Nuclear-fuel units never burn fuel and 'none'/
+ * untracked kinds have zero capacity, so both are naturally excluded
+ * from fuel service; units with no ammo capacity skip the ammo leg.
+ *
+ * Determinism: building-id order, unit-id order within a depot,
+ * supplyLevel sort with id tiebreak, no RNG. Cost: one spatial-hash
+ * build over living units per economy tick (1 Hz) plus one radius
+ * query per depot — the movement.ts precedent at a thirtieth of the
+ * cadence.
+ */
+function runSupplyAura(world: World, city: CityState): void {
+  const depots: BuildingRecord[] = [];
+  for (const b of city.buildings) {
+    if (b.progress < 1 || !b.operational) continue;
+    if (!BUILDING_DEFS[b.kind].reloadPoint) continue;
+    depots.push(b);
+  }
+  if (depots.length === 0) return;
+  // city.buildings is id-ordered by construction; sort defensively so
+  // the service order never depends on insertion accidents.
+  depots.sort((a, b) => a.id - b.id);
+
+  const hash = createSpatialHash(16);
+  const byId = new Map<number, UnitRecord>();
+  for (const u of world.units) {
+    if (u.hp <= 0) continue;
+    byId.set(u.id, u);
+    shInsert(hash, u.id, u.x, u.z);
+  }
+
+  for (const d of depots) {
+    const def = BUILDING_DEFS[d.kind];
+    const dx = cellCenterWorld(d.cx + (def.footprintW - 1) / 2);
+    const dz = cellCenterWorld(d.cz + (def.footprintH - 1) / 2);
+    // shQueryRadius returns ids ascending — deterministic.
+    const ids = shQueryRadius(hash, dx, dz, LOGISTICS_RADIUS);
+    if (ids.length === 0) continue;
+    const mine: UnitRecord[] = [];
+    for (const id of ids) {
+      const u = byId.get(id);
+      // Depots serve their owner's units only — enemy units parked at
+      // the gate get nothing.
+      if (u !== undefined && u.owner === d.owner) mine.push(u);
+    }
+    const ordered: UnitRecord[] = [];
+    const rest: UnitRecord[] = [];
+    for (const u of mine) {
+      if ((u.resupplyDepotId ?? 0) === d.id) ordered.push(u);
+      else rest.push(u);
+    }
+    rest.sort((a, b) => {
+      const la = supplyLevel(UNIT_DEFS[a.kind as keyof typeof UNIT_DEFS], a);
+      const lb = supplyLevel(UNIT_DEFS[b.kind as keyof typeof UNIT_DEFS], b);
+      return la !== lb ? la - lb : a.id - b.id;
+    });
+    for (const u of ordered) serveDepotUnit(d, u, true);
+    for (const u of rest) serveDepotUnit(d, u, false);
+  }
+}
+
+/**
+ * Transfer ammo/fuel from depot `d` to unit `u`. `isReserved` = the
+ * unit holds an outstanding resupply order at this depot (served
+ * first, may draw on the full stock — see runSupplyAura).
+ */
+function serveDepotUnit(d: BuildingRecord, u: UnitRecord, isReserved: boolean): void {
+  const def = UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS];
+  if (!def) return;
+  let gaveAmmo = 0;
+  let gaveFuel = 0;
+  // Ammo: discrete shells — whole units only, never below 1 when the
+  // need and the stock both cover it.
+  const ammoNeed = Math.floor((def.ammoCapacity ?? 0) - u.ammo);
+  if (ammoNeed >= 1) {
+    const stock = d.ammoStock ?? 0;
+    const reserved = d.reservedAmmo ?? 0;
+    const avail = Math.floor(isReserved ? stock : stock - reserved);
+    const give = Math.min(ammoNeed, Math.max(0, avail));
+    if (give > 0) {
+      d.ammoStock = stock - give;
+      u.ammo += give;
+      gaveAmmo = give;
+    }
+  }
+  // Fuel: exact fractional top-up. fossil only — nuclear-fuel units are
+  // exempt from refueling and untracked kinds have no capacity.
+  if (def.fuelType === 'fossil') {
+    const fuelNeed = (def.fuelCapacity ?? 0) - u.fuel;
+    if (fuelNeed > 0) {
+      const stock = d.fuelStock ?? 0;
+      const reserved = d.reservedFuel ?? 0;
+      const avail = isReserved ? stock : stock - reserved;
+      const give = Math.min(fuelNeed, Math.max(0, avail));
+      if (give > 0) {
+        d.fuelStock = stock - give;
+        u.fuel += give;
+        gaveFuel = give;
+      }
+    }
+  }
+  // Fulfillment: any positive transfer completes the resupply order —
+  // clear the flag and release exactly what was handed over from the
+  // reservation pool (clamped at zero). A dry depot transfers nothing
+  // and the order stays outstanding.
+  if (isReserved && (gaveAmmo > 0 || gaveFuel > 0)) {
+    u.resupplyDepotId = 0;
+    d.reservedAmmo = Math.max(0, (d.reservedAmmo ?? 0) - gaveAmmo);
+    d.reservedFuel = Math.max(0, (d.reservedFuel ?? 0) - gaveFuel);
   }
 }
 
@@ -673,6 +873,9 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   const { powerHeadroom, waterHeadroom } = allocateUtilities(world, city);
   runProduction(world, city);
   runHarvest(world, city);
+  // Phase 3 logistics: the refill aura runs after production/harvest so
+  // it sees this tick's fresh producer stocks (PLAN S2).
+  runSupplyAura(world, city);
   runFood(city);
   runTaxes(world, economyTickIndex(world));
   runTradeRoutes(world, city);

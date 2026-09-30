@@ -365,6 +365,14 @@ export const STRINGS = {
     powerSubstation: { en: 'Power Substation' },
     pumpingStation: { en: 'Pumping Station' },
     batteryStation: { en: 'Battery Station' },
+    // Grand-expansion Phase 3 (2026-09-30): the logistics roster.
+    oilWell: { en: 'Oil Well' },
+    oilRig: { en: 'Offshore Oil Rig' },
+    munitionsFactory: { en: 'Munitions Factory' },
+    missilePlant: { en: 'Missile Plant' },
+    missileSilo: { en: 'Missile Silo' },
+    ordnanceDepot: { en: 'Ordnance Depot' },
+    fuelDepot: { en: 'Fuel Depot' },
   } as Record<BuildingKind, LocalizedString>,
   /** Train-palette tab names (spec §8). */
   unitTabs: {
@@ -386,6 +394,8 @@ export const STRINGS = {
     // Phase 2 (utilities): extra tabs for the new plant/water roster.
     power: { en: 'Power' },
     waterNet: { en: 'Water' },
+    // Grand-expansion Phase 3 (2026-09-30): the logistics roster tab.
+    logistics: { en: 'Logistics' },
   } as Record<string, LocalizedString>,
   /** Research-panel upgrade group names. */
   upgradeGroups: {
@@ -393,6 +403,8 @@ export const STRINGS = {
     economy: { en: 'Economy' },
     // Grand-expansion Phase 2 (2026-09-30): the utility research ladder.
     infrastructure: { en: 'Infrastructure' },
+    // Grand-expansion Phase 3 (2026-09-30): the logistics upgrade.
+    logistics: { en: 'Logistics' },
   } as Record<string, LocalizedString>,
   /** Localized age names for lock reasons ("requires the Industry age"). */
   ageNames: {
@@ -403,7 +415,7 @@ export const STRINGS = {
     ascendance: { en: 'Ascendance' },
   } as Record<Age, LocalizedString>,
   /**
-   * The 12 researchable upgrades: localized name + one-line effect
+   * The 19 researchable upgrades: localized name + one-line effect
    * (spec §4; effects mirror the sim's upgrade hooks, not marketing).
    */
   upgrades: {
@@ -479,6 +491,11 @@ export const STRINGS = {
     gridStorage: {
       name: { en: 'Grid Storage' },
       effect: { en: 'Unlocks the Water Tower, Reservoir, and Battery Station' },
+    },
+    // Grand-expansion Phase 3 (2026-09-30): the logistics upgrade.
+    advancedLogistics: {
+      name: { en: 'Advanced Logistics' },
+      effect: { en: 'Depot ammo/fuel storage ×1.5; ammo production ×1.5' },
     },
   } as Record<UpgradeId, { name: LocalizedString; effect: LocalizedString }>,
   /** Utility networks (grand-expansion Phase 2). English-only. */

@@ -44,12 +44,12 @@
 import type { World } from './world';
 import type { Age } from './ages';
 import { isUnitAvailableForAge } from './ages';
-import type { BuildingKind } from './city';
+import type { BuildingKind, BuildingDef } from './city';
 import { getPlayer, BUILDING_DEFS, hasProductionBuilding } from './city';
 import type { CommandQueue } from './commands';
 import type { UnitDef } from './units';
 
-/** The 18 upgrade ids (roster expansion's 12 + Phase 2's utility ladder 6). */
+/** The 19 upgrade ids (roster expansion's 12 + Phase 2's utility ladder 6 + Phase 3's advancedLogistics). */
 export const UPGRADE_IDS = [
   'apRounds',
   'compositeArmor',
@@ -70,6 +70,9 @@ export const UPGRADE_IDS = [
   'groundwaterSurvey',
   'desalinationTech',
   'gridStorage',
+  // Phase 3 (grand expansion): Advanced Logistics — depot capacity and
+  // ammo production.
+  'advancedLogistics',
 ] as const;
 export type UpgradeId = (typeof UPGRADE_IDS)[number];
 
@@ -167,6 +170,15 @@ export const UPGRADE_DEFS: Record<UpgradeId, UpgradeDef> = {
   gridStorage: {
     id: 'gridStorage', name: 'Grid Storage', costFunds: 900, costResearch: 80,
     requiredBuildings: [], minAge: 'connectivity',
+  },
+  // Phase 3 (grand expansion): the military-logistics upgrade.
+  // Prerequisite slots: buildings = ['munitionsFactory'] (the general
+  // ammo producer — the specialized line builds on it), age = industry.
+  // Costed with the other mid-tier military upgrades (compositeArmor:
+  // 1000/80).
+  advancedLogistics: {
+    id: 'advancedLogistics', name: 'Advanced Logistics', costFunds: 1000, costResearch: 100,
+    requiredBuildings: ['munitionsFactory'], minAge: 'industry',
   },
 };
 
@@ -275,6 +287,41 @@ export const VERTICAL_FARMING_WATER_DEMAND = 3;
 
 /** Desalination Tech (Phase 2): desalination water output x1.5. */
 export const DESALINATION_TECH_WATER_MULT = 1.5;
+
+/**
+ * Advanced Logistics (Phase 3, grand expansion): +50% ammo/fuel storage
+ * on every depot/producer and +50% ammo production. The storage bonus
+ * widens the *cap* (effectiveAmmoStorage/effectiveFuelStorage); stocks
+ * already held are kept, not rescaled — no ammo is created or destroyed
+ * by researching the upgrade mid-game.
+ */
+export const ADVANCED_LOGISTICS_STORAGE_MULT = 1.5;
+/** Advanced Logistics: ammo production x1.5. */
+export const ADVANCED_LOGISTICS_PRODUCTION_MULT = 1.5;
+
+/** Ammo produced per sim-second by a producer def, with Advanced Logistics applied. */
+export function effectiveAmmoProduction(world: World, owner: number, def: BuildingDef): number {
+  const base = def.ammoProduction ?? 0;
+  return hasUpgrade(world, owner, 'advancedLogistics')
+    ? base * ADVANCED_LOGISTICS_PRODUCTION_MULT
+    : base;
+}
+
+/** Max ammo a building can hold, with Advanced Logistics applied. */
+export function effectiveAmmoStorage(world: World, owner: number, def: BuildingDef): number {
+  const base = def.ammoStorage ?? 0;
+  return hasUpgrade(world, owner, 'advancedLogistics')
+    ? base * ADVANCED_LOGISTICS_STORAGE_MULT
+    : base;
+}
+
+/** Max fuel a building can hold, with Advanced Logistics applied. */
+export function effectiveFuelStorage(world: World, owner: number, def: BuildingDef): number {
+  const base = def.fuelStorage ?? 0;
+  return hasUpgrade(world, owner, 'advancedLogistics')
+    ? base * ADVANCED_LOGISTICS_STORAGE_MULT
+    : base;
+}
 
 /** Water supply of a water plant, with Desalination Tech applied (desalination only). */
 export function effectiveWaterSupply(world: World, owner: number, kind: string, base: number): number {

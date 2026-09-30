@@ -71,9 +71,9 @@ cell must touch water). Pick a unit, then click open ground (or water
 for ships) to train it.
 
 **Research:** build a **Research Lab** (Commerce tab), then select it
-to open the research panel — 18 upgrades in **Military**, **Economy**,
-and **Infrastructure** groups, each with its cost and effect shown.
-Research one at a time; researched upgrades are marked ✓.
+to open the research panel — 19 upgrades in **Military**, **Economy**,
+**Infrastructure**, and **Logistics** groups, each with its cost and
+effect shown. Research one at a time; researched upgrades are marked ✓.
 
 ## Power and water
 

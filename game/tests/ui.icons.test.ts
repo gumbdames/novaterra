@@ -63,8 +63,8 @@ function expectValidIcon(markup: string): void {
 }
 
 describe('unit icons', () => {
-  it('covers all 28 unit kinds', () => {
-    expect(UNIT_KINDS).toHaveLength(28);
+  it('covers all 30 unit kinds', () => {
+    expect(UNIT_KINDS).toHaveLength(30);
     for (const kind of UNIT_KINDS) {
       expectValidIcon(unitIcon(kind as UnitKind));
     }
@@ -72,14 +72,14 @@ describe('unit icons', () => {
 
   it('gives every unit a distinct glyph', () => {
     const glyphs = new Set(UNIT_KINDS.map((k) => unitIcon(k as UnitKind)));
-    expect(glyphs.size).toBe(28);
+    expect(glyphs.size).toBe(30);
   });
 });
 
 describe('building icons', () => {
-  it('covers all 44 building kinds (31 + grand-expansion Phase 2 utility set)', () => {
+  it('covers all 51 building kinds (31 + grand-expansion Phase 2 utility set + Phase 3 logistics set)', () => {
     const kinds = Object.values(BuildingKind);
-    expect(kinds).toHaveLength(44);
+    expect(kinds).toHaveLength(51);
     for (const kind of kinds) {
       expectValidIcon(buildingIcon(kind as (typeof kinds)[number]));
     }
@@ -88,7 +88,7 @@ describe('building icons', () => {
   it('gives every building a distinct glyph', () => {
     const kinds = Object.values(BuildingKind);
     const glyphs = new Set(kinds.map((k) => buildingIcon(k)));
-    expect(glyphs.size).toBe(44);
+    expect(glyphs.size).toBe(51);
   });
 
   it('gives each of the 13 Phase 2 utility buildings a valid, distinct glyph', () => {
@@ -100,6 +100,20 @@ describe('building icons', () => {
     ] as const;
     const glyphs = new Set<string>();
     for (const kind of utility) {
+      const g = buildingIcon(kind);
+      expectValidIcon(g);
+      expect(glyphs.has(g), `${kind}: glyph reused`).toBe(false);
+      glyphs.add(g);
+    }
+  });
+
+  it('gives each of the 7 Phase 3 logistics buildings a valid, distinct glyph', () => {
+    const logistics = [
+      'oilWell', 'oilRig', 'munitionsFactory', 'missilePlant',
+      'missileSilo', 'ordnanceDepot', 'fuelDepot',
+    ] as const;
+    const glyphs = new Set<string>();
+    for (const kind of logistics) {
       const g = buildingIcon(kind);
       expectValidIcon(g);
       expect(glyphs.has(g), `${kind}: glyph reused`).toBe(false);
