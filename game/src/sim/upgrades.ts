@@ -99,40 +99,63 @@ export interface UpgradeDef {
   minAge: Age;
   /** Another upgrade that must already be researched (unused by the 12, supported for later). */
   requiredUpgrade?: UpgradeId;
+  /**
+   * Grand-expansion Phase 8 (peaceful mode, 2026-09-30): true when this
+   * upgrade exists to wage war — combat upgrades (AP Rounds, Composite
+   * Armor, Engine Tuning, Advanced Avionics, Sonar Suite, Cruise
+   * Missiles, Drone Optics — the drone + spectre sight line), Field
+   * Medicine (barracks-gated, buffs combat troops), Advanced Logistics
+   * ("the military-logistics upgrade": depot/ammo capacity for the
+   * resupply chain), and the intel pair (signalsIntel, counterIntel —
+   * the whole intel roster is hostile apparatus for peaceful-mode
+   * purposes). The economy/utility ladder stays civilian. In a peaceful
+   * world (`world.peaceful`), `researchUpgrade` rejects military defs
+   * loudly and the order never reaches the queue. See
+   * docs/research/phase8-civilian-peaceful.md.
+   */
+  military?: boolean;
 }
 
 export const UPGRADE_DEFS: Record<UpgradeId, UpgradeDef> = {
   apRounds: {
     id: 'apRounds', name: 'AP Rounds', costFunds: 800, costResearch: 60,
     requiredBuildings: ['warFactory'], minAge: 'industry',
+    military: true,
   },
   compositeArmor: {
     id: 'compositeArmor', name: 'Composite Armor', costFunds: 1000, costResearch: 80,
     requiredBuildings: ['warFactory'], minAge: 'industry',
+    military: true,
   },
   engineTuning: {
     id: 'engineTuning', name: 'Engine Tuning', costFunds: 600, costResearch: 40,
     requiredBuildings: [], minAge: 'connectivity',
+    military: true,
   },
   advancedAvionics: {
     id: 'advancedAvionics', name: 'Advanced Avionics', costFunds: 1200, costResearch: 120,
     requiredBuildings: ['airfield', 'radarStation'], minAge: 'information',
+    military: true,
   },
   sonarSuite: {
     id: 'sonarSuite', name: 'Sonar Suite', costFunds: 900, costResearch: 80,
     requiredBuildings: ['navalYard'], minAge: 'industry',
+    military: true,
   },
   cruiseMissiles: {
     id: 'cruiseMissiles', name: 'Cruise Missiles', costFunds: 1500, costResearch: 150,
     requiredBuildings: ['radarStation'], minAge: 'information',
+    military: true,
   },
   droneOptics: {
     id: 'droneOptics', name: 'Drone Optics', costFunds: 500, costResearch: 50,
     requiredBuildings: [], minAge: 'connectivity',
+    military: true,
   },
   fieldMedicine: {
     id: 'fieldMedicine', name: 'Field Medicine', costFunds: 700, costResearch: 60,
     requiredBuildings: ['hospital', 'barracks'], minAge: 'connectivity',
+    military: true,
   },
   precisionManufacturing: {
     id: 'precisionManufacturing', name: 'Precision Manufacturing', costFunds: 1200, costResearch: 100,
@@ -185,6 +208,7 @@ export const UPGRADE_DEFS: Record<UpgradeId, UpgradeDef> = {
   advancedLogistics: {
     id: 'advancedLogistics', name: 'Advanced Logistics', costFunds: 1000, costResearch: 100,
     requiredBuildings: ['munitionsFactory'], minAge: 'industry',
+    military: true,
   },
   // ------------------------------------------------------------------
   // Grand-expansion intel roster (§3.8 / §4 S6, workstream 2,
@@ -197,10 +221,12 @@ export const UPGRADE_DEFS: Record<UpgradeId, UpgradeDef> = {
   signalsIntel: {
     id: 'signalsIntel', name: 'Signals Intelligence', costFunds: 1000, costResearch: 100,
     requiredBuildings: ['listeningPost'], minAge: 'information',
+    military: true,
   },
   counterIntel: {
     id: 'counterIntel', name: 'Counter-Intelligence', costFunds: 900, costResearch: 90,
     requiredBuildings: ['signalsStation'], minAge: 'information',
+    military: true,
   },
 };
 
@@ -484,6 +510,14 @@ export function registerUpgradeCommands(queue: CommandQueue): void {
         return 'researchUpgrade: requires a completed Research Lab';
       }
       const def = UPGRADE_DEFS[id as UpgradeId];
+      // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): military
+      // upgrades cannot be researched in a peaceful world — loud
+      // rejection (CommandRejectedError → HUD toast), never silent.
+      // The flag is immutable (set at tick 0, never toggled), so no
+      // apply-time re-check is needed — enqueue-time is definitive.
+      if (world.peaceful === true && def.military === true) {
+        return `researchUpgrade: ${def.name} is a military upgrade and cannot be researched in peaceful mode`;
+      }
       // Age gate.
       if (!isUnitAvailableForAge(world, def.minAge)) {
         return `researchUpgrade: ${def.name} requires the ${def.minAge} age`;

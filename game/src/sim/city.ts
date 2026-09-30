@@ -821,6 +821,27 @@ export interface BuildingDef {
    * radarStation only.
    */
   radarRadius?: number;
+  /**
+   * Grand-expansion Phase 8 (peaceful mode, 2026-09-30): true when this
+   * building is war apparatus — military production (barracks,
+   * warFactory, militaryAcademy, airfield, navalYard, shipyard,
+   * radarStation), military logistics (munitionsFactory, missilePlant,
+   * missileSilo, ordnanceDepot, fuelDepot), superweapons (aegisControl,
+   * stormArray), the intel roster (intelHQ, listeningPost,
+   * satelliteUplink, signalsStation), military aviation
+   * (militaryAirbase, mixedAirport), and the naval base. In a peaceful
+   * world (`world.peaceful`), `placeBuilding` rejects military defs
+   * loudly and the order never reaches the queue.
+   *
+   * Judgment calls: `shipyard` is military because every unit it gates
+   * (missileBoat, ammoShip, repairShip, minelayer) is military — the
+   * civilian sea units need no production building. `mixedAirport` is
+   * military because it hosts combat aircraft. The civilian airport
+   * pieces (civilAirport, terminals, hangars, runways...) and the
+   * civilian ports stay available in peaceful games. See
+   * docs/research/phase8-civilian-peaceful.md.
+   */
+  military?: boolean;
 }
 
 /**
@@ -944,6 +965,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: {}, input: {}, population: 0, taxBasePerSec: 4.0,
     minAge: 'foundation',
     jobs: 20,
+    military: true,
   },
   aegisControl: {
     kind: 'aegisControl', name: 'Aegis Control', zone: UTILITY_ZONE,
@@ -953,6 +975,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: {}, input: {}, population: 0, taxBasePerSec: 6.0,
     minAge: 'ascendance',
     jobs: 10,
+    military: true,
   },
   stormArray: {
     kind: 'stormArray', name: 'Storm Array', zone: UTILITY_ZONE,
@@ -962,6 +985,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: {}, input: {}, population: 0, taxBasePerSec: 6.0,
     minAge: 'ascendance',
     jobs: 8,
+    military: true,
   },
   barracks: {
     kind: 'barracks', name: 'Barracks', zone: ZoneType.INDUSTRIAL,
@@ -974,6 +998,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     // (stocks arrive via the supply-truck chain; see reloadPoint doc).
     reloadPoint: true,
     jobs: 30,
+    military: true,
   },
   militaryAcademy: {
     kind: 'militaryAcademy', name: 'Military Academy', zone: ZoneType.INDUSTRIAL,
@@ -983,6 +1008,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: {}, input: {}, population: 0, taxBasePerSec: 4.0,
     minAge: 'foundation', requiredBuilding: 'barracks',
     jobs: 15,
+    military: true,
   },
   warFactory: {
     kind: 'warFactory', name: 'War Factory', zone: ZoneType.INDUSTRIAL,
@@ -994,6 +1020,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     // Phase 3: army bases are reload points (see barracks note).
     reloadPoint: true,
     jobs: 30,
+    military: true,
   },
   airfield: {
     kind: 'airfield', name: 'Airfield', zone: UTILITY_ZONE,
@@ -1012,6 +1039,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     // in sim.hangars.test.ts. `defaultHangarSlots` reads this pair.
     hangarClass: 'generic', hangarCapacity: 6,
     jobs: 20,
+    military: true,
   },
   navalYard: {
     kind: 'navalYard', name: 'Naval Yard', zone: UTILITY_ZONE,
@@ -1023,6 +1051,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     // Phase 3: the naval base is a reload point for ships.
     reloadPoint: true,
     jobs: 25,
+    military: true,
   },
   // Phase 4 transport (S7, grand expansion): civilian transport hubs.
   railStation: {
@@ -1190,6 +1219,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     // Connectivity-age radar must not obsolete the Information-age
     // SIGINT counter-spy game.
     radarRadius: 90,
+    military: true,
   },
   quarry: {
     kind: 'quarry', name: 'Quarry', zone: ZoneType.INDUSTRIAL,
@@ -1555,6 +1585,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     minAge: 'industry',
     ammoProduction: 2.0, ammoStorage: 60, reloadPoint: true,
     jobs: 20,
+    military: true,
   },
   missilePlant: {
     kind: 'missilePlant', name: 'Missile Plant', zone: ZoneType.INDUSTRIAL,
@@ -1566,6 +1597,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     minAge: 'industry', requiredBuilding: 'munitionsFactory',
     ammoProduction: 5.0, ammoStorage: 100, reloadPoint: true,
     jobs: 25,
+    military: true,
   },
   missileSilo: {
     kind: 'missileSilo', name: 'Missile Silo', zone: UTILITY_ZONE,
@@ -1576,6 +1608,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     minAge: 'industry',
     ammoStorage: 400, reloadPoint: true,
     jobs: 6,
+    military: true,
   },
   ordnanceDepot: {
     kind: 'ordnanceDepot', name: 'Ordnance Depot', zone: UTILITY_ZONE,
@@ -1586,6 +1619,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     minAge: 'industry',
     ammoStorage: 150, reloadPoint: true,
     jobs: 8,
+    military: true,
   },
   fuelDepot: {
     kind: 'fuelDepot', name: 'Fuel Depot', zone: UTILITY_ZONE,
@@ -1596,6 +1630,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     minAge: 'foundation',
     fuelStorage: 250, reloadPoint: true,
     jobs: 6,
+    military: true,
   },
   // ------------------------------------------------------------------
   // Grand-expansion Phase 5 — airports (workstream A, S5+S8,
@@ -1647,6 +1682,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     countsAs: ['airfield'], // trains military aircraft like an airfield
     reloadPoint: true,
     jobs: 35,
+    military: true,
   },
   mixedAirport: {
     kind: 'mixedAirport', name: 'Mixed Airport', zone: ZoneType.AIRPORT,
@@ -1660,6 +1696,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     harvest: { funds: 1.2 }, // landing fees + military contracts
     reloadPoint: true,
     jobs: 50,
+    military: true,
   },
   passengerTerminal: {
     kind: 'passengerTerminal', name: 'Passenger Terminal', zone: ZoneType.AIRPORT,
@@ -1829,6 +1866,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     fuelStorage: 300,
     ammoStorage: 100,
     jobs: 35,
+    military: true,
   },
   // ------------------------------------------------------------------
   // Grand-expansion intel roster (§3.8 / §4 S6, workstream 2,
@@ -1851,6 +1889,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     // (surveillance) from its own desks.
     intelOutput: { operational: 0.2, surveillance: 0.1 },
     jobs: 12,
+    military: true,
   },
   listeningPost: {
     kind: 'listeningPost', name: 'Listening Post', zone: UTILITY_ZONE,
@@ -1864,6 +1903,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     intelOutput: { surveillance: 0.25 },
     detectionRadius: 60,
     jobs: 6,
+    military: true,
   },
   satelliteUplink: {
     kind: 'satelliteUplink', name: 'Satellite Uplink', zone: UTILITY_ZONE,
@@ -1878,6 +1918,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     intelOutput: { surveillance: 0.6 },
     sightBonus: 12,
     jobs: 8,
+    military: true,
   },
   signalsStation: {
     kind: 'signalsStation', name: 'Signals Station', zone: UTILITY_ZONE,
@@ -1891,6 +1932,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     intelOutput: { counterIntel: 0.2 },
     detectionRadius: 45,
     jobs: 10,
+    military: true,
   },
 };
 
@@ -3472,6 +3514,14 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       // importing ages.ts — that module imports getPlayer from here, so an
       // import would be a cycle.)
       const bdef = BUILDING_DEFS[kind];
+      // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): military
+      // defs cannot be placed in a peaceful world — loud rejection
+      // (CommandRejectedError → HUD toast), never silent. The flag is
+      // immutable (set at tick 0, never toggled), so no apply-time
+      // re-check is needed — enqueue-time is definitive.
+      if (world.peaceful === true && bdef.military === true) {
+        return `placeBuilding: ${bdef.name} is a military building and cannot be placed in peaceful mode`;
+      }
       if (!isBuildingAgeMet(world.ages.age, bdef.minAge)) {
         return `placeBuilding: ${bdef.name} requires the ${bdef.minAge} age`;
       }

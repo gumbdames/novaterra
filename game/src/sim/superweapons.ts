@@ -230,6 +230,13 @@ const fireAegisSpec: CommandSpec = {
   validate(cmd, world): string | null {
     const owner = payloadInt(cmd.payload, 'owner');
     if (owner === null || !getPlayer(world.city, owner)) return 'fireAegis: unknown owner';
+    // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): superweapons
+    // are military apparatus — the Aegis Control building itself is a
+    // military def. Loud rejection, never silent. Defense in depth on
+    // top of the placeBuilding lockout: a facility can never be built
+    // in a peaceful world, but this gate closes the fire path even if
+    // one somehow existed (e.g. a future save migration edge).
+    if (world.peaceful === true) return 'fireAegis: superweapons are not available in peaceful mode';
     if (world.ages.age !== 'ascendance') return 'fireAegis: requires the Ascendance age';
     if (!hasAegisFacility(world, owner)) {
       return 'fireAegis: requires a completed Aegis Control building';
@@ -260,6 +267,14 @@ const fireStormSpec: CommandSpec = {
   validate(cmd, world): string | null {
     const owner = payloadInt(cmd.payload, 'owner');
     if (owner === null || !getPlayer(world.city, owner)) return 'fireStorm: unknown owner';
+    // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): the Storm
+    // Array is a military def and the strike is the game's only attack
+    // path (also the only meltdown trigger). Locked out loudly in
+    // peaceful worlds — this is the gate that keeps "meltdowns are
+    // impossible in peaceful mode" true even for the Marshal AI's
+    // virtual-construction path, whose `constructSuperweaponFacility`
+    // validate carries the same gate below.
+    if (world.peaceful === true) return 'fireStorm: superweapons are not available in peaceful mode';
     if (world.ages.age !== 'ascendance') return 'fireStorm: requires the Ascendance age';
     if (!hasStormFacility(world, owner)) {
       return 'fireStorm: requires a completed Storm Array building';
@@ -304,6 +319,14 @@ const constructFacilitySpec: CommandSpec = {
       return "constructSuperweaponFacility: kind must be 'aegis' or 'storm'";
     }
     const ai = world.ai.players.find((a) => a.owner === owner);
+    // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): the facility
+    // kind is a military def (stormArray / aegisControl) — rejected for
+    // everyone, before the difficulty check. The Marshal AI's `issue`
+    // wrapper already swallows the rejection, so it keeps playing
+    // peacefully without stalling or crashing.
+    if (world.peaceful === true) {
+      return 'constructSuperweaponFacility: superweapons are not available in peaceful mode';
+    }
     if (!ai || ai.difficulty !== 'marshal') {
       return 'constructSuperweaponFacility: only a Marshal AI builds this way';
     }

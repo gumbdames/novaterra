@@ -799,6 +799,14 @@ const infiltrateSpec = {
     const unitId = payloadInt(cmd.payload, 'unitId');
     const buildingId = payloadInt(cmd.payload, 'buildingId');
     const owner = payloadInt(cmd.payload, 'owner');
+    // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): covert ops
+    // are hostile acts — locked out in peaceful worlds, loudly
+    // (CommandRejectedError → HUD toast), never silently. The flag is
+    // immutable (set at tick 0, never toggled), so no apply-time
+    // re-check is needed — enqueue-time is definitive.
+    if (world.peaceful === true) {
+      return 'infiltrateBuilding: covert operations are not available in peaceful mode';
+    }
     if (unitId === null || unitId <= 0) return 'infiltrateBuilding: payload.unitId must be a positive integer';
     if (buildingId === null || buildingId <= 0) return 'infiltrateBuilding: payload.buildingId must be a positive integer';
     if (owner === null) return 'infiltrateBuilding: payload.owner must be an integer';
@@ -835,6 +843,11 @@ const sabotageSpec = {
     const unitId = payloadInt(cmd.payload, 'unitId');
     const buildingId = payloadInt(cmd.payload, 'buildingId');
     const owner = payloadInt(cmd.payload, 'owner');
+    // Grand-expansion Phase 8 (peaceful mode): covert ops are hostile
+    // acts — locked out in peaceful worlds, loudly, never silently.
+    if (world.peaceful === true) {
+      return 'sabotage: covert operations are not available in peaceful mode';
+    }
     if (unitId === null || unitId <= 0) return 'sabotage: payload.unitId must be a positive integer';
     if (buildingId === null || buildingId <= 0) return 'sabotage: payload.buildingId must be a positive integer';
     if (owner === null) return 'sabotage: payload.owner must be an integer';
@@ -875,6 +888,11 @@ const stealTechSpec = {
     const unitId = payloadInt(cmd.payload, 'unitId');
     const buildingId = payloadInt(cmd.payload, 'buildingId');
     const owner = payloadInt(cmd.payload, 'owner');
+    // Grand-expansion Phase 8 (peaceful mode): covert ops are hostile
+    // acts — locked out in peaceful worlds, loudly, never silently.
+    if (world.peaceful === true) {
+      return 'stealTech: covert operations are not available in peaceful mode';
+    }
     if (unitId === null || unitId <= 0) return 'stealTech: payload.unitId must be a positive integer';
     if (buildingId === null || buildingId <= 0) return 'stealTech: payload.buildingId must be a positive integer';
     if (owner === null) return 'stealTech: payload.owner must be an integer';

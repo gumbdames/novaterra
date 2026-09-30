@@ -380,6 +380,28 @@ export interface UnitDef {
    * reconPlane set this.
    */
   recon?: boolean;
+  /**
+   * Grand-expansion Phase 8 (peaceful mode, 2026-09-30): true when this
+   * unit is a weapon of war — combat units, military logistics and
+   * support (supply/fuel chains, medics, AWACS/tankers, naval fleet
+   * support), and the intel/sabotage apparatus (spy). In a peaceful
+   * world (`world.peaceful`), `spawnUnit` rejects military defs loudly
+   * and the order never reaches the queue.
+   *
+   * The predicate is intentionally conservative about the civilian
+   * economy: unarmed transports (transport, transportShip), the
+   * engineer (the game's builder — its 5-damage sidearm is flavor, not
+   * a weapon system), the hauler, the civilian sea/air earners
+   * (fishingBoat, cargoFreighter, cruiseLiner, yacht, ferries, buses,
+   * trains, airliners), and the unarmed pure-recon aircraft
+   * (reconUAV, reconPlane) stay civilian. Note the recon aircraft
+   * require an airfield (military-locked), so they are unreachable in
+   * peaceful games anyway — they stay civilian so a civilian
+   * airfield-style path could use them later. See
+   * docs/research/phase8-civilian-peaceful.md for the full roster and
+   * the judgment calls.
+   */
+  military?: boolean;
 }
 
 /** Mobile HQ command aura: radius and friendly damage bonus. */
@@ -432,6 +454,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     damage: 9, range: 15, minRange: 0, cooldownTicks: 20, targets: 'ground',
     vsLight: 1.0, vsMedium: 0.55, vsHeavy: 0.3, vsAir: 1.0, sight: 22, minAge: 'foundation',
     manpowerCost: 2, trainFunds: 60, trainMaterials: 0,
+    military: true,
   },
   tank: {
     kind: 'tank', name: 'Main Battle Tank', domain: 'land', hp: 500, speed: 10, armor: 'heavy',
@@ -439,6 +462,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.3, vsMedium: 1.0, vsHeavy: 0.9, vsAir: 1.0, sight: 26, minAge: 'foundation',
     manpowerCost: 5, trainFunds: 400, trainMaterials: 60, requiredBuilding: 'warFactory',
     fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil', // 400 s ≈ 8 map crossings
+    military: true,
   },
   artillery: {
     kind: 'artillery', name: 'Artillery', domain: 'land', hp: 160, speed: 6, armor: 'medium',
@@ -446,6 +470,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.0, vsMedium: 1.4, vsHeavy: 1.6, vsAir: 1.0, sight: 30, minAge: 'foundation',
     manpowerCost: 4, trainFunds: 450, trainMaterials: 80, requiredBuilding: 'warFactory',
     fuelCapacity: 40, fuelPerSecond: 0.10, fuelType: 'fossil', // 400 s; slow gun, sips fuel
+    military: true,
   },
   aa: {
     kind: 'aa', name: 'Mobile AA', domain: 'land', hp: 200, speed: 10, armor: 'medium',
@@ -453,6 +478,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 0.3, vsMedium: 0.3, vsHeavy: 0.3, vsAir: 2.2, sight: 34, minAge: 'foundation',
     manpowerCost: 4, trainFunds: 350, trainMaterials: 60, requiredBuilding: 'warFactory',
     fuelCapacity: 50, fuelPerSecond: 0.15, fuelType: 'fossil', // ~333 s
+    military: true,
   },
   hauler: {
     kind: 'hauler', name: 'Hauler', domain: 'land', hp: 160, speed: 9, armor: 'medium',
@@ -471,6 +497,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 0, trainFunds: 180, trainMaterials: 40,
     fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil', // 400 s own tank
     cargoFuelCapacity: 100, cargoAmmoCapacity: 40, // the field resupply workhorse
+    military: true,
   },
   fuelTruck: {
     kind: 'fuelTruck', name: 'Fuel Truck', domain: 'land', hp: 140, speed: 9, armor: 'medium',
@@ -480,12 +507,14 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 0, trainFunds: 200, trainMaterials: 60,
     fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil', // 400 s own tank
     cargoFuelCapacity: 220, // dedicated tanker; no ammo hold
+    military: true,
   },
   spectre: {
     kind: 'spectre', name: 'Spectre', domain: 'land', hp: 130, speed: 12, armor: 'light',
     damage: 75, range: 10, minRange: 0, cooldownTicks: 45, targets: 'ground',
     vsLight: 1.0, vsMedium: 1.6, vsHeavy: 1.3, vsAir: 1.0, sight: 24, minAge: 'foundation',
     manpowerCost: 3, trainFunds: 300, trainMaterials: 20, requiredBuilding: 'barracks',
+    military: true,
   },
   hq: {
     kind: 'hq', name: 'Mobile HQ', domain: 'land', hp: 400, speed: 7, armor: 'heavy',
@@ -494,6 +523,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 2, trainFunds: 600, trainMaterials: 100,
     auraRadius: HQ_AURA_RADIUS, auraBonus: HQ_AURA_DAMAGE_BONUS,
     fuelCapacity: 70, fuelPerSecond: 0.18, fuelType: 'fossil', // ~389 s; heavy command vehicle
+    military: true,
   },
   fighter: {
     kind: 'fighter', name: 'Fighter', domain: 'air', hp: 170, speed: 26, armor: 'light',
@@ -502,6 +532,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 3, trainFunds: 800, trainMaterials: 120, requiredBuilding: 'airfield',
     fuelCapacity: 45, fuelPerSecond: 0.5, fuelType: 'fossil', // 90 s — the air tempo constraint
     hangarClass: 'medium',
+    military: true,
   },
   transport: {
     kind: 'transport', name: 'Transport', domain: 'air', hp: 240, speed: 22, armor: 'medium',
@@ -518,6 +549,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 0, trainFunds: 80, trainMaterials: 10,
     fuelCapacity: 25, fuelPerSecond: 0.25, fuelType: 'fossil', // 100 s; efficient, tiny tank
     hangarClass: 'light',
+    military: true,
   },
   patrolBoat: {
     kind: 'patrolBoat', name: 'Patrol Boat', domain: 'sea', hp: 220, speed: 14, armor: 'light',
@@ -525,6 +557,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.2, vsMedium: 0.8, vsHeavy: 0.5, vsAir: 0.8, sight: 30, minAge: 'industry',
     manpowerCost: 3, trainFunds: 250, trainMaterials: 60,
     fuelCapacity: 70, fuelPerSecond: 0.2, fuelType: 'fossil', // 350 s
+    military: true,
   },
   destroyer: {
     kind: 'destroyer', name: 'Destroyer', domain: 'sea', hp: 600, speed: 11, armor: 'heavy',
@@ -532,6 +565,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.3, vsMedium: 1.1, vsHeavy: 1.0, vsAir: 1.8, sight: 34, minAge: 'industry',
     manpowerCost: 6, trainFunds: 1500, trainMaterials: 400, requiredBuilding: 'navalYard',
     fuelCapacity: 120, fuelPerSecond: 0.25, fuelType: 'fossil', // 480 s; fleet legs
+    military: true,
   },
   transportShip: {
     kind: 'transportShip', name: 'Transport Ship', domain: 'sea', hp: 350, speed: 9, armor: 'medium',
@@ -548,6 +582,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     damage: 45, range: 30, minRange: 0, cooldownTicks: 70, targets: 'ground',
     vsLight: 1.6, vsMedium: 0.8, vsHeavy: 0.4, vsAir: 1.0, sight: 36, minAge: 'connectivity',
     manpowerCost: 3, trainFunds: 200, trainMaterials: 20, requiredBuilding: 'barracks',
+    military: true,
   },
   combatMedic: {
     kind: 'combatMedic', name: 'Combat Medic', domain: 'land', hp: 100, speed: 9, armor: 'light',
@@ -555,6 +590,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'connectivity',
     manpowerCost: 2, trainFunds: 150, trainMaterials: 10, requiredBuilding: 'barracks',
     healRadius: 12, healPerSec: 2,
+    military: true,
   },
   apc: {
     kind: 'apc', name: 'Armored Personnel Carrier', domain: 'land', hp: 320, speed: 12, armor: 'medium',
@@ -562,6 +598,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.3, vsMedium: 0.8, vsHeavy: 0.5, vsAir: 1.0, sight: 24, minAge: 'connectivity',
     manpowerCost: 4, trainFunds: 250, trainMaterials: 40, requiredBuilding: 'warFactory',
     fuelCapacity: 48, fuelPerSecond: 0.16, fuelType: 'fossil', // 300 s; quick battle-taxi
+    military: true,
   },
   tankDestroyer: {
     kind: 'tankDestroyer', name: 'Tank Destroyer', domain: 'land', hp: 380, speed: 9, armor: 'medium',
@@ -569,6 +606,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 0.6, vsMedium: 1.2, vsHeavy: 1.8, vsAir: 1.0, sight: 26, minAge: 'industry',
     manpowerCost: 5, trainFunds: 500, trainMaterials: 90, requiredBuilding: 'warFactory',
     fuelCapacity: 55, fuelPerSecond: 0.15, fuelType: 'fossil', // ~367 s
+    military: true,
   },
   mlrs: {
     kind: 'mlrs', name: 'MLRS', domain: 'land', hp: 180, speed: 7, armor: 'medium',
@@ -577,6 +615,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 5, trainFunds: 600, trainMaterials: 120, requiredBuilding: 'warFactory',
     ammoCapacity: 6, ammoPerShot: 1, // one 6-rocket pod: a single alpha strike per load
     fuelCapacity: 45, fuelPerSecond: 0.12, fuelType: 'fossil', // 375 s
+    military: true,
   },
   fighterBomber: {
     kind: 'fighterBomber', name: 'Fighter-Bomber', domain: 'air', hp: 200, speed: 28, armor: 'medium',
@@ -585,6 +624,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 4, trainFunds: 1000, trainMaterials: 150, requiredBuilding: 'airfield',
     fuelCapacity: 55, fuelPerSecond: 0.55, fuelType: 'fossil', // 100 s; strike needs the extra tank
     hangarClass: 'medium',
+    military: true,
   },
   attackHeli: {
     kind: 'attackHeli', name: 'Attack Helicopter', domain: 'air', hp: 150, speed: 30, armor: 'light',
@@ -593,6 +633,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 4, trainFunds: 700, trainMaterials: 100, requiredBuilding: 'airfield',
     fuelCapacity: 40, fuelPerSecond: 0.5, fuelType: 'fossil', // 80 s; helos are thirsty
     hangarClass: 'light',
+    military: true,
   },
   awacs: {
     kind: 'awacs', name: 'AWACS', domain: 'air', hp: 180, speed: 24, armor: 'light',
@@ -601,6 +642,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 3, trainFunds: 900, trainMaterials: 120, requiredBuilding: 'airfield',
     fuelCapacity: 60, fuelPerSecond: 0.4, fuelType: 'fossil', // 150 s; endurance is its job
     hangarClass: 'heavy',
+    military: true,
   },
   // ------------------------------------------------------------------
   // Grand-expansion Phase 5 (aircraft expansion, S4 — 2026-09-30): 16
@@ -621,6 +663,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     ammoCapacity: 8, ammoPerShot: 1, // §3.2 missile consumer: a full heavy-ordnance bay
     fuelCapacity: 100, fuelPerSecond: 0.5, fuelType: 'fossil', // 200 s; intercontinental legs
     hangarClass: 'heavy',
+    military: true,
   },
   maritimePatrol: {
     kind: 'maritimePatrol', name: 'Maritime Patrol', domain: 'air', hp: 170, speed: 27, armor: 'medium',
@@ -629,6 +672,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 4, trainFunds: 1100, trainMaterials: 170, requiredBuilding: 'airfield',
     fuelCapacity: 90, fuelPerSecond: 0.5, fuelType: 'fossil', // 180 s; long ASW loiter
     hangarClass: 'medium',
+    military: true,
   },
   reconUAV: {
     kind: 'reconUAV', name: 'Recon UAV', domain: 'air', hp: 45, speed: 32, armor: 'light',
@@ -647,6 +691,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     ammoCapacity: 4, ammoPerShot: 1, // hellfire-type light missile rack
     fuelCapacity: 36, fuelPerSecond: 0.3, fuelType: 'fossil', // 120 s
     hangarClass: 'light', carrierCapable: true,
+    military: true,
   },
   reconPlane: {
     kind: 'reconPlane', name: 'Recon Plane', domain: 'air', hp: 130, speed: 34, armor: 'light',
@@ -664,6 +709,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 4, trainFunds: 1400, trainMaterials: 210, requiredBuilding: 'airfield',
     fuelCapacity: 65, fuelPerSecond: 0.5, fuelType: 'fossil', // 130 s; heavy CAS loiter
     hangarClass: 'medium',
+    military: true,
   },
   tanker: {
     kind: 'tanker', name: 'Tanker', domain: 'air', hp: 260, speed: 24, armor: 'medium',
@@ -673,6 +719,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     fuelCapacity: 120, fuelPerSecond: 0.4, fuelType: 'fossil', // 300 s; its own long legs
     cargoFuelCapacity: 200, tankerRefuelRadius: 40, // flying fuel station (S2 air logistics)
     hangarClass: 'heavy',
+    military: true,
   },
   militaryCargo: {
     kind: 'militaryCargo', name: 'Military Cargo', domain: 'air', hp: 300, speed: 20, armor: 'medium',
@@ -682,6 +729,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     fuelCapacity: 96, fuelPerSecond: 0.4, fuelType: 'fossil', // 240 s; airlift legs
     cargoFuelCapacity: 60, cargoAmmoCapacity: 20, // air hauler for forward depots
     hangarClass: 'heavy',
+    military: true,
   },
   trainer: {
     kind: 'trainer', name: 'Trainer', domain: 'air', hp: 100, speed: 28, armor: 'light',
@@ -690,6 +738,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 1, trainFunds: 350, trainMaterials: 50, requiredBuilding: 'airfield',
     fuelCapacity: 40, fuelPerSecond: 0.4, fuelType: 'fossil', // 100 s; cheap flight hours
     hangarClass: 'light', carrierCapable: true,
+    military: true,
   },
   navalFighter: {
     kind: 'navalFighter', name: 'Naval Fighter', domain: 'air', hp: 190, speed: 27, armor: 'light',
@@ -698,6 +747,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 3, trainFunds: 950, trainMaterials: 140, requiredBuilding: 'airfield',
     fuelCapacity: 55, fuelPerSecond: 0.5, fuelType: 'fossil', // 110 s; carrier strike range
     hangarClass: 'medium', carrierCapable: true,
+    military: true,
   },
   airliner: {
     kind: 'airliner', name: 'Airliner', domain: 'air', hp: 200, speed: 26, armor: 'light',
@@ -754,6 +804,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 4, trainFunds: 500, trainMaterials: 120, requiredBuilding: 'shipyard',
     ammoCapacity: 8, ammoPerShot: 1, // two 4-packs of anti-ship missiles
     fuelCapacity: 80, fuelPerSecond: 0.25, fuelType: 'fossil', // 320 s; fast strike craft
+    military: true,
   },
   frigate: {
     kind: 'frigate', name: 'Frigate', domain: 'sea', hp: 420, speed: 13, armor: 'medium',
@@ -761,6 +812,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.2, vsMedium: 1.6, vsHeavy: 0.8, vsAir: 1.2, sight: 32, minAge: 'industry',
     manpowerCost: 5, trainFunds: 900, trainMaterials: 220, requiredBuilding: 'navalYard',
     fuelCapacity: 110, fuelPerSecond: 0.25, fuelType: 'fossil', // 440 s
+    military: true,
   },
   submarine: {
     kind: 'submarine', name: 'Submarine', domain: 'sea', hp: 300, speed: 10, armor: 'medium',
@@ -769,6 +821,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 6, trainFunds: 1200, trainMaterials: 300, requiredBuilding: 'navalYard',
     ammoCapacity: 12, ammoPerShot: 1, // a torpedo room; still tracked under nuclear fuel
     fuelType: 'nuclear', // no conventional refueling — user directive 2026-09-30
+    military: true,
   },
   carrier: {
     kind: 'carrier', name: 'Carrier', domain: 'sea', hp: 900, speed: 8, armor: 'heavy',
@@ -781,6 +834,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     // only through embarkAircraft orders (carrierCapable kinds:
     // navalFighter, armedUAV, reconUAV, trainer).
     wingCapacity: 8,
+    military: true,
   },
   commandShip: {
     kind: 'commandShip', name: 'Command Ship', domain: 'sea', hp: 700, speed: 9, armor: 'heavy',
@@ -789,6 +843,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 6, trainFunds: 2000, trainMaterials: 500, requiredBuilding: 'navalYard',
     auraRadius: 24, auraBonus: 0.25, auraDomain: 'sea',
     fuelCapacity: 130, fuelPerSecond: 0.25, fuelType: 'fossil', // 520 s; flagship bunkers
+    military: true,
   },
   fishingBoat: {
     kind: 'fishingBoat', name: 'Fishing Boat', domain: 'sea', hp: 120, speed: 12, armor: 'light',
@@ -871,6 +926,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 4, trainFunds: 700, trainMaterials: 180,
     fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil', // 400 s
     ammoCapacity: 6,
+    military: true,
   },
   missileSub: {
     kind: 'missileSub', name: 'Missile Sub', domain: 'sea', hp: 550, speed: 9, armor: 'heavy',
@@ -880,6 +936,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 8, trainFunds: 2500, trainMaterials: 700,
     fuelCapacity: 0, fuelPerSecond: 0, fuelType: 'nuclear', // never burns or refuels
     ammoCapacity: 16,
+    military: true,
   },
   corvette: {
     kind: 'corvette', name: 'Corvette', domain: 'sea', hp: 260, speed: 15, armor: 'light',
@@ -888,6 +945,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     requiredBuilding: 'shipyard',
     manpowerCost: 3, trainFunds: 450, trainMaterials: 110,
     fuelCapacity: 80, fuelPerSecond: 0.25, fuelType: 'fossil', // 320 s
+    military: true,
   },
   cruiser: {
     kind: 'cruiser', name: 'Cruiser', domain: 'sea', hp: 650, speed: 10, armor: 'heavy',
@@ -896,6 +954,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     requiredBuilding: 'navalYard',
     manpowerCost: 7, trainFunds: 2200, trainMaterials: 600,
     fuelCapacity: 120, fuelPerSecond: 0.25, fuelType: 'fossil', // 480 s
+    military: true,
   },
   battleship: {
     kind: 'battleship', name: 'Battleship', domain: 'sea', hp: 800, speed: 9, armor: 'heavy',
@@ -904,6 +963,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     requiredBuilding: 'navalYard',
     manpowerCost: 9, trainFunds: 3000, trainMaterials: 900,
     fuelCapacity: 140, fuelPerSecond: 0.25, fuelType: 'fossil', // 560 s
+    military: true,
   },
   heavyDestroyer: {
     kind: 'heavyDestroyer', name: 'Heavy Destroyer', domain: 'sea', hp: 550, speed: 12, armor: 'medium',
@@ -912,6 +972,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     requiredBuilding: 'navalYard',
     manpowerCost: 6, trainFunds: 1800, trainMaterials: 500,
     fuelCapacity: 110, fuelPerSecond: 0.25, fuelType: 'fossil', // 440 s
+    military: true,
   },
   cargoFreighter: {
     kind: 'cargoFreighter', name: 'Cargo Freighter', domain: 'sea', hp: 300, speed: 8, armor: 'medium',
@@ -928,6 +989,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 2, trainFunds: 600, trainMaterials: 200,
     fuelCapacity: 140, fuelPerSecond: 0.2, fuelType: 'fossil', // 700 s
     cargoFuelCapacity: 400, // naval supply ship (Phase 3 logistics on water)
+    military: true,
   },
   ammoShip: {
     kind: 'ammoShip', name: 'Ammo Ship', domain: 'sea', hp: 280, speed: 8, armor: 'medium',
@@ -937,6 +999,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 2, trainFunds: 700, trainMaterials: 250,
     fuelCapacity: 120, fuelPerSecond: 0.2, fuelType: 'fossil', // 600 s
     cargoAmmoCapacity: 80, // floating munitions store
+    military: true,
   },
   repairShip: {
     kind: 'repairShip', name: 'Repair Ship', domain: 'sea', hp: 300, speed: 9, armor: 'medium',
@@ -946,6 +1009,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 3, trainFunds: 600, trainMaterials: 200,
     fuelCapacity: 100, fuelPerSecond: 0.2, fuelType: 'fossil', // 500 s
     healRadius: 15, healPerSec: 1.5, healDomain: 'sea', // heals ships, not soldiers
+    military: true,
   },
   minelayer: {
     kind: 'minelayer', name: 'Minelayer', domain: 'sea', hp: 250, speed: 10, armor: 'light',
@@ -954,6 +1018,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     requiredBuilding: 'shipyard',
     manpowerCost: 3, trainFunds: 800, trainMaterials: 250,
     fuelCapacity: 90, fuelPerSecond: 0.2, fuelType: 'fossil', // 450 s
+    military: true,
   },
   navalMine: {
     kind: 'navalMine', name: 'Naval Mine', domain: 'sea', hp: 40, speed: 0, armor: 'light',
@@ -965,6 +1030,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     deployableOnly: true,
     manpowerCost: 0, trainFunds: 0, trainMaterials: 0,
     fuelCapacity: 0, fuelPerSecond: 0, fuelType: 'none',
+    military: true,
   },
   coastGuardCutter: {
     kind: 'coastGuardCutter', name: 'Coast Guard Cutter', domain: 'sea', hp: 180, speed: 14, armor: 'light',
@@ -972,6 +1038,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.4, vsMedium: 0.7, vsHeavy: 0.3, vsAir: 0.8, sight: 30, minAge: 'industry',
     manpowerCost: 2, trainFunds: 300, trainMaterials: 80,
     fuelCapacity: 70, fuelPerSecond: 0.2, fuelType: 'fossil', // 350 s
+    military: true,
   },
   cruiseLiner: {
     kind: 'cruiseLiner', name: 'Cruise Liner', domain: 'sea', hp: 350, speed: 10, armor: 'medium',
@@ -1002,6 +1069,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 30, minAge: 'information',
     manpowerCost: 2, trainFunds: 400, trainMaterials: 40, requiredBuilding: 'intelHQ',
     stealth: true,
+    military: true,
   },
   reconTeam: {
     kind: 'reconTeam', name: 'Recon Team', domain: 'land', hp: 100, speed: 14, armor: 'light',
@@ -1011,6 +1079,7 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 0.8, vsMedium: 0.4, vsHeavy: 0.2, vsAir: 1.0, sight: 44, minAge: 'connectivity',
     manpowerCost: 2, trainFunds: 150, trainMaterials: 15, requiredBuilding: 'barracks',
     recon: true, // dedicated recon asset — overflight can discover mixed airports
+    military: true,
   },
 };
 
@@ -1363,6 +1432,16 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
       if (def.domain === 'sea' && !isWater(t, x, z)) {
         return `spawnUnit: cannot spawn a sea unit on land at (${x}, ${z})`;
       }
+      // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): military
+      // defs cannot be trained in a peaceful world — the rejection is
+      // loud (CommandRejectedError → HUD toast), never silent. Rivals
+      // keep playing: their military orders are rejected the same way
+      // (the AI swallows rejections), so no attacker can ever exist.
+      // The flag is immutable (set at tick 0, never toggled), so no
+      // apply-time re-check is needed — enqueue-time is definitive.
+      if (world.peaceful === true && def.military === true) {
+        return `spawnUnit: ${def.name} is a military unit and cannot be trained in peaceful mode`;
+      }
       // Age gating: units require their minimum age (or later).
       if (!isUnitAvailableForAge(world, def.minAge)) {
         return `spawnUnit: ${kind} requires the ${def.minAge} age`;
@@ -1454,6 +1533,13 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
       const minelayer = findUnit(world, minelayerId);
       if (minelayer === undefined || minelayer.hp <= 0 || minelayer.owner !== owner) {
         return 'deployMine: minelayer must be a living unit owned by the issuer';
+      }
+      // Grand-expansion Phase 8 (peaceful mode): minelaying is a weapon
+      // of war — locked out alongside every other military def. (A
+      // minelayer cannot be trained in peaceful mode anyway; this is
+      // defense in depth for hand-built worlds.)
+      if (world.peaceful === true) {
+        return 'deployMine: mine warfare is not available in peaceful mode';
       }
       if (minelayer.kind !== 'minelayer') {
         return 'deployMine: only a minelayer can deploy naval mines';
