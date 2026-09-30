@@ -357,7 +357,12 @@ building tiers via upgrades (`upgrades.ts` patterns).
   gate in `economy.ts`, `createIntelSystem` + `registerIntelCommands`
   wired in `ui/session.ts`, 30 tests in `tests/sim.intel.test.ts`.
   Roster defs (spy/reconTeam, 4 intel buildings, signalsIntel/
-  counterIntel) in place. Remaining for the phase: intel panel UI,
+  counterIntel) in place. Art mappings DONE (Phase 6 workstream 5):
+  all 6 kinds → vendored CC0 (`spy` = civilian-man lookalike,
+  `reconTeam` = suv, `intelHQ` = office block + hqAntenna, `listeningPost`
+  = hut + roof dish, `satelliteUplink` = detailed dish, `signalsStation` =
+  shed + new procedural signalMast), all lazy, ~0.58 MiB, 0 boot impact.
+  Remaining for the phase: intel panel UI,
   AI intel play (spends operational on sabotage, steals tech).
 
 ### S7. Transport networks

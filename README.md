@@ -54,7 +54,11 @@ land, sea and air — or play a fully peaceful game with war disabled.
   Intelligence Headquarters) and the overt **Recon Team**, two lab
   upgrades (Signals Intelligence, Counter-Intelligence) — plus the
   covert-op sim core: infiltrate/sabotage/tech-steal missions,
-  detection coverage, and burned-spy visibility. Intel panel UI next
+  detection coverage, and burned-spy visibility. Intel panel UI next.
+  Art mappings done (Phase 6 workstream 5): all 6 kinds map to vendored
+  CC0 — spy as a civilian lookalike, recon SUV, HQ block + roof antenna,
+  listening-post hut + roof dish, big uplink dish, signals shed +
+  procedural SIGINT mast — lazy-loaded, ~0.58 MiB total, 0 boot impact
 - 5 Classic AI rivals with per-match personalities, 5 difficulties, skirmish
   maps, deterministic simulation (seeded replays and saves)
 
