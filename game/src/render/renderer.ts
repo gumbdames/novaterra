@@ -41,6 +41,7 @@
  * skipping the probe.
  */
 
+import * as THREE from 'three';
 import type { WebGPURenderer } from 'three/webgpu';
 
 /** How long the WebGPU adapter probe may pend before we give up on WebGPU. */
@@ -170,4 +171,107 @@ export async function createRenderer(
     }
     throw error;
   }
+}
+
+/**
+ * Attach a lightweight procedural environment map to a scene.
+ *
+ * The entity library leans on metalness for painted metal, hulls, and
+ * glass — but a scene with no `scene.environment` shades every metal as
+ * near-black (metals reflect the environment, not the lights). This
+ * assigns a small procedural equirect texture (sky gradient, ground, soft
+ * sun blob at the game's sun azimuth); the unified renderer
+ * PMREM-processes equirect environment maps internally per backend
+ * (three r186 `PMREMNode`), so roughness-correct reflections work on
+ * both WebGPU and WebGL2 with no manual PMREM pass. (The legacy
+ * `THREE.PMREMGenerator` from `three` core is WebGLRenderer-only and
+ * crashes on the unified renderer — do not use it here.)
+ *
+ * `environmentIntensity` (0.5) keeps it a subtle fill — the game's own
+ * sun/hemi lights stay the key light.
+ *
+ * The texture is shared process-wide (64x32, 8 KB) and must NOT be
+ * disposed per scene. Synchronous and import-safe under Node/vitest
+ * (DataTexture needs no DOM, same as the surface library).
+ */
+export function applyEnvironmentLighting(
+  scene: THREE.Scene,
+  intensity = 0.5,
+): void {
+  scene.environment = getEnvironmentTexture();
+  scene.environmentIntensity = intensity;
+}
+
+let sharedEnvironmentTexture: THREE.DataTexture | null = null;
+
+/** Process-shared equirect environment texture (see above). */
+export function getEnvironmentTexture(): THREE.DataTexture {
+  if (sharedEnvironmentTexture === null) {
+    const px = generateEnvironmentPixels();
+    const tex = new THREE.DataTexture(px.data, px.width, px.height);
+    tex.mapping = THREE.EquirectangularReflectionMapping;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.needsUpdate = true;
+    sharedEnvironmentTexture = tex;
+  }
+  return sharedEnvironmentTexture;
+}
+
+/**
+ * 64x32 equirect: bright zenith fading to a pale horizon, dark ground
+ * below, and a soft sun blob. The last row is the zenith: DataTexture
+ * uploads with flipY=false, so texture v=1 is row y=height-1, which the
+ * shader's equirectUv maps to the +y direction.
+ */
+function generateEnvironmentPixels(): {
+  data: Uint8Array;
+  width: number;
+  height: number;
+} {
+  const width = 64;
+  const height = 32;
+  const data = new Uint8Array(width * height * 4);
+  // The game's sun shines from (120, 180, 60) (ui/game.ts buildGameScene);
+  // three's equirectUv uses u = atan2(dir.z, dir.x)/2PI + 0.5,
+  // v = asin(dir.y)/PI + 0.5.
+  const sunDir = new THREE.Vector3(120, 180, 60).normalize();
+  const sunU = Math.atan2(sunDir.z, sunDir.x) / (Math.PI * 2) + 0.5;
+  const sunV = (Math.asin(sunDir.y) / Math.PI) + 0.5;
+  for (let y = 0; y < height; y++) {
+    const v = (y + 0.5) / height;
+    for (let x = 0; x < width; x++) {
+      const u = (x + 0.5) / width;
+      let r: number;
+      let g: number;
+      let b: number;
+      if (v > 0.5) {
+        // Sky: zenith (v=1) -> horizon (v=0.5).
+        const t = (1 - v) / 0.5;
+        r = 111 + (207 - 111) * t;
+        g = 135 + (216 - 135) * t;
+        b = 184 + (230 - 184) * t;
+      } else {
+        // Ground: dark soil, darker with depth.
+        const t = v / 0.5;
+        r = 60 + 30 * t;
+        g = 54 + 28 * t;
+        b = 42 + 24 * t;
+      }
+      // Soft sun blob (widened in u for the equirect stretch).
+      const du = Math.min(Math.abs(u - sunU), 1 - Math.abs(u - sunU));
+      const dv = v - sunV;
+      const d = Math.hypot(du * 2, dv);
+      const glow = Math.max(0, 1 - d / 0.18);
+      const sun = glow * glow * 255;
+      r += sun;
+      g += sun * 0.95;
+      b += sun * 0.85;
+      const i = (y * width + x) * 4;
+      data[i] = Math.min(255, r);
+      data[i + 1] = Math.min(255, g);
+      data[i + 2] = Math.min(255, b);
+      data[i + 3] = 255;
+    }
+  }
+  return { data, width, height };
 }

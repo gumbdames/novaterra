@@ -79,6 +79,15 @@ import {
   ROAD_ASPHALT_COLOR,
   ROAD_DASH_COLOR,
 } from './roads';
+import { surfaceRoughnessTexture } from './surfaceTextures';
+import {
+  groundYAt,
+  unitHoverY,
+  BUILDING_GROUND_EPSILON,
+  SELECTION_RING_OFFSET,
+  type HeightDomain,
+} from './terrainHeight';
+import { heightAt, type TerrainData } from '../sim/terrain';
 
 /** Radius of the Aegis energy dome (world units). */
 export const AEGIS_DOME_RADIUS = 55;
@@ -357,11 +366,6 @@ export function hullSizeFor(kind: string): { x: number; y: number; z: number } {
   }
 }
 
-/** Land units hover above the ground (gunship read); others sit on it. */
-const HOVER_Y: Record<string, number> = {
-  spectre: 1.6,
-};
-
 /**
  * Smooth placeholder hull for a unit kind: capsule/cylinder/cone
  * composites, sized to the hull box. Air units get a fuselage + nose
@@ -525,7 +529,12 @@ interface UnitView {
   hull: THREE.Group;
   barBg: THREE.Sprite;
   barFg: THREE.Sprite;
-  /** Ground-relative base y of the hull (hover/sea level included). */
+  /**
+   * Group-relative lift of the hull: the terrain/water Y itself lives on
+   * `group.position.y` (see `unitGroundY`), so this is the hover gap
+   * only (land sit-on-terrain epsilon, spectre hover, air hover; 0 for
+   * sea — the waterline is the group origin).
+   */
   baseY: number;
   /** Top of the model (stripe/pennant/bar anchor), world units above baseY. */
   modelTop: number;
@@ -558,6 +567,14 @@ interface BuildingView {
 export interface EntityRendererOptions {
   /** Water level: sea-unit hulls float here (default 0). */
   waterLevel?: number;
+  /**
+   * The sim's terrain. When provided, every ground-anchored view rides
+   * on it: units (per frame — they move), buildings (at creation),
+   * roads (draped per corner), selection rings, and superweapon FX.
+   * Without it the renderer keeps the legacy flat-y=0 placement (used
+   * by headless tests that don't build a terrain).
+   */
+  terrain?: TerrainData;
 }
 
 /**
@@ -570,11 +587,15 @@ export interface EntityRendererOptions {
  *   from `render/models.ts` when the game tears down). An empty map is
  *   fully supported — every entity falls back to procedural, then
  *   placeholder, art and the game stays playable.
+ * @param opts.waterLevel sea-unit float level (default 0).
+ * @param opts.terrain when provided, entity views ride on the terrain
+ *   (see `EntityRendererOptions.terrain`); without it they sit at y=0.
  */
 export class EntityRenderer {
   private readonly scene: THREE.Scene;
   private readonly models: Map<string, LoadedModel>;
   private readonly waterLevel: number;
+  private readonly terrain: TerrainData | null;
   private readonly unitGroup = new THREE.Group();
   private readonly buildingGroup = new THREE.Group();
   private readonly fxGroup = new THREE.Group();
@@ -616,6 +637,9 @@ export class EntityRenderer {
   private readonly roadAsphaltMat = new THREE.MeshStandardMaterial({
     color: ROAD_ASPHALT_COLOR,
     roughness: 0.95,
+    // Fine aggregate grain over the ribbon (roads.ts emits world-scale
+    // UVs for it); the yellow dashes stay flat.
+    roughnessMap: surfaceRoughnessTexture('tireRubber'),
   });
   private readonly roadDashMat = new THREE.MeshStandardMaterial({
     color: ROAD_DASH_COLOR,
@@ -671,6 +695,7 @@ export class EntityRenderer {
     this.scene = scene;
     this.models = models;
     this.waterLevel = opts.waterLevel ?? 0;
+    this.terrain = opts.terrain ?? null;
     this.unitGroup.name = 'units';
     this.buildingGroup.name = 'buildings';
     this.fxGroup.name = 'fx';
@@ -694,6 +719,27 @@ export class EntityRenderer {
     this.syncSuperweaponFx(world);
   }
 
+  /**
+   * Ground Y for a unit: terrain height for land and air (aircraft use
+   * the ground *beneath* them — the hover gap is group-relative), the
+   * water level for sea. Recomputed every frame from `heightAt`, so
+   * moving units ride hills and valleys (deterministic: `heightAt` is a
+   * pure function of terrain).
+   */
+  private unitGroundY(u: UnitRecord): number {
+    return groundYAt(this.terrain, this.waterLevel, u.domain as HeightDomain, u.x, u.z);
+  }
+
+  /**
+   * Height sampler for the road builders, or undefined (flat roads) when
+   * the renderer has no terrain.
+   */
+  private roadHeightSampler(): ((x: number, z: number) => number) | undefined {
+    const t = this.terrain;
+    if (t === null) return undefined;
+    return (x: number, z: number): number => heightAt(t, x, z);
+  }
+
   /** Update which units show selection rings. */
   setSelected(ids: Iterable<number>): void {
     const wanted = new Set(ids);
@@ -707,7 +753,9 @@ export class EntityRenderer {
       if (this.selectionRings.has(id)) continue;
       const ring = new THREE.Mesh(this.ringGeo, this.ringMat);
       ring.rotation.x = -Math.PI / 2;
-      ring.position.y = 0.3;
+      // Correct per-unit height lands on the next updateSelectionRings
+      // pass; this just keeps the ring off the exact ground plane.
+      ring.position.y = SELECTION_RING_OFFSET;
       this.fxGroup.add(ring);
       this.selectionRings.set(id, ring);
     }
@@ -718,7 +766,9 @@ export class EntityRenderer {
     for (const [id, ring] of this.selectionRings) {
       const u = units.get(id);
       if (!u) continue;
-      ring.position.set(u.x, 0.3, u.z);
+      // Rings ride on the ground under the unit (terrain for land/air,
+      // water level for sea) so they never sink into a hillside.
+      ring.position.set(u.x, this.unitGroundY(u) + SELECTION_RING_OFFSET, u.z);
       const s = hullSizeFor(u.kind);
       const scale = Math.max(s.x, s.z) / 4;
       ring.scale.set(scale, scale, 1);
@@ -765,7 +815,12 @@ export class EntityRenderer {
     const wire = new THREE.Mesh(this.aegisDomeGeo, this.aegisWireMat);
     wire.scale.setScalar(1.01);
     group.add(dome, wire);
-    group.position.set(fx.x, 0, fx.z);
+    // The dome base sits on the terrain under the shielded city.
+    group.position.set(
+      fx.x,
+      groundYAt(this.terrain, this.waterLevel, 'land', fx.x, fx.z),
+      fx.z,
+    );
     return { group, untilTick: fx.untilTick, kind: 'aegis' };
   }
 
@@ -780,7 +835,13 @@ export class EntityRenderer {
     const flash = new THREE.Mesh(this.flashGeo, this.flashMat.clone());
     flash.position.y = 2;
     group.add(cloud, bolt, flash);
-    group.position.set(fx.x, 0, fx.z);
+    // Strike effects anchor on the terrain (cloud/bolt/flash stay
+    // group-relative, so they keep their designed proportions).
+    group.position.set(
+      fx.x,
+      groundYAt(this.terrain, this.waterLevel, 'land', fx.x, fx.z),
+      fx.z,
+    );
     group.userData['cloud'] = cloud;
     group.userData['bolt'] = bolt;
     group.userData['flash'] = flash;
@@ -1178,7 +1239,8 @@ export class EntityRenderer {
 
     // Hull: real model (GLB → procedural) or the shared placeholder
     // template. The hull group's base sits at y=0; baseY lifts it for
-    // air hover, sea float, and gunship hover.
+    // air hover and the land sit-on-terrain epsilon, while the group
+    // itself rides the terrain (land/air) or the water level (sea).
     const hull = new THREE.Group();
     const built = this.createModelGroup(u.kind);
     let modelTop: number;
@@ -1189,7 +1251,7 @@ export class EntityRenderer {
       hull.add(this.placeholderUnitTemplate(u.kind, u.domain).clone());
       modelTop = size.y;
     }
-    const baseY = u.domain === 'air' ? 14 : u.domain === 'sea' ? this.waterLevel : (HOVER_Y[u.kind] ?? 0.15);
+    const baseY = unitHoverY(u.domain as HeightDomain, u.kind);
     hull.position.y = baseY;
     group.add(hull);
 
@@ -1219,12 +1281,15 @@ export class EntityRenderer {
     group.add(barBg, barFg);
     owned.push(barBg.material, barFg.material);
 
-    group.position.set(u.x, 0, u.z);
+    // The group rides the terrain (recomputed per frame in
+    // updateUnitView as the unit moves); stripe, pennant, and health
+    // bars stay group-relative, so they ride along for free.
+    group.position.set(u.x, this.unitGroundY(u), u.z);
     return { group, hull, barBg, barFg, baseY, modelTop, owned };
   }
 
   private updateUnitView(view: UnitView, u: UnitRecord): void {
-    view.group.position.set(u.x, 0, u.z);
+    view.group.position.set(u.x, this.unitGroundY(u), u.z);
     // Face the order destination when it has one; cheap orientation cue.
     // Models face +z at rotation 0 (rotY baked at load), matching the
     // placeholder convention.
@@ -1316,10 +1381,14 @@ export class EntityRenderer {
 
     const w = def.footprintW * CELL_WORLD_SIZE;
     const d = def.footprintH * CELL_WORLD_SIZE;
+    const bx = cellCenterWorld(b.cx) + (w - CELL_WORLD_SIZE) / 2;
+    const bz = cellCenterWorld(b.cz) + (d - CELL_WORLD_SIZE) / 2;
+    // The foundation sits on the terrain at the footprint center
+    // (buildings never move, so this is computed once at creation).
     group.position.set(
-      cellCenterWorld(b.cx) + (w - CELL_WORLD_SIZE) / 2,
-      0,
-      cellCenterWorld(b.cz) + (d - CELL_WORLD_SIZE) / 2,
+      bx,
+      groundYAt(this.terrain, this.waterLevel, 'land', bx, bz) + BUILDING_GROUND_EPSILON,
+      bz,
     );
     const view: BuildingView = {
       group,
@@ -1397,15 +1466,18 @@ export class EntityRenderer {
     this.disposeRoadMesh();
     if (roads.length === 0) return;
     // Connected ribbon quads (one draw call) + center dashes (one more).
+    // The ribbon drapes over the terrain (per-corner height sampling) so
+    // roads ride hillsides instead of clipping through them.
     const cells: Array<{ x: number; z: number }> = [];
     for (const c of roads) {
       const { cx, cz } = cellCoords(c as number);
       cells.push({ x: cellCenterWorld(cx), z: cellCenterWorld(cz) });
     }
-    const ribbon = buildRoadGeometry(cells, CELL_WORLD_SIZE);
+    const heightFn = this.roadHeightSampler();
+    const ribbon = buildRoadGeometry(cells, CELL_WORLD_SIZE, heightFn);
     this.roadMesh = new THREE.Mesh(ribbon, this.roadAsphaltMat);
     this.buildingGroup.add(this.roadMesh);
-    const dashes = buildRoadMarkings(cells, CELL_WORLD_SIZE);
+    const dashes = buildRoadMarkings(cells, CELL_WORLD_SIZE, heightFn);
     if ((dashes.getAttribute('position') as THREE.BufferAttribute).count > 0) {
       this.roadDashMesh = new THREE.Mesh(dashes, this.roadDashMat);
       this.buildingGroup.add(this.roadDashMesh);

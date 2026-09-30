@@ -56,7 +56,7 @@ import type { AIDifficulty } from '../sim/ai';
 import { CommandRejectedError } from '../sim/commands';
 import { buildTerrainView } from '../render/terrain';
 import { EntityRenderer } from '../render/entities';
-import { createRenderer } from '../render/renderer';
+import { createRenderer, applyEnvironmentLighting } from '../render/renderer';
 import { buildNatureView, type NatureView } from '../render/nature';
 import { loadNatureTreeModels } from '../render/natureTrees';
 import {
@@ -225,6 +225,10 @@ export async function startGame(
   applyQuality(renderer, opts.quality);
 
   const scene = buildGameScene(session);
+  // Procedural environment map so metalness/roughness on entity
+  // materials shade correctly (render/renderer.ts); subtle fill only,
+  // the sun/hemi lights stay the key light.
+  applyEnvironmentLighting(scene);
   const camera = new THREE.PerspectiveCamera(
     55,
     window.innerWidth / window.innerHeight,
@@ -317,7 +321,13 @@ async function loadEntityModels(
   } else if (loaded.failed.length > 0) {
     console.warn('[game] models failed to load (fallbacks in use):', loaded.failed.join(', '));
   }
-  const renderer = new EntityRenderer(scene, modelMap, { waterLevel: session.terrain.waterLevel });
+  const renderer = new EntityRenderer(scene, modelMap, {
+    waterLevel: session.terrain.waterLevel,
+    // Entity views ride on the terrain (units/buildings/roads/rings/FX);
+    // without this every entity would sit at y=0 and bury itself in
+    // hillsides (terrain height ranges −10…+30).
+    terrain: session.terrain,
+  });
   // Deterministic render-only nature scatter (built once from initial
   // state; decorative only, never affects the sim).
   const nature = buildNatureView({
@@ -819,6 +829,8 @@ class GameController {
       this.natureView.dispose();
     }
     this.dragRect?.remove();
+    // NOTE: scene.environment is the process-shared procedural texture
+    // from applyEnvironmentLighting — never disposed per game.
     this.renderer.dispose();
     this.canvas.remove();
   }
