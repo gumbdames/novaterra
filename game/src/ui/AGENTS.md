@@ -98,6 +98,17 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   campaign endings), `MissionPanel` (in-HUD objective tracker).
 - `musebox.ts` — the Muse widget: portrait, speech bubble, threat
   meter. Pure DOM; `MuseController` decides what to say.
+- `icons.ts` — **hand-drawn inline SVG icon set (pure, tested,
+  `tests/ui.icons.test.ts`).** Every button shows icon AND text (user
+  directive 2026-09-30) — icons are `aria-hidden`, never icon-only.
+  `unitIcon` / `buildingIcon` cover all 28 units + 28 buildings
+  (`Record<UnitKind, string>` so a missing glyph is a compile error);
+  `toolIcon` for the build tools row; `mapIcon(waterFraction)` for the
+  8 map presets (5 terrain buckets); `difficultyIcon` (1–5 rank
+  chevrons); `menuIcon` for skirmish/load/missions/settings/back/
+  resume/save/exit. 24×24 viewBox, `stroke="currentColor"` so button
+  CSS (including locked dimming) drives the color. Decision record:
+  `docs/research/ui-icons.md`.
 - `session.ts` also assembles campaign missions:
   `createSession({ campaignMission })` — map/AI/starting resources from
   the mission, no AI rival when difficulty is 'none', owner 1 always

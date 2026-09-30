@@ -36,6 +36,7 @@ import { GAME_TAGLINE, GAME_TITLE } from '../config';
 import type { AIDifficulty } from '../sim/ai';
 import { MAP_PRESETS } from '../sim/terrain';
 import { STRINGS } from './strings';
+import { difficultyIcon, mapIcon, menuIcon } from './icons';
 import {
   loadAudioSettings,
   saveAudioSettings,
@@ -134,9 +135,26 @@ function el(tag: string, className: string, text?: string): HTMLElement {
   return e;
 }
 
-function menuButton(label: string, onClick: () => void, disabled = false): HTMLButtonElement {
+function menuButton(
+  label: string,
+  onClick: () => void,
+  disabled = false,
+  iconMarkup?: string,
+): HTMLButtonElement {
   const b = document.createElement('button');
-  b.textContent = label;
+  if (iconMarkup !== undefined) {
+    // Decorative glyph next to the text label (icons AND text): the label
+    // stays the accessible name.
+    const ic = document.createElement('span');
+    ic.className = 'menu-icon';
+    ic.innerHTML = iconMarkup;
+    ic.setAttribute('aria-hidden', 'true');
+    b.append(ic);
+  }
+  const labelEl = document.createElement('span');
+  labelEl.className = 'menu-label';
+  labelEl.textContent = label;
+  b.append(labelEl);
   b.disabled = disabled;
   b.addEventListener('click', onClick);
   return b;
@@ -165,9 +183,9 @@ export class MainMenu {
     menu.append(el('p', 'tagline', GAME_TAGLINE));
 
     const buttons = el('div', 'buttons');
-    const skirmish = menuButton(s.skirmish, () => this.showSkirmishSetup(buttons));
-    const loadGame = menuButton(s.loadGame, () => this.actions.onShowLoadGame?.());
-    const missions = menuButton(s.missions, () => this.actions.onShowMissions?.());
+    const skirmish = menuButton(s.skirmish, () => this.showSkirmishSetup(buttons), false, menuIcon('skirmish'));
+    const loadGame = menuButton(s.loadGame, () => this.actions.onShowLoadGame?.(), false, menuIcon('load'));
+    const missions = menuButton(s.missions, () => this.actions.onShowMissions?.(), false, menuIcon('missions'));
     const settings = menuButton(s.settings, () => new SettingsPanel(this.root, {
       onQualityChange: (q) => this.actions.onQualityChange(q),
       onAudioChange: this.actions.onAudioChange,
@@ -175,7 +193,7 @@ export class MainMenu {
       onColorblindChange: this.actions.onColorblindChange,
       onUiScaleChange: this.actions.onUiScaleChange,
       onClose: () => this.show(),
-    }).show());
+    }).show(), false, menuIcon('settings'));
     buttons.append(skirmish, loadGame, missions, settings);
     menu.append(buttons);
     menu.append(el('div', 'version', s.version));
@@ -205,6 +223,8 @@ export class MainMenu {
             mb.classList.toggle('selected', mb.dataset['map'] === selectedMap);
           }
         },
+        false,
+        mapIcon(preset.waterTargetFraction),
       );
       b.dataset['map'] = preset.name;
       b.title = preset.blurb;
@@ -225,10 +245,10 @@ export class MainMenu {
     ];
     for (const [difficulty, label] of options) {
       buttons.append(
-        menuButton(label, () => this.actions.onStartSkirmish(difficulty, selectedMap)),
+        menuButton(label, () => this.actions.onStartSkirmish(difficulty, selectedMap), false, difficultyIcon(difficulty)),
       );
     }
-    buttons.append(menuButton(s.back, () => this.show()));
+    buttons.append(menuButton(s.back, () => this.show(), false, menuIcon('back')));
   }
 
   hide(): void {
@@ -257,7 +277,7 @@ export class PauseMenu {
     const overlay = el('div', 'pause-overlay');
     const panel = el('div', 'pause-panel');
     panel.append(el('h2', '', s.title));
-    panel.append(menuButton(s.resume, () => this.actions.onResume()));
+    panel.append(menuButton(s.resume, () => this.actions.onResume(), false, menuIcon('resume')));
     panel.append(
       menuButton(s.settings, () =>
         new SettingsPanel(this.root, {
@@ -268,13 +288,15 @@ export class PauseMenu {
           onUiScaleChange: this.actions.onUiScaleChange,
           onClose: () => this.show(),
         }).show(),
+        false,
+        menuIcon('settings'),
       ),
     );
     if (this.actions.onSaveGame) {
       const onSaveGame = this.actions.onSaveGame;
-      panel.append(menuButton(s.saveGame, () => onSaveGame()));
+      panel.append(menuButton(s.saveGame, () => onSaveGame(), false, menuIcon('save')));
     }
-    panel.append(menuButton(s.exitToMenu, () => this.confirmExit()));
+    panel.append(menuButton(s.exitToMenu, () => this.confirmExit(), false, menuIcon('exit')));
     overlay.append(panel);
     this.root.append(overlay);
     this.el = overlay;
@@ -295,11 +317,11 @@ export class PauseMenu {
     panel.append(menuButton(s.saveAndExit, () => {
       overlay.remove();
       confirm(true);
-    }));
+    }, false, menuIcon('save')));
     panel.append(menuButton(s.exitWithoutSaving, () => {
       overlay.remove();
       confirm(false);
-    }));
+    }, false, menuIcon('exit')));
     panel.append(menuButton(s.cancel, () => overlay.remove()));
     overlay.append(panel);
     this.root.append(overlay);

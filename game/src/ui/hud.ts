@@ -77,6 +77,12 @@ import {
   type TrainTabId,
   type BuildTabId,
 } from './palettes';
+import {
+  unitIcon,
+  buildingIcon,
+  toolIcon,
+  type PaletteToolIcon,
+} from './icons';
 import { HUMAN_PLAYER_ID } from './session';
 
 /** Build-palette tools the HUD can request. */
@@ -137,6 +143,18 @@ function el(tag: string, className: string, text?: string): HTMLElement {
 function fmt(n: number): string {
   if (Math.abs(n) >= 10000) return `${(n / 1000).toFixed(1)}k`;
   return Math.floor(n).toString();
+}
+
+/**
+ * Decorative icon span for palette buttons (glyph from ui/icons.ts).
+ * Always paired with the button's text label — the icon is aria-hidden
+ * and the label stays the accessible name.
+ */
+function iconSpan(markup: string): HTMLElement {
+  const s = el('span', 'palette-icon');
+  s.innerHTML = markup;
+  s.setAttribute('aria-hidden', 'true');
+  return s;
 }
 
 /**
@@ -525,6 +543,7 @@ export class HUD {
       const b = document.createElement('button');
       b.className = `train-btn${av.ok ? '' : ' locked'}`;
       b.disabled = !av.ok;
+      b.prepend(iconSpan(unitIcon(kind)));
       b.append(el('div', 'palette-name', unitName(kind)));
       b.append(el('div', 'palette-cost', formatTrainCost(kind)));
       b.title = trainTooltip(world, HUMAN_PLAYER_ID, kind);
@@ -542,17 +561,18 @@ export class HUD {
     wrap.append(el('div', 'hud-panel-title', loc(p.buildTitle)));
     // Tools are not buildings: road, zones and demolish sit above the tabs.
     const toolsRow = el('div', 'palette-tools');
-    const tools: Array<{ tool: BuildTool; label: string }> = [
-      { tool: 'road', label: loc(p.toolRoad) },
-      { tool: 'zoneR', label: loc(p.toolZoneR) },
-      { tool: 'zoneC', label: loc(p.toolZoneC) },
-      { tool: 'zoneI', label: loc(p.toolZoneI) },
-      { tool: 'demolish', label: loc(p.toolDemolish) },
+    const tools: Array<{ tool: BuildTool; label: string; icon: PaletteToolIcon }> = [
+      { tool: 'road', label: loc(p.toolRoad), icon: 'road' },
+      { tool: 'zoneR', label: loc(p.toolZoneR), icon: 'zoneR' },
+      { tool: 'zoneC', label: loc(p.toolZoneC), icon: 'zoneC' },
+      { tool: 'zoneI', label: loc(p.toolZoneI), icon: 'zoneI' },
+      { tool: 'demolish', label: loc(p.toolDemolish), icon: 'demolish' },
     ];
-    for (const { tool, label } of tools) {
+    for (const { tool, label, icon } of tools) {
       const b = document.createElement('button');
       b.className = 'build-btn';
-      b.textContent = label;
+      b.prepend(iconSpan(toolIcon(icon)));
+      b.append(el('span', 'palette-label', label));
       b.addEventListener('click', () => this.actions.onBuildTool(tool));
       toolsRow.append(b);
     }
@@ -570,6 +590,7 @@ export class HUD {
       const b = document.createElement('button');
       b.className = `build-btn${avail.ok ? '' : ' locked'}`;
       b.disabled = !avail.ok;
+      b.prepend(iconSpan(buildingIcon(kind)));
       b.append(el('div', 'palette-name', buildingName(kind)));
       b.append(el('div', 'palette-cost', formatBuildCost(kind)));
       const tip = buildTooltip(kind);

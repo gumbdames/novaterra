@@ -483,6 +483,82 @@ body {
   border-color: var(--panel-border);
 }
 
+/* ---- button icons (ui/icons.ts): icons AND text, never icon-only ---- */
+
+.palette-icon {
+  display: inline-flex;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  grid-area: icon;
+}
+
+.palette-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Palette buttons: icon left, name + cost stacked right. */
+.palette-grid .train-btn,
+.palette-grid .build-btn {
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  grid-template-areas:
+    "icon name"
+    "icon cost";
+  column-gap: 8px;
+  align-items: center;
+  text-align: start;
+}
+
+.palette-name {
+  grid-area: name;
+}
+
+.palette-cost {
+  grid-area: cost;
+}
+
+.palette-tools .build-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.palette-tools .palette-icon {
+  width: 22px;
+  height: 22px;
+}
+
+.menu-icon {
+  display: inline-flex;
+  width: 22px;
+  height: 22px;
+  flex: none;
+}
+
+.menu-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Menu buttons with icons: keep the label centered next to the glyph. */
+.menu-overlay .buttons button,
+.pause-panel button,
+.confirm-panel button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.map-btn .menu-icon {
+  width: 26px;
+  height: 26px;
+}
+
 /* research panel (select a completed Research Lab) */
 .research-panel {
   margin-top: 10px;
