@@ -3172,6 +3172,41 @@ function canAutoDevelop(world: World, owner: number, def: BuildingDef): boolean 
   return true;
 }
 
+/**
+ * Phase 9 balance pass (peaceful death-spiral fix): the minimum treasury
+ * a peaceful city keeps before NEW construction may spend it — via the
+ * AI's placePeaceful or via organic growth (tryAutoDevelop).
+ *
+ * Why: upkeep funding shuts down the NEWEST buildings first on a
+ * shortfall, so the OLDEST buildings — the power plant and water pump
+ * the whole city depends on — are the first to go dark when the
+ * treasury hits zero. No power → factories stop → no goods → shops
+ * earn nothing → zero income → the treasury never recovers (permanent
+ * stall, confirmed in the Phase 9 soak). The floor keeps `floorSeconds`
+ * of the city's current upkeep in reserve, so a building spree can
+ * never spend the city into that trap. Deliberately counts buildings
+ * still under construction (they will charge upkeep soon).
+ *
+ * 30 seconds (not 90): the original 90s floor starved the city a
+ * second way — it left no headroom to buy the oilWells that keep the
+ * fuel (and hence the power) on. Thirty seconds rides out a temporary
+ * income dip; the goods stockpile covers longer gaps.
+ *
+ * This gates only *new* construction: the human player's explicit
+ * placeBuilding orders are unaffected (their choice, their risk).
+ */
+export const PEACEFUL_TREASURY_FLOOR_MIN = 200;
+export const PEACEFUL_TREASURY_FLOOR_SECONDS = 30;
+
+export function peacefulTreasuryFloor(world: World, owner: number): number {
+  let upkeep = 0;
+  for (const b of world.city.buildings) {
+    if (b.owner !== owner) continue;
+    upkeep += BUILDING_DEFS[b.kind].upkeepFundsPerSec;
+  }
+  return Math.max(PEACEFUL_TREASURY_FLOOR_MIN, upkeep * PEACEFUL_TREASURY_FLOOR_SECONDS);
+}
+
 /** Cheapest def for a zone the player can afford AND has unlocked, or undefined. */
 function affordableDefForZone(world: World, zone: ZoneType, owner: number): BuildingDef | undefined {
   for (const def of BUILDING_DEF_LIST) {
@@ -3278,6 +3313,16 @@ function tryAutoDevelop(
     // (apartments/labs in nice areas, houses/shops in modest ones).
     const def = densityDefForZone(world, zrec.zone, owner, zrec.cell, desirModel);
     if (!def) return false; // broke: can't afford anything in this zone
+    // Phase 9 balance pass (peaceful death-spiral fix): organic growth
+    // never spends the treasury below the peaceful floor. Upkeep shuts
+    // down the newest buildings first, so spending the last funds kills
+    // the oldest — the power/water the city runs on — and the city can
+    // never earn its way back. (The human's explicit orders are
+    // unaffected: this gates only automatic growth.)
+    if (world.peaceful === true) {
+      const player = getPlayer(city, owner) as PlayerState;
+      if (player.funds - def.costFunds < peacefulTreasuryFloor(world, owner)) continue;
+    }
     // Anchor the footprint so it covers the sampled cell; scan origins
     // deterministically and take the first legal placement.
     for (let oz = cz - def.footprintH + 1; oz <= cz; oz++) {

@@ -175,6 +175,8 @@ import {
   footprintCells,
   validatePlacement,
   FOOD_PER_POP_PER_SEC,
+  peacefulTreasuryFloor,
+  buildingAtCell,
   type BuildingKind,
   type BuildingRecord,
   type HangarClass,
@@ -934,7 +936,12 @@ export const CONSTRUCTION_PRIORITY: Record<AIDifficulty, BuildingKind[]> = {
   // thinkConstruction's unknown-def guard still skips it while
   // BUILDING_DEFS has no entry — no crash, no stall, no behavior
   // change until the def exists.
-  marshal: ['barracks', 'warFactory', 'lab', 'airfield', 'radarStation', 'shipyard', 'navalYard', 'civilAirport'],
+  // Phase 9 balance pass (pathology 5): marshal also builds a media
+  // center after the airport. 0.8 influence/s unlocks the industry age
+  // (100 influence) in ~125 sim-seconds; without it the marshal
+  // dead-ends at the age gate — intelHQ, signalsStation,
+  // ordnanceDepot, missileSilo, and navalYard never unlock.
+  marshal: ['barracks', 'warFactory', 'lab', 'airfield', 'radarStation', 'shipyard', 'navalYard', 'civilAirport', 'mediaCenter'],
 };
 
 /** Complete whatever finished building; start the next priority kind. */
@@ -1324,8 +1331,8 @@ const BASE_MIX: Record<'citizen' | 'commander', Array<{ kind: UnitKind; share: n
     { kind: 'spectre', share: 0.1 },
   ],
   commander: [
-    { kind: 'rifles', share: 0.27 },
-    { kind: 'tank', share: 0.18 },
+    { kind: 'rifles', share: 0.25 },
+    { kind: 'tank', share: 0.17 },
     { kind: 'artillery', share: 0.1 },
     { kind: 'aa', share: 0.1 },
     { kind: 'apc', share: 0.1 },
@@ -1340,6 +1347,13 @@ const BASE_MIX: Record<'citizen' | 'commander', Array<{ kind: UnitKind; share: n
     // weight 1 via the `?? 1` in the mix consumer above.)
     { kind: 'gunship', share: 0.04 },
     { kind: 'strategicBomber', share: 0.03 },
+    // Phase 9 balance pass (pathology 6): recon and command. The
+    // reconTeam gives the commander eyes (it was never in the mix —
+    // the AI scouted with combat units or not at all). The hq's
+    // +25% damage aura (radius 20) is worth a small share; the AI
+    // only ever needs one, so the share is tiny.
+    { kind: 'reconTeam', share: 0.03 },
+    { kind: 'hq', share: 0.02 },
   ],
 };
 
@@ -3121,13 +3135,64 @@ function thinkPeacefulZoning(
  * the caller, so a site that fails validatePlacement only on funds
  * still counts.
  */
+/**
+ * Phase 9 balance pass (death-spiral fix): fouling avoidance for site
+ * selection. A completed, funded plant with `fouling` (the oil-burning
+ * powerPlant) fouls orthogonally-adjacent water sources, halving their
+ * output (floored). The AI's old sequential scan put the powerPlant
+ * right next to the waterPump: 25 → 12 water supply against 16 demand,
+ * so the shops (allocated last, highest ids) went unwatered, shop
+ * income halved, and the treasury bled out. Returns true when placing
+ * `kind` at (cx, cz) would create a fouler↔water-source adjacency in
+ * either direction — such sites are skipped.
+ */
+function peacefulSiteFouls(
+  world: World,
+  kind: BuildingKind,
+  cx: number,
+  cz: number,
+  /** Cells claimed by buildings placed earlier THIS think (not yet applied). */
+  claimed: Map<number, BuildingKind>,
+): boolean {
+  const def = BUILDING_DEFS[kind];
+  if (def.fouling !== true && def.waterSupply <= 0) return false;
+  const city = world.city;
+  // Orthogonal neighbors of the footprint (diagonals don't foul):
+  // the rows/columns just outside each edge.
+  const neighbors: Array<[number, number]> = [];
+  for (let z = cz; z < cz + def.footprintH; z++) {
+    neighbors.push([cx - 1, z]);
+    neighbors.push([cx + def.footprintW, z]);
+  }
+  for (let x = cx; x < cx + def.footprintW; x++) {
+    neighbors.push([x, cz - 1]);
+    neighbors.push([x, cz + def.footprintH]);
+  }
+  // A neighbor fouls (or is fouled) when it is a water source next to a
+  // fouler, in either direction — whether already applied or merely
+  // claimed earlier this think.
+  const neighborFouls = (nkind: BuildingKind): boolean => {
+    const bdef = BUILDING_DEFS[nkind];
+    return (def.fouling === true && bdef.waterSupply > 0) ||
+           (def.waterSupply > 0 && bdef.fouling === true);
+  };
+  for (const [x, z] of neighbors) {
+    const cell = cellIndex(x, z);
+    const b = buildingAtCell(city, cell);
+    if (b !== undefined && neighborFouls(b.kind)) return true;
+    const ck = claimed.get(cell);
+    if (ck !== undefined && neighborFouls(ck)) return true;
+  }
+  return false;
+}
+
 function findPeacefulSite(
   world: World,
   terrain: TerrainData,
   ai: AIPlayerState,
   kind: BuildingKind,
   rect: { x0: number; z0: number; x1: number; z1: number },
-  claimed: Set<number>,
+  claimed: Map<number, BuildingKind>,
 ): { cx: number; cz: number } | null {
   const def = BUILDING_DEFS[kind];
   for (let cz = rect.z0; cz <= rect.z1 - def.footprintH + 1; cz++) {
@@ -3138,7 +3203,11 @@ function findPeacefulSite(
       if (taken) continue;
       const p: Placement = { kind, owner: ai.owner, cx, cz, facing: 0 };
       const err = validatePlacement(terrain, world.city, p);
-      if (err === null || err.includes('cannot afford')) return { cx, cz };
+      if (err === null || err.includes('cannot afford')) {
+        // Don't foul your own water (or plant a well next to a fouler).
+        if (peacefulSiteFouls(world, kind, cx, cz, claimed)) continue;
+        return { cx, cz };
+      }
     }
   }
   return null;
@@ -3171,8 +3240,11 @@ function peacefulSearchRect(
 
 /**
  * Issue one `placeBuilding` for a legal site, ledger-guarding the cost.
- * Never spends below PEACEFUL_FUNDS_RESERVE (see above). Returns true
- * when a command was issued.
+ * Never spends the treasury below the peaceful floor
+ * (peacefulTreasuryFloor, city.ts): the upkeep shutoff kills the newest
+ * buildings first, so spending the last funds darkens the oldest — the
+ * power/water the city runs on — and the city can never earn its way
+ * back (Phase 9 death-spiral fix). Returns true when a command was issued.
  */
 function placePeaceful(
   world: World,
@@ -3180,14 +3252,14 @@ function placePeaceful(
   ai: AIPlayerState,
   kind: BuildingKind,
   rect: { x0: number; z0: number; x1: number; z1: number },
-  claimed: Set<number>,
+  claimed: Map<number, BuildingKind>,
   terrain: TerrainData,
 ): boolean {
   const player = getPlayer(world.city, ai.owner);
   if (!player) return false;
   const def = BUILDING_DEFS[kind];
   const l = thinkLedger(ai);
-  if (player.funds - l.funds - def.costFunds < PEACEFUL_FUNDS_RESERVE) return false;
+  if (player.funds - l.funds - def.costFunds < peacefulTreasuryFloor(world, ai.owner)) return false;
   if (player.materials - l.materials < def.costMaterials) return false;
   const site = findPeacefulSite(world, terrain, ai, kind, rect, claimed);
   if (!site) return false;
@@ -3200,7 +3272,7 @@ function placePeaceful(
   });
   l.funds += def.costFunds;
   l.materials += def.costMaterials;
-  for (const c of footprintCells(site.cx, site.cz, def.footprintW, def.footprintH)) claimed.add(c);
+  for (const c of footprintCells(site.cx, site.cz, def.footprintW, def.footprintH)) claimed.set(c, kind);
   return true;
 }
 
@@ -3241,6 +3313,10 @@ const PEACEFUL_ENGINE: Array<{ kind: BuildingKind; max: number }> = [
 const PEACEFUL_CIVIC: Array<{ kind: BuildingKind; max: number }> = [
   { kind: 'school', max: 1 },
   { kind: 'lab', max: 1 },
+  // Late-game materials scaling: the 1500 starting stock + factory
+  // output (2.5/s each) covers the opening; the quarry arrives only
+  // when the treasury is rich enough to afford the 350 funds.
+  { kind: 'quarry', max: 1 },
 ];
 
 /**
@@ -3262,18 +3338,6 @@ const PEACEFUL_AMENITIES: Array<{ kind: BuildingKind; max: number }> = [
   { kind: 'hospital', max: 1 },
   { kind: 'mediaCenter', max: 1 },
 ];
-
-/**
- * Funds the AI never spends below. Upkeep is automatic every economy
- * tick — without a buffer the AI spends its last fund on a building,
- * can't pay upkeep, and the whole city goes non-operational (no taxes,
- * no production: the death spiral). The buffer must be low enough to
- * let the income engine itself be built (two shops cost 440) yet high
- * enough to survive the ~60 sim-seconds until shop income covers
- * upkeep. 200 threads that needle: it blocks frivolous spending while
- * the engine is incomplete, but never blocks the engine.
- */
-const PEACEFUL_FUNDS_RESERVE = 200;
 
 /**
  * While the treasury holds this much, housing outranks further
@@ -3304,6 +3368,19 @@ function peacefulNeedKinds(world: World, ai: AIPlayerState, counts: Map<Building
     waterDemand += def.waterDemand;
     waterSupply += def.waterSupply;
   }
+  // Fuel is counted from the caller's map (existing buildings PLUS
+  // placements earlier this think): world.city.buildings doesn't have
+  // this-think's queued placements yet, so a recount from buildings
+  // alone would re-order the same oilWell every slot (the farm
+  // precedent above).
+  let fuelDemand = 0;
+  let fuelSupply = 0;
+  for (const [kind, n] of counts) {
+    if (n <= 0) continue;
+    const def = BUILDING_DEFS[kind];
+    fuelDemand += (def.input.fuel ?? 0) * n;
+    fuelSupply += (def.output.fuel ?? 0) * n;
+  }
   // Farm count comes from the caller's map (which includes buildings
   // placed earlier in THIS think — world.city.buildings doesn't have
   // them yet, so a recount would re-order the same farm every slot).
@@ -3314,15 +3391,31 @@ function peacefulNeedKinds(world: World, ai: AIPlayerState, counts: Map<Building
   if (powerSupply < powerDemand) needs.push('powerPlant', 'windFarm');
   if (waterSupply < waterDemand) needs.push('waterPump');
   const player = getPlayer(world.city, ai.owner);
+  // Phase 9 balance pass (death-spiral fix): the fuel leg, PACED.
+  // The powerPlant (1.0/s) and each factory (0.4/s) burn fuel, and
+  // nothing in the opening build produces it. The 400 starting stock
+  // is a bridge, not a supply. Build ONE well early (the deficit
+  // trigger) — 0.6/s supply against 1.8/s demand stretches the 400
+  // stock to ~333 sim-seconds. More wells come only when the stock
+  // drops below 200 (about 160s of burn left): by then the shops are
+  // earning and the treasury can afford them. Building all three at
+  // once (900 funds) during the fragile ramp tips the city into the
+  // very death spiral the floor is meant to prevent.
+  const wells = counts.get('oilWell') ?? 0;
+  if (fuelSupply < fuelDemand && (wells < 1 || (player !== undefined && player.fuel < 200))) {
+    needs.push('oilWell');
+  }
   const pop = player ? player.population : 0;
   const farmsNeeded = Math.ceil((pop * FOOD_PER_POP_PER_SEC) / 3) + 1;
   if (farms < farmsNeeded) needs.push('farm');
-  // Materials: the 1500 starting stock covers the engine; the quarry
-  // comes only when the stockpile runs low (it's upkeep without income
-  // until the AI starts building in volume).
-  if (player && player.materials < 800 && (counts.get('quarry') ?? 0) < 1) {
-    needs.push('quarry');
-  }
+  // Materials: the 1500 starting stock covers the engine (factories
+  // produce 2.5 materials/s each, so the stock recovers while the
+  // city runs). The quarry is NOT a need — it's late-game scaling,
+  // built only when rich (see PEACEFUL_CIVIC below). The old
+  // materials-threshold trigger fired during the fragile income ramp
+  // (the opening spends ~1340 materials on build costs alone),
+  // wasting 350 funds + 0.7/s upkeep on a building the city doesn't
+  // need yet.
   return needs;
 }
 
@@ -3373,7 +3466,7 @@ function thinkPeacefulConstruction(
     (counts.get(kind) ?? 0) < max;
   const player = getPlayer(world.city, ai.owner);
   const rich = player !== undefined && player.funds >= PEACEFUL_HOUSING_FUNDS;
-  const claimed = new Set<number>();
+  const claimed = new Map<number, BuildingKind>();
   for (let slot = 0; slot < PEACEFUL_PLACEMENTS_PER_THINK; slot++) {
     const candidates: BuildingKind[] = [...peacefulNeedKinds(world, ai, counts)];
     // Phase gating: utilities → engine → everything else. The phases

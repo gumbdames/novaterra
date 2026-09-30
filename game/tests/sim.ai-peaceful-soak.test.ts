@@ -162,16 +162,18 @@ function runTicks(ctx: Ctx, n: number): void {
 }
 
 /** Population, treasury, and AI-owned building counts for one owner. */
-function cityStats(world: World, owner: number): { pop: number; funds: number; buildings: number; military: number } {
+function cityStats(world: World, owner: number): { pop: number; funds: number; buildings: number; military: number; operational: number } {
   const player = getPlayer(world.city, owner);
   let buildings = 0;
   let military = 0;
+  let operational = 0;
   for (const b of world.city.buildings) {
     if (b.owner !== owner) continue;
     buildings++;
     if (BUILDING_DEFS[b.kind].military === true) military++;
+    if (b.operational && b.progress >= 1) operational++;
   }
-  return { pop: player ? player.population : 0, funds: player ? player.funds : 0, buildings, military };
+  return { pop: player ? player.population : 0, funds: player ? player.funds : 0, buildings, military, operational };
 }
 
 // The peaceful victory needs 8,000 housed residents — a long game.
@@ -196,7 +198,14 @@ describe('peaceful AI soak (marshal vs marshal)', () => {
       expect(s.buildings).toBeGreaterThan(0);
       expect(s.military).toBe(0);
       expect(s.pop).toBeGreaterThan(SOAK_MIN_POPULATION);
-      expect(s.funds).toBeGreaterThanOrEqual(0);
+      // Phase 9 death-spiral fix: the treasury must stay POSITIVE, not
+      // just non-negative. The old code hit exactly 0 (upkeep shutoff
+      // darkened the power/water, income collapsed, permanent stall).
+      // The peacefulTreasuryFloor + paced fuel build keep funds > 0.
+      expect(s.funds).toBeGreaterThan(0);
+      // Most completed buildings stay operational (funded upkeep +
+      // powered + watered). If the city is starving, buildings go dark.
+      expect(s.operational).toBeGreaterThanOrEqual(Math.floor(s.buildings * 0.8));
     }
     // No military order may even be formed: canTrain gates military
     // defs and the peaceful dispatch skips every military think.
@@ -220,7 +229,11 @@ describe('peaceful AI soak (marshal vs marshal)', () => {
 
   it('mid-soak save/load is digest-stable', () => {
     const ctx = setupPeacefulSoak(99);
-    runTicks(ctx, SOAK_TICKS / 2);
+    // Run 1801 ticks: marshal thinks every 30 ticks, so tick 1800 is a
+    // think tick with commands queued for 1801. Snapshotting at 1800
+    // would lose those queued commands (the queue isn't snapshotted).
+    // One more tick applies them, so the snapshot is clean.
+    runTicks(ctx, SOAK_TICKS / 2 + 1);
     const snap = takeSnapshot(ctx.world);
     runTicks(ctx, SOAK_TICKS / 2);
     const continued = digestWorld(ctx.world);

@@ -1092,6 +1092,15 @@ on plant ladder and supply costs; visual review per asset batch;
 player-docs (HOW_TO_PLAY, GAME_MECHANICS) updated per phase as
 mechanics land — a doc that lags reality is a bug.
 
+**Status: IN PROGRESS (2026-09-30, 0.1 Alpha).** Workstream B (balance
+pass + pathology fixes from workstream A's soak metrics): fixed the
+`advanceAge` apply-time race (duplicate commands fizzle, no double
+charge), the forward-base-in-water pathology (nearest-land nudge),
+and the peaceful-AI death spiral (treasury floor 30s + paced fuel
+build + fouling avoidance — funds stay positive, pop 12→60 over
+1000s). Marshal builds mediaCenter (unlocks industry age). Commander
+mix gains reconTeam + hq. 2117/2117 tests green.
+
 ## 10. Budget accounting
 
 **Download (startup, ≤8 MiB gate).** Today ~5.45 MiB (4.62 GLB +
