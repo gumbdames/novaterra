@@ -38,7 +38,10 @@
  *
  * Style: flat-shaded low-poly (flatShading: true) to sit with the
  * Kenney/Quaternius GLBs; every model must read clearly at RTS camera
- * distance — silhouette first, ≥3 parts, no plain cubes.
+ * distance — silhouette first, ≥3 parts, no plain cubes. Non-emissive
+ * parts wear the shared procedural surface library via `smat()`
+ * (render/entitySurfaces.ts); `pmat` stays only for pure emissive
+ * accents (beacons, nav lights, afterburner glow).
  *
  * Import-safe under Node/vitest: `three` core + `BufferGeometryUtils`
  * touch no DOM at import time. Builders allocate fresh geometry per
@@ -50,8 +53,23 @@ import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 import type { LoadedModel } from './models';
+import { surfaceMaterial } from './entitySurfaces';
+import type { SurfaceCategory } from './surfaceTextures';
 
 /** Flat-shaded standard material shared within one built model. */
+/**
+ * Surface-backed flat-shaded material: the shared procedural texture
+ * library (`render/entitySurfaces.ts`) with the same crisp facets as
+ * `pmat`. Prefer this for every NON-emissive builder part; keep `pmat`
+ * only for pure emissive accents (beacons, nav lights, deck markings).
+ */
+function smat(
+  category: SurfaceCategory,
+  opts: { color?: number } = {},
+): THREE.MeshStandardMaterial {
+  return surfaceMaterial(category, { ...opts, flatShading: true });
+}
+
 function pmat(
   color: number,
   opts: { emissive?: number; emissiveIntensity?: number; roughness?: number; metalness?: number } = {},
@@ -151,9 +169,9 @@ class ModelBuilder {
 
 function buildArtillery(): LoadedModel {
   const b = new ModelBuilder();
-  const olive = pmat(0x5c6247);
-  const dark = pmat(0x2c2c30, { roughness: 0.5, metalness: 0.6 });
-  const tire = pmat(0x1d1d20, { roughness: 0.95, metalness: 0 });
+  const olive = smat('paintedMetal', { color: 0x5c6247 });
+  const dark = smat('gunmetal');
+  const tire = smat('tireRubber');
 
   // Gun platform: low rounded turntable base.
   b.add(new THREE.CylinderGeometry(1.05, 1.2, 0.35, 14), olive, tr(0, 0.35, 0.2));
@@ -194,9 +212,9 @@ function buildArtillery(): LoadedModel {
  */
 function buildAA(): LoadedModel {
   const b = new ModelBuilder();
-  const green = pmat(0x4d5c50);
-  const dark = pmat(0x2a2d33, { roughness: 0.5, metalness: 0.6 });
-  const glass = pmat(0x18242e, { roughness: 0.25, metalness: 0.4 });
+  const green = smat('paintedMetal', { color: 0x4d5c50 });
+  const dark = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x18242e });
 
   b.add(new THREE.BoxGeometry(2.1, 0.5, 3.6), green, tr(0, 0.62, 0));
   b.add(new THREE.BoxGeometry(1.9, 0.85, 1.1), green, tr(0, 1.25, 1.35));
@@ -253,9 +271,9 @@ function buildAA(): LoadedModel {
 
 function buildFighter(): LoadedModel {
   const b = new ModelBuilder();
-  const gray = pmat(0x9aa2ad, { roughness: 0.45, metalness: 0.55 });
-  const dark = pmat(0x2c3138, { roughness: 0.5, metalness: 0.6 });
-  const glass = pmat(0x141e28, { roughness: 0.15, metalness: 0.5 });
+  const gray = smat('paintedMetal', { color: 0x9aa2ad });
+  const dark = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x141e28 });
   const glow = pmat(0xff7a2a, { emissive: 0xff5a1a, emissiveIntensity: 1.6 });
 
   // Tapered fuselage along z + nose cone.
@@ -288,9 +306,9 @@ function buildFighter(): LoadedModel {
 
 function buildTransport(): LoadedModel {
   const b = new ModelBuilder();
-  const body = pmat(0x7a8494, { roughness: 0.5, metalness: 0.4 });
-  const dark = pmat(0x2c3138, { roughness: 0.5, metalness: 0.6 });
-  const glass = pmat(0x141e28, { roughness: 0.15, metalness: 0.5 });
+  const body = smat('paintedMetal', { color: 0x7a8494 });
+  const dark = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x141e28 });
 
   // Rounded body + cockpit glass.
   b.add(new THREE.SphereGeometry(1, 16, 12), body, tr(0, 1.05, 0.3, 0, 0, 0, 1.05, 0.78, 1.55));
@@ -324,9 +342,9 @@ function buildTransport(): LoadedModel {
 
 function buildDrone(): LoadedModel {
   const b = new ModelBuilder();
-  const frame = pmat(0x3a3f47, { roughness: 0.5, metalness: 0.5 });
+  const frame = smat('gunmetal');
   const accent = pmat(0x57c8ff, { emissive: 0x2266aa, emissiveIntensity: 0.8 });
-  const rotorMat = pmat(0x22262c, { roughness: 0.4, metalness: 0.3 });
+  const rotorMat = smat('gunmetal', { color: 0x777d85 });
 
   // Central body + camera eye.
   b.add(new THREE.SphereGeometry(0.32, 12, 10), frame, tr(0, 0.38, 0, 0, 0, 0, 1, 0.62, 1));
@@ -357,9 +375,9 @@ function buildDrone(): LoadedModel {
 
 function buildDestroyer(): LoadedModel {
   const b = new ModelBuilder();
-  const hullMat = pmat(0x6e7885, { roughness: 0.55, metalness: 0.45 });
-  const deckMat = pmat(0x3d434c, { roughness: 0.8, metalness: 0.2 });
-  const dark = pmat(0x2c3138, { roughness: 0.5, metalness: 0.6 });
+  const hullMat = smat('hullGray', { color: 0x6e7885 });
+  const deckMat = smat('concrete', { color: 0x3d434c });
+  const dark = smat('gunmetal');
 
   // Hull: octagonal tapered tube along z (bow +z), keel below waterline.
   const hullGeo = new THREE.CylinderGeometry(1.15, 1.7, 13.5, 8);
@@ -393,8 +411,8 @@ function buildDestroyer(): LoadedModel {
 
 function buildMediaCenter(): LoadedModel {
   const b = new ModelBuilder();
-  const steel = pmat(0x8a8f96, { roughness: 0.45, metalness: 0.65 });
-  const hutMat = pmat(0xb0b5bc, { roughness: 0.8, metalness: 0.1 });
+  const steel = smat('paintedMetal', { color: 0x8a8f96 });
+  const hutMat = smat('concrete', { color: 0xb0b5bc });
   const beacon = pmat(0xff2222, { emissive: 0xff2222, emissiveIntensity: 2.2 });
 
   // Four tapering legs.
@@ -445,10 +463,10 @@ function buildMediaCenter(): LoadedModel {
 
 function buildStormArray(): LoadedModel {
   const b = new ModelBuilder();
-  const concrete = pmat(0x9a9a94, { roughness: 0.95, metalness: 0 });
-  const housing = pmat(0x5a6068, { roughness: 0.6, metalness: 0.4 });
-  const dishMat = pmat(0xd8dce0, { roughness: 0.35, metalness: 0.55 });
-  const dark = pmat(0x2c3138, { roughness: 0.5, metalness: 0.6 });
+  const concrete = smat('concrete');
+  const housing = smat('paintedMetal', { color: 0x5a6068 });
+  const dishMat = smat('paintedMetal');
+  const dark = smat('gunmetal');
 
   // Concrete pad + pedestal + rotating housing.
   b.add(new THREE.CylinderGeometry(2.7, 2.9, 0.8, 18), concrete, tr(0, 0.4, 0));
@@ -494,9 +512,9 @@ function buildStormArray(): LoadedModel {
 /** Radar dish prop for aegisControl (~2.8 tall, base y=0 at placement). */
 export function buildRadarDishProp(): LoadedModel {
   const b = new ModelBuilder();
-  const housing = pmat(0x5a6068, { roughness: 0.6, metalness: 0.4 });
-  const dishMat = pmat(0xd8dce0, { roughness: 0.35, metalness: 0.55 });
-  const dark = pmat(0x2c3138, { roughness: 0.5, metalness: 0.6 });
+  const housing = smat('paintedMetal', { color: 0x5a6068 });
+  const dishMat = smat('paintedMetal');
+  const dark = smat('gunmetal');
 
   b.add(new THREE.CylinderGeometry(0.4, 0.5, 0.5, 10), housing, tr(0, 0.25, 0));
   b.beam(0, 0.5, 0, 0, 1.7, 0, 0.09, housing);
@@ -532,16 +550,16 @@ export function buildRadarDishProp(): LoadedModel {
 export function buildInfantryGear(kind: 'engineer' | 'rifles' | 'sniper' | 'medic'): LoadedModel {
   const b = new ModelBuilder();
   if (kind === 'rifles') {
-    const gunmetal = pmat(0x23262b, { roughness: 0.4, metalness: 0.7 });
-    const wood = pmat(0x6b4a2e, { roughness: 0.85, metalness: 0 });
+    const gunmetal = smat('gunmetal');
+    const wood = smat('woodPlank', { color: 0x6b4a2e });
     // Barrel + receiver + wooden stock, held across the chest.
     b.beam(0.3, 1.08, -0.15, 0.3, 1.12, 0.85, 0.032, gunmetal, 8);
     b.add(new THREE.BoxGeometry(0.07, 0.1, 0.3), gunmetal, tr(0.3, 1.06, 0.1));
     b.add(new THREE.BoxGeometry(0.075, 0.13, 0.32), wood, tr(0.3, 1.04, -0.28));
     b.add(new THREE.BoxGeometry(0.05, 0.14, 0.08), gunmetal, tr(0.3, 0.97, 0.12));
   } else if (kind === 'sniper') {
-    const gunmetal = pmat(0x23262b, { roughness: 0.4, metalness: 0.7 });
-    const wood = pmat(0x6b4a2e, { roughness: 0.85, metalness: 0 });
+    const gunmetal = smat('gunmetal');
+    const wood = smat('woodPlank', { color: 0x6b4a2e });
     // Long precision barrel + receiver + stock + scope, held across chest.
     b.beam(0.3, 1.08, -0.55, 0.3, 1.14, 1.25, 0.028, gunmetal, 8);
     b.add(new THREE.BoxGeometry(0.07, 0.1, 0.3), gunmetal, tr(0.3, 1.06, 0.1));
@@ -551,8 +569,8 @@ export function buildInfantryGear(kind: 'engineer' | 'rifles' | 'sniper' | 'medi
     b.beam(0.3, 1.02, 0.95, 0.14, 0.5, 1.15, 0.02, gunmetal, 6);
     b.beam(0.3, 1.02, 0.95, 0.46, 0.5, 1.15, 0.02, gunmetal, 6);
   } else if (kind === 'medic') {
-    const white = pmat(0xf0f0f0, { roughness: 0.6, metalness: 0 });
-    const red = pmat(0xd8332a, { roughness: 0.6, metalness: 0 });
+    const white = smat('paintedMetal');
+    const red = smat('paintedMetal', { color: 0xd8332a });
     // White helmet: squashed sphere + brim, worn on the head (~1.6).
     b.add(new THREE.SphereGeometry(0.19, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), white, tr(0, 1.62, 0.02, 0, 0, 0, 1, 0.75, 1));
     b.add(new THREE.CylinderGeometry(0.22, 0.22, 0.035, 12), white, tr(0, 1.62, 0.02));
@@ -561,8 +579,8 @@ export function buildInfantryGear(kind: 'engineer' | 'rifles' | 'sniper' | 'medi
     b.add(new THREE.BoxGeometry(0.22, 0.08, 0.02), red, tr(0, 1.08, -0.43));
     b.add(new THREE.BoxGeometry(0.08, 0.22, 0.02), red, tr(0, 1.08, -0.43));
   } else {
-    const yellow = pmat(0xe8b820, { roughness: 0.5, metalness: 0.15 });
-    const olive = pmat(0x5c6247, { roughness: 0.85, metalness: 0 });
+    const yellow = smat('paintedMetal', { color: 0xe8b820 });
+    const olive = smat('canvasFabric', { color: 0x5c6247 });
     // Hard-hat: squashed sphere + brim.
     b.add(new THREE.SphereGeometry(0.165, 12, 8, 0, Math.PI * 2, 0, Math.PI / 2), yellow, tr(0, 1.6, 0.02, 0, 0, 0, 1, 0.75, 1));
     b.add(new THREE.CylinderGeometry(0.2, 0.2, 0.035, 12), yellow, tr(0, 1.6, 0.02));
@@ -580,8 +598,8 @@ export function buildInfantryGear(kind: 'engineer' | 'rifles' | 'sniper' | 'medi
  */
 export function buildHqAntenna(): LoadedModel {
   const b = new ModelBuilder();
-  const mastMat = pmat(0x3a3f47, { roughness: 0.5, metalness: 0.6 });
-  const dishMat = pmat(0xd8dce0, { roughness: 0.35, metalness: 0.55 });
+  const mastMat = smat('gunmetal');
+  const dishMat = smat('paintedMetal');
   const beacon = pmat(0xff2222, { emissive: 0xff2222, emissiveIntensity: 2.0 });
 
   b.add(new THREE.CylinderGeometry(0.09, 0.12, 0.25, 8), mastMat, tr(0, 0.12, 0));
@@ -607,9 +625,9 @@ export function buildHqAntenna(): LoadedModel {
  */
 function buildAPC(): LoadedModel {
   const b = new ModelBuilder();
-  const armor = pmat(0x5a6b4a);
-  const dark = pmat(0x2e3330);
-  const glass = pmat(0x1c2733);
+  const armor = smat('camoGreen');
+  const dark = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x1c2733 });
   // Sloped-nose hull: main box + angled nose plate + side skirts.
   b.add(new THREE.BoxGeometry(2.4, 1.1, 3.4), armor, tr(0, 1.05, -0.3));
   b.add(new THREE.BoxGeometry(2.4, 0.9, 1.1), armor, tr(0, 0.85, 1.85, -0.45, 0, 0));
@@ -642,9 +660,9 @@ function buildAPC(): LoadedModel {
  */
 function buildMLRS(): LoadedModel {
   const b = new ModelBuilder();
-  const olive = pmat(0x5c6247);
-  const dark = pmat(0x2e3330);
-  const glass = pmat(0x1c2733);
+  const olive = smat('paintedMetal', { color: 0x5c6247 });
+  const dark = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x1c2733 });
   // Chassis + cab-over cab.
   b.add(new THREE.BoxGeometry(2.4, 0.5, 4.6), dark, tr(0, 0.75, 0));
   b.add(new THREE.BoxGeometry(2.3, 1.2, 1.3), olive, tr(0, 1.5, 1.65));
@@ -671,7 +689,7 @@ function buildMLRS(): LoadedModel {
   );
   // 12 tubes in a 4×3 grid, mouths protruding from the pod front.
   const tubeGeo = new THREE.CylinderGeometry(0.15, 0.15, 2.4, 10);
-  const tubeMat = pmat(0x3a3f3a);
+  const tubeMat = smat('gunmetal');
   const tubeQ = q.clone().multiply(new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0)));
   for (let ix = 0; ix < 4; ix++) {
     for (let iy = 0; iy < 3; iy++) {
@@ -697,9 +715,9 @@ function buildMLRS(): LoadedModel {
  */
 function buildFighterBomber(): LoadedModel {
   const b = new ModelBuilder();
-  const gray = pmat(0x7a8a9a);
-  const dark = pmat(0x3a4048);
-  const glass = pmat(0x16202e);
+  const gray = smat('paintedMetal', { color: 0x7a8a9a });
+  const dark = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x16202e });
   // Fuselage + nose cone + canopy.
   b.add(new THREE.CylinderGeometry(0.45, 0.5, 4.2, 14), gray, tr(0, 0.7, 0, Math.PI / 2, 0, 0));
   b.add(new THREE.ConeGeometry(0.42, 1.2, 14), gray, tr(0, 0.7, 2.7, Math.PI / 2, 0, 0));
@@ -728,9 +746,9 @@ function buildFighterBomber(): LoadedModel {
  */
 function buildAttackHeli(): LoadedModel {
   const b = new ModelBuilder();
-  const olive = pmat(0x4a5a48);
-  const dark = pmat(0x2a2e28);
-  const glass = pmat(0x16202e);
+  const olive = smat('paintedMetal', { color: 0x4a5a48 });
+  const dark = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x16202e });
   // Slim tandem body + two canopy bubbles.
   b.add(new THREE.CylinderGeometry(0.5, 0.42, 3.4, 12), olive, tr(0, 1.2, 0.3, Math.PI / 2, 0, 0));
   b.add(new THREE.SphereGeometry(0.38, 12, 10), glass, tr(0, 1.5, 1.15, 0, 0, 0, 0.75, 0.6, 1.1));
@@ -777,8 +795,8 @@ function buildAttackHeli(): LoadedModel {
  */
 function buildSubmarine(): LoadedModel {
   const b = new ModelBuilder();
-  const steel = pmat(0x3a4048);
-  const dark = pmat(0x24282e);
+  const steel = smat('hullGray', { color: 0x3a4048 });
+  const dark = smat('gunmetal');
   // Pressure hull: cylinder + bow hemisphere + tapered stern.
   b.add(new THREE.CylinderGeometry(1.3, 1.3, 9, 16), steel, tr(0, 0.2, 0, Math.PI / 2, 0, 0));
   b.add(new THREE.SphereGeometry(1.3, 16, 12), steel, tr(0, 0.2, 4.5, 0, 0, 0, 1, 1, 0.8));
@@ -813,9 +831,9 @@ function buildSubmarine(): LoadedModel {
  */
 function buildFrigate(): LoadedModel {
   const b = new ModelBuilder();
-  const gray = pmat(0x6e7885);
-  const dark = pmat(0x3a4048);
-  const glass = pmat(0x16202e);
+  const gray = smat('hullGray', { color: 0x6e7885 });
+  const dark = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x16202e });
   // Hull: octagonal tube + raked bow (top radius → +z after rotX π/2).
   b.add(new THREE.CylinderGeometry(1.5, 1.1, 10.5, 8), gray, tr(0, 0.2, -0.5, Math.PI / 2, 0, 0, 1.15, 1, 0.85));
   b.add(new THREE.CylinderGeometry(0.15, 1.28, 2.2, 8), gray, tr(0, 0.2, 5.8, Math.PI / 2, 0, 0, 1.15, 1, 0.85));
@@ -832,7 +850,7 @@ function buildFrigate(): LoadedModel {
   b.beam(0, 2.8, -0.6, 0, 4.5, -0.6, 0.09, dark, 8);
   b.add(new THREE.BoxGeometry(1.6, 0.1, 0.3), gray, tr(0, 4.55, -0.6));
   // Aft helicopter deck marking.
-  b.add(new THREE.CylinderGeometry(1.1, 1.1, 0.06, 20), pmat(0x59616c), tr(0, 1.38, -4.2));
+  b.add(new THREE.CylinderGeometry(1.1, 1.1, 0.06, 20), smat('concrete', { color: 0x59616c }), tr(0, 1.38, -4.2));
   return b.build();
 }
 
@@ -843,11 +861,11 @@ function buildFrigate(): LoadedModel {
  */
 function buildCarrier(): LoadedModel {
   const b = new ModelBuilder();
-  const gray = pmat(0x6e7885);
-  const deckMat = pmat(0x4a5058);
-  const dark = pmat(0x3a4048);
-  const glass = pmat(0x16202e);
-  const lineMat = pmat(0xd8d8d0);
+  const gray = smat('hullGray', { color: 0x6e7885 });
+  const deckMat = smat('concrete', { color: 0x4a5058 });
+  const dark = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x16202e });
+  const lineMat = smat('paintedMetal');
   // Hull + tapered bow block.
   b.add(new THREE.BoxGeometry(7.0, 2.6, 17.5), gray, tr(0, 0.1, -0.5));
   b.add(new THREE.BoxGeometry(5.0, 2.6, 3.0), gray, tr(0, 0.1, 9.0, 0, 0, 0, 0.72, 1, 1));
@@ -882,10 +900,10 @@ function buildCarrier(): LoadedModel {
  */
 function buildQuarry(): LoadedModel {
   const b = new ModelBuilder();
-  const rock = pmat(0x8a8078);
-  const rockDark = pmat(0x6e675e);
-  const hut = pmat(0x9a8a6a);
-  const belt = pmat(0x3a3d42);
+  const rock = smat('concrete', { color: 0x8a8078 });
+  const rockDark = smat('concrete', { color: 0x6e675e });
+  const hut = smat('woodPlank', { color: 0x9a8a6a });
+  const belt = smat('tireRubber');
   // Stepped rock face receding upward.
   b.add(new THREE.BoxGeometry(5.5, 1.0, 1.8), rock, tr(0, 0.5, -1.9));
   b.add(new THREE.BoxGeometry(5.5, 2.0, 1.8), rockDark, tr(0, 1.0, -0.3));
@@ -913,8 +931,8 @@ function buildQuarry(): LoadedModel {
  */
 function buildMonument(): LoadedModel {
   const b = new ModelBuilder();
-  const stone = pmat(0xd8d4c8);
-  const stoneDark = pmat(0xb0aca0);
+  const stone = smat('concrete', { color: 0xd8d4c8 });
+  const stoneDark = smat('concrete', { color: 0xb0aca0 });
   const gold = pmat(0xd8a833, { emissive: 0x664411 });
   // Stepped plinth.
   b.add(new THREE.BoxGeometry(4.4, 0.5, 4.4), stoneDark, tr(0, 0.25, 0));
@@ -944,8 +962,8 @@ function buildMonument(): LoadedModel {
  */
 export function buildAwacsDome(): LoadedModel {
   const b = new ModelBuilder();
-  const gray = pmat(0x9aa2ad);
-  const dark = pmat(0x3a4048);
+  const gray = smat('paintedMetal', { color: 0x9aa2ad });
+  const dark = smat('gunmetal');
   b.add(new THREE.CylinderGeometry(0.12, 0.16, 0.7, 10), dark, tr(0, 0.35, 0));
   b.add(new THREE.CylinderGeometry(0.99, 0.99, 0.06, 20), dark, tr(0, 0.72, 0));
   b.add(new THREE.CylinderGeometry(0.95, 0.95, 0.16, 20), gray, tr(0, 0.78, 0));
@@ -959,8 +977,8 @@ export function buildAwacsDome(): LoadedModel {
  */
 export function buildShipMast(): LoadedModel {
   const b = new ModelBuilder();
-  const gray = pmat(0x8a949e);
-  const dark = pmat(0x3a4048);
+  const gray = smat('paintedMetal', { color: 0x8a949e });
+  const dark = smat('gunmetal');
   b.beam(0, 0, 0, 0, 3.0, 0, 0.09, gray, 8);
   b.add(new THREE.BoxGeometry(1.4, 0.06, 0.06), gray, tr(0, 2.2, 0));
   b.add(new THREE.BoxGeometry(1.0, 0.06, 0.06), gray, tr(0, 2.65, 0));
@@ -976,8 +994,8 @@ export function buildShipMast(): LoadedModel {
  */
 export function buildRunwayStrip(): LoadedModel {
   const b = new ModelBuilder();
-  const asphalt = pmat(0x3a3d42);
-  const white = pmat(0xd8d8d0);
+  const asphalt = smat('concrete', { color: 0x3a3d42 });
+  const white = smat('paintedMetal');
   b.add(new THREE.BoxGeometry(9.0, 0.06, 1.6), asphalt, tr(0, 0.03, 0));
   for (const sz of [-1, 1]) {
     b.add(new THREE.BoxGeometry(9.0, 0.02, 0.08), white, tr(0, 0.07, sz * 0.68));
@@ -996,7 +1014,7 @@ export function buildRunwayStrip(): LoadedModel {
  */
 export function buildCoolingTower(): LoadedModel {
   const b = new ModelBuilder();
-  const concrete = pmat(0xb8b4a8);
+  const concrete = smat('concrete');
   const profile = [
     new THREE.Vector2(1.7, 0),
     new THREE.Vector2(1.5, 0.8),
@@ -1011,7 +1029,7 @@ export function buildCoolingTower(): LoadedModel {
   // Route through a bucket directly (lathe has no tr helper need).
   b.add(shell.geometry, concrete);
   b.add(new THREE.TorusGeometry(1.42, 0.09, 8, 20), concrete, tr(0, 5.5, 0, Math.PI / 2, 0, 0));
-  b.add(new THREE.CircleGeometry(1.3, 20), pmat(0x4a4640), tr(0, 4.95, 0, -Math.PI / 2, 0, 0));
+  b.add(new THREE.CircleGeometry(1.3, 20), smat('concrete', { color: 0x4a4640 }), tr(0, 4.95, 0, -Math.PI / 2, 0, 0));
   return b.build();
 }
 
@@ -1021,7 +1039,7 @@ export function buildCoolingTower(): LoadedModel {
  */
 export function buildHospitalCross(): LoadedModel {
   const b = new ModelBuilder();
-  const white = pmat(0xf0f0f0);
+  const white = smat('paintedMetal');
   const red = pmat(0xd8332a, { emissive: 0x550000 });
   b.add(new THREE.BoxGeometry(0.18, 0.5, 0.18), white, tr(0, 0.25, 0));
   b.add(new THREE.BoxGeometry(1.2, 0.9, 0.12), white, tr(0, 0.95, 0));

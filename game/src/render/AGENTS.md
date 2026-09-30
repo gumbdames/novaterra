@@ -103,13 +103,57 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   mast), `buildRunwayStrip` (airfield), `buildCoolingTower`
   (nuclearPlant), `buildHospitalCross` (hospital roof sign).
 
+## Procedural surface library (`render/surfaceTextures.ts`, `surfaceMaterials.ts`, `boxProjectUVs.ts`, 0.1 Alpha)
+
+- License-clean, fully procedural textures: `surfaceTextures.ts` generates
+  16 surfaces (`paintedMetal`, `camoGreen/Desert/Navy`, `gunmetal`,
+  `tireRubber`, `concrete`, `glassBlue`, `brickRed`, `woodPlank`,
+  `canvasFabric`, `hullGray`, `rustMetal`, `hazardStripes`, `roofGravel`,
+  `sandbag`) from a seeded mulberry32 PRNG — no third-party IP, no canvas
+  DOM needed. `generateSurfacePixels` / `generateSurfaceRoughness` are pure
+  (Node-testable); `surfaceTexture` / `surfaceRoughnessTexture` wrap them in
+  cached `THREE.DataTexture`s (sRGB diffuse, single-channel roughness,
+  `RepeatWrapping`). Same (category, seed) → byte-identical pixels everywhere.
+- Tileability by construction: every feature is drawn through toroidal
+  (wrapping) writes and analytic patterns use periods that divide the texture
+  size; pinned by the seam-vs-grain test (`tests/render.surfaces.test.ts`).
+- `surfaceMaterials.ts` exports ONE shared `THREE.MeshStandardMaterial` per
+  category (`SURFACE_MATERIALS`, tuned metalness/roughness per surface).
+  Team-color contract (documented in the module header): `tintable` surfaces
+  (`paintedMetal`, `hullGray`, `canvasFabric`, `concrete`, `roofGravel`) are
+  luminance-biased so a team tint reads; authored-color surfaces are used
+  with white. NEVER mutate a shared instance — clone once per team.
+- `boxProjectUVs.ts`: pure dominant-axis box projection for geometry without
+  TEXCOORD_0; UVs in tile units (`worldScale` = world units per tile) so
+  texel density is consistent across models. Missing/non-finite normals fall
+  back to up-facing; never emits NaNs. `ensureBoxUVs` projects only when no
+  `uv` attribute exists.
+- Wired in by the texture-integration phase (`render/entitySurfaces.ts`,
+  0.1 Alpha): `KEY_TREATMENTS` maps all 58 `MODEL_PATHS` keys to surface
+  categories; `applySurfaceTreatment` runs once at load in `models.ts`
+  (per-material, never per-view); procedural builders tag materials via
+  `surfaceMaterial()` in `proceduralModels.ts`; roads emit world-scale UVs
+  (`roads.ts` `ROAD_UV_WORLD_SCALE = 4`). `applyEnvironmentLighting`
+  (`render/renderer.ts`) attaches a shared procedural equirect environment
+  map at game start so metalness/roughness shade correctly on the unified
+  renderer (its internal PMREM path handles equirect maps per backend —
+  the legacy `THREE.PMREMGenerator` is WebGLRenderer-only and crashes on
+  WebGPURenderer, do not use it). Pinned by
+  `tests/render.entitySurfaces.test.ts` (13 tests).
+
 ## Roads (`render/roads.ts`, 0.1 Alpha)
 
 - Pure deterministic builders: `buildRoadGeometry` (one asphalt quad per
   road cell, deduped, sorted emission — connected ribbons read as
   continuous) and `buildRoadMarkings` (pale center dash only for cells
   with exactly two OPPOSITE neighbors; ends/corners/junctions get none).
-  Tested in `tests/render.roads.test.ts`.
+  An optional `heightAt` callback drapes both layers over the terrain:
+  heights are sampled per quad corner (+0.08 ribbon / +0.11 dash
+  offsets, shared corners sampled at identical coordinates so the ribbon
+  never cracks) with geometric normals for correct slope lighting;
+  without the callback the quads stay flat at `ROAD_Y` / `ROAD_DASH_Y`
+  (legacy headless path). Tested in `tests/render.roads.test.ts` and
+  `tests/render.entityHeights.test.ts`.
 
 ## Nature scatter (`render/nature.ts`, 0.1 Alpha)
 
@@ -138,8 +182,20 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   against live three.js objects (create/move/dispose) every frame;
   `setSelected`/`updateSelectionRings` drive highlight state. It never
   writes to the world. Constructor: `new EntityRenderer(scene,
-  models = new Map(), { waterLevel = 0 })` — an empty map is fully
-  supported (every entity falls back; the game stays playable).
+  models = new Map(), { waterLevel = 0, terrain })` — an empty map is
+  fully supported (every entity falls back; the game stays playable),
+  and `terrain` (the sim's `TerrainData`, passed from `ui/game.ts`)
+  makes every ground-anchored view ride on the terrain — without it,
+  entities keep the legacy flat y=0 placement (headless tests only).
+- Terrain-riding Y rules (`render/terrainHeight.ts`, pure and tested):
+  land units and buildings sit at `heightAt` (deterministic, O(1)
+  bilinear lookup — units re-sample every frame as they move, buildings
+  sample once at creation at the footprint center + 0.05); sea units
+  float at `waterLevel`; aircraft ride the terrain beneath them with the
+  14 hover applied group-relative (spectre gunship keeps 1.6, other land
+  units 0.15 anti z-fight epsilon). Roads drape per corner (see below),
+  selection rings sit at ground + 0.3 under the unit, and superweapon FX
+  (Aegis dome, storm strikes) anchor on the terrain at their x/z.
 - Model resolution per entity kind (`modelSourceFor`, tested for
   completeness over every UnitKind/BuildingKind): **GLB → procedural →
   placeholder**. When a GLB kind's pieces ALL fail to load, the renderer
@@ -164,8 +220,10 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   shared materials and releases the clones — no cross-talk between two
   views of the same kind (pinned by test).
 - Sea units float at `waterLevel` (boats/ships carry their waterline via
-  baked `yOffset`); air units hover at y=14; the spectre gunship hovers
-  at 1.6 (`HOVER_Y`).
+  baked `yOffset`); air units ride the terrain beneath them with the 14
+  hover applied group-relative; land units sit on the terrain (+0.15,
+  spectre gunship at 1.6). See the terrain-riding bullet above for the
+  full rule set (`render/terrainHeight.ts`).
 - Roads: ribbon + dash meshes rebuilt when the road digest changes (FNV
   over cell indices, not just the count).
 - `dispose()` releases per-view objects and every SHARED asset the

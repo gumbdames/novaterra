@@ -30,7 +30,10 @@
  *    render-only nature scatter. See `docs/research/real-models.md` for
  *    the sourcing rationale; every entry is CC0 (Kenney / Quaternius).
  *  - `loadModels`: fetch + process each GLB, bounded by a per-model
- *    timeout. Any failure (404, timeout, parse error) records the key in
+ *    timeout. After extraction it applies the model's surface treatment
+ *    (`applySurfaceTreatment` in `render/entitySurfaces.ts`) once — the
+ *    per-load material clones wear the shared procedural textures from
+ *    then on, in every view, at zero per-frame cost. Any failure (404, timeout, parse error) records the key in
  *    `failed` and CONTINUES — a missing model must never throw and must
  *    never hang boot. Callers fall back to the procedural builders in
  *    `render/proceduralModels.ts` (then the placeholders in
@@ -64,6 +67,7 @@
 import * as THREE from 'three';
 
 import { withTimeout } from './renderer';
+import { applySurfaceTreatment } from './entitySurfaces';
 
 /** Which GLB file to load for a model key, and how to fit it. */
 export interface ModelSpec {
@@ -506,6 +510,10 @@ export async function loadModels(
           gltf.scene.updateMatrixWorld(true);
         }
         const { geometries, materials } = await extractModelGeometry(gltf.scene);
+        // Layer shared procedural surfaces onto the per-load clones once
+        // here — before the model is shared across views — never per-view
+        // in the hot path (render/entitySurfaces.ts).
+        applySurfaceTreatment(key, geometries, materials);
         disposeSourceScene(gltf.scene);
         return { key, model: { geometries, materials } as LoadedModel };
       } catch (error) {
