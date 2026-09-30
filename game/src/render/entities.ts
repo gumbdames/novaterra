@@ -90,6 +90,11 @@ import {
   buildControlTower,
   buildCoolingTower,
   buildHospitalCross,
+  // Grand-expansion Phase 5 — air/naval expansion (workstream E, pass 2):
+  // the kitbash attach props.
+  buildSeaplaneFloats,
+  buildMineRails,
+  buildNavalMineSpikes,
 } from './proceduralModels';
 import {
   buildRoadGeometry,
@@ -249,23 +254,19 @@ export type ModelSource =
   bus: { type: 'procedural' },
   tram: { type: 'procedural' },
   ferry: { type: 'procedural' },
-  // Grand-expansion Phase 5 — aircraft expansion (workstream B,
-  // 2026-09-30): source entries so modelSourceFor never returns
-  // placeholder for the new kinds. The procedural BUILDERS are the
-  // render workstream's follow-up (buildProceduralModel returns
-  // undefined until then and the resolution chain falls back to
-  // placeholders — never blank), per the Phase 4 precedent above.
-  strategicBomber: { type: 'procedural' },
-  maritimePatrol: { type: 'procedural' },
-  reconUAV: { type: 'procedural' },
-  armedUAV: { type: 'procedural' },
-  reconPlane: { type: 'procedural' },
-  gunship: { type: 'procedural' },
-  tanker: { type: 'procedural' },
-  militaryCargo: { type: 'procedural' },
-  trainer: { type: 'procedural' },
-  navalFighter: { type: 'procedural' },
-  airliner: { type: 'procedural' },
+  // Grand-expansion Phase 5 — air/naval expansion (workstream E, pass 2,
+  // 2026-09-30): the styloo "Tiny Plane Asset Pack" (CC0) GLBs — one
+  // MODEL_PATHS key per kind (per-kind fit-to-hull scale), all lazy.
+  // gunship and navalFighter stay procedural hero builders (below).
+  strategicBomber: { type: 'glb', pieces: [piece('stylooBomber')] },
+  maritimePatrol: { type: 'glb', pieces: [piece('stylooPatrol')] },
+  reconUAV: { type: 'glb', pieces: [piece('stylooReconUAV')] },
+  armedUAV: { type: 'glb', pieces: [piece('stylooArmedUAV')] },
+  reconPlane: { type: 'glb', pieces: [piece('stylooRecon')] },
+  tanker: { type: 'glb', pieces: [piece('stylooTanker')] },
+  militaryCargo: { type: 'glb', pieces: [piece('stylooMilCargo')] },
+  trainer: { type: 'glb', pieces: [piece('stylooTrainer')] },
+  airliner: { type: 'glb', pieces: [piece('stylooAirliner')] },
   // Grand-expansion Phase 5 — airports (workstream A, S5+S8,
   // 2026-09-30): source entries for the 14 airport kinds. Anchors reuse
   // the airfield's GLB hangar pieces (one key each, loaded once) with
@@ -305,31 +306,102 @@ export type ModelSource =
   runwayS: { type: 'procedural' },
   runwayM: { type: 'procedural' },
   runwayL: { type: 'procedural' },
-  jumboAirliner: { type: 'procedural' },
-  regionalJet: { type: 'procedural' },
-  cargoPlane: { type: 'procedural' },
+  jumboAirliner: { type: 'glb', pieces: [piece('stylooJumbo')] },
+  regionalJet: { type: 'glb', pieces: [piece('stylooRegional')] },
+  cargoPlane: { type: 'glb', pieces: [piece('stylooCargo')] },
+  // Grand-expansion Phase 5 — air/naval expansion (workstream E, pass 2):
+  // the 3 procedural hero aircraft (buildProceduralModel).
+  gunship: { type: 'procedural' },
+  navalFighter: { type: 'procedural' },
   passengerHeli: { type: 'procedural' },
-  seaplane: { type: 'procedural' },
-  // Grand-expansion Phase 6 — naval expansion (workstream C): source
-  // entries so modelSourceFor never returns placeholder for the 14 new
-  // sea kinds. The procedural BUILDERS are a render follow-up
-  // (buildProceduralModel returns undefined until then and the
-  // resolution chain falls back to placeholders — never blank).
+  // The seaplane is the styloo GLB + the procedural twin-floats prop
+  // (attached via extraPropSpecs below).
+  seaplane: { type: 'glb', pieces: [piece('stylooSeaplane')] },
+  // Grand-expansion Phase 6 — naval expansion (workstream C + E pass 2):
+  // the 6 procedural hero warships (buildProceduralModel) and the 9
+  // logistics ships as CC0 kitbash composites (all pieces lazy).
   coastalSub: { type: 'procedural' },
   missileSub: { type: 'procedural' },
   corvette: { type: 'procedural' },
   cruiser: { type: 'procedural' },
   battleship: { type: 'procedural' },
   heavyDestroyer: { type: 'procedural' },
-  cargoFreighter: { type: 'procedural' },
-  fuelTanker: { type: 'procedural' },
-  ammoShip: { type: 'procedural' },
-  repairShip: { type: 'procedural' },
-  minelayer: { type: 'procedural' },
-  navalMine: { type: 'procedural' },
-  coastGuardCutter: { type: 'procedural' },
-  cruiseLiner: { type: 'procedural' },
-  yacht: { type: 'procedural' },
+  cargoFreighter: { type: 'glb', pieces: [piece('cargoFreighterShip')] },
+  // Deck tanks ride the tanker's open deck fore + aft of the
+  // amidships superstructure.
+  fuelTanker: {
+    type: 'glb',
+    pieces: [
+      piece('fuelTankerHull'),
+      piece('industrialTank', 0, 0.7, -2.0),
+      piece('industrialTank', 0, 0.7, 2.2),
+    ],
+  },
+  // Deck crates fore + aft of the amidships superstructure.
+  ammoShip: {
+    type: 'glb',
+    pieces: [
+      piece('ammoShipHull'),
+      piece('deckCrate', -0.55, 0.7, -1.5),
+      piece('deckCrate', 0.55, 0.7, -1.5),
+      piece('deckCrate', -0.55, 0.7, 1.5),
+      piece('deckCrate', 0.55, 0.7, 1.5),
+    ],
+  },
+  // Deck crane on the aft working deck (bow at +z).
+  repairShip: {
+    type: 'glb',
+    pieces: [piece('repairShipHull'), piece('repairCrane', 0, 1.2, -1.5)],
+  },
+  // Mine rails ride as a procedural prop (extraPropSpecs below).
+  minelayer: { type: 'glb', pieces: [piece('minelayerHull')] },
+  // Contact spikes ride as a procedural prop (extraPropSpecs below).
+  navalMine: { type: 'glb', pieces: [piece('mineBuoy')] },
+  coastGuardCutter: { type: 'glb', pieces: [piece('coastGuardCutterBoat')] },
+  cruiseLiner: { type: 'glb', pieces: [piece('cruiseLinerShip')] },
+  yacht: { type: 'glb', pieces: [piece('yachtBoat')] },
+  // Grand-expansion Phase 6 — ports (workstream E, pass 2): composite
+  // kitbashes from existing CC0 pieces (all lazy).
+  // commercialPort 8×6 world: harbor crane + 2 container stacks.
+  commercialPort: {
+    type: 'glb',
+    pieces: [
+      piece('shipyardCrane', 0, 0, -1),
+      piece('cargoContainerA', -2.7, 0, 0.9),
+      piece('cargoContainerA', 2.7, 0, 0.9),
+    ],
+  },
+  // containerPort 10×8 world: crane + 5 containers (one stacked pair).
+  containerPort: {
+    type: 'glb',
+    pieces: [
+      piece('shipyardCrane', 0, 0, -2),
+      piece('cargoContainerB', 2.8, 0, -1.5),
+      piece('cargoContainerB', 2.8, 0, 1.5),
+      piece('cargoContainerB', 2.8, 1.65, -1.5),
+      piece('cargoContainerC', -2.8, 0, -1.5),
+      piece('cargoContainerC', -2.8, 0, 1.5),
+    ],
+  },
+  // fishingHarbor 6×4 world: rowboat + 2 canoes.
+  fishingHarbor: {
+    type: 'glb',
+    pieces: [
+      piece('deckRowboat', 0, 0, 0.5),
+      piece('harborCanoe', -1.7, 0, -0.9),
+      piece('harborCanoe', 1.7, 0, -0.9),
+    ],
+  },
+  // navalBase 10×8 world: gantry crane + hall + containers.
+  navalBase: {
+    type: 'glb',
+    pieces: [
+      piece('navalYardCrane', -3, 0, -1),
+      piece('navalYardHall', 2.2, 0, 0.8),
+      piece('cargoContainerB', -0.5, 0, 2.6),
+      piece('cargoContainerC', 3.2, 0, -2.2),
+    ],
+  },
   // ---- NOVATERRA roster-expansion buildings ----
   barracks: { type: 'glb', pieces: [piece('barracks')] },
   // Phase 1 (veterancy): the military academy hall.
@@ -423,14 +495,6 @@ export type ModelSource =
   missileSilo: { type: 'procedural' },
   ordnanceDepot: { type: 'procedural' },
   fuelDepot: { type: 'procedural' },
-  // Grand-expansion Phase 6 — naval expansion (workstream C): the four
-  // ports. Source entries so modelSourceFor never returns placeholder;
-  // the procedural BUILDERS are a render follow-up (placeholders until
-  // then — never blank).
-  commercialPort: { type: 'procedural' },
-  containerPort: { type: 'procedural' },
-  fishingHarbor: { type: 'procedural' },
-  navalBase: { type: 'procedural' },
 };
 
 /**
@@ -612,6 +676,73 @@ export function hullSizeFor(kind: string): { x: number; y: number; z: number } {
       return { x: 6.0, y: 4.0, z: 16.0 };
     case 'fishingBoat':
       return { x: 2.4, y: 1.6, z: 5.0 };
+    // Grand-expansion Phase 5 — air/naval expansion (workstream E, pass 2,
+    // 2026-09-30): the 13 styloo aircraft.
+    case 'jumboAirliner':
+      return { x: 13, y: 4, z: 12 };
+    case 'airliner':
+      return { x: 10, y: 3, z: 9 };
+    case 'regionalJet':
+      return { x: 6.5, y: 2, z: 6 };
+    case 'maritimePatrol':
+      return { x: 7, y: 2.5, z: 7.5 };
+    case 'reconPlane':
+      return { x: 5, y: 1.8, z: 5.5 };
+    case 'seaplane':
+      return { x: 5.5, y: 2.2, z: 6 };
+    case 'cargoPlane':
+      return { x: 7, y: 2.5, z: 7.5 };
+    case 'militaryCargo':
+      return { x: 7.5, y: 2.8, z: 8 };
+    case 'tanker':
+      return { x: 8, y: 3, z: 8.5 };
+    case 'trainer':
+      return { x: 4.5, y: 1.8, z: 5 };
+    case 'reconUAV':
+      return { x: 3.5, y: 1.2, z: 4 };
+    case 'strategicBomber':
+      return { x: 11, y: 3, z: 10 };
+    case 'armedUAV':
+      return { x: 3.5, y: 1.2, z: 4 };
+    // The 3 procedural hero aircraft.
+    case 'navalFighter':
+      return { x: 7, y: 1.5, z: 6 };
+    case 'gunship':
+      return { x: 7, y: 2, z: 6 };
+    case 'passengerHeli':
+      return { x: 6.5, y: 2.2, z: 6 };
+    // Grand-expansion Phase 6 — naval expansion (workstream E, pass 2):
+    // the 6 hero warships + 9 logistics ships.
+    case 'coastalSub':
+      return { x: 3, y: 2.5, z: 12 };
+    case 'missileSub':
+      return { x: 4, y: 3.5, z: 20 };
+    case 'corvette':
+      return { x: 4, y: 3, z: 13 };
+    case 'cruiser':
+      return { x: 6, y: 4.5, z: 22 };
+    case 'battleship':
+      return { x: 8, y: 6, z: 30 };
+    case 'heavyDestroyer':
+      return { x: 5.5, y: 4, z: 20 };
+    case 'cargoFreighter':
+      return { x: 6.5, y: 4, z: 19 };
+    case 'fuelTanker':
+      return { x: 7, y: 5, z: 20 };
+    case 'ammoShip':
+      return { x: 6, y: 4.5, z: 18 };
+    case 'repairShip':
+      return { x: 4.5, y: 3.5, z: 10 };
+    case 'minelayer':
+      return { x: 4.5, y: 3.5, z: 10 };
+    case 'navalMine':
+      return { x: 1.2, y: 1.2, z: 1.2 };
+    case 'coastGuardCutter':
+      return { x: 3, y: 2.2, z: 7 };
+    case 'cruiseLiner':
+      return { x: 8, y: 6, z: 24 };
+    case 'yacht':
+      return { x: 2.6, y: 1.8, z: 6.5 };
     default:
       return { x: 1.6, y: 2.2, z: 1.6 }; // infantry-ish
   }
@@ -1712,7 +1843,8 @@ export class EntityRenderer {
    * Procedural attach prop, built once per key: 'gear:rifles',
    * 'gear:engineer', 'gear:sniper', 'gear:medic', 'hqAntenna',
    * 'radarDish', 'awacsDome', 'shipMast', 'runwayStrip',
-   * 'coolingTower', 'hospitalCross'.
+   * 'coolingTower', 'hospitalCross', 'seaplaneFloats', 'mineRails',
+   * 'navalMineSpikes'.
    */
   private propFor(key: string): LoadedModel {
     let m = this.propCache.get(key);
@@ -1735,6 +1867,14 @@ export class EntityRenderer {
         m = buildCoolingTower();
       } else if (key === 'hospitalCross') {
         m = buildHospitalCross();
+        // Grand-expansion Phase 5 — air/naval expansion (workstream E,
+        // pass 2): the kitbash attach props.
+      } else if (key === 'seaplaneFloats') {
+        m = buildSeaplaneFloats();
+      } else if (key === 'mineRails') {
+        m = buildMineRails();
+      } else if (key === 'navalMineSpikes') {
+        m = buildNavalMineSpikes();
       } else {
         m = buildRadarDishProp();
       }
@@ -1751,6 +1891,17 @@ export class EntityRenderer {
       if (geo === undefined || mat === undefined) continue;
       group.add(new THREE.Mesh(geo, mat));
     }
+  }
+
+  /**
+   * Public read of the attach-prop specs for a kind (tests, debug
+   * tooling). The private static stays the single source of truth for
+   * placement; this is just a window into it.
+   */
+  static propSpecsFor(
+    kind: string,
+  ): Array<{ prop: string; dx: number; dy: number; dz: number }> {
+    return EntityRenderer.extraPropSpecs(kind);
   }
 
   /**
@@ -1816,6 +1967,17 @@ export class EntityRenderer {
       case 'hospital':
         // Roof sign (roof ≈8.0 at this scale).
         return [{ prop: 'hospitalCross', dx: 0, dy: 8.0, dz: 0 }];
+      // Grand-expansion Phase 5 — air/naval expansion (workstream E,
+      // pass 2, 2026-09-30): the attach props for the kitbash kinds.
+      case 'seaplane':
+        // Twin floats tuck under the fuselage (planesty at scale 0.724).
+        return [{ prop: 'seaplaneFloats', dx: 0, dy: 0.55, dz: 0 }];
+      case 'minelayer':
+        // Mine rails on the stern deck (bow at +z; stern at -z).
+        return [{ prop: 'mineRails', dx: 0, dy: 1.4, dz: -1.5 }];
+      case 'navalMine':
+        // Contact spikes on the buoy crown.
+        return [{ prop: 'navalMineSpikes', dx: 0, dy: 0, dz: 0 }];
       default:
         return [];
     }

@@ -210,6 +210,91 @@ export const MODEL_PATHS: Record<string, ModelSpec> = {
   // gantry), hall building-k (1.30×0.77×0.91) ⇒ 3.08.
   navalYardCrane: { path: 'kenney-factory/crane-lift.glb', scale: 2.0 },
   navalYardHall: { path: 'kenney-industrial/building-k.glb', scale: 3.08 },
+  // ── Grand-expansion Phase 5 — air/naval expansion (workstream E, pass 2,
+  // 2026-09-30): styloo "Tiny Plane Asset Pack" (CC0) aircraft. The 15 FBX
+  // were converted to GLB with Blender 4.2.17 headless (see
+  // game/public/models/styloo-planes/CONVERSION.md). Top-view renders of
+  // all 6 types show the nose at authored -X (glTF y-up); every key uses
+  // rotY π/2 so the nose faces game-forward +z. The GLBs carry the pack's
+  // embedded palette texture — treatments must not overwrite `map`
+  // (STYLOO_CIVIL / STYLOO_MIL in entitySurfaces.ts keep it).
+  // planehuge (34.24×5.60×20.85, length×height×wingspan).
+  // jumboAirliner hull { 13, 4, 12 } ⇒ length-constrained scale 0.350.
+  stylooJumbo: { path: 'styloo-planes/planehuge.glb', scale: 0.350, rotY: Math.PI / 2 },
+  // airliner hull { 10, 3, 9 } ⇒ length-constrained scale 0.263.
+  stylooAirliner: { path: 'styloo-planes/planehuge.glb', scale: 0.263, rotY: Math.PI / 2 },
+  // planesty (8.29×1.82×7.29).
+  // regionalJet hull { 6.5, 2, 6 } ⇒ length-constrained scale 0.724.
+  stylooRegional: { path: 'styloo-planes/planesty.glb', scale: 0.724, rotY: Math.PI / 2 },
+  // maritimePatrol hull { 7, 2.5, 7.5 } ⇒ length-constrained 0.905.
+  stylooPatrol: { path: 'styloo-planes/planesty_001.glb', scale: 0.905, rotY: Math.PI / 2 },
+  // reconPlane hull { 5, 1.8, 5.5 } ⇒ length-constrained 0.663.
+  stylooRecon: { path: 'styloo-planes/planesty_002.glb', scale: 0.663, rotY: Math.PI / 2 },
+  // seaplane hull { 5.5, 2.2, 6 } ⇒ length-constrained 0.724 (+ floats prop).
+  stylooSeaplane: { path: 'styloo-planes/planesty_003.glb', scale: 0.724, rotY: Math.PI / 2 },
+  // planeazer (8.30×2.02×5.42).
+  // cargoPlane hull { 7, 2.5, 7.5 } ⇒ length-constrained scale 0.903.
+  stylooCargo: { path: 'styloo-planes/planeazer.glb', scale: 0.903, rotY: Math.PI / 2 },
+  // militaryCargo hull { 7.5, 2.8, 8 } ⇒ length-constrained 0.963.
+  stylooMilCargo: { path: 'styloo-planes/planeazer_001.glb', scale: 0.963, rotY: Math.PI / 2 },
+  // tanker hull { 8, 3, 8.5 } ⇒ length-constrained 1.024.
+  stylooTanker: { path: 'styloo-planes/planeazer_002.glb', scale: 1.024, rotY: Math.PI / 2 },
+  // plancestylized (4.38×2.43×4.43).
+  // trainer hull { 4.5, 1.8, 5 } ⇒ height-constrained scale 0.740.
+  stylooTrainer: { path: 'styloo-planes/plancestylized.glb', scale: 0.740, rotY: Math.PI / 2 },
+  // reconUAV hull { 3.5, 1.2, 4 } ⇒ height-constrained 0.493.
+  stylooReconUAV: { path: 'styloo-planes/plancestylized_001.glb', scale: 0.493, rotY: Math.PI / 2 },
+  // planeanimal (6.19×1.52×6.89).
+  // strategicBomber hull { 11, 3, 10 } ⇒ wingspan-constrained 1.596.
+  stylooBomber: { path: 'styloo-planes/planeanimal.glb', scale: 1.596, rotY: Math.PI / 2 },
+  // armedUAV hull { 3.5, 1.2, 4 } ⇒ wingspan-constrained 0.508.
+  stylooArmedUAV: { path: 'styloo-planes/planeanimal_001.glb', scale: 0.508, rotY: Math.PI / 2 },
+  // ── Grand-expansion Phase 5 — air/naval expansion (workstream E, pass 2):
+  // logistics-ship + port kitbash pieces from existing CC0 GLBs. Bow
+  // directions were read from orthographic top-view renders (2026-09-30):
+  // cargo ships carry the superstructure at +z (bow -z ⇒ rotY π); the
+  // small-boat kit faces +z already (no rotY).
+  // cargoFreighter hull { 6.5, 4, 19 }: ship-cargo-c (3.92×2.59×10.55,
+  // superstructure +z ⇒ bow -z) ⇒ height-constrained scale 1.54.
+  cargoFreighterShip: { path: 'kenney-watercraft/ship-cargo-c.glb', scale: 1.54, rotY: Math.PI, yOffset: -0.9 },
+  // coastGuardCutter hull { 3, 2.2, 7 }: boat-tug-a (1.78×2.24×3.47,
+  // bow +z) ⇒ height-constrained scale 0.98.
+  coastGuardCutterBoat: { path: 'kenney-watercraft/boat-tug-a.glb', scale: 0.98, yOffset: -0.25 },
+  // cruiseLiner hull { 8, 6, 24 }: ship-ocean-liner (4.76×8.93×21.28,
+  // bow -z) ⇒ height-constrained scale 0.67.
+  cruiseLinerShip: { path: 'kenney-watercraft/ship-ocean-liner.glb', scale: 0.67, rotY: Math.PI, yOffset: -1.4 },
+  // yacht hull { 2.6, 1.8, 6.5 }: boat-speed-b (1.78×1.59×3.29,
+  // bow +z) ⇒ height-constrained scale 1.13.
+  yachtBoat: { path: 'kenney-watercraft/boat-speed-b.glb', scale: 1.13, yOffset: -0.25 },
+  // navalMine hull { 1.2, 1.2, 1.2 }: buoy (0.93×1.84×0.93) ⇒
+  // height-constrained scale 0.65, sunk 1/3 (+ spikes prop).
+  mineBuoy: { path: 'kenney-watercraft/buoy.glb', scale: 0.65, yOffset: -0.4 },
+  // fuelTanker hull { 7, 5, 20 }: ship-large (4.80×9.96×13.10,
+  // bow +z) ⇒ height-constrained scale 0.50 (+ deck tanks).
+  fuelTankerHull: { path: 'kenney-watercraft/ship-large.glb', scale: 0.50, yOffset: -1.5 },
+  // ammoShip hull { 6, 4.5, 18 }: ship-small (4.80×9.96×10.60,
+  // bow +z) ⇒ height-constrained scale 0.45 (+ deck crates).
+  ammoShipHull: { path: 'kenney-watercraft/ship-small.glb', scale: 0.45, yOffset: -1.3 },
+  // repairShip hull { 4.5, 3.5, 10 }: boat-tow-a (2.88×3.33×6.12,
+  // bow +z) ⇒ height-constrained scale 1.05 (+ deck crane).
+  repairShipHull: { path: 'kenney-watercraft/boat-tow-a.glb', scale: 1.05, yOffset: -0.5 },
+  // minelayer hull { 4.5, 3.5, 10 }: boat-tow-b (2.88×3.05×6.12,
+  // bow +z) ⇒ height-constrained scale 1.15 (+ mine rails prop).
+  minelayerHull: { path: 'kenney-watercraft/boat-tow-b.glb', scale: 1.15, yOffset: -0.5 },
+  // Deck fittings: box-small (0.59×0.55×0.50) ⇒ 2.0 (1.18×1.10×1.00
+  // world crates) for the ammoShip; the factory crane (1.93×3.55×3.68)
+  // ⇒ 0.55 (1.06×1.95×2.02 world) for the repairShip; the rowboat
+  // (2.75×0.85×2.85) and canoe (0.30×0.18×1.15) ⇒ 1.0 / 2.0 for the
+  // fishingHarbor.
+  deckCrate: { path: 'kenney-factory/box-small.glb', scale: 2.0 },
+  repairCrane: { path: 'kenney-factory/crane.glb', scale: 0.55 },
+  deckRowboat: { path: 'kenney-watercraft/boat-row-large.glb', scale: 0.7 },
+  harborCanoe: { path: 'kenney-nature/canoe.glb', scale: 2.0 },
+  // Container pieces for the ports: cargo-container-a/b/c
+  // (1.38×1.10×2.76) ⇒ 1.5 (2.07×1.65×4.14 world).
+  cargoContainerA: { path: 'kenney-watercraft/cargo-container-a.glb', scale: 1.5 },
+  cargoContainerB: { path: 'kenney-watercraft/cargo-container-b.glb', scale: 1.5 },
+  cargoContainerC: { path: 'kenney-watercraft/cargo-container-c.glb', scale: 1.5 },
   // radarStation 4×4 / 6 tall: satelliteDish_large (0.85×0.81×0.74) ⇒ 4.7.
   radarStation: { path: 'kenney-space/satelliteDish_large.glb', scale: 4.7 },
   // oilRefinery 8×6 / 8 tall: large tank (1.51×0.96×1.65) ⇒ 1.6,

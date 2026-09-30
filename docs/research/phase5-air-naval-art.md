@@ -195,15 +195,27 @@ by Proposal 1; the warship half stays procedural.
    tsc --noEmit`, `npm run build` clean. Commit locally `(0.1 Alpha)`,
    no push.
 
+## Pass 2 status (2026-09-30) — DONE, committed locally
+
+All 49 keys mapped. Final mapping:
+
+| Keys | Source | Notes |
+|---|---|---|
+| 13 aircraft (jumboAirliner … armedUAV) | styloo "Tiny Plane Asset Pack" (CC0) GLBs, `game/public/models/styloo-planes/`, one MODEL_PATHS key per kind | Per-kind fit-to-hull scale; nose at authored −X ⇒ `rotY: π/2` for all 13. Colors are the pack's embedded palette texture (baseColorTexture) — treatments are palette-preserving (no `map`). |
+| 9 heroes (coastalSub, missileSub, corvette, cruiser, battleship, heavyDestroyer, navalFighter, gunship, passengerHeli) | procedural builders in `proceduralModels.ts` | smat()-tagged, ≥3 parts, waterline-keel for the 6 ships. |
+| 9 logistics ships | GLB composites from existing CC0 pieces | e.g. fuelTanker = ship-large hull + 2× industrialTank; ammoShip = ship-small + 4× deckCrate; 16 new MODEL_PATHS piece keys. |
+| 4 ports | GLB composites | commercialPort / containerPort / fishingHarbor / navalBase (cranes + containers + boats). |
+| 3 attach props | procedural (seaplaneFloats, mineRails, navalMineSpikes) | via `extraPropSpecs` + `propFor`. |
+
+- License: CC0 verified via itch.io asset-license metadata ("Creative Commons Zero v1.0 Universal"); the zip itself contains no license file (noted in THIRD_PARTY_NOTICES.md + CONVERSION.md, with ECGaming mirror cross-evidence).
+- Boot weight: 33-key boot set (+2: deckRowboat + harborCanoe — the foundation-age fishingHarbor's composite pieces, ~32 KB; pinned by test). All other 47 keys lazy; styloo adds ~6.3 MiB lazy, 0 at boot.
+- Tests: mapping-depth suite (every 49 keys → real GLB piece / existing builder), 9 hero builders in the procedural-gaps suite (waterline-keel bounds), boot-set inclusion/exclusion test, KEY_TREATMENTS 94/94 coverage. Full suite (1790 tests) + tsc green.
+- Visual verification (2026-09-30, Blender 4.2 Cycles): all 13 composites rendered and inspected. Findings applied: deckRowboat scale 1.0→0.7 (was dwarfing the canoes); confirmed tank/crate/crane/container pieces sit on decks (not floating/clipping); navalMine buoy clean (spikes are the procedural prop, not in the GLB render).
+- **Phase 6 note for the coordinator:** no CC0 warship source was found — the 6 warships + 3 naval aircraft are procedural hero builds. Recommend amending the PLAN.md Phase 6 "hero CC0 warship" budget line to procedural (zero download weight).
+
 ## Open questions for the coordinator
 
-1. Final key names from workers A/B/C (my audit assumes the PLAN §3.5–3.7
-   names; renames just re-map the table).
-2. `strategicBomber` / `cargoPlane` / `tanker`: prefer styloo-pack
-   variants even if the silhouette is "tiny plane" style, or procedural
-   hero builds? (Default: styloo first, procedural for any missing type.)
-3. `fuelTanker` / `ammoShip` / `repairShip` / `minelayer`: composite
-   kitbash from existing CC0 hulls (my recommendation — zero new bytes)
-   vs. procedural hulls. Composite keeps the kit look consistent.
-4. Confirm the Phase 6 "hero CC0 warship" budget line in PLAN.md should
-   be amended to procedural (no CC0 source found), or kept open.
+1. ~~Final key names from workers A/B/C (my audit assumes the PLAN §3.5–3.7 names; renames just re-map the table).~~ Resolved — the 49 keys as mapped above.
+2. ~~`strategicBomber` / `cargoPlane` / `tanker`: prefer styloo-pack variants even if the silhouette is "tiny plane" style, or procedural hero builds? (Default: styloo first, procedural for any missing type.)~~ Resolved — styloo (coordinator decision 1).
+3. ~~`fuelTanker` / `ammoShip` / `repairShip` / `minelayer`: composite kitbash from existing CC0 hulls (my recommendation — zero new bytes) vs. procedural hulls. Composite keeps the kit look consistent.~~ Resolved — kitbash composites (coordinator decision 3).
+4. Confirm the Phase 6 "hero CC0 warship" budget line in PLAN.md should be amended to procedural (no CC0 source found), or kept open.

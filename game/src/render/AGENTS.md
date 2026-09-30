@@ -47,12 +47,13 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   textures to `<name>.glbTextures/...`. Same fix in `natureTrees.ts`,
   which appended a second `models/` onto `modelBaseUrl()` (it already
   ends with `models/`). Pinned by `render.models.test.ts`.
-- `MODEL_PATHS` is the key -> GLB mapping: **65 real CC0 entries**
-  (Kenney + Quaternius; see THIRD_PARTY_NOTICES.md for the per-file
-  listing). Four of them (`personCasualMan`, `personCasualWoman`,
-  `personWorker`, `personWomanTwo` — the civilian pedestrians in
-  `game/public/models/quaternius-civilians/`) are LAZY-only, never in
-  the boot set (see `bootModelKeys` in `lazyModels.ts`), so the startup
+- `MODEL_PATHS` is the key -> GLB mapping: **94 real CC0 entries**
+  (Kenney + Quaternius + styloo "Tiny Plane Asset Pack"; see THIRD_PARTY_NOTICES.md for the per-file
+  listing). The 13 styloo aircraft pieces and 14 of the 16 workstream-E
+  kitbash pieces are LAZY-only, never in the boot set (see `bootModelKeys`
+  in `lazyModels.ts`); the 2 exceptions are `deckRowboat` + `harborCanoe`,
+  the foundation-age fishingHarbor's pieces (~32 KB, in the pinned 33-key
+  boot set by design), so the startup
   download below is unchanged by them. `path` is relative to `game/public/models/` (served at
   `<import.meta.env.BASE_URL>models/<file>`); `scale` is the uniform
   fit-to-footprint scale measured with the module's own `normalizeModel`
@@ -127,13 +128,23 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   `PROCEDURAL_KINDS` / `buildProceduralModel(kind)` is the registry.
   Builders rest at y=0 (destroyer / submarine / frigate / carrier
   excepted — waterline at y=0 by design, keels below).
+  Grand-expansion Phase 5 workstream E (air/naval, 2026-09-30) adds the
+  9 hero models: coastalSub (diesel patrol sub), missileSub (8-tube
+  boomer), corvette, cruiser, battleship (three twin turrets),
+  heavyDestroyer (torpedo tubes), navalFighter (carrier jet with
+  tailhook), gunship (naval attack helicopter), passengerHeli (civilian
+  transport helicopter) — the 6 ships rest at the waterline (keels
+  below y=0) like the earlier warships.
 - Attach props: `buildInfantryGear` (rifle / hard-hat + tool pack /
   sniper scoped rifle + bipod / medic helmet + red-cross pack),
   `buildHqAntenna`, `buildRadarDishProp` (aegisControl's yard dish),
   `buildAwacsDome` (rotodome), `buildShipMast` (command-ship comms
   mast), `buildRunwayStrip` (airfield), `buildControlTower` (Phase 5
   airport anchors), `buildCoolingTower`
-  (nuclearPlant), `buildHospitalCross` (hospital roof sign).
+  (nuclearPlant), `buildHospitalCross` (hospital roof sign),
+  `buildSeaplaneFloats` (seaplane twin floats), `buildMineRails`
+  (minelayer stern rails), `buildNavalMineSpikes` (naval-mine contact
+  spikes) — the last three are workstream E kitbash props.
 
 ## Procedural surface library (`render/surfaceTextures.ts`, `surfaceMaterials.ts`, `boxProjectUVs.ts`, 0.1 Alpha)
 
@@ -161,7 +172,7 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   back to up-facing; never emits NaNs. `ensureBoxUVs` projects only when no
   `uv` attribute exists.
 - Wired in by the texture-integration phase (`render/entitySurfaces.ts`,
-  0.1 Alpha): `KEY_TREATMENTS` maps all 61 `MODEL_PATHS` keys to surface
+  0.1 Alpha): `KEY_TREATMENTS` maps all 94 `MODEL_PATHS` keys to surface
   categories; `applySurfaceTreatment` runs once at load in `models.ts`
   (per-material, never per-view); procedural builders tag materials via
   `surfaceMaterial()` in `proceduralModels.ts`; roads emit world-scale UVs

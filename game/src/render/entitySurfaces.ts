@@ -351,7 +351,30 @@ const NATURE_ROCK: KeyTreatment = {
 };
 
 // ---------------------------------------------------------------------------
-// The table: one row per MODEL_PATHS key (65 total).
+// styloo "Tiny Plane Asset Pack" (workstream E, pass 2, 2026-09-30).
+// The GLBs embed the pack's palette texture as baseColorTexture — these
+// treatments deliberately set NO `map` (the authored liveries survive)
+// and only add painted-metal roughness variation + sane PBR values.
+// ---------------------------------------------------------------------------
+const STYLOO_CIVIL: KeyTreatment = {
+  default: {
+    roughnessMap: 'paintedMetal',
+    metalness: 0.3,
+    roughness: 1.0,
+    envMapIntensity: 0.8,
+  },
+};
+const STYLOO_MIL: KeyTreatment = {
+  default: {
+    roughnessMap: 'gunmetal',
+    metalness: 0.15,
+    roughness: 1.0,
+    envMapIntensity: 0.5,
+  },
+};
+
+// ---------------------------------------------------------------------------
+// The table: one row per MODEL_PATHS key (94 total).
 // ---------------------------------------------------------------------------
 
 export const KEY_TREATMENTS: Record<string, KeyTreatment> = {
@@ -448,6 +471,41 @@ export const KEY_TREATMENTS: Record<string, KeyTreatment> = {
   personCasualWoman: INFANTRY_FABRIC,
   personWorker: INFANTRY_FABRIC,
   personWomanTwo: INFANTRY_FABRIC,
+
+  // ---- styloo aircraft (workstream E, pass 2, 2026-09-30) ----
+  // Palette-preserving: the authored liveries survive (see STYLOO_*).
+  stylooJumbo: STYLOO_CIVIL,
+  stylooAirliner: STYLOO_CIVIL,
+  stylooRegional: STYLOO_CIVIL,
+  stylooPatrol: STYLOO_MIL,
+  stylooRecon: STYLOO_MIL,
+  stylooSeaplane: STYLOO_CIVIL,
+  stylooCargo: STYLOO_CIVIL,
+  stylooMilCargo: STYLOO_MIL,
+  stylooTanker: STYLOO_MIL,
+  stylooTrainer: STYLOO_CIVIL,
+  stylooReconUAV: STYLOO_MIL,
+  stylooBomber: STYLOO_MIL,
+  stylooArmedUAV: STYLOO_MIL,
+
+  // ---- logistics-ship + port kitbash pieces (workstream E, pass 2) ----
+  // Kenney hulls: weathered hull plates under the authored colors.
+  cargoFreighterShip: { default: T.hull },
+  coastGuardCutterBoat: { default: T.hull },
+  cruiseLinerShip: { default: T.hull },
+  yachtBoat: { default: T.hull },
+  mineBuoy: { default: T.hull },
+  fuelTankerHull: { default: T.hull },
+  ammoShipHull: { default: T.hull },
+  repairShipHull: { default: T.hull },
+  minelayerHull: { default: T.hull },
+  deckCrate: { default: T.hull },
+  repairCrane: { default: T.hull },
+  deckRowboat: { default: T.hull },
+  harborCanoe: { default: T.hull },
+  cargoContainerA: { default: T.hull },
+  cargoContainerB: { default: T.hull },
+  cargoContainerC: { default: T.hull },
 };
 
 // ---------------------------------------------------------------------------

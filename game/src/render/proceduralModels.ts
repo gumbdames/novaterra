@@ -36,7 +36,16 @@
  * (passengerTrain, freightTrain, bus, tram, ferry), the 5 hubs
  * (railStation, busDepot, ferryTerminal, marina, marinaLarge), and the
  * 7 stop/station tiers (busStop, taxiStand, tramStop, ferryPier,
- * neighborhoodStation, centralStation, airportInterchange). Each builder returns a `LoadedModel`-compatible
+ * neighborhoodStation, centralStation, airportInterchange). Phase 5
+ * (airports, S5+S8): controlTower, passengerTerminal, cargoTerminal, and
+ * the three runway modules (one parametric builder). Phase 5 (air/naval,
+ * workstream E pass 2, 2026-09-30): the 9 hero models — coastalSub
+ * (diesel patrol sub), missileSub (8-tube boomer), corvette, cruiser,
+ * battleship (three twin turrets), heavyDestroyer (torpedo tubes),
+ * navalFighter (carrier jet with tailhook), gunship (naval attack
+ * helicopter), passengerHeli (civilian transport helicopter) — plus the
+ * 3 attach props seaplaneFloats, mineRails, navalMineSpikes.
+ * Each builder returns a `LoadedModel`-compatible
  * `{ geometries, materials }` with merged per-material geometry, base at
  * y=0, forward = +z — the same contract as `models.ts`, so
  * `render/entities.ts` can treat GLB and procedural models identically.
@@ -47,7 +56,9 @@
  * infantry gear (rifleman's rifle, engineer's hard-hat, sniper's scoped
  * rifle, medic's helmet), the HQ command antenna, the aegisControl
  * radar dish, the AWACS rotodome, the command-ship mast, the airfield
- * runway strip, the nuclear cooling tower, and the hospital cross.
+ * runway strip, the nuclear cooling tower, the hospital cross, the
+ * seaplane's twin floats, the minelayer's mine rails, and the naval
+ * mine's contact spikes.
  *
  * Style: flat-shaded low-poly (flatShading: true) to sit with the
  * Kenney/Quaternius GLBs; every model must read clearly at RTS camera
@@ -2092,6 +2103,447 @@ export function buildFuelTruck(): LoadedModel {
 // ---------------------------------------------------------------------------
 
 /** The gap kinds with procedural builders (see module header). */
+// ---------------------------------------------------------------------------
+// Grand-expansion Phase 5 — air/naval expansion (workstream E, pass 2,
+// 2026-09-30): the 9 hero models — 2 submarines, 4 surface warships,
+// 3 naval aircraft — plus 3 attach props (seaplane floats, minelayer mine
+// rails, naval-mine spikes). Warships and submarines rest at the waterline
+// (y=0, keel below, like `destroyer` / `submarine`); aircraft rest at y=0
+// like the other procedural aircraft.
+// ---------------------------------------------------------------------------
+
+/**
+ * coastalSub — small diesel-electric patrol submarine: pressure hull with
+ * bow hemisphere and tapered stern, sail with periscope + snorkel, bow
+ * planes, cruciform stern, three-blade propeller. Waterline at y=0.
+ * Target hull: { 3.0, 2.5, 12.0 }.
+ */
+function buildCoastalSub(): LoadedModel {
+  const b = new ModelBuilder();
+  const steel = smat('hullGray', { color: 0x3a4048 });
+  const dark = smat('gunmetal');
+  const deck = smat('concrete', { color: 0x2c3138 });
+  // Pressure hull: cylinder + bow hemisphere + tapered stern.
+  b.add(new THREE.CylinderGeometry(1.0, 1.0, 9, 14), steel, tr(0, 0, 0, Math.PI / 2, 0, 0));
+  b.add(new THREE.SphereGeometry(1.0, 14, 10), steel, tr(0, 0, 4.5, 0, 0, 0, 1, 1, 1.4));
+  b.add(new THREE.CylinderGeometry(0.35, 1.0, 2.4, 14), steel, tr(0, 0, -5.6, -Math.PI / 2, 0, 0));
+  // Deck strip.
+  b.add(new THREE.BoxGeometry(0.9, 0.1, 7.5), deck, tr(0, 0.95, 0));
+  // Sail + periscope + snorkel mast.
+  b.add(new THREE.BoxGeometry(0.85, 1.1, 1.9), steel, tr(0, 1.5, 0.6));
+  b.beam(0.15, 2.0, 0.9, 0.15, 2.9, 0.9, 0.07, dark, 8);
+  b.beam(-0.2, 2.0, 0.3, -0.2, 2.6, 0.3, 0.09, dark, 8);
+  // Sail planes.
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.8, 0.09, 0.6), steel, tr(sx * 0.8, 1.45, 0.6));
+  }
+  // Bow planes + stern cruciform.
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(1.0, 0.1, 0.7), steel, tr(sx * 1.3, -0.1, 3.4));
+    b.add(new THREE.BoxGeometry(1.1, 0.1, 0.7), steel, tr(sx * 0.8, 0, -6.4));
+  }
+  b.add(new THREE.BoxGeometry(0.12, 1.5, 0.8), steel, tr(0, 0.2, -6.4));
+  // Propeller: hub + three blades.
+  b.add(new THREE.CylinderGeometry(0.15, 0.15, 0.4, 10), dark, tr(0, 0, -7.0, Math.PI / 2, 0, 0));
+  for (let i = 0; i < 3; i++) {
+    const bladeGeo = new THREE.BoxGeometry(0.4, 0.9, 0.07);
+    bladeGeo.translate(0, 0.55, 0);
+    b.add(bladeGeo, dark, tr(0, 0, -7.2, 0, 0, (i * 2 * Math.PI) / 3));
+  }
+  return b.build();
+}
+
+/**
+ * missileSub — ballistic-missile submarine: stretched pressure hull, tall
+ * sail, and 8 missile-tube hatches in two rows on the deck behind the
+ * sail. Waterline at y=0. Target hull: { 4.0, 3.5, 20.0 }.
+ */
+function buildMissileSub(): LoadedModel {
+  const b = new ModelBuilder();
+  const steel = smat('hullGray', { color: 0x424a54 });
+  const dark = smat('gunmetal');
+  const deck = smat('concrete', { color: 0x2c3138 });
+  // Stretched pressure hull.
+  b.add(new THREE.CylinderGeometry(1.4, 1.4, 14, 16), steel, tr(0, 0, 0, Math.PI / 2, 0, 0));
+  b.add(new THREE.SphereGeometry(1.4, 16, 12), steel, tr(0, 0, 7, 0, 0, 0, 1, 1, 1.4));
+  b.add(new THREE.CylinderGeometry(0.5, 1.4, 3, 16), steel, tr(0, 0, -8.4, -Math.PI / 2, 0, 0));
+  b.add(new THREE.BoxGeometry(1.2, 0.12, 12), deck, tr(0, 1.32, 0));
+  // Tall sail + periscope.
+  b.add(new THREE.BoxGeometry(1.1, 1.5, 2.6), steel, tr(0, 2.0, 1.5));
+  b.beam(0.2, 2.7, 1.8, 0.2, 3.7, 1.8, 0.08, dark, 8);
+  // 8 missile hatches in two rows behind the sail.
+  for (const hx of [-0.55, 0.55]) {
+    for (const hz of [-1.6, -2.9, -4.2, -5.5]) {
+      b.add(new THREE.CylinderGeometry(0.34, 0.34, 0.2, 12), dark, tr(hx, 1.42, hz));
+    }
+  }
+  // Bow planes + stern cruciform.
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(1.3, 0.12, 0.9), steel, tr(sx * 1.7, -0.1, 5.2));
+    b.add(new THREE.BoxGeometry(1.4, 0.12, 0.9), steel, tr(sx * 1.0, 0, -9.6));
+  }
+  b.add(new THREE.BoxGeometry(0.14, 2.0, 1.0), steel, tr(0, 0.3, -9.6));
+  // Propeller.
+  b.add(new THREE.CylinderGeometry(0.2, 0.2, 0.5, 10), dark, tr(0, 0, -10.4, Math.PI / 2, 0, 0));
+  for (let i = 0; i < 3; i++) {
+    const bladeGeo = new THREE.BoxGeometry(0.5, 1.2, 0.08);
+    bladeGeo.translate(0, 0.7, 0);
+    b.add(bladeGeo, dark, tr(0, 0, -10.6, 0, 0, (i * 2 * Math.PI) / 3));
+  }
+  return b.build();
+}
+
+/**
+ * corvette — small gray patrol warship: tapered hull, single
+ * superstructure block with bridge glass, funnel, forward gun turret,
+ * radar mast, depth-charge racks aft. Waterline at y=0.
+ * Target hull: { 4.0, 3.0, 13.0 }.
+ */
+function buildCorvette(): LoadedModel {
+  const b = new ModelBuilder();
+  const hullMat = smat('hullGray', { color: 0x6e7885 });
+  const deckMat = smat('concrete', { color: 0x3d434c });
+  const dark = smat('gunmetal');
+  // Hull: octagonal tapered tube (bow +z), keel below waterline.
+  b.add(new THREE.CylinderGeometry(0.95, 1.35, 10, 8), hullMat, tr(0, 0.1, 0, Math.PI / 2, 0, 0, 1.15, 1, 1));
+  // Deck plate + bow taper cap.
+  b.add(new THREE.BoxGeometry(2.6, 0.12, 9.2), deckMat, tr(0, 1.35, -0.2));
+  b.add(new THREE.CylinderGeometry(0.72, 0.95, 1.1, 8), hullMat, tr(0, 0.9, 5.2, Math.PI / 2, 0, 0, 1.15, 1, 1));
+  // Superstructure + bridge glass band.
+  b.add(new THREE.BoxGeometry(1.9, 1.0, 2.6), hullMat, tr(0, 2.0, 0.3));
+  b.add(new THREE.BoxGeometry(1.94, 0.3, 1.2), dark, tr(0, 2.25, 1.0));
+  // Funnel.
+  b.add(new THREE.CylinderGeometry(0.3, 0.38, 0.9, 10), dark, tr(0, 2.9, -0.9));
+  // Forward gun turret + barrel (faces +z).
+  b.add(new THREE.CylinderGeometry(0.5, 0.6, 0.45, 10), hullMat, tr(0, 1.6, 4.0));
+  b.beam(0, 1.75, 4.0, 0, 1.9, 5.9, 0.08, dark, 8);
+  // Mast + radar bar.
+  b.beam(0, 2.5, 0.3, 0, 4.6, 0.3, 0.06, dark);
+  b.add(new THREE.BoxGeometry(0.8, 0.08, 0.2), dark, tr(0, 4.65, 0.3));
+  // Depth-charge racks aft.
+  for (const sx of [-0.7, 0.7]) {
+    b.add(new THREE.CylinderGeometry(0.22, 0.22, 0.5, 8), dark, tr(sx, 1.55, -4.2, Math.PI / 2, 0, 0));
+  }
+  return b.build();
+}
+
+/**
+ * cruiser — medium gray warship: long hull, two funnels, fore + aft main
+ * turrets, secondary gun tubs, two-tier superstructure, radar mast.
+ * Waterline at y=0. Target hull: { 6.0, 4.5, 22.0 }.
+ */
+function buildCruiser(): LoadedModel {
+  const b = new ModelBuilder();
+  const hullMat = smat('hullGray', { color: 0x707a88 });
+  const deckMat = smat('concrete', { color: 0x3d434c });
+  const dark = smat('gunmetal');
+  // Hull + deck + bow cap.
+  b.add(new THREE.CylinderGeometry(1.3, 1.9, 17, 8), hullMat, tr(0, 0.15, 0, Math.PI / 2, 0, 0, 1.1, 1, 1));
+  b.add(new THREE.BoxGeometry(3.6, 0.14, 16), deckMat, tr(0, 1.9, -0.3));
+  b.add(new THREE.CylinderGeometry(1.0, 1.3, 1.4, 8), hullMat, tr(0, 1.3, 8.6, Math.PI / 2, 0, 0, 1.1, 1, 1));
+  // Two-tier superstructure + bridge glass.
+  b.add(new THREE.BoxGeometry(2.6, 1.2, 4.0), hullMat, tr(0, 2.6, 0.5));
+  b.add(new THREE.BoxGeometry(2.0, 1.0, 2.6), hullMat, tr(0, 3.7, 0.3));
+  b.add(new THREE.BoxGeometry(2.04, 0.32, 1.6), dark, tr(0, 3.95, 1.0));
+  // Two funnels.
+  b.add(new THREE.CylinderGeometry(0.42, 0.52, 1.1, 10), dark, tr(0, 4.4, -1.2));
+  b.add(new THREE.CylinderGeometry(0.42, 0.52, 1.1, 10), dark, tr(0, 4.4, -2.6));
+  // Main turrets: forward faces +z, aft faces -z.
+  for (const [tz, dir] of [[6.3, 1], [-6.8, -1]] as const) {
+    b.add(new THREE.CylinderGeometry(0.8, 0.9, 0.55, 10), hullMat, tr(0, 2.2, tz));
+    for (const bx of [-0.3, 0.3]) {
+      b.beam(bx, 2.4, tz, bx, 2.55, tz + dir * 2.4, 0.1, dark, 8);
+    }
+  }
+  // Secondary gun tubs along the sides.
+  for (const sx of [-1.6, 1.6]) {
+    for (const sz of [2.8, -3.4]) {
+      b.add(new THREE.CylinderGeometry(0.3, 0.36, 0.35, 8), hullMat, tr(sx, 2.05, sz));
+      b.beam(sx, 2.2, sz, sx * 1.3, 2.3, sz + 0.9, 0.05, dark, 6);
+    }
+  }
+  // Mast + radar bar.
+  b.beam(0, 4.2, 0.3, 0, 6.4, 0.3, 0.07, dark);
+  b.add(new THREE.BoxGeometry(1.1, 0.1, 0.24), dark, tr(0, 6.45, 0.3));
+  return b.build();
+}
+
+/**
+ * battleship — heavy gray capital ship: long wide hull, three twin-gun
+ * turrets (two superfiring forward, one aft), three-tier superstructure,
+ * two funnels, heavy fire-control mast, secondary turrets.
+ * Waterline at y=0. Target hull: { 8.0, 6.0, 30.0 }.
+ */
+function buildBattleship(): LoadedModel {
+  const b = new ModelBuilder();
+  const hullMat = smat('hullGray', { color: 0x747e8c });
+  const deckMat = smat('concrete', { color: 0x40464f });
+  const dark = smat('gunmetal');
+  // Hull + deck + bow cap.
+  b.add(new THREE.CylinderGeometry(1.8, 2.6, 23, 8), hullMat, tr(0, 0.2, 0, Math.PI / 2, 0, 0, 1.15, 1, 1));
+  b.add(new THREE.BoxGeometry(5.2, 0.16, 21.5), deckMat, tr(0, 2.6, -0.5));
+  b.add(new THREE.CylinderGeometry(1.4, 1.8, 1.8, 8), hullMat, tr(0, 1.8, 11.6, Math.PI / 2, 0, 0, 1.15, 1, 1));
+  // Three twin turrets: two superfiring forward, one aft.
+  const turrets: Array<[number, number, number]> = [
+    [8.8, 3.0, 1], [6.2, 3.9, 1], [-8.5, 3.0, -1],
+  ];
+  for (const [tz, ty, dir] of turrets) {
+    b.add(new THREE.CylinderGeometry(1.1, 1.25, 0.7, 12), hullMat, tr(0, ty, tz));
+    for (const bx of [-0.35, 0.35]) {
+      b.beam(bx, ty + 0.25, tz, bx, ty + 0.45, tz + dir * 3.2, 0.12, dark, 8);
+    }
+  }
+  // Three-tier superstructure + bridge glass.
+  b.add(new THREE.BoxGeometry(3.4, 1.4, 5.0), hullMat, tr(0, 3.4, -1.5));
+  b.add(new THREE.BoxGeometry(2.6, 1.2, 3.4), hullMat, tr(0, 4.7, -1.8));
+  b.add(new THREE.BoxGeometry(2.64, 0.34, 2.0), dark, tr(0, 5.0, -1.0));
+  // Two funnels.
+  b.add(new THREE.CylinderGeometry(0.55, 0.68, 1.4, 12), dark, tr(0, 5.3, -3.6));
+  b.add(new THREE.CylinderGeometry(0.55, 0.68, 1.4, 12), dark, tr(0, 5.3, -5.2));
+  // Heavy mast with fire-control top.
+  b.beam(0, 5.3, -1.8, 0, 8.2, -1.8, 0.1, dark);
+  b.add(new THREE.BoxGeometry(1.4, 0.5, 1.0), hullMat, tr(0, 7.6, -1.8));
+  b.add(new THREE.BoxGeometry(1.6, 0.12, 0.3), dark, tr(0, 8.3, -1.8));
+  // Secondary turrets.
+  for (const sx of [-2.2, 2.2]) {
+    for (const sz of [3.5, -4.5]) {
+      b.add(new THREE.CylinderGeometry(0.45, 0.52, 0.45, 8), hullMat, tr(sx, 2.85, sz));
+      b.beam(sx, 3.0, sz, sx * 1.25, 3.1, sz + 1.2, 0.06, dark, 6);
+    }
+  }
+  return b.build();
+}
+
+/**
+ * heavyDestroyer — large gray destroyer: long hull, fore + aft turrets,
+ * single funnel, triple torpedo tubes amidships, radar mast.
+ * Waterline at y=0. Target hull: { 5.5, 4.0, 20.0 }.
+ */
+function buildHeavyDestroyer(): LoadedModel {
+  const b = new ModelBuilder();
+  const hullMat = smat('hullGray', { color: 0x6e7885 });
+  const deckMat = smat('concrete', { color: 0x3d434c });
+  const dark = smat('gunmetal');
+  // Hull + deck + bow cap.
+  b.add(new THREE.CylinderGeometry(1.35, 1.95, 15.5, 8), hullMat, tr(0, 0.15, 0, Math.PI / 2, 0, 0, 0.85, 1, 1));
+  b.add(new THREE.BoxGeometry(2.7, 0.14, 14), deckMat, tr(0, 2.0, -0.3));
+  b.add(new THREE.CylinderGeometry(1.05, 1.35, 1.3, 8), hullMat, tr(0, 1.45, 7.4, Math.PI / 2, 0, 0, 0.85, 1, 1));
+  // Superstructure + bridge glass.
+  b.add(new THREE.BoxGeometry(2.0, 1.1, 3.2), hullMat, tr(0, 2.65, 0.5));
+  b.add(new THREE.BoxGeometry(1.6, 0.9, 2.0), hullMat, tr(0, 3.6, 0.3));
+  b.add(new THREE.BoxGeometry(1.64, 0.3, 1.3), dark, tr(0, 3.8, 0.8));
+  // Funnel.
+  b.add(new THREE.CylinderGeometry(0.4, 0.5, 1.1, 10), dark, tr(0, 4.35, -1.0));
+  // Turrets: forward faces +z, aft faces -z.
+  for (const [tz, dir] of [[5.8, 1], [-6.3, -1]] as const) {
+    b.add(new THREE.CylinderGeometry(0.7, 0.8, 0.5, 10), hullMat, tr(0, 2.3, tz));
+    b.beam(0, 2.5, tz, 0, 2.65, tz + dir * 2.2, 0.09, dark, 8);
+  }
+  // Triple torpedo tubes amidships, angled outboard.
+  for (const sx of [-1, 1]) {
+    for (let i = 0; i < 3; i++) {
+      b.add(
+        new THREE.CylinderGeometry(0.12, 0.12, 1.6, 8),
+        dark,
+        tr(sx * 1.15, 2.15, -2.4 + i * 0.35, Math.PI / 2, 0, sx * 0.35),
+      );
+    }
+  }
+  // Mast + radar bar.
+  b.beam(0, 4.05, 0.3, 0, 6.2, 0.3, 0.07, dark);
+  b.add(new THREE.BoxGeometry(1.0, 0.1, 0.22), dark, tr(0, 6.25, 0.3));
+  return b.build();
+}
+
+/**
+ * navalFighter — carrier-based jet: tapered fuselage, swept wings with
+ * tip rails, twin canted tail fins, bubble canopy, twin afterburning
+ * nozzles, and a tailhook (the naval read). Rests at y=0.
+ * Target hull: { 7.0, 1.5, 6.0 }.
+ */
+function buildNavalFighter(): LoadedModel {
+  const b = new ModelBuilder();
+  const gray = smat('paintedMetal', { color: 0x9aa2ad });
+  const dark = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x141e28 });
+  const glow = pmat(0xff7a2a, { emissive: 0xff5a1a, emissiveIntensity: 1.6 });
+  // Tapered fuselage + nose cone.
+  b.add(new THREE.CylinderGeometry(0.3, 0.45, 3.6, 12), gray, tr(0, 0.5, 0, Math.PI / 2, 0, 0));
+  b.add(new THREE.ConeGeometry(0.3, 1.0, 12), gray, tr(0, 0.5, 2.3, Math.PI / 2, 0, 0));
+  // Bubble canopy.
+  b.add(new THREE.SphereGeometry(0.34, 12, 10), glass, tr(0, 0.82, 0.6, 0, 0, 0, 1, 0.62, 1.5));
+  // Swept wings + tip missile rails.
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(3.0, 0.08, 1.3), gray, tr(sx * 1.7, 0.42, -0.5, 0, sx * -0.55, 0));
+    b.add(new THREE.CylinderGeometry(0.07, 0.07, 0.9, 8), dark, tr(sx * 3.05, 0.42, -0.95, Math.PI / 2, 0, 0));
+  }
+  // Twin canted tail fins + stabilizers.
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.08, 0.85, 1.0), gray, tr(sx * 0.45, 1.0, -1.7, -0.2, 0, sx * 0.28));
+    b.add(new THREE.BoxGeometry(1.2, 0.06, 0.65), gray, tr(sx * 0.75, 0.46, -1.75, 0, sx * -0.35, 0));
+  }
+  // Twin nozzles with afterburner glow.
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.CylinderGeometry(0.22, 0.26, 0.5, 10), dark, tr(sx * 0.32, 0.4, -1.95, Math.PI / 2, 0, 0));
+    b.add(new THREE.CylinderGeometry(0.15, 0.15, 0.06, 10), glow, tr(sx * 0.32, 0.4, -2.2, Math.PI / 2, 0, 0));
+  }
+  // Tailhook — the carrier read.
+  b.beam(0, 0.32, -1.9, 0, 0.12, -2.7, 0.05, dark, 6);
+  return b.build();
+}
+
+/**
+ * gunship — naval attack helicopter: bulky rounded nose with sensor ball,
+ * wide cockpit glass, side sponsons with rocket pods, four-blade rotor,
+ * tail boom with side tail rotor, skids. Naval gray (differs from the
+ * olive tandem `attackHeli`). Rests at y=0. Target hull: { 7.0, 2.0, 6.0 }.
+ */
+function buildGunship(): LoadedModel {
+  const b = new ModelBuilder();
+  const gray = smat('paintedMetal', { color: 0x6e7885 });
+  const dark = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x16202e });
+  // Bulky rounded nose + wide cockpit glass.
+  b.add(new THREE.SphereGeometry(0.85, 14, 12), gray, tr(0, 1.25, 0.9, 0, 0, 0, 0.95, 0.85, 1.35));
+  b.add(new THREE.SphereGeometry(0.6, 12, 10), glass, tr(0, 1.45, 1.5, 0, 0, 0, 0.95, 0.7, 0.9));
+  // Sensor ball under the nose.
+  b.add(new THREE.SphereGeometry(0.24, 10, 8), dark, tr(0, 0.72, 1.75));
+  // Cabin + engine deck hump.
+  b.add(new THREE.CylinderGeometry(0.72, 0.6, 2.2, 12), gray, tr(0, 1.3, -0.9, Math.PI / 2, 0, 0));
+  b.add(new THREE.BoxGeometry(1.1, 0.5, 1.6), dark, tr(0, 1.95, -0.9));
+  // Side sponsons + rocket pods.
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.7, 0.35, 1.6), gray, tr(sx * 1.0, 1.05, -0.2));
+    b.add(new THREE.CylinderGeometry(0.2, 0.2, 1.5, 10), dark, tr(sx * 1.05, 1.0, 0.1, Math.PI / 2, 0, 0));
+  }
+  // Tail boom + fin + side tail rotor.
+  b.add(new THREE.CylinderGeometry(0.16, 0.34, 2.4, 10), gray, tr(0, 1.45, -2.9, Math.PI / 2, 0, 0));
+  b.add(new THREE.BoxGeometry(0.1, 1.0, 0.55), gray, tr(0, 1.95, -4.0));
+  b.add(new THREE.BoxGeometry(0.06, 0.75, 0.12), dark, tr(-0.14, 2.0, -4.0, 0.6, 0, 0));
+  b.add(new THREE.BoxGeometry(0.06, 0.75, 0.12), dark, tr(-0.14, 2.0, -4.0, -0.6, 0, 0));
+  // Mast + four-blade rotor.
+  b.add(new THREE.CylinderGeometry(0.13, 0.13, 0.4, 8), dark, tr(0, 2.15, -0.7));
+  for (let i = 0; i < 4; i++) {
+    const bladeGeo = new THREE.BoxGeometry(3.2, 0.05, 0.3);
+    bladeGeo.translate(1.6, 0, 0);
+    b.add(bladeGeo, dark, tr(0, 2.4, -0.7, 0, (i * Math.PI) / 2, 0));
+  }
+  b.add(new THREE.SphereGeometry(0.15, 8, 8), dark, tr(0, 2.42, -0.7));
+  // Skids + struts.
+  for (const sx of [-1, 1]) {
+    b.add(new THREE.BoxGeometry(0.12, 0.1, 2.8), dark, tr(sx * 0.85, 0.12, -0.1));
+    b.beam(sx * 0.85, 0.17, 0.9, sx * 0.6, 0.85, 0.9, 0.05, dark, 6);
+    b.beam(sx * 0.85, 0.17, -1.1, sx * 0.6, 0.85, -1.1, 0.05, dark, 6);
+  }
+  return b.build();
+}
+
+/**
+ * passengerHeli — civilian transport helicopter: white rounded cabin with
+ * blue cheatline, big windshield + passenger window band, four-blade
+ * rotor, tail boom with tail rotor, skids. Rests at y=0.
+ * Target hull: { 6.5, 2.2, 6.0 }.
+ */
+function buildPassengerHeli(): LoadedModel {
+  const b = new ModelBuilder();
+  const white = smat('paintedMetal', { color: 0xdfe3e8 });
+  const blue = smat('paintedMetal', { color: 0x2a6fb0 });
+  const dark = smat('gunmetal');
+  const glass = smat('glassBlue', { color: 0x18242f });
+  // Rounded cabin.
+  b.add(new THREE.SphereGeometry(1.0, 16, 12), white, tr(0, 1.35, 0.2, 0, 0, 0, 1.0, 0.85, 1.6));
+  // Windshield + passenger window band + blue cheatline.
+  b.add(new THREE.SphereGeometry(0.72, 12, 10), glass, tr(0, 1.5, 1.45, 0, 0, 0, 0.9, 0.62, 0.75));
+  b.add(new THREE.BoxGeometry(1.75, 0.4, 2.2), glass, tr(0, 1.55, -0.3));
+  b.add(new THREE.BoxGeometry(1.82, 0.18, 2.6), blue, tr(0, 1.05, -0.2));
+  // Tail boom + blue fin.
+  b.add(new THREE.CylinderGeometry(0.18, 0.36, 2.6, 10), white, tr(0, 1.5, -2.6, Math.PI / 2, 0, 0));
+  b.add(new THREE.BoxGeometry(0.1, 0.9, 0.5), blue, tr(0, 1.95, -3.8));
+  // Tail rotor: crossed blades on the fin side.
+  b.add(new THREE.BoxGeometry(0.05, 0.8, 0.1), dark, tr(0.14, 1.9, -3.85));
+  b.add(new THREE.BoxGeometry(0.05, 0.1, 0.8), dark, tr(0.14, 1.9, -3.85));
+  // Mast + four-blade rotor + blue hub.
+  b.add(new THREE.CylinderGeometry(0.11, 0.13, 0.45, 8), dark, tr(0, 2.35, 0));
+  for (let i = 0; i < 4; i++) {
+    const bladeGeo = new THREE.BoxGeometry(3.3, 0.045, 0.32);
+    bladeGeo.translate(1.65, 0, 0);
+    b.add(bladeGeo, dark, tr(0, 2.62, 0, 0, (i * Math.PI) / 2, 0));
+  }
+  b.add(new THREE.SphereGeometry(0.14, 8, 8), blue, tr(0, 2.64, 0));
+  // Skids + struts.
+  for (const sx of [-1, 1]) {
+    b.beam(sx * 0.9, 0.12, 1.4, sx * 0.9, 0.12, -1.2, 0.06, dark);
+    b.beam(sx * 0.9, 0.12, 1.0, sx * 0.55, 0.7, 0.8, 0.05, dark);
+    b.beam(sx * 0.9, 0.12, -0.8, sx * 0.55, 0.7, -0.6, 0.05, dark);
+  }
+  return b.build();
+}
+
+// ---------------------------------------------------------------------------
+// Attach props (workstream E, pass 2).
+// ---------------------------------------------------------------------------
+
+/**
+ * seaplaneFloats — twin stepped floats with spreader struts for the
+ * styloo seaplane (planesty at scale 0.724: floats tuck under the
+ * fuselage and swallow the landing gear). Local origin at the entity
+ * origin; attach at dy ≈ 0.55.
+ */
+export function buildSeaplaneFloats(): LoadedModel {
+  const b = new ModelBuilder();
+  const floatMat = smat('paintedMetal', { color: 0xd8dce0 });
+  const dark = smat('gunmetal');
+  for (const sx of [-1, 1]) {
+    // Float: tapered tube along z with an upswept nose and tail cone.
+    b.add(new THREE.CylinderGeometry(0.28, 0.22, 3.6, 10), floatMat, tr(sx * 1.15, -0.55, 0, Math.PI / 2, 0, 0));
+    b.add(new THREE.SphereGeometry(0.28, 10, 8), floatMat, tr(sx * 1.15, -0.55, 1.8, 0, 0, 0, 1, 1, 1.2));
+    b.add(new THREE.ConeGeometry(0.22, 0.7, 10), floatMat, tr(sx * 1.15, -0.42, -2.0, -Math.PI / 2, 0, 0));
+    // Struts up to the fuselage.
+    b.beam(sx * 1.15, -0.3, 0.9, sx * 0.45, 0.35, 0.7, 0.05, dark, 6);
+    b.beam(sx * 1.15, -0.3, -0.9, sx * 0.45, 0.35, -0.7, 0.05, dark, 6);
+  }
+  // Cross spreader bar.
+  b.beam(-1.15, -0.35, 0, 1.15, -0.35, 0, 0.05, dark, 6);
+  return b.build();
+}
+
+/**
+ * mineRails — stern mine rails with 4 round mines for the minelayer
+ * (boat-tow-b at scale 1.15: stern at -z). Attach at dy ≈ deck height.
+ */
+export function buildMineRails(): LoadedModel {
+  const b = new ModelBuilder();
+  const dark = smat('gunmetal');
+  const mine = smat('hullGray', { color: 0x2e3339 });
+  for (const sx of [-0.5, 0.5]) {
+    b.add(new THREE.BoxGeometry(0.12, 0.12, 3.2), dark, tr(sx, 0, -1.6));
+  }
+  for (const [mx, mz] of [[-0.5, -0.8], [0.5, -0.8], [-0.5, -2.2], [0.5, -2.2]] as const) {
+    b.add(new THREE.SphereGeometry(0.34, 10, 8), mine, tr(mx, 0.42, mz));
+  }
+  return b.build();
+}
+
+/**
+ * navalMineSpikes — 8 contact spikes radiating from the buoy crown so
+ * the Kenney buoy reads as a naval mine. Attach at dy = 0.
+ */
+export function buildNavalMineSpikes(): LoadedModel {
+  const b = new ModelBuilder();
+  const dark = smat('gunmetal');
+  b.add(new THREE.CylinderGeometry(0.12, 0.16, 0.3, 8), dark, tr(0, 0.35, 0));
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    const tilt = 0.5;
+    b.add(
+      new THREE.ConeGeometry(0.09, 0.4, 8),
+      dark,
+      tr(Math.cos(a) * 0.18, 0.55, Math.sin(a) * 0.18, Math.sin(a) * tilt, 0, -Math.cos(a) * tilt),
+    );
+  }
+  return b.build();
+}
+
 export const PROCEDURAL_KINDS = [
   'artillery',
   'aa',
@@ -2167,6 +2619,20 @@ export const PROCEDURAL_KINDS = [
   'runwayS',
   'runwayM',
   'runwayL',
+  // Grand-expansion Phase 5 — air/naval expansion (workstream E, pass 2,
+  // 2026-09-30): the 9 hero models — 2 submarines, 4 surface warships,
+  // 3 naval aircraft. (The 3 attach props — seaplaneFloats, mineRails,
+  // navalMineSpikes — are props, not entity kinds: they ride
+  // `extraPropSpecs` in entities.ts, not this registry.)
+  'coastalSub',
+  'missileSub',
+  'corvette',
+  'cruiser',
+  'battleship',
+  'heavyDestroyer',
+  'navalFighter',
+  'gunship',
+  'passengerHeli',
 ] as const;
 
 export type ProceduralKind = (typeof PROCEDURAL_KINDS)[number];
@@ -2317,6 +2783,26 @@ export function buildProceduralModel(kind: string): LoadedModel | undefined {
       return buildRunwayModule('medium');
     case 'runwayL':
       return buildRunwayModule('heavy');
+    // Grand-expansion Phase 5 — air/naval expansion (workstream E,
+    // pass 2): the 9 hero models.
+    case 'coastalSub':
+      return buildCoastalSub();
+    case 'missileSub':
+      return buildMissileSub();
+    case 'corvette':
+      return buildCorvette();
+    case 'cruiser':
+      return buildCruiser();
+    case 'battleship':
+      return buildBattleship();
+    case 'heavyDestroyer':
+      return buildHeavyDestroyer();
+    case 'navalFighter':
+      return buildNavalFighter();
+    case 'gunship':
+      return buildGunship();
+    case 'passengerHeli':
+      return buildPassengerHeli();
     default:
       return undefined;
   }

@@ -107,6 +107,29 @@ shipped files are spares not currently referenced by the mapping.
   - `quaternius/tank-3.glb` (spare)
   - `quaternius/tank-4.glb` (spare)
 
+### styloo "Tiny Plane Asset Pack" — CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)
+- Author: styloo (https://styloo.itch.io/plane)
+- 15 files. The itch.io page's asset-license metadata states "Creative
+  Commons Zero v1.0 Universal" (the zip ships no license file — only the
+  15 `.fbx` files; see `game/public/models/styloo-planes/CONVERSION.md`).
+  The same files are mirrored by ECGaming
+  (https://ecgaming.itch.io/free-tiny-planes), also marked CC0.
+  Converted FBX → GLB with Blender 4.2.17 headless (geometry unchanged;
+  the embedded `ImphenziaPalette01-256-Gradient.png` palette texture is
+  part of the same CC0 pack):
+  - `styloo-planes/planehuge.glb` (jumbo airliner / airliner)
+  - `styloo-planes/planesty.glb`, `planesty_001.glb`, `planesty_002.glb`,
+    `planesty_003.glb` (regional jet / maritime patrol / recon plane /
+    seaplane)
+  - `styloo-planes/planeazer.glb`, `planeazer_001.glb`,
+    `planeazer_002.glb` (cargo plane / military cargo / tanker)
+  - `styloo-planes/plancestylized.glb`, `plancestylized_001.glb`
+    (trainer / recon UAV)
+  - `styloo-planes/planeanimal.glb`, `planeanimal_001.glb`
+    (strategic bomber / armed UAV)
+  - `styloo-planes/planehelice.glb`, `planehelice_001.glb`,
+    `styloo-planes/planestylized_001.glb` (spares — vendored, unmapped)
+
 ### Quaternius civilian pedestrians — CC0 1.0 (https://creativecommons.org/publicdomain/zero/1.0/)
 - Author: Quaternius (https://quaternius.com)
 - 4 files. Same CC0 author, but sourced from poly.pizza (direct CDN

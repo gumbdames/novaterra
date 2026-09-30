@@ -8,7 +8,8 @@
 
 # 3D Model Library — MANIFEST
 
-**Generated:** 2026-09-29 · **Files:** 942 GLB · **Total size:** 27.4 MiB · **Total triangles:** 350,308
+**Generated:** 2026-09-29 · **Files:** 957 GLB · **Total size:** 33.7 MiB · **Total triangles:** 588,300
+(styloo-planes section added 2026-09-30: 15 files, 6.3 MiB, 237,992 tris)
 
 Every file below lives under `game/public/models/` (served at
 `<BASE_URL>/models/<path>`). All models are **CC0 1.0 Universal**
@@ -1049,6 +1050,33 @@ Source: https://quaternius.com/ · License: CC0 1.0 Universal
 | `quaternius/tank-2.glb` | Battle tank, variant 2 — in-game MBT | 7,220 | 320 KiB |
 | `quaternius/tank-3.glb` | Battle tank, variant 3 | 6,544 | 293 KiB |
 | `quaternius/tank-4.glb` | Battle tank, variant 4 (largest) | 11,402 | 506 KiB |
+
+## styloo-planes/ — styloo "Tiny Plane Asset Pack"
+
+Source: https://styloo.itch.io/plane · License: CC0 1.0 Universal
+(15 files, 6454 KiB, 237,992 tris — converted 2026-09-30 FBX → GLB with
+Blender 4.2.17 headless; see `styloo-planes/CONVERSION.md`. CC0 is stated
+in the itch.io page's asset-license metadata; the zip ships no license
+file. The GLBs embed the pack's `ImphenziaPalette01-256-Gradient.png`
+palette texture — part of the same CC0 pack.)
+
+| File | Depicts | Tris | Size |
+|---|---|---|---|
+| `styloo-planes/planehuge.glb` | Large swept-wing airliner | 20,916 | 771 KiB |
+| `styloo-planes/planesty.glb` | Small stylized prop plane, livery 1 | 16,108 | 408 KiB |
+| `styloo-planes/planesty_001.glb` | Small stylized prop plane, livery 2 | 18,472 | 464 KiB |
+| `styloo-planes/planesty_002.glb` | Small stylized prop plane, livery 3 | 16,108 | 415 KiB |
+| `styloo-planes/planesty_003.glb` | Small stylized prop plane, livery 4 | 16,108 | 416 KiB |
+| `styloo-planes/planeazer.glb` | Red high-wing prop plane, livery 1 | 17,580 | 457 KiB |
+| `styloo-planes/planeazer_001.glb` | Red high-wing prop plane, livery 2 | 17,580 | 454 KiB |
+| `styloo-planes/planeazer_002.glb` | Red high-wing prop plane, livery 3 | 17,580 | 458 KiB |
+| `styloo-planes/plancestylized.glb` | WWII-fighter-style prop plane, livery 1 | 16,704 | 461 KiB |
+| `styloo-planes/plancestylized_001.glb` | WWII-fighter-style prop plane, livery 2 (spare, unmapped) | 16,704 | 461 KiB |
+| `styloo-planes/planeanimal.glb` | Dark-gray stealth flying wing, livery 1 | 6,716 | 158 KiB |
+| `styloo-planes/planeanimal_001.glb` | Dark-gray stealth flying wing, livery 2 | 9,696 | 229 KiB |
+| `styloo-planes/planehelice.glb` | Stylized helicopter (spare, unmapped) | 13,904 | 352 KiB |
+| `styloo-planes/planehelice_001.glb` | Stylized helicopter, variant (spare, unmapped) | 17,232 | 432 KiB |
+| `styloo-planes/planestylized_001.glb` | Spare prop-plane livery (unmapped — filename as shipped) | 16,704 | 461 KiB |
 
 ## quaternius-nature/textures/ — Quaternius "Textured LowPoly Trees" textures (manually added 2026-09-30, not part of the generated GLB inventory above)
 

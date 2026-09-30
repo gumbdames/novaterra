@@ -170,10 +170,14 @@ describe('kind → key resolution', () => {
 });
 
 describe('bootModelKeys', () => {
-  /** The pinned boot set: 31 keys. Growing this list costs startup
+  /** The pinned boot set: 33 keys. Growing this list costs startup
    * download, so it changes only deliberately (update this test too).
    * Workstream Z (2026-09-30): +2 keys (kindergarten, college — both
-   * foundation-age, ~80 KB each, inside the 8 MiB gate headroom). */
+   * foundation-age, ~80 KB each, inside the 8 MiB gate headroom).
+   * Workstream E (2026-09-30): +2 keys (deckRowboat, harborCanoe — the
+   * foundation-age fishingHarbor's GLB composite pieces, ~32 KB
+   * together; the other three ports are connectivity/industry-age so
+   * their pieces stay lazy). */
   const EXPECTED_BOOT_KEYS = [
     // foundation-age units (1:1 keys)
     'engineer',
@@ -212,9 +216,13 @@ describe('bootModelKeys', () => {
     'propRockSmall',
     'propBushDetailed',
     'propBushLarge',
+    // Workstream E (2026-09-30): the foundation-age fishingHarbor's
+    // GLB composite pieces (the rowboat + 2 canoes).
+    'deckRowboat',
+    'harborCanoe',
   ];
 
-  it('is exactly the pinned 28-key boot set', () => {
+  it('is exactly the pinned 33-key boot set', () => {
     const keys = bootModelKeys();
     expect(keys).toHaveLength(EXPECTED_BOOT_KEYS.length);
     expect(new Set(keys)).toEqual(new Set(EXPECTED_BOOT_KEYS));
@@ -224,6 +232,35 @@ describe('bootModelKeys', () => {
     for (const key of bootModelKeys()) {
       expect(MODEL_PATHS[key]).toBeDefined();
     }
+  });
+
+  it('excludes the Phase 5 air/naval keys (all lazy, never boot)', () => {
+    const keys = new Set(bootModelKeys());
+    // The 13 styloo aircraft pieces.
+    for (const k of [
+      'stylooJumbo', 'stylooAirliner', 'stylooRegional', 'stylooPatrol',
+      'stylooRecon', 'stylooSeaplane', 'stylooCargo', 'stylooMilCargo',
+      'stylooTanker', 'stylooTrainer', 'stylooReconUAV', 'stylooBomber',
+      'stylooArmedUAV',
+    ]) {
+      expect(keys.has(k)).toBe(false);
+    }
+    // The logistics-ship + port kitbash pieces (new keys only;
+    // shipyardCrane / industrialTank / navalYardCrane / navalYardHall
+    // are pre-existing keys shared with boot-age buildings; deckRowboat
+    // + harborCanoe are the foundation-age fishingHarbor's pieces, so
+    // they ARE in boot by design — see the pinned list above).
+    for (const k of [
+      'cargoFreighterShip', 'coastGuardCutterBoat', 'cruiseLinerShip',
+      'yachtBoat', 'mineBuoy', 'fuelTankerHull', 'ammoShipHull',
+      'repairShipHull', 'minelayerHull', 'deckCrate', 'repairCrane',
+      'cargoContainerA', 'cargoContainerB', 'cargoContainerC',
+    ]) {
+      expect(keys.has(k)).toBe(false);
+    }
+    // …but the fishingHarbor pieces are in boot (foundation-age).
+    expect(keys.has('deckRowboat')).toBe(true);
+    expect(keys.has('harborCanoe')).toBe(true);
   });
 
   it('excludes later-age keys and the tree GLB fallbacks', () => {

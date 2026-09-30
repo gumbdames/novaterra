@@ -116,9 +116,9 @@ function worldBox(root: THREE.Object3D): THREE.Box3 {
 }
 
 describe('MODEL_PATHS real mapping', () => {
-  it('maps 65 CC0 keys to .glb paths with positive finite scales', () => {
+  it('maps 94 CC0 keys to .glb paths with positive finite scales', () => {
     const keys = Object.keys(MODEL_PATHS);
-    expect(keys).toHaveLength(65);
+    expect(keys).toHaveLength(94);
     for (const [key, spec] of Object.entries(MODEL_PATHS)) {
       expect(typeof key).toBe('string');
       expect(spec.path).toMatch(/\.glb$/);
@@ -154,6 +154,19 @@ describe('MODEL_PATHS real mapping', () => {
       // NOVATERRA Phase 4 RENDER workstream A (item 4): civilian
       // pedestrian variants (lazy-only — never in the boot set)
       'personCasualMan', 'personCasualWoman', 'personWorker', 'personWomanTwo',
+      // NOVATERRA Phase 5 Workstream E (air/naval art): 13 styloo
+      // aircraft pieces (CC0, palette-preserving treatments)
+      'stylooJumbo', 'stylooAirliner', 'stylooRegional', 'stylooPatrol',
+      'stylooRecon', 'stylooSeaplane', 'stylooCargo', 'stylooMilCargo',
+      'stylooTanker', 'stylooTrainer', 'stylooReconUAV', 'stylooBomber',
+      'stylooArmedUAV',
+      // NOVATERRA Phase 5 Workstream E: logistics-ship + port kitbash
+      // pieces (all CC0 Kenney composites)
+      'cargoFreighterShip', 'coastGuardCutterBoat', 'cruiseLinerShip',
+      'yachtBoat', 'mineBuoy', 'fuelTankerHull', 'ammoShipHull',
+      'repairShipHull', 'minelayerHull', 'deckCrate', 'repairCrane',
+      'deckRowboat', 'harborCanoe', 'cargoContainerA', 'cargoContainerB',
+      'cargoContainerC',
       // nature props (tree keys are overlaid by render/natureTrees.ts at
       // game start; the GLB paths here are the silent fallback)
       'propTreeOak', 'propTreeBirch', 'propTreePineTall', 'propTreePine',

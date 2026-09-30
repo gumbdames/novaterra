@@ -205,6 +205,108 @@ describe('modelSourceFor', () => {
       expect(modelSourceFor(kind).type).toBe('procedural');
     }
   });
+
+  it('marks the 9 air/naval hero kinds procedural (builders exist)', () => {
+    for (const kind of [
+      'coastalSub', 'missileSub', 'corvette', 'cruiser', 'battleship',
+      'heavyDestroyer', 'navalFighter', 'gunship', 'passengerHeli',
+    ]) {
+      const src = modelSourceFor(kind);
+      expect(src.type).toBe('procedural');
+      // The builder must actually exist — no placeholder gaps.
+      expect(buildProceduralModel(kind)).toBeDefined();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Phase 5 air/naval mapping depth: every one of the 49 keys resolves to a
+// real GLB piece in MODEL_PATHS (never an unmapped stub).
+// ---------------------------------------------------------------------------
+
+describe('phase-5 air/naval mapping depth', () => {
+  // The 13 styloo aircraft: glb with exactly the styloo piece key.
+  const styloo: Record<string, string> = {
+    jumboAirliner: 'stylooJumbo',
+    airliner: 'stylooAirliner',
+    regionalJet: 'stylooRegional',
+    maritimePatrol: 'stylooPatrol',
+    reconPlane: 'stylooRecon',
+    seaplane: 'stylooSeaplane',
+    cargoPlane: 'stylooCargo',
+    militaryCargo: 'stylooMilCargo',
+    tanker: 'stylooTanker',
+    trainer: 'stylooTrainer',
+    reconUAV: 'stylooReconUAV',
+    strategicBomber: 'stylooBomber',
+    armedUAV: 'stylooArmedUAV',
+  };
+  // The 9 logistics ships: glb composites (hull + kitbash deck pieces).
+  const logisticsShips: Record<string, string[]> = {
+    cargoFreighter: ['cargoFreighterShip'],
+    fuelTanker: ['fuelTankerHull', 'industrialTank', 'industrialTank'],
+    ammoShip: ['ammoShipHull', 'deckCrate', 'deckCrate', 'deckCrate', 'deckCrate'],
+    repairShip: ['repairShipHull', 'repairCrane'],
+    minelayer: ['minelayerHull'],
+    navalMine: ['mineBuoy'],
+    coastGuardCutter: ['coastGuardCutterBoat'],
+    cruiseLiner: ['cruiseLinerShip'],
+    yacht: ['yachtBoat'],
+  };
+  // The 4 ports: glb composites of existing CC0 pieces.
+  const ports: Record<string, string[]> = {
+    commercialPort: ['shipyardCrane', 'cargoContainerA', 'cargoContainerA'],
+    containerPort: [
+      'shipyardCrane',
+      'cargoContainerB', 'cargoContainerB', 'cargoContainerB',
+      'cargoContainerC', 'cargoContainerC',
+    ],
+    fishingHarbor: ['deckRowboat', 'harborCanoe', 'harborCanoe'],
+    navalBase: ['navalYardCrane', 'navalYardHall', 'cargoContainerB', 'cargoContainerC'],
+  };
+
+  it('maps all 13 aircraft to their styloo GLB piece', () => {
+    for (const [kind, pieceKey] of Object.entries(styloo)) {
+      const src = modelSourceFor(kind);
+      expect(src.type).toBe('glb');
+      expect(src.type === 'glb' ? src.pieces.map((p) => p.key) : []).toEqual([pieceKey]);
+    }
+  });
+
+  it('maps all 9 logistics ships to GLB composites', () => {
+    for (const [kind, pieceKeys] of Object.entries(logisticsShips)) {
+      const src = modelSourceFor(kind);
+      expect(src.type).toBe('glb');
+      expect(src.type === 'glb' ? src.pieces.map((p) => p.key) : []).toEqual(pieceKeys);
+    }
+  });
+
+  it('maps all 4 ports to GLB composites', () => {
+    for (const [kind, pieceKeys] of Object.entries(ports)) {
+      const src = modelSourceFor(kind);
+      expect(src.type).toBe('glb');
+      expect(src.type === 'glb' ? src.pieces.map((p) => p.key) : []).toEqual(pieceKeys);
+    }
+  });
+
+  it('attaches the kitbash props (seaplane floats, mine rails, mine spikes)', () => {
+    const propsOf = (kind: string): string[] =>
+      EntityRenderer.propSpecsFor(kind).map((p) => p.prop);
+    expect(propsOf('seaplane')).toEqual(['seaplaneFloats']);
+    expect(propsOf('minelayer')).toEqual(['mineRails']);
+    expect(propsOf('navalMine')).toEqual(['navalMineSpikes']);
+    // The propFor switch must wire each new prop to its builder (a
+    // typo'd key would silently fall through to the radar dish).
+    const renderer = new EntityRenderer(new THREE.Scene());
+    const propFor = (
+      renderer as unknown as { propFor(k: string): LoadedModel }
+    ).propFor.bind(renderer);
+    for (const key of ['seaplaneFloats', 'mineRails', 'navalMineSpikes']) {
+      const m = propFor(key);
+      expect(m.geometries.length).toBeGreaterThan(0);
+      expect(m.materials.length).toBeGreaterThan(0);
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -223,9 +325,19 @@ describe('procedural gap models', () => {
     'geothermalPlant', 'fusionPlant', 'waterWell', 'waterTower',
     'waterTreatment', 'reservoir', 'powerSubstation', 'pumpingStation',
     'batteryStation',
+    // Grand-expansion Phase 5 — air/naval heroes (workstream E, pass 2,
+    // 2026-09-30): the 9 hero models.
+    'coastalSub', 'missileSub', 'corvette', 'cruiser', 'battleship',
+    'heavyDestroyer', 'navalFighter', 'gunship', 'passengerHeli',
   ];
   // Warships rest at the waterline (keel below y=0) instead of on the ground.
   const waterlineKinds = new Set(['destroyer', 'submarine', 'frigate', 'carrier']);
+  // The Phase 5 hero warships too — with deeper keels (the 30-long
+  // battleship draws 3.0), so their bound is -4, not -3.
+  const deepWaterlineKinds = new Set([
+    'coastalSub', 'missileSub', 'corvette',
+    'cruiser', 'battleship', 'heavyDestroyer',
+  ]);
   for (const kind of gaps) {
     it(`${kind}: non-empty with finite, non-degenerate bounds`, () => {
       const model = buildProceduralModel(kind);
@@ -250,6 +362,10 @@ describe('procedural gap models', () => {
         // Warship: keel below the waterline is intentional.
         expect(box.min.y).toBeLessThan(0);
         expect(box.min.y).toBeGreaterThan(-3);
+      } else if (deepWaterlineKinds.has(kind)) {
+        // Phase 5 hero warship: deeper keel, same waterline contract.
+        expect(box.min.y).toBeLessThan(0);
+        expect(box.min.y).toBeGreaterThan(-4);
       } else {
         // Everything else rests on/above the ground.
         expect(box.min.y).toBeGreaterThanOrEqual(-0.01);
