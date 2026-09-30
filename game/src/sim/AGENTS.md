@@ -106,6 +106,14 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   snapshotted (v6, no bump: missing personalities decode to the neutral
   personality, the step-7 precedent) and digested (personality included).
   `getVisibleEnemies` adds the Signals Grid sight bonus.
+  Utility networks (grand-expansion Phase 2, §AD2): `thinkConstruction`
+  runs the `thinkUtilityConnections` sub-phase, a documented no-op in
+  0.1 Alpha — the AI owns no physical buildings (all virtual, no
+  footprint), so no AI plant can be stranded and virtual buildings stay
+  on the global pool fallback. The hook's comment records the exact
+  contract for wiring it to the sim's network diagnostics if the AI ever
+  gains physical buildings (think cadence only, `ai-<owner>` stream
+  draws only, orders through the queue).
   **Cap invariant:** the cap counts ALL of the AI's units, so starting
   forces must leave headroom — `ui/session.ts` gives cadet 2 starters
   (cap 6), everyone else 6 (caps 14/26/34/48).

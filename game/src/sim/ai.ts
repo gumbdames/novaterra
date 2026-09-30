@@ -570,6 +570,7 @@ function thinkConstruction(world: World, ai: AIPlayerState): void {
     vb.completed.push(vb.constructing.kind);
     vb.constructing = null;
   }
+  thinkUtilityConnections(world, ai);
   // One building at a time.
   if (vb.constructing) return;
   const player = getPlayer(world.city, ai.owner);
@@ -589,6 +590,52 @@ function thinkConstruction(world: World, ai: AIPlayerState): void {
     vb.constructing = { kind, readyTick: world.tick + def.buildSeconds * 30 };
     return;
   }
+}
+
+/**
+ * Utility-connection sub-phase (grand-expansion Phase 2, §AD2).
+ *
+ * 0.1 Alpha verdict: the Classic AI owns NO physical buildings — every
+ * production building is virtual (a kind name in
+ * `ai.virtualBuildings.completed`, no footprint, no grid position), and
+ * the AI places no physical buildings anywhere in 0.1 Alpha (see the
+ * module header and game/src/sim/AGENTS.md). A "stranded plant" is a
+ * physical plant touching no conductor; with no physical plants, the
+ * stranded condition cannot arise for the AI, so there is nothing to
+ * connect and no line order to issue.
+ *
+ * Virtual buildings stay on the global utility pool (the §AD2 fallback):
+ * `creditVirtualEconomy` credits their def.output unconditionally, and
+ * the pool allocator serves every completed funded physical plant, so
+ * the AI never starves for power/water and never needs lines. This is
+ * the plan's accepted outcome ("or stays on the pool fallback per §AD2
+ * — explicitly tested either way", PLAN.md §9 Phase 2) — pinned by
+ * game/tests/sim.ai-utilities.test.ts.
+ *
+ * Extension hook: if the AI ever gains physical buildings, the stranded
+ * check goes here. The sim workstream's network model is
+ * `sim/utilityNetworks.ts` (`getUtilityModel(city, input)` →
+ * `UtilityModel`; per-player `UtilitySideModel` carries
+ * `plantNetwork: Map<plantId, networkId>` and
+ * `unreached: number[]` — buildings reached by no network, which the
+ * sim serves from the AD2 pool fallback by design). Names verified
+ * against the workstream's source 2026-09-30 — the module was still
+ * uncommitted then, so re-verify before wiring. For each completed
+ * AI-owned physical plant absent from `plantNetwork` (or listed in
+ * `unreached`), issue a line-building order from the plant toward the
+ * nearest conductor (nearest existing network cell, else the road
+ * grid), one attempt per think. Constraints for that future work: think
+ * cadence only (never per-tick), seeded `ai-<owner>` stream draws only
+ * (never the shared streams), and no mid-tick world mutation (orders
+ * through the queue like every other AI action).
+ */
+function thinkUtilityConnections(world: World, ai: AIPlayerState): void {
+  // No-op by design in 0.1 Alpha: virtual buildings have no footprint,
+  // so the pool fallback (AD2) covers the AI completely. The arguments
+  // are intentionally unused — they define the hook's signature for the
+  // future physical-builder work described above.
+  void world;
+  void ai;
 }
 
 /**

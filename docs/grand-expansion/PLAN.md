@@ -592,6 +592,23 @@ delta → AI work.** Step gate (§0) applies to every step inside.
 - **Budget delta:** ~12 building keys (~1 MB) + 2 drag tools.
 - **AI work:** `thinkConstruction` line-building; virtual-building
   connectivity handling.
+  - **AI verdict (2026-09-30, 0.1 Alpha — AD2 fallback holds):** the
+    Classic AI owns no physical buildings (all production buildings
+    are virtual, no footprint), so a stranded plant cannot arise for
+    it and there is no line order to issue. `thinkUtilityConnections`
+    (ai.ts) is the documented no-op hook for a future
+    physical-builder; virtual buildings stay on the global pool
+    fallback per §AD2. Pinned by
+    `game/tests/sim.ai-utilities.test.ts` (pool-fallback regression,
+    owner-blind allocation, no-RNG sub-phase, determinism, save/load)
+    and `game/tests/sim.ai-soak.test.ts` (AI-vs-AI long-run soak;
+    network-mixed scenarios specified as skipped tests pending the
+    flood-fill API). The sim workstream's network model
+    (`utilityNetworks.ts`, uncommitted 2026-09-30) confirms the design:
+    `UtilitySideModel.unreached` buildings are served by the legacy
+    pool allocator verbatim; the extension hook names
+    `getUtilityModel` / `plantNetwork` / `unreached` (verified against
+    source, re-verify before wiring).
 
 ### Phase 3 — Logistics chains (L; XL only if physical road/rail freight)
 - **Goal:** ammo/fuel as a tempo constraint; supply trucks, depots,
