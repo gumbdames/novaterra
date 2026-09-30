@@ -18,16 +18,15 @@ land, sea and air — or play a fully peaceful game with war disabled.
   classes with in-place upgrades, the rail drag tool, ambient buses/
   trams/ferries over player-placed stops, building variants + size
   tiers, the occupancy line in the selection panel, marinas raising
-  nearby land value, and the NaN camera guard. Phase 5/6 work in
-  flight: the aircraft + hangar/carrier system (16-aircraft roster,
-  ground hangars, embark/base/launch commands), the naval expansion
-  (15-kind roster, 4 ports), and the AI + snapshot workstream (v8
-  snapshot migration, hangar-aware AI training, carrier wings that
-  fill before sailing, carrier escorts, civil airports), and the
-  airports + airline workstream (airport zones with their own tax rate,
-  civil/military/mixed airports, runways, terminals, the airline panel
-  with paying routes, the airport overlay, and ambient airliners).
-  See the live plan:
+  NaN camera guard. Phase 5 (airports + airline) and Phase 6 (naval
+  expansion + carrier wings) delivered airport zones with their own
+  tax rate, civil/military/mixed airports, runways gating aircraft
+  class, hangars, paying airline routes, 16 new aircraft, the hangar/
+  embark/carrier system (carriers train empty; only carrier-capable
+  aircraft may embark), 15 new naval units including the nuclear
+  missile sub, 4 ports, deployable naval mines, ambient airliners and
+  cargo ships, the v8 snapshot migration, and hangar-aware AI that
+  fills carrier wings before sailing. See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
 ## What the game has today (0.1 Alpha)
