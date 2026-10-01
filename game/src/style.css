@@ -548,46 +548,134 @@ body {
   font-weight: 600;
 }
 
-/* Workstream Y (3-tab menu): the main Civilian/Military/Management tab
- * bar at the top of the selection panel. Larger than palette tabs so the
- * three sections read as the menu's top level. */
-.menu-tabs {
+/* Command-menu rebuild (2026-10-01): the selection panel is a slim
+ * icon rail on the left edge plus the content column. The rail buttons
+ * stack icon over label so the rail stays narrow; the content column
+ * takes the remaining width. */
+.menu-shell {
   display: flex;
-  gap: 6px;
-  margin-bottom: 10px;
+  gap: 10px;
+  align-items: flex-start;
 }
 
-.menu-tab {
-  appearance: none;
-  flex: 1;
+.menu-rail {
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
   gap: 6px;
+  flex: none;
+  position: sticky;
+  top: 0;
+}
+
+.menu-rail-btn {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
   border: 1px solid var(--panel-border);
   background: rgba(255, 255, 255, 0.04);
   color: var(--ink-dim);
-  padding: 7px 10px;
-  font-size: 13px;
+  padding: 8px 6px;
+  font-size: 10px;
   font-weight: 600;
-  border-radius: 5px;
+  border-radius: 6px;
   cursor: pointer;
+  min-width: 58px;
 }
 
-.menu-tab .palette-icon svg {
-  width: 18px;
-  height: 18px;
+.menu-rail-btn .palette-icon {
+  width: 22px;
+  height: 22px;
 }
 
-.menu-tab:hover {
+.menu-rail-btn .palette-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.menu-rail-btn:hover {
   color: var(--ink);
   border-color: var(--accent);
 }
 
-.menu-tab.active {
+.menu-rail-btn.active {
   background: rgba(87, 200, 255, 0.18);
   border-color: var(--accent);
   color: var(--ink);
+}
+
+.menu-content {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Command-menu rebuild (2026-10-01): the sub-tab pill row inside each
+ * main tab (Civilian → Tools/Build/Airlines, Military →
+ * Train/Build/Superweapons, Management → Taxes/…/Research). Compact
+ * pills that wrap; the active one reads as selected. */
+.sub-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+
+.sub-tab {
+  appearance: none;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--ink-dim);
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 20px;
+  cursor: pointer;
+}
+
+.sub-tab:hover {
+  color: var(--ink);
+  border-color: var(--accent);
+}
+
+.sub-tab.active {
+  background: rgba(87, 200, 255, 0.18);
+  border-color: var(--accent);
+  color: var(--ink);
+}
+
+/* Command-menu rebuild (2026-10-01): the superweapon cards — icon left,
+ * name + requirement stacked, fire button right. */
+.sw-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 8px 10px;
+  margin-bottom: 8px;
+}
+
+.sw-card .palette-icon {
+  width: 34px;
+  height: 34px;
+}
+
+.sw-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.sw-name {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.sw-desc {
+  font-size: 11px;
+  color: var(--ink-dim);
+  margin-top: 2px;
 }
 
 /* Workstream Y: labeled sections inside the Military/Management panels

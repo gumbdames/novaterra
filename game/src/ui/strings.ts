@@ -170,6 +170,17 @@ export const STRINGS = {
     embarkVerb: { en: 'Embark' },
     baseVerb: { en: 'Park in hangar' },
     launchVerb: { en: 'Launch' },
+    /**
+     * Command-menu rebuild (2026-10-01): the detail view's back button
+     * returns to the tab menu (Esc and clicking empty ground do the
+     * same — game.ts owns the selection).
+     */
+    backToMenu: { en: 'Back' },
+    /** Building detail view: arm the demolish tool for the selected building. */
+    demolishVerb: { en: 'Demolish' },
+    demolishTitle: { en: 'Arm the demolish tool — demolition is pure loss, no refund' },
+    operational: { en: 'Operational' },
+    notOperational: { en: 'Not operational' },
   },
   /** Veterancy display (grand-expansion Phase 1). English-only. */
   veterancy: {
@@ -873,6 +884,37 @@ export const STRINGS = {
     aircraftClassLight: { en: 'Light' },
     aircraftClassMedium: { en: 'Medium' },
     aircraftClassHeavy: { en: 'Heavy' },
+    /**
+     * Command-menu rebuild (2026-10-01): sub-tab pills inside each main
+     * tab. Civilian → Tools / Build / Airlines; Military → Train /
+     * Build / Superweapons; Management → Taxes / City focus / Cabinet /
+     * Ordinances / Intelligence / Trade / Research.
+     */
+    subTools: { en: 'Tools' },
+    subBuild: { en: 'Build' },
+    subAirlines: { en: 'Airlines' },
+    subTrain: { en: 'Train' },
+    subSuperweapons: { en: 'Superweapons' },
+    subTaxes: { en: 'Taxes' },
+    subFocus: { en: 'City focus' },
+    subCabinet: { en: 'Cabinet' },
+    subOrdinances: { en: 'Ordinances' },
+    subIntel: { en: 'Intelligence' },
+    subTrade: { en: 'Trade' },
+    subResearch: { en: 'Research' },
+    /** Management → Trade: the trade-route surface (0.1 Alpha adds the
+     * menu; the sim commands existed since Phase 3 with no buttons). */
+    tradeTitle: { en: 'Trade routes' },
+    tradeEmpty: {
+      en: 'No trade routes yet. A route pays while both ends run an operating commercial building.',
+    },
+    tradeIncomeLine: { en: '+{income} funds/s while both ends trade' },
+    tradeEstablish: { en: 'Establish route' },
+    tradeEstablishTitle: { en: 'Establish a trade route ({cost} funds setup)' },
+    tradeCancel: { en: 'Cancel route' },
+    tradePartnerRival: { en: 'Rival nation' },
+    /** Management → Research shown when the player owns no completed lab. */
+    researchNeedsLab: { en: 'Build a Research Lab (Commerce tab) to unlock research.' },
   },
   /** Grand-expansion Phase 7 (intel, 2026-09-30): the intel panel, spy lines, warnings. English-only. */
   intel: {

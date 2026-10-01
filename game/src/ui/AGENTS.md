@@ -129,29 +129,43 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   when its content digest (`ui/paletteDigest.ts`) changes, so palette
   button nodes stay stable across frames (recreating them every sim tick
   broke real clicks: pointerdown + pointerup landed on different nodes and
-  no click event ever fired). The bottom-left menu (workstream Y,
-  2026-09-30) is three main tabs headed by a `menu-tabs` bar:
-  **Civilian** (tools row + Housing / Civic / Commerce / Industry /
-  Utilities / Power / Water build tabs), **Military** (unit-orders hints
-  + TRAIN palette's 4 tabs + Logistics / Naval-Air / Special build tabs +
-  superweapons), **Management** (tax steppers + city focus + cabinet +
-  research panel). `menuTab` state is remembered per tab, and so is the
-  build tab per main tab. Selecting a unit/building replaces the tab
-  content with the contextual branch (as before). TRAIN palette has 4 tabs (Infantry / Armor / Air / Navy —
-  the Navy tab lists 24 kinds; navalMine rides along but is never trained — its button stays disabled
-  with the "Deployed by a Minelayer" reason, teaching the minelayer's `deployMine` order), BUILD palette has 10 tabs (Housing / Civic / Commerce / Industry /
-  Utilities / Power / Water / Naval & Air / Special / Logistics) — the Naval & Air tab holds 8
-  naval-air buildings (the 4 Phase 6 ports: commercialPort, containerPort, fishingHarbor, navalBase,
-  plus the 4 airport buildings) — the spec groupings
-  plus the Workstream Z civic tab (education buildings), plus the Phase 2
-  utility tabs (the 13 new power/water buildings), plus the Phase 3
-  logistics tab (the 7 new fuel/ammo production + depot buildings), see `palettes.ts`.
-  The 10 build tabs are classified whole-tab into the menu via
+  no click event ever fired). The bottom-left menu (command-menu rebuild,
+  2026-10-01 — was workstream Y's 3-tab menu, 2026-09-30) is three main
+  tabs served by a slim icon rail (`menu-rail`): **Civilian** (sub-tabs
+  Tools / Build / Airlines), **Military** (sub-tabs Train / Build /
+  Superweapons), **Management** (sub-tabs Taxes / City focus / Cabinet /
+  Ordinances / Intelligence / Trade / Research). Civilian → Tools holds
+  the tools row (road + class picker, powerLine, waterPipe, rail, zones
+  R-C-I-A, demolish); Build shows the 9 civilian build tabs as pills
+  over the card grid; Airlines holds the airline panel. Military →
+  Train shows unit-orders hints plus the TRAIN palette; Build shows the
+  4 military build tabs as pills over the card grid; Superweapons shows
+  Aegis/Storm as cards. Management → Taxes / City focus / Cabinet /
+  Ordinances / Intelligence / Trade / Research each show one section;
+  Trade surfaces the trade-route commands (sim orders waited for a home
+  since Phase 3); Research needs a completed lab (the sub-tab explains
+  that when there is none). Sub-tab state is remembered per main tab,
+  and so is the build tab per main tab. Selecting a unit/building
+  replaces the tab content with the contextual branch (as before).
+  TRAIN palette has 6 tabs (Infantry / Armor / Air / Navy — the Navy tab
+  lists 24 kinds; navalMine rides along but is never trained — its button
+  stays disabled with the "Deployed by a Minelayer" reason, teaching the
+  minelayer's `deployMine` order), BUILD palette has 13 tabs (Housing /
+  Civic / Commerce / Industry / Utilities / Power / Water / Transport /
+  Airports / Logistics / Naval-Air / Special / Intel) — the Naval & Air
+  tab holds the 8 naval-air buildings (the 4 Phase 6 ports:
+  commercialPort, containerPort, fishingHarbor, navalBase, plus the 4
+  airport buildings) — the spec groupings plus the Workstream Z civic
+  tab (education buildings), plus the Phase 2 utility tabs (the 13 new
+  power/water buildings), plus the Phase 3 logistics tab (the 7 new
+  fuel/ammo production + depot buildings), see `palettes.ts`.
+  The 13 build tabs are classified whole-tab into the menu via
   `BUILD_TAB_MENU_TABS` in `palettes.ts` (tsc-enforced exhaustive:
-  Civilian = housing/civic/commerce/industry/utilities/power/waterNet,
-  Military = logistics/navalAir/special) and served through
-  `buildTabsForMenuTab()`; the tools row (road, powerLine, waterPipe,
-  zones, demolish) is a Civilian-only element now, not a build tab.
+  Civilian = housing/civic/commerce/industry/utilities/power/waterNet/
+  transport/airports, Military = logistics/navalAir/special/intel) and
+  served through `buildTabsForMenuTab()`; the tools row (road,
+  powerLine, waterPipe, rail, zones, demolish) is a Civilian → Tools
+  element now, not a build tab.
   Unavailable entries stay visible but disabled, with tooltip reasons
   (age, production building, cost, manpower, Naval Yard coast rule).
   Train buttons show funds + materials + manpower cost; build buttons

@@ -15,15 +15,17 @@
  */
 
 /**
- * NOVATERRA — main menu tab reachability tests (workstream Y, 2026-09-30).
+ * NOVATERRA — main menu tab reachability tests (command-menu rebuild,
+ * 2026-10-01; was workstream Y's 3-tab menu, 2026-09-30).
  *
- * The 3-tab restructure (Civilian / Military / Management) must not
- * orphan anything: every build tab, every build tool, the train
- * palette, the research panel, the superweapons, the delegation
- * controls, and every HUDActions callback must have a home under the
- * new menu. These tests pin that inventory at the data level (the tab
- * mapping covers every build tab exactly once) and at the source level
- * (hud.ts wires each control under its new tab).
+ * The rebuilt command menu (slim icon rail: Civilian / Military /
+ * Management, each with sub-tabs) must not orphan anything: every
+ * build tab, every build tool, the train palette, the research panel,
+ * the superweapons, the delegation controls, the trade-route commands,
+ * and every HUDActions callback must have a home under the new menu.
+ * These tests pin that inventory at the data level (the tab mapping
+ * covers every build tab exactly once) and at the source level
+ * (hud.ts wires each control under its new tab and sub-tab).
  */
 import { describe, expect, it } from 'vitest';
 // node builtins (ambient declarations in i18n-shim.d.ts — tsconfig has
@@ -90,9 +92,14 @@ describe('menu-tab build-tab mapping', () => {
   });
 });
 
-describe('every pre-existing control has a home under the 3-tab menu', () => {
-  it('the Civilian tab owns every build tool', () => {
+describe('every pre-existing control has a home under the rebuilt menu', () => {
+  it('the Civilian tab owns Tools / Build / Airlines sub-tabs', () => {
     const body = methodBody('appendCivilianPanel');
+    for (const sub of ['tools', 'build', 'airlines']) {
+      expect(body, `civilian sub-tab '${sub}' missing`).toContain(`'${sub}'`);
+    }
+    // The Tools sub-tab owns every build tool.
+    const tools = methodBody('civilianToolsEl');
     for (const tool of [
       'road',
       'powerLine',
@@ -102,28 +109,41 @@ describe('every pre-existing control has a home under the 3-tab menu', () => {
       'zoneI',
       'demolish',
     ] as const) {
-      expect(body, `build tool '${tool}' missing from the Civilian tab`).toContain(
+      expect(tools, `build tool '${tool}' missing from the Civilian Tools sub-tab`).toContain(
         `'${tool}'`,
       );
     }
+    // The Build sub-tab owns the civilian build tabs; Airlines owns the
+    // airline panel.
+    expect(body).toContain(`buildTabsForMenuTab(allBuildTabs(), 'civilian')`);
+    expect(body).toContain('airlinePanelEl(');
   });
 
-  it('the Military tab owns the train palette, unit orders, military build tabs and superweapons', () => {
+  it('the Military tab owns Train / Build / Superweapons sub-tabs', () => {
     const body = methodBody('appendMilitaryPanel');
-    expect(body).toContain('appendTrainPanel(');
-    expect(body).toContain(`'military'`);
-    // Unit orders: the existing commands (attack/move are right-click
-    // map gestures; Stop is the S key / selection button).
-    for (const hint of ['attackHint', 'moveHint', 'stopHint']) {
-      expect(body, `orders hint '${hint}' missing from the Military tab`).toContain(hint);
+    for (const sub of ['train', 'build', 'superweapons']) {
+      expect(body, `military sub-tab '${sub}' missing`).toContain(`'${sub}'`);
     }
-    // Superweapons (rehomed from the old Command panel).
-    expect(body).toContain('onFireAegis');
-    expect(body).toContain('onStormTarget');
+    // Train owns the train palette plus the unit-orders help.
+    expect(body).toContain('appendTrainPanel(');
+    const orders = methodBody('militaryOrdersEl');
+    for (const hint of ['attackHint', 'moveHint', 'stopHint']) {
+      expect(orders, `orders hint '${hint}' missing from the Military Train sub-tab`).toContain(hint);
+    }
+    // Build owns the military build tabs.
+    expect(body).toContain(`buildTabsForMenuTab(allBuildTabs(), 'military')`);
+    // Superweapons (rehomed from the old Command panel) own the fire
+    // buttons.
+    const sw = methodBody('superweaponsEl');
+    expect(sw).toContain('onFireAegis');
+    expect(sw).toContain('onStormTarget');
   });
 
-  it('the Management tab owns taxes, city focus, the cabinet and research', () => {
+  it('the Management tab owns Taxes / Focus / Cabinet / Ordinances / Intel / Trade / Research sub-tabs', () => {
     const mgmt = methodBody('appendManagementPanel');
+    for (const sub of ['taxes', 'focus', 'cabinet', 'ordinances', 'intel', 'trade', 'research']) {
+      expect(mgmt, `management sub-tab '${sub}' missing`).toContain(`'${sub}'`);
+    }
     expect(mgmt).toContain('taxSectionEl(');
     expect(mgmt).toContain('focusSectionEl(');
     expect(mgmt).toContain('cabinetSectionEl(');
@@ -148,17 +168,23 @@ describe('every pre-existing control has a home under the 3-tab menu', () => {
     }
   });
 
+  it('the Management Trade sub-tab surfaces the trade-route commands', () => {
+    const trade = methodBody('tradeSectionEl');
+    expect(trade).toContain('onEstablishTradeRoute');
+    expect(trade).toContain('onCancelTradeRoute');
+    expect(trade).toContain('tradeEmpty');
+  });
+
   it('every HUDActions callback is still wired to a menu surface', () => {
     const ifaceStart = HUD_SRC.indexOf('export interface HUDActions {');
     const ifaceEnd = HUD_SRC.indexOf('\n}', ifaceStart);
     const iface = HUD_SRC.slice(ifaceStart, ifaceEnd);
     const actions = [...iface.matchAll(/^\s{2}(on[A-Za-z0-9_]+)\(/gm)].map((m) => m[1]!);
     expect(actions.length).toBeGreaterThan(10);
-    // Trade routes never had a menu surface (the old Command panel had
-    // no trade buttons either) — everything else must be reachable.
-    const unsurfaced: string[] = ['onEstablishTradeRoute', 'onCancelTradeRoute'];
+    // The command-menu rebuild (2026-10-01) gave the trade-route
+    // commands their menu surface (tradeSectionEl) — nothing is
+    // orphaned anymore.
     for (const action of actions) {
-      if (unsurfaced.includes(action)) continue;
       const wired =
         HUD_SRC.includes(`this.actions.${action}(`) ||
         HUD_SRC.includes(`actions.${action}(`);
@@ -172,18 +198,26 @@ describe('every pre-existing control has a home under the 3-tab menu', () => {
     expect(HUD_SRC).not.toContain('phase3Panel');
   });
 
-  it('the menu tab bar renders Civilian / Military / Management with icons', () => {
-    const body = methodBody('buildMenuTabBar');
-    // The tab bar iterates `menuTabsForWorld` (ui/peaceful.ts): a
+  it('the icon rail renders Civilian / Military / Management with icons', () => {
+    const body = methodBody('menuRailEl');
+    // The rail iterates `menuTabsForWorld` (ui/peaceful.ts): a
     // standard world shows all three tabs, a peaceful world hides
     // Military. Check the helper directly (headless-testable) rather
     // than grepping the method for the literal tab ids.
     expect(menuTabsForWorld(false)).toEqual(['civilian', 'military', 'management']);
     expect(menuTabsForWorld(true)).toEqual(['civilian', 'management']);
-    expect(body, 'tab bar must iterate menuTabsForWorld').toContain('menuTabsForWorld');
+    expect(body, 'rail must iterate menuTabsForWorld').toContain('menuTabsForWorld');
     for (const icon of ['tabCivilian', 'tabMilitary', 'tabManagement'] as const) {
-      expect(body, `menu tab icon '${icon}' missing`).toContain(icon);
+      expect(body, `menu rail icon '${icon}' missing`).toContain(icon);
     }
+    expect(body).toContain('menu-rail-btn');
+  });
+
+  it('the sub-tab pill row highlights the active sub-tab', () => {
+    const body = methodBody('subTabBarEl');
+    expect(body).toContain('sub-tabs');
+    expect(body).toContain('sub-tab');
+    expect(body).toContain('active');
   });
 });
 
@@ -197,7 +231,19 @@ describe('menu-tab digest coverage', () => {
     }
   });
 
-  it('the Management tab digest covers taxes, focus and cabinet', () => {
+  it('the digest always carries the active sub-tab', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const sel = createSelection();
+    const civ = selectionDigest(world, sel, 'infantry', 'housing', undefined, 'civilian', 'paved', undefined, 'build');
+    expect(civ).toContain('sb:build');
+    const mil = selectionDigest(world, sel, 'infantry', 'housing', undefined, 'military', 'paved', undefined, 'superweapons');
+    expect(mil).toContain('sb:superweapons');
+    const mgmt = selectionDigest(world, sel, 'infantry', 'housing', undefined, 'management', 'paved', undefined, 'trade');
+    expect(mgmt).toContain('sb:trade');
+  });
+
+  it('the Management tab digest covers taxes, focus, cabinet and trade routes', () => {
     const session = createSession({ seed: 4242 });
     const d = selectionDigest(
       session.world,
@@ -210,5 +256,6 @@ describe('menu-tab digest coverage', () => {
     expect(d).toContain('tx:');
     expect(d).toContain('ms:');
     expect(d).toContain('mg:');
+    expect(d).toContain('tr:');
   });
 });

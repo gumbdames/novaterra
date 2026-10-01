@@ -20,10 +20,15 @@
  * Responsibilities:
  *  - Compute a cheap string digest of everything the HUD selection panel
  *    renders (see hud.ts `updateSelection`): selection identity, the
- *    active main menu tab (workstream Y: Civilian/Military/Management),
+ *    active main menu tab (workstream Y: Civilian/Military/Management)
+ *    and its active sub-tab (command-menu rebuild, 2026-10-01:
+ *    Civilian → Tools/Build/Airlines, Military →
+ *    Train/Build/Superweapons, Management →
+ *    Taxes/Focus/Cabinet/Ordinances/Intelligence/Trade/Research),
  *    the active train/build tabs, per-button availability, research
  *    states, the selected unit/building vitals, the Management tab's
- *    tax/focus/cabinet values, and the peaceful-objectives progress
+ *    tax/focus/cabinet values, the trade-route list, and the
+ *    peaceful-objectives progress
  *    (Phase 8 peaceful, workstream B: population, treasury, rival).
  *  - hud.ts rebuilds the panel only when this digest changes. The panel
  *    must stay node-stable across frames: recreating the palette buttons
@@ -142,6 +147,13 @@ export function selectionDigest(
   // picking the first airport; a number = the armed first endpoint's
   // building id. Optional so existing callers/tests keep compiling.
   airlineArmedFrom: number | null | undefined = undefined,
+  // Command-menu rebuild (2026-10-01): the active sub-tab of the active
+  // main tab (Civilian: tools/build/airlines; Military:
+  // train/build/superweapons; Management:
+  // taxes/focus/cabinet/ordinances/intel/trade/research). The sub-tab
+  // bar highlights it, so the digest must move on a sub-tab switch.
+  // Optional so existing callers/tests keep compiling.
+  subTab: string = 'tools',
 ): string {
   const parts: string[] = [
     `u:${selection.unitIds.join(',')}`,
@@ -149,6 +161,8 @@ export function selectionDigest(
     `tt:${trainTab}`,
     `bt:${buildTab}`,
     `mt:${menuTab}`,
+    // The active main tab's sub-tab (mt: already carries the main tab).
+    `sb:${subTab}`,
   ];
   if (selection.unitIds.length > 0) {
     // Unit vitals (hp%) are the only per-tick mover in this branch.
@@ -385,6 +399,18 @@ export function selectionDigest(
       // funding states (ui/policies.ts `policiesPanelDigest`), so the
       // panel repaints exactly when a rendered row would change.
       parts.push(policiesPanelDigest(world, HUMAN_PLAYER_ID));
+      // Command-menu rebuild (2026-10-01): the Management tab's Trade
+      // sub-tab lists the player's trade routes. Always emitted under
+      // Management (like tx:/ms:/mg:) so the representative state
+      // covers the label; the panel repaints when a route appears or
+      // disappears (establish/cancel orders).
+      parts.push(
+        `tr:${world.city.tradeRoutes
+          .filter((r) => r.owner === HUMAN_PLAYER_ID)
+          .map((r) => r.partner)
+          .sort((a, b) => a - b)
+          .join(',')}`,
+      );
     }
   }
   // The research panel is listed whenever the player owns a completed
@@ -628,10 +654,21 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     digestLabels: ['al:', 'aa:'],
   },
   {
-    id: 'menu-tabs',
-    renderedIn: 'buildMenuTabBar',
-    domClasses: ['menu-tabs', 'menu-tab'],
-    // mt: the active main tab — the bar highlights it, so the digest
+    id: 'menu-rail',
+    renderedIn: 'menuRailEl',
+    // menu-shell / menu-content: the rail + content flex layout of the
+    // selection panel (command-menu rebuild, 2026-10-01 — replaces the
+    // old top menu-tabs bar). palette-icon / palette-label are shared
+    // with the tools row (claimed there too — the contract unions them).
+    domClasses: [
+      'menu-shell',
+      'menu-rail',
+      'menu-rail-btn',
+      'menu-content',
+      'palette-icon',
+      'palette-label',
+    ],
+    // mt: the active main tab — the rail highlights it, so the digest
     // must move on a tab switch. Grand-expansion Phase 8 (peaceful,
     // workstream B): the tab LIST itself follows ui/peaceful.ts
     // `menuTabsForWorld` (Military hidden in peaceful worlds) — the
@@ -640,12 +677,27 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     digestLabels: ['mt:'],
   },
   {
+    id: 'menu-subtabs',
+    renderedIn: 'subTabBarEl',
+    // The sub-tab pill row inside each main tab (command-menu rebuild,
+    // 2026-10-01): Civilian → Tools/Build/Airlines, Military →
+    // Train/Build/Superweapons, Management →
+    // Taxes/Focus/Cabinet/Ordinances/Intelligence/Trade/Research.
+    domClasses: ['sub-tabs', 'sub-tab'],
+    // sb: the active sub-tab of the active main tab — the pill row
+    // highlights it, so the digest must move on a sub-tab switch.
+    digestLabels: ['sb:'],
+  },
+  {
     id: 'military-panel',
     renderedIn: 'appendMilitaryPanel',
     // panel-section / panel-section-title: the Orders and Superweapons
     // section wrappers; order-hint: the static attack/move/stop help
-    // lines. The train/build palettes embedded here are digest-covered
-    // by their own branches.
+    // lines (plain text — the old ⚔/➤/■ glyphs were removed by the
+    // command-menu rebuild, 2026-10-01); sw-card / sw-body / sw-name /
+    // sw-desc: the superweapon cards (icon + name + requirement +
+    // fire button). The train/build palettes embedded here are
+    // digest-covered by their own branches.
     domClasses: [
       'panel-section',
       'panel-section-title',
@@ -654,10 +706,14 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'panel-btn',
       'panel-status',
       'order-hint',
+      'sw-card',
+      'sw-body',
+      'sw-name',
+      'sw-desc',
     ],
     digestLabels: [],
     noDigestReason:
-      'Static section chrome: orders hints, superweapon button labels ' +
+      'Static section chrome: orders hints, superweapon card labels ' +
       'and section titles never change at runtime (a click either fires ' +
       'or the sim rejects loudly). The embedded train/build palettes are ' +
       'digest-covered by the train-palette / build-palette branches.',
@@ -689,7 +745,10 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // when the section does not render, i.e. non-peaceful worlds).
     // oc: the City ordinances section (Phase 8 civilian, workstream E —
     // per-policy on/off + funded/unfunded, in POLICY_IDS order).
-    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:', 'po:', 'oc:'],
+    // tr: the Trade sub-tab's route list (command-menu rebuild,
+    // 2026-10-01 — the player's trade-route partners; 'tr:' empty when
+    // there are no routes).
+    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:', 'po:', 'oc:', 'tr:'],
   },
   {
     id: 'research-panel',

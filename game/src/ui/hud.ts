@@ -70,6 +70,10 @@ import type { TerrainData } from '../sim/terrain';
 import { getDesirabilityModel } from '../sim/desirability';
 import { landValueLine } from './desirability';
 import { AGE_PROGRESSION } from '../sim/ages';
+import {
+  TRADE_ROUTE_INCOME_PER_SEC,
+  TRADE_ROUTE_SETUP_COST,
+} from '../sim/economy';
 import type { UpgradeId } from '../sim/upgrades';
 import type { Selection } from './selection';
 import type { AdvisorItem } from './advisor';
@@ -408,6 +412,29 @@ export class HUD {
    * Military doesn't lose your place in either palette.
    */
   private menuTab: MenuTabId = 'civilian';
+  /**
+   * Command-menu rebuild (2026-10-01): the active sub-tab per main tab,
+   * remembered like the build tabs so flipping between main tabs never
+   * loses your place. Civilian → Tools / Build / Airlines; Military →
+   * Train / Build / Superweapons; Management → Taxes / City focus /
+   * Cabinet / Ordinances / Intelligence / Trade / Research.
+   */
+  private civilianSub: 'tools' | 'build' | 'airlines' = 'tools';
+  private militarySub: 'train' | 'build' | 'superweapons' = 'train';
+  private managementSub:
+    | 'taxes'
+    | 'focus'
+    | 'cabinet'
+    | 'ordinances'
+    | 'intel'
+    | 'trade'
+    | 'research' = 'taxes';
+  /** The active main tab's sub-tab — the digest's sb: segment. */
+  private get activeSubTab(): string {
+    if (this.menuTab === 'military') return this.militarySub;
+    if (this.menuTab === 'management') return this.managementSub;
+    return this.civilianSub;
+  }
   private civilianBuildTab: BuildTabId | UtilityBuildTabId = 'housing';
   private militaryBuildTab: BuildTabId | UtilityBuildTabId = 'navalAir';
   private get buildTab(): BuildTabId | UtilityBuildTabId {
@@ -615,18 +642,20 @@ export class HUD {
   }
 
   /**
-   * Workstream Y (3-tab menu): the main tab bar at the top of the
-   * selection panel — Civilian / Military / Management, icon AND text
-   * (user directive 2026-09-30). Registered in HUD_PANEL_BRANCHES as
-   * 'menu-tabs' (digest label mt:).
+   * Command-menu rebuild (2026-10-01): the slim icon rail on the left
+   * edge of the selection panel — Civilian (house) / Military (shield) /
+   * Management (sliders), icon AND text (user directive 2026-09-30),
+   * with a clear active state (highlight + label). Replaces the old top
+   * `menu-tabs` bar; the panel is now a rail + content flex row (see
+   * `updateSelection`). Registered in HUD_PANEL_BRANCHES as 'menu-rail'
+   * (digest label mt:).
    *
    * Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
    * peaceful worlds hide the Military tab entirely (the tab list comes
-   * from the pure `menuTabsForWorld` helper so it is headless-testable);
-   * the Civilian tab carries the one-line note.
+   * from the pure `menuTabsForWorld` helper so it is headless-testable).
    */
-  private buildMenuTabBar(world: World): HTMLElement {
-    const bar = el('div', 'menu-tabs');
+  private menuRailEl(world: World): HTMLElement {
+    const rail = el('div', 'menu-rail');
     const icons: Record<MenuTabId, MenuIconKey> = {
       civilian: 'tabCivilian',
       military: 'tabMilitary',
@@ -634,13 +663,44 @@ export class HUD {
     };
     for (const id of menuTabsForWorld(world.peaceful === true)) {
       const b = document.createElement('button');
-      b.className = `menu-tab${this.menuTab === id ? ' active' : ''}`;
+      b.className = `menu-rail-btn${this.menuTab === id ? ' active' : ''}`;
       b.prepend(iconSpan(menuIcon(icons[id])));
       b.append(el('span', 'palette-label', loc(STRINGS.menuTabs[id])));
       b.setAttribute('aria-pressed', this.menuTab === id ? 'true' : 'false');
       b.addEventListener('click', () => {
         this.menuTab = id;
         // Tab switches must repaint even while paused (no tick advance).
+        this.paletteDirty = true;
+      });
+      rail.append(b);
+    }
+    return rail;
+  }
+
+  /**
+   * Command-menu rebuild (2026-10-01): the sub-tab pill row inside one
+   * main tab. Named *El (not build*-prefixed) per the ui/AGENTS.md AD11
+   * rule — it is covered by the 'menu-subtabs' digest branch (sb:
+   * segment), not a branch of its own. The pill row highlights the
+   * active sub-tab; clicks remember the choice per main tab.
+   */
+  private subTabBarEl(
+    subs: ReadonlyArray<{ id: string; label: string }>,
+    active: string,
+    onSelect: (id: string) => void,
+  ): HTMLElement {
+    const bar = el('div', 'sub-tabs');
+    bar.setAttribute('role', 'tablist');
+    for (const sub of subs) {
+      const b = document.createElement('button');
+      b.className = `sub-tab${sub.id === active ? ' active' : ''}`;
+      b.textContent = sub.label;
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', sub.id === active ? 'true' : 'false');
+      b.addEventListener('click', () => {
+        onSelect(sub.id);
+        // Sub-tab switches must repaint even while paused (no tick
+        // advance) — same rule as main-tab switches.
         this.paletteDirty = true;
       });
       bar.append(b);
@@ -676,9 +736,10 @@ export class HUD {
   }
 
   /**
-   * Civilian main tab: the build tools row (road / power line / water
-   * pipe / zone R-C-I / demolish) plus the civilian build tabs. The
-   * tools live here because they are civilian infrastructure tools.
+   * Civilian main tab: three sub-tabs (command-menu rebuild, 2026-10-01)
+   * — Tools (road / power line / water pipe / rail / zones / demolish),
+   * Build (the 9 civilian build tabs as pills + the card grid), and
+   * Airlines (routes + the two-click "New route…" gesture).
    *
    * Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
    * peaceful worlds hide the Military tab, so this tab carries the
@@ -687,12 +748,51 @@ export class HUD {
    * which never toggles mid-game).
    */
   private appendCivilianPanel(panel: HTMLElement, world: World): void {
-    const p = STRINGS.palettes;
+    const m = STRINGS.menuTabs;
     if (world.peaceful === true) {
       panel.append(
         el('div', 'panel-status', loc(STRINGS.peaceful.militaryHiddenNote)),
       );
     }
+    panel.append(
+      this.subTabBarEl(
+        [
+          { id: 'tools', label: loc(m.subTools) },
+          { id: 'build', label: loc(m.subBuild) },
+          { id: 'airlines', label: loc(m.subAirlines) },
+        ],
+        this.civilianSub,
+        (id) => {
+          this.civilianSub = id as 'tools' | 'build' | 'airlines';
+        },
+      ),
+    );
+    if (this.civilianSub === 'build') {
+      const tabs = buildTabsForMenuTab(allBuildTabs(), 'civilian');
+      this.appendBuildPanel(panel, world, tabs);
+    } else if (this.civilianSub === 'airlines') {
+      // Grand-expansion Phase 5 (S5): the airline panel — the player's
+      // routes plus the two-click "New route…" gesture. Registered in
+      // HUD_PANEL_BRANCHES as 'airline-panel' (digestLabels: al:, aa:).
+      panel.append(this.airlinePanelEl(world));
+    } else {
+      panel.append(this.civilianToolsEl(world));
+    }
+  }
+
+  /**
+   * Civilian → Tools: the build tools row (road + class picker, power
+   * line / water pipe / rail networks, zone R-C-I-A, demolish). Moved
+   * out of appendCivilianPanel by the command-menu rebuild (2026-10-01);
+   * the tools live here because they are civilian infrastructure tools.
+   *
+   * Named *El (not append*-prefixed) per the ui/AGENTS.md AD11 rule —
+   * covered by the 'tools-row' digest branch (rc: segment), not a
+   * branch of its own. All DOM classes are the ones that branch
+   * already claims.
+   */
+  private civilianToolsEl(world: World): HTMLElement {
+    const p = STRINGS.palettes;
     const toolsRow = el('div', 'palette-tools');
     const makeToolButton = (
       tool: BuildTool,
@@ -768,13 +868,7 @@ export class HUD {
     }
     toolsRow.append(zoneGroup);
     toolsRow.append(makeToolButton('demolish', loc(p.toolDemolish), 'demolish'));
-    panel.append(toolsRow);
-    const tabs = buildTabsForMenuTab(allBuildTabs(), 'civilian');
-    this.appendBuildPanel(panel, world, tabs);
-    // Grand-expansion Phase 5 (S5): the airline panel — the player's
-    // routes plus the two-click "New route…" gesture. Registered in
-    // HUD_PANEL_BRANCHES as 'airline-panel' (digestLabels: al:, aa:).
-    panel.append(this.airlinePanelEl(world));
+    return toolsRow;
   }
 
   /**
@@ -840,50 +934,109 @@ export class HUD {
   }
 
   /**
-   * Military main tab: unit orders help, the tabbed train palette, the
-   * military build tabs, and the superweapons (moved here from the old
-   * Phase 3 "Command" panel — nothing lost, just rehomed).
+   * Military main tab: three sub-tabs (command-menu rebuild, 2026-10-01)
+   * — Train (unit orders + the 6-tab train palette), Build (the 4
+   * military build tabs as pills + the card grid), Superweapons
+   * (Aegis/Storm as cards).
    */
   private appendMilitaryPanel(panel: HTMLElement, world: World): void {
     const m = STRINGS.menuTabs;
-    // Unit orders: the existing commands. Attack/move are right-click
-    // map gestures (game.ts issueContextOrder); Stop is the selection
-    // panel button / the S key. No per-unit "defend" command exists in
-    // the sim — the orders block says what the game actually has.
-    const orders = this.makeSection(loc(m.ordersTitle));
-    const orderRow = el('div', 'panel-row');
-    orderRow.append(el('div', 'order-hint', `⚔ ${loc(m.attackHint)}`));
-    orderRow.append(el('div', 'order-hint', `➤ ${loc(m.moveHint)}`));
-    orderRow.append(el('div', 'order-hint', `■ ${loc(m.stopHint)}`));
-    orders.append(orderRow);
-    panel.append(orders);
-
-    this.appendTrainPanel(panel, world);
-    const tabs = buildTabsForMenuTab(allBuildTabs(), 'military');
-    this.appendBuildPanel(panel, world, tabs);
-
-    const sw = this.makeSection(loc(m.superTitle));
-    const swRow = el('div', 'panel-row');
-    swRow.append(
-      this.makePanelButton(loc(m.fireAegis), loc(m.aegisTitle), () =>
-        this.actions.onFireAegis(),
+    panel.append(
+      this.subTabBarEl(
+        [
+          { id: 'train', label: loc(m.subTrain) },
+          { id: 'build', label: loc(m.subBuild) },
+          { id: 'superweapons', label: loc(m.subSuperweapons) },
+        ],
+        this.militarySub,
+        (id) => {
+          this.militarySub = id as 'train' | 'build' | 'superweapons';
+        },
       ),
     );
-    swRow.append(
-      this.makePanelButton(loc(m.stormTarget), loc(m.stormTitle), () =>
-        this.actions.onStormTarget(),
-      ),
-    );
-    sw.append(swRow);
-    panel.append(sw);
+    if (this.militarySub === 'build') {
+      const tabs = buildTabsForMenuTab(allBuildTabs(), 'military');
+      this.appendBuildPanel(panel, world, tabs);
+    } else if (this.militarySub === 'superweapons') {
+      panel.append(this.superweaponsEl());
+    } else {
+      panel.append(this.militaryOrdersEl());
+      this.appendTrainPanel(panel, world);
+    }
   }
 
   /**
-   * Management main tab: taxes, city focus, the mayor/general cabinet,
-   * and the research panel (when the player owns a completed lab). The
-   * old Phase 3 "Command" panel's specialization/mayor/general controls
-   * live here now; taxes are new UI over the existing setTaxRate command
-   * (orders.ts already had the HUD-tax builder waiting for a home).
+   * Military → Train: the unit-orders help strip. Attack/move are
+   * right-click map gestures (game.ts issueContextOrder); Stop is the
+   * selection panel button / the S key. No per-unit "defend" command
+   * exists in the sim — the strip says what the game actually has.
+   * (Command-menu rebuild, 2026-10-01: the old ⚔/➤/■ glyphs are gone —
+   * plain labeled rows, no emoji in UI.)
+   *
+   * Named *El per the ui/AGENTS.md AD11 rule — covered by the
+   * 'military-panel' digest branch (static help text, no digest
+   * segment), not a branch of its own.
+   */
+  private militaryOrdersEl(): HTMLElement {
+    const m = STRINGS.menuTabs;
+    const orders = this.makeSection(loc(m.ordersTitle));
+    for (const hint of [m.attackHint, m.moveHint, m.stopHint]) {
+      orders.append(el('div', 'order-hint', loc(hint)));
+    }
+    return orders;
+  }
+
+  /**
+   * Military → Superweapons: Aegis and Storm as cards — icon, name, the
+   * requirement line, and the fire button. (Moved here from the old
+   * Phase 3 "Command" panel; the command protocol is unchanged.)
+   *
+   * Named *El per the ui/AGENTS.md AD11 rule — covered by the
+   * 'military-panel' digest branch (static labels; a click either fires
+   * or the sim rejects loudly), not a branch of its own. New DOM
+   * classes (sw-card/sw-body/sw-name/sw-desc) are claimed by that
+   * branch.
+   */
+  private superweaponsEl(): HTMLElement {
+    const m = STRINGS.menuTabs;
+    const sec = this.makeSection(loc(m.superTitle));
+    const cards = [
+      {
+        kind: 'aegisControl' as const,
+        desc: loc(m.aegisTitle),
+        verb: loc(m.fireAegis),
+        title: loc(m.aegisTitle),
+        onClick: () => this.actions.onFireAegis(),
+      },
+      {
+        kind: 'stormArray' as const,
+        desc: loc(m.stormTitle),
+        verb: loc(m.stormTarget),
+        title: loc(m.stormTitle),
+        onClick: () => this.actions.onStormTarget(),
+      },
+    ];
+    for (const c of cards) {
+      const card = el('div', 'sw-card');
+      card.prepend(iconSpan(buildingIcon(c.kind)));
+      const body = el('div', 'sw-body');
+      body.append(el('div', 'sw-name', buildingName(c.kind)));
+      body.append(el('div', 'sw-desc', c.desc));
+      card.append(body);
+      card.append(this.makePanelButton(c.verb, c.title, c.onClick));
+      sec.append(card);
+    }
+    return sec;
+  }
+
+  /**
+   * Management main tab: seven sub-tabs (command-menu rebuild,
+   * 2026-10-01) — Taxes, City focus, Cabinet (mayor/general), City
+   * ordinances, Intelligence, Trade, and Research (when the player owns
+   * a completed lab; otherwise the sub-tab explains what unlocks it).
+   * The old Phase 3 "Command" panel's specialization/mayor/general
+   * controls live here; taxes are UI over the existing setTaxRate
+   * command (orders.ts already had the HUD-tax builder waiting).
    *
    * Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
    * peaceful games head the tab with the peaceful-objectives section —
@@ -894,20 +1047,117 @@ export class HUD {
     if (world.peaceful === true) {
       panel.append(this.peacefulObjectivesEl(world));
     }
-    panel.append(this.taxSectionEl(world));
-    panel.append(this.focusSectionEl(world));
-    panel.append(this.cabinetSectionEl(world));
-    // Grand-expansion Phase 8 (civilian ordinances, workstream E):
-    // the City ordinances section — five city-wide policy toggles with
-    // real upkeep, on the Management tab in every world (ordinances
-    // are civilian city management; peaceful games keep them too).
-    panel.append(this.policySectionEl(world));
-    // Grand-expansion Phase 7 (intel): the intel panel — asset
-    // counters, spies + covert actions, warnings, rival airports.
-    panel.append(this.intelSectionEl(world));
-    if (playerHasCompletedLab(world, HUMAN_PLAYER_ID)) {
-      this.appendResearchPanel(panel, world);
+    const subs = [
+      { id: 'taxes', label: loc(m.subTaxes) },
+      { id: 'focus', label: loc(m.subFocus) },
+      { id: 'cabinet', label: loc(m.subCabinet) },
+      { id: 'ordinances', label: loc(m.subOrdinances) },
+      { id: 'intel', label: loc(m.subIntel) },
+      { id: 'trade', label: loc(m.subTrade) },
+      { id: 'research', label: loc(m.subResearch) },
+    ];
+    panel.append(
+      this.subTabBarEl(subs, this.managementSub, (id) => {
+        this.managementSub = id as typeof this.managementSub;
+      }),
+    );
+    switch (this.managementSub) {
+      case 'focus':
+        panel.append(this.focusSectionEl(world));
+        break;
+      case 'cabinet':
+        panel.append(this.cabinetSectionEl(world));
+        break;
+      case 'ordinances':
+        // Grand-expansion Phase 8 (civilian ordinances, workstream E):
+        // the City ordinances section — five city-wide policy toggles
+        // with real upkeep (ordinances are civilian city management;
+        // peaceful games keep them too).
+        panel.append(this.policySectionEl(world));
+        break;
+      case 'intel':
+        // Grand-expansion Phase 7 (intel): the intel panel — asset
+        // counters, spies + covert actions, warnings, rival airports.
+        panel.append(this.intelSectionEl(world));
+        break;
+      case 'trade':
+        panel.append(this.tradeSectionEl(world));
+        break;
+      case 'research':
+        if (playerHasCompletedLab(world, HUMAN_PLAYER_ID)) {
+          this.appendResearchPanel(panel, world);
+        } else {
+          panel.append(el('div', 'panel-status', loc(m.researchNeedsLab)));
+        }
+        break;
+      case 'taxes':
+      default:
+        panel.append(this.taxSectionEl(world));
+        break;
     }
+  }
+
+  /**
+   * Management → Trade (command-menu rebuild, 2026-10-01): the
+   * trade-route surface the sim commands waited for since Phase 3.
+   * Lists the player's routes (partner + income line) with per-route
+   * Cancel, and an Establish button per rival nation without a route.
+   * The sim validates loudly (unknown partner, duplicate, funds) — the
+   * buttons never re-check, so there are no dead buttons and no silent
+   * no-ops (the intel panel's rule).
+   *
+   * Named *El per the ui/AGENTS.md AD11 rule — covered by the
+   * 'management-panel' digest branch (tr: segment), not a branch of its
+   * own. All DOM classes are the shared panel classes that branch
+   * already claims.
+   */
+  private tradeSectionEl(world: World): HTMLElement {
+    const m = STRINGS.menuTabs;
+    const sec = this.makeSection(loc(m.tradeTitle));
+    const routes = world.city.tradeRoutes.filter(
+      (r) => r.owner === HUMAN_PLAYER_ID,
+    );
+    if (routes.length === 0) {
+      sec.append(el('div', 'panel-status', loc(m.tradeEmpty)));
+    }
+    for (const r of routes) {
+      const row = el('div', 'panel-row');
+      row.append(
+        el(
+          'span',
+          'panel-label',
+          `${this.tradePartnerName(world, r.partner)} · ${fillLoc(m.tradeIncomeLine, { income: TRADE_ROUTE_INCOME_PER_SEC })}`,
+        ),
+      );
+      row.append(
+        this.makePanelButton(loc(m.tradeCancel), `Cancel the trade route with ${this.tradePartnerName(world, r.partner)}`, () =>
+          this.actions.onCancelTradeRoute(r.partner),
+        ),
+      );
+      sec.append(row);
+    }
+    const partners = world.city.players.filter((p) => p.id !== HUMAN_PLAYER_ID);
+    for (const p of partners) {
+      if (routes.some((r) => r.partner === p.id)) continue;
+      const row = el('div', 'panel-row');
+      row.append(el('span', 'panel-label', this.tradePartnerName(world, p.id)));
+      row.append(
+        this.makePanelButton(
+          loc(m.tradeEstablish),
+          fillLoc(m.tradeEstablishTitle, { cost: TRADE_ROUTE_SETUP_COST }),
+          () => this.actions.onEstablishTradeRoute(p.id),
+        ),
+      );
+      sec.append(row);
+    }
+    return sec;
+  }
+
+  /** Display name for a trade partner (the AI rival in 0.1 Alpha). */
+  private tradePartnerName(world: World, partnerId: number): string {
+    const p = world.city.players.find((x) => x.id === partnerId);
+    if (p === undefined) return `Player ${partnerId}`;
+    return p.id === 1 ? loc(STRINGS.menuTabs.tradePartnerRival) : p.name;
   }
 
   /**
@@ -1506,6 +1756,9 @@ export class HUD {
       // Grand-expansion Phase 5 (S5): the airline panel's armed status
       // line is rendered content — undefined when the tool is disarmed.
       this.airlineArmed ? this.airlineFromId : undefined,
+      // Command-menu rebuild (2026-10-01): the active sub-tab of the
+      // active main tab — the pill row highlights it (sb: segment).
+      this.activeSubTab,
     );
   }
 
@@ -1530,28 +1783,34 @@ export class HUD {
     panel.dataset['key'] = key;
     panel.textContent = '';
 
-    // Workstream Y (3-tab menu): the main tab bar heads the panel in
-    // every state; the content below is the active tab when nothing is
-    // selected, or the contextual unit/building branch when something is.
+    // Command-menu rebuild (2026-10-01): the panel is a slim icon rail
+    // on the left edge plus the content column. The rail is present in
+    // every state; the content is the active tab when nothing is
+    // selected, or the contextual unit/building detail view when
+    // something is.
     // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
     // the Military tab is hidden in peaceful worlds — a remembered
     // 'military' selection can never point at it, so render Civilian
     // instead (the stored state is left alone; the button is simply
     // gone). The digest's mt: segment still keys on the stored tab.
-    panel.append(this.buildMenuTabBar(world));
+    const shell = el('div', 'menu-shell');
+    shell.append(this.menuRailEl(world));
+    const content = el('div', 'menu-content');
+    shell.append(content);
+    panel.append(shell);
 
     if (selection.unitIds.length === 0 && selection.buildingId === null) {
-      panel.append(el('div', 'sel-empty', sel.noSelection));
+      content.append(el('div', 'sel-empty', sel.noSelection));
       const menuTab =
         world.peaceful === true && this.menuTab === 'military'
           ? 'civilian'
           : this.menuTab;
       if (menuTab === 'civilian') {
-        this.appendCivilianPanel(panel, world);
+        this.appendCivilianPanel(content, world);
       } else if (menuTab === 'military') {
-        this.appendMilitaryPanel(panel, world);
+        this.appendMilitaryPanel(content, world);
       } else {
-        this.appendManagementPanel(panel, world);
+        this.appendManagementPanel(content, world);
       }
       return;
     }
