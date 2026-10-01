@@ -66,6 +66,7 @@ import {
   registerCombatCommands,
   canTargetBuilding,
   damageBuilding,
+  siegeStandCell,
 } from '../src/sim/combat';
 import {
   createSuperweaponSystem,
@@ -116,14 +117,14 @@ function setup(seed = 20261001): Ctx {
   registerCityCommands(queue, terrain);
   registerUnitCommands(queue, terrain);
   registerMovementCommands(queue, terrain);
-  registerCombatCommands(queue);
+  registerCombatCommands(queue, terrain);
   registerSuperweaponCommands(queue);
   const driver = createTickDriver({
     queue,
     systems: [
       createPathfindingSystem(terrain),
       createMovementSystem(terrain),
-      createCombatSystem(),
+      createCombatSystem(terrain),
       createSuperweaponSystem(),
     ],
   });
@@ -405,6 +406,54 @@ describe('attackBuilding command', () => {
     expect(b).toBeDefined();
     expect(b!.hp).toBe(BUILDING_DEFS.house.hp);
     expect(b!.maxHp).toBe(BUILDING_DEFS.house.hp);
+  });
+});
+
+describe('siegeStandCell (final-review R2 follow-up)', () => {
+  it('returns a passable land cell adjacent to the footprint, nearest the unit', () => {
+    const ctx = setup();
+    const bId = enemyBuilding(ctx, 'house', 70, 70);
+    const b = ctx.world.city.buildings.find((x) => x.id === bId)!;
+    const def = BUILDING_DEFS.house;
+    const unit = { x: -1000, z: -1000 }; // far SW — nearest ring cell is the SW corner
+    const stand = siegeStandCell(ctx.terrain, ctx.world.city, b, unit.x, unit.z)!;
+    expect(stand).not.toBeNull();
+    // Adjacent to the footprint: within the one-cell ring.
+    const cx = Math.floor((stand.x + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+    const cz = Math.floor((stand.z + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+    expect(cx).toBeGreaterThanOrEqual(b.cx - 1);
+    expect(cx).toBeLessThanOrEqual(b.cx + def.footprintW);
+    expect(cz).toBeGreaterThanOrEqual(b.cz - 1);
+    expect(cz).toBeLessThanOrEqual(b.cz + def.footprintH);
+    // On the ring, not inside the footprint.
+    const inside =
+      cx >= b.cx && cx < b.cx + def.footprintW && cz >= b.cz && cz < b.cz + def.footprintH;
+    expect(inside).toBe(false);
+    // The SW corner of the ring is the nearest to a SW unit.
+    expect(cx).toBe(b.cx - 1);
+    expect(cz).toBe(b.cz - 1);
+    // Deterministic: same inputs, same cell.
+    const again = siegeStandCell(ctx.terrain, ctx.world.city, b, unit.x, unit.z)!;
+    expect(again.x).toBe(stand.x);
+    expect(again.z).toBe(stand.z);
+  });
+
+  it('attackBuilding walks the unit to the stand cell, not the building center', () => {
+    const ctx = setup();
+    const bId = enemyBuilding(ctx, 'house', 70, 70);
+    const b = ctx.world.city.buildings.find((x) => x.id === bId)!;
+    const c = buildingCenterWorld(b);
+    const land = findLandNear(ctx.terrain, c.x + 40, c.z);
+    const tank = spawnAt(ctx, land.x, land.z, 'tank', 0);
+    const u0 = findUnit(ctx.world, tank)!;
+    const stand = siegeStandCell(ctx.terrain, ctx.world.city, b, u0.x, u0.z)!;
+    enqueue(ctx, [{ kind: 'attackBuilding', payload: { unitId: tank, buildingId: bId, owner: 0 } }]);
+    runTicks(ctx, 1);
+    const u = findUnit(ctx.world, tank)!;
+    // The move destination is the stand cell, not the footprint center.
+    expect(u.destX).toBeCloseTo(stand.x, 6);
+    expect(u.destZ).toBeCloseTo(stand.z, 6);
+    expect(Math.hypot(u.destX - c.x, u.destZ - c.z)).toBeGreaterThan(1);
   });
 });
 

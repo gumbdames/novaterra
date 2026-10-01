@@ -231,7 +231,14 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   attacker's level bonuses (+10% damage/sight per level, −10% reload per
   level min 1 tick); kills credit XP in id order before `killUnit`
   removal; Elite units regenerate 2 hp/s; the medic heal cap is the
-  veterancy-adjusted max HP.
+  veterancy-adjusted max HP. Final-review R2 (2026-10-01): explicit
+  `attackBuilding` siege orders — buildings are destructible, sieges
+  never auto-fire (explicit order only), and sieging units path to a
+  passable stand cell beside the footprint (`siegeStandCell`, nearest
+  ring cell, deterministic) rather than the building center.
+  `createCombatSystem` / `registerCombatCommands` take an optional
+  terrain for the stand-cell scan (headless tests may omit it and get
+  the legacy center behavior).
 - `ai.ts` — Classic AI, five difficulties (cadet/citizen/commander/general/
   marshal). Seeded per-match personalities (same seed ⇒ identical play;
   different seeds ⇒ different playstyles at the same tier), fair (only

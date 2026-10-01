@@ -403,7 +403,7 @@ export function createSession(options: SessionOptions): GameSession {
   registerEconomyCommands(queue);
   registerUnitCommands(queue, terrain);
   registerMovementCommands(queue, terrain);
-  registerCombatCommands(queue);
+  registerCombatCommands(queue, terrain);
   // Grand-expansion Phase 6 (S6 intel): the covert-op commands
   // (infiltrateBuilding / sabotage / stealTech).
   registerIntelCommands(queue);
@@ -422,7 +422,7 @@ export function createSession(options: SessionOptions): GameSession {
     systems: [
       createPathfindingSystem(terrain),
       createMovementSystem(terrain),
-      createCombatSystem(),
+      createCombatSystem(terrain),
       createSuperweaponSystem(),
       createEconomySystem(terrain),
       // Grand-expansion Phase 6 (S6 intel): spy infiltration missions

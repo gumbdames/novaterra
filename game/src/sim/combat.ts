@@ -94,8 +94,19 @@ import {
   VET_ELITE_REGEN_PER_SEC,
 } from './veterancy';
 import { orderMoveTo } from './movement';
-import { MAP_HALF_SIZE, BUILDING_DEFS, destroyBuilding, buildingCenterWorld } from './city';
-import type { BuildingRecord } from './city';
+import {
+  MAP_HALF_SIZE,
+  BUILDING_DEFS,
+  destroyBuilding,
+  buildingCenterWorld,
+  cellCenterWorld,
+  cellIndex,
+  cellCoords,
+  inBounds,
+} from './city';
+import type { BuildingRecord, CityState } from './city';
+import type { TerrainData } from './terrain';
+import { cellMoveCost } from './pathfinding';
 import { isDetected } from './intel';
 import {
   attackMeltdownRoll,
@@ -416,6 +427,52 @@ export function canTargetBuilding(def: UnitDef): boolean {
 }
 
 /**
+ * Siege stand cell (final-review R2 follow-up, 2026-10-01). A siege
+ * order's MOVE destination must be a passable cell adjacent to the
+ * building footprint — pathing to the footprint center would stack the
+ * unit inside the building (buildings don't block the pathfinding mask,
+ * so the order would "succeed" with the unit standing in the walls).
+ * Scans the one-cell ring around the footprint in fixed row-major order,
+ * keeps passable cells (`cellMoveCost !== Infinity`: land, in bounds),
+ * and picks the nearest to (ux, uz) with cell-index tie-break —
+ * deterministic. Returns null when the building is fully surrounded;
+ * callers reject loudly instead of stranding a unit.
+ */
+export function siegeStandCell(
+  t: TerrainData,
+  city: CityState,
+  b: BuildingRecord,
+  ux: number,
+  uz: number,
+): { x: number; z: number } | null {
+  const def = BUILDING_DEFS[b.kind];
+  let best = -1;
+  let bestD = Infinity;
+  for (let dz = -1; dz <= def.footprintH; dz++) {
+    for (let dx = -1; dx <= def.footprintW; dx++) {
+      const onRing =
+        dx === -1 || dz === -1 || dx === def.footprintW || dz === def.footprintH;
+      if (!onRing) continue;
+      const cx = b.cx + dx;
+      const cz = b.cz + dz;
+      if (!inBounds(cx, cz)) continue;
+      if (cellMoveCost(t, city, cx, cz) === Infinity) continue;
+      const cell = cellIndex(cx, cz);
+      const x = cellCenterWorld(cx);
+      const z = cellCenterWorld(cz);
+      const d = Math.hypot(x - ux, z - uz);
+      if (d < bestD - 1e-9 || (Math.abs(d - bestD) <= 1e-9 && cell < best)) {
+        best = cell;
+        bestD = d;
+      }
+    }
+  }
+  if (best < 0) return null;
+  const { cx, cz } = cellCoords(best);
+  return { x: cellCenterWorld(cx), z: cellCenterWorld(cz) };
+}
+
+/**
  * Apply attack damage to a building (final-review R2, 2026-10-01:
  * buildings are destructible — C3). Returns true when the building
  * was destroyed (removed via `destroyBuilding`, the shared demolish
@@ -663,7 +720,7 @@ function applyHealAuras(world: World): void {
  *     explicit attack order (deployableOnly kinds never fire).
  *  5. The dead are removed.
  */
-export function createCombatSystem(): SimSystem {
+export function createCombatSystem(t?: TerrainData): SimSystem {
   return (world: World) => {
     for (const u of world.units) {
       if (u.cooldownLeft > 0) u.cooldownLeft -= 1;
@@ -817,10 +874,16 @@ export function createCombatSystem(): SimSystem {
         } else {
           // Too far: chase toward the target. Re-issue only when idle
           // (arrived at a stale position) or the target has moved well
-          // away from where we're headed — not every tick.
-          const destDist = Math.hypot(aimX - u.destX, aimZ - u.destZ);
+          // away from where we're headed — not every tick. Sieges chase
+          // a passable stand cell beside the footprint, never the
+          // building center (see siegeStandCell). Without terrain (some
+          // headless tests) the center fallback preserves the old path.
+          const stand = siege && t ? siegeStandCell(t, world.city, siege, u.x, u.z) : null;
+          const tx = stand ? stand.x : aimX;
+          const tz = stand ? stand.z : aimZ;
+          const destDist = Math.hypot(tx - u.destX, tz - u.destZ);
           if (u.state === 'idle' || destDist > 10) {
-            orderMoveTo(world, u, aimX, aimZ);
+            orderMoveTo(world, u, tx, tz);
           }
         }
       }
@@ -837,7 +900,7 @@ function canStillMove(u: UnitRecord): boolean {
 }
 
 /** Register the `attackUnit` command. */
-export function registerCombatCommands(queue: CommandQueue): void {
+export function registerCombatCommands(queue: CommandQueue, t?: TerrainData): void {
   queue.register('attackUnit', {
     validate(cmd, world): string | null {
       const attackerId = cmd.payload['unitId'];
@@ -931,6 +994,9 @@ export function registerCombatCommands(queue: CommandQueue): void {
       const b = world.city.buildings.find((x) => x.id === buildingId);
       if (!b) return `attackBuilding: no building with id ${buildingId}`;
       if (b.owner === owner) return 'attackBuilding: cannot attack your own building';
+      if (t && !siegeStandCell(t, world.city, b, attacker.x, attacker.z)) {
+        return `attackBuilding: building ${buildingId} has no reachable adjacent cell`;
+      }
       return null;
     },
     apply(cmd, world): unknown {
@@ -941,9 +1007,15 @@ export function registerCombatCommands(queue: CommandQueue): void {
       attacker.failReason = null;
       // orderMoveTo clears targeting (a plain move supersedes an
       // attack), so set the siege state after issuing the move — the
-      // same pattern as attackUnit's apply above.
-      const c = buildingCenterWorld(b);
-      orderMoveTo(world, attacker, c.x, c.z);
+      // same pattern as attackUnit's apply above. The unit walks to a
+      // passable stand cell beside the footprint, not the building
+      // center (siegeStandCell) — validate already guaranteed one
+      // exists when terrain is available; the center fallback below is
+      // unreachable defense (and the headless no-terrain behavior).
+      const stand =
+        t ? (siegeStandCell(t, world.city, b, attacker.x, attacker.z) ?? buildingCenterWorld(b))
+          : buildingCenterWorld(b);
+      orderMoveTo(world, attacker, stand.x, stand.z);
       attacker.targetId = 0;
       attacker.buildingTargetId = b.id;
       attacker.chasing = true;
