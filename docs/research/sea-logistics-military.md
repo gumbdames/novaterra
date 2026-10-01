@@ -129,3 +129,127 @@ docs true.
   bump, stays v8 — the cargoFuel/cargoAmmo precedent).
 - `fuelTanker`: `tankerRefuelRadius: 30` (sea supply radius), 
 ...[truncated 10442 chars]
+> NOTE (2026-10-01, naval-building model): §2 above was left unfinished
+> mid-sentence when the naval-split workstream (see the naval-building
+> model: civilian shipyards build/repair civilian ships, civilian docks
+> handle shipping; military shipyards build/repair military ships,
+> military docks/bases handle shipping) took over this file's subject
+> matter. §2.1's def changes all landed as described; what follows (§3)
+> is the audit + the split-era rules, which supersede any §2 draft text
+> where they overlap.
+
+## 3. Naval-building model audit + rules (2026-10-01)
+
+### 3.1 The exact load/unload rule
+
+`computeCargoTransfer` (`game/src/sim/commands.ts`, shared by the
+`loadCargo` / `unloadCargo` commands) admits a transfer iff ALL hold:
+
+1. The unit's def has cargo capacity (a supply unit).
+2. The building's def has `reloadPoint: true` (data-driven — the code
+   names no kinds).
+3. **Same side**: `!!unitDef.military === !!buildingDef.military`
+   (the civilian/military split — see §3.2).
+4. The building's footprint center is on water (the naval gate — this is
+   what makes both commands sea-only; land trucks can never use them).
+5. The unit is inside `LOGISTICS_RADIUS` of the building.
+6. Something actually transfers (partial transfers are fine; the
+   rejection is loud only when nothing can move).
+
+Rejections are loud, in this order: not-a-supply-unit → not a naval
+supply point → **side mismatch** → not on water → out of range →
+nothing to transfer. Peaceful worlds reject like `attackBuilding`.
+
+The depot aura (`serveDepotUnit`, `game/src/sim/economy.ts`) mirrors the
+rule for its cargo-loading legs: **sea** units load cargo holds only at
+same-side depots (silent skip on mismatch — the aura never errors).
+Land and air depots keep the legacy side-blind behavior (Phase 3
+predates the split; civilian haulers load at military fuelDepots by
+design). The aura's own-tank/own-magazine refill legs are intentionally
+side-blind too — a ship refueling its own engines at any friendly port
+is the standing "friendly port" abstraction, not cargo logistics.
+Ship-to-ship discharge (`runMobileSupply`) is likewise side-blind
+within one owner: underway replenishment at sea is not dock shipping.
+
+### 3.2 The hole the audit found (and closed)
+
+Before the split, the military `fuelTanker`/`ammoShip` could
+`loadCargo`/`unloadCargo` at the civilian `commercialPort` and
+`commercialHarbor` (both `reloadPoint: true`, water-centered, with fuel
+stocks) — and civilian `fuelBarge`/`cargoFreighter` hulls could draw
+military stocks the same way, through both the commands and the aura's
+cargo legs. The side-match gate (§3.1, rule 3) closes it in both paths.
+`game/tests/sim.sea-logistics-military.test.ts` pins the rejection both
+directions, the aura's no-cross-loading both directions, and that
+same-side civilian transfers still work.
+
+### 3.3 Load-point roster (data, 2026-10-01)
+
+- Military: `navalYard` (reloadPoint, production + logistics combined),
+  `navalBase` (reloadPoint, the docks — pure logistics).
+- Civilian: `commercialHarbor` (reloadPoint — the civilian shipyard keeps
+  its load point for now), `commercialPort` (reloadPoint — the civilian
+  docks).
+- NOT load points: the military `shipyard` (dry — see §3.5),
+  `containerPort`, `fishingHarbor` (no `reloadPoint`).
+
+### 3.4 What each military building does (no-blur rule)
+
+- `shipyard` — "Naval Shipyard" (renamed from "Shipyard"; key
+  unchanged, old saves load). Builds AND repairs military
+  light/support craft (missile boats, corvettes, ammo ships, repair
+  ships, minelayers). Dry: no stocks, not a cargo point.
+- `navalYard` — "Naval Yard". Builds AND repairs the heavy combatants
+  (destroyers, frigates, submarines, carriers). Also a cargo load point
+  (the military mirror of the civilian harbor's old combined role).
+- `navalBase` — "Naval Base". The military shipping interface: the
+  docks where transports load/unload fuel, ammo, and materials for
+  forward operations. Builds nothing, repairs nothing.
+
+Repair itself is `game/src/sim/shipyardRepair.ts` (final, untouched by
+this workstream): damaged sea units inside a same-side production
+shipyard's radius regain 3 hp/s. The unit detail panel shows the
+"Under repair" badge exactly when `isShipUnderRepair` says so
+(`game/src/ui/hud.ts`), covered by the always-emitted `ur:` digest
+segment (`game/src/ui/paletteDigest.ts`, registered in
+`HUD_PANEL_BRANCHES`).
+
+### 3.5 Judgment call: the shipyard stays dry
+
+The audit considered giving the `shipyard` a `reloadPoint` (it sits on
+the coast; a player might expect to load there). Decision: NO.
+
+- `navalYard` already plays the combined production+logistics role, so
+  no capability is missing — the light/heavy distinction the rename
+  sharpens would erode if the light yard also loaded cargo.
+- The recorded deliberate decision (commands.ts, citing this doc's
+  earlier §3.5-era note) was that the shipyard is a dry production
+  building with no stocks; reversing it would be new behavior, not a
+  bug fix.
+- The documented primary forward interface is the `navalBase`.
+
+### 3.6 AI wiring (marshal)
+
+`thinkNavalSupply` (`game/src/sim/ai.ts`, marshal-only, coastal-only):
+
+- The navalBase joined the marshal's `CONSTRUCTION_PRIORITY` right
+  after the navalYard (coastal-gated like the yards — the docks follow
+  the yards that build the fleet). The `thinkVirtualDepot` call in
+  `thinkNavalSupply` is the top-up for thinks where the slot is free
+  (the land-depot pattern from `thinkLogistics`).
+- A completed virtual navalBase credits `VIRTUAL_FUEL_PER_THINK` /
+  `VIRTUAL_AMMO_PER_THINK` each think — the forward-base flavor: the
+  fleet's cache is filled at the docks. The land abstract-resupply
+  draws first each think (documented order); the tail fills from the
+  remainder, then `runMobileSupply` discharges for real at sea.
+- All deterministic, no RNG, through the standard virtual-construction
+  path. Verified safe: `hasProductionBuilding`'s virtual path checks
+  the exact kind only (no `countsAs`), so the navalBase unlocks no
+  production gate.
+
+Soak test (`sim.sea-logistics-military.test.ts`): a mature marshal
+(priority queue worked down to the navalBase, construction just
+finishing) → base completes → credit lands → a fuelTanker is trained
+and its hold fills from the credit → with the AI frozen, the tanker
+discharges into a fuel-starved patrol boat via `runMobileSupply`
+(the freeze isolates the discharge leg from the abstract resupply).

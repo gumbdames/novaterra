@@ -40,6 +40,15 @@
  * - thinkNavalSupply: marshal on coastal maps trains the tail
  *   (1 fuelTanker / 6 sea combat units), abstract-loads holds from the
  *   virtual stocks, and rallies idle ships to the fleet.
+ * - Naval-building model (2026-10-01): the civilian/military cargo
+ *   split — loadCargo/unloadCargo reject cross-side transfers loudly
+ *   (military hulls only at navalYard/navalBase, civilian hulls only
+ *   at civilian harbors); the depot aura's cargo legs are side-gated
+ *   for sea units (land/air keep the legacy side-blind behavior).
+ *   The marshal builds a virtual navalBase on its construction
+ *   priority (right after the navalYard, coastal-gated); the completed
+ *   base credits the abstract fuel/ammo stocks the tail fills from —
+ *   covered by a soak test through to real discharge at sea.
  */
 import { describe, expect, it } from 'vitest';
 // NOTE (2026-09-30): pathfinding MUST be the first sim import in this file
@@ -83,7 +92,7 @@ import {
   type BuildingRecord,
 } from '../src/sim/city';
 import { registerCityCommands } from '../src/sim/city';
-import { addAIPlayer, createAISystem } from '../src/sim/ai';
+import { addAIPlayer, createAISystem, CONSTRUCTION_PRIORITY } from '../src/sim/ai';
 import { digestWorld } from '../src/sim/digest';
 import { takeSnapshot, restoreSnapshot, SNAPSHOT_VERSION } from '../src/sim/snapshot';
 import { completeBuilding, grantAllTrainingResources } from './sim.roster-fixtures';
@@ -549,6 +558,117 @@ describe('loadCargo / unloadCargo', () => {
   });
 });
 
+describe('the civilian/military cargo split (naval-building model, 2026-10-01)', () => {
+  /** A completed load-point building of any kind on water with the given stocks. */
+  function makeLoadPoint(
+    ctx: Ctx,
+    kind: BuildingKind,
+    owner: number,
+    fuelStock: number,
+    ammoStock: number,
+  ): { building: BuildingRecord; x: number; z: number } {
+    const bdef = BUILDING_DEFS[kind];
+    const { cx: cx0, cz: cz0 } = cellCoords(worldToCell(-60, -60));
+    for (let r = 0; r < 60; r++) {
+      for (let dz = -r; dz <= r; dz++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+          const cx = cx0 + dx;
+          const cz = cz0 + dz;
+          const wx = cellCenterWorld(cx + (bdef.footprintW - 1) / 2);
+          const wz = cellCenterWorld(cz + (bdef.footprintH - 1) / 2);
+          if (!isWater(ctx.terrain, wx, wz)) continue;
+          completeBuilding(ctx.world, kind, owner, cx, cz);
+          const building = ctx.world.city.buildings[ctx.world.city.buildings.length - 1]!;
+          building.fuelStock = fuelStock;
+          building.ammoStock = ammoStock;
+          return { building, x: wx, z: wz };
+        }
+      }
+    }
+    throw new Error(`no water-center cell for ${kind} near (-60,-60)`);
+  }
+
+  it('the defs pin the sides: tankers military, barge civilian, docks split', () => {
+    expect(UNIT_DEFS.fuelTanker.military).toBe(true);
+    expect(UNIT_DEFS.ammoShip.military).toBe(true);
+    expect(UNIT_DEFS.fuelBarge.military ?? false).toBe(false);
+    expect(BUILDING_DEFS.navalBase.military).toBe(true);
+    expect(BUILDING_DEFS.navalYard.military).toBe(true);
+    expect(BUILDING_DEFS.commercialPort.military ?? false).toBe(false);
+    expect(BUILDING_DEFS.commercialHarbor.military ?? false).toBe(false);
+  });
+
+  it('rejects loudly: a military fuelTanker cannot loadCargo at a civilian dock', () => {
+    const ctx = setupBare();
+    const { building, x, z } = makeLoadPoint(ctx, 'commercialPort', 0, 250, 0);
+    const tanker = spawnUnit(ctx.world, 'fuelTanker', 0, x, z);
+    expect(() => loadCargo(ctx, tanker.id, building.id, 0)).toThrowError(
+      /same-side ships and naval points/,
+    );
+    expect(tanker.cargoFuel).toBe(0);
+    expect(building.fuelStock).toBe(250);
+  });
+
+  it('rejects loudly: a civilian fuel barge cannot loadCargo at a navalBase', () => {
+    const ctx = setupBare();
+    const { base, x, z } = makeNavalBase(ctx, 0, 250, 0);
+    const barge = spawnUnit(ctx.world, 'fuelBarge', 0, x, z);
+    expect(() => loadCargo(ctx, barge.id, base.id, 0)).toThrowError(
+      /same-side ships and naval points/,
+    );
+    expect(barge.cargoFuel).toBe(0);
+    expect(base.fuelStock).toBe(250);
+  });
+
+  it('rejects loudly: cross-side unloadCargo', () => {
+    const ctx = setupBare();
+    const { building, x, z } = makeLoadPoint(ctx, 'commercialPort', 0, 0, 0);
+    const tanker = spawnUnit(ctx.world, 'fuelTanker', 0, x, z);
+    tanker.cargoFuel = 400;
+    expect(() => unloadCargo(ctx, tanker.id, building.id, 0)).toThrowError(
+      /same-side ships and naval points/,
+    );
+    expect(tanker.cargoFuel).toBe(400);
+    expect(building.fuelStock).toBe(0);
+  });
+
+  it('same-side civilian transfers still work (the gate does not over-block)', () => {
+    const ctx = setupBare();
+    const { building, x, z } = makeLoadPoint(ctx, 'commercialPort', 0, 250, 0);
+    const barge = spawnUnit(ctx.world, 'fuelBarge', 0, x, z);
+    loadCargo(ctx, barge.id, building.id, 0);
+    runTicks(ctx, 1);
+    // fuelBarge: 250-hold, 250 in stock → full load.
+    expect(barge.cargoFuel).toBe(250);
+    expect(building.fuelStock).toBe(0);
+  });
+
+  it('the depot aura never cross-loads cargo: military tanker at a civilian dock', () => {
+    const ctx = setup();
+    const { building, x, z } = makeLoadPoint(ctx, 'commercialPort', 0, 250, 0);
+    const tanker = spawnUnit(ctx.world, 'fuelTanker', 0, x, z);
+    getPlayer(ctx.world.city, 0)!.fuel = 0; // neutralize any forward pull
+    const materialsBefore = getPlayer(ctx.world.city, 0)!.materials;
+    runTicks(ctx, 90); // 3 economy ticks
+    expect(tanker.cargoFuel).toBe(0);
+    expect(tanker.cargoMaterials).toBe(0);
+    expect(building.fuelStock).toBe(250);
+    expect(getPlayer(ctx.world.city, 0)!.materials).toBe(materialsBefore);
+  });
+
+  it('the depot aura never cross-loads cargo: civilian barge at a navalBase', () => {
+    const ctx = setup();
+    const { base, x, z } = makeNavalBase(ctx, 0, 250, 0);
+    const barge = spawnUnit(ctx.world, 'fuelBarge', 0, x, z);
+    barge.fuel = UNIT_DEFS.fuelBarge.fuelCapacity ?? 100; // own tank full — isolate the cargo legs
+    getPlayer(ctx.world.city, 0)!.fuel = 0; // neutralize the forward pull
+    runTicks(ctx, 90); // 3 economy ticks
+    expect(barge.cargoFuel).toBe(0);
+    expect(base.fuelStock).toBe(250);
+  });
+});
+
 describe('snapshot / digest', () => {
   it('round-trips cargoMaterials and materialsStock', () => {
     expect(SNAPSHOT_VERSION).toBe(8); // AD9 — no version bump for the new fields
@@ -693,5 +813,97 @@ describe('thinkNavalSupply', () => {
       after.destZ !== 0 ||
       Math.abs(after.x - (water.x + 400)) > 1;
     expect(moved).toBe(true);
+  });
+
+  it('navalBase sits on the marshal build order right after the navalYard', () => {
+    const order = CONSTRUCTION_PRIORITY.marshal;
+    expect(order).toContain('navalBase');
+    expect(order.indexOf('navalBase')).toBe(order.indexOf('navalYard') + 1);
+  });
+
+  it('soak: virtual navalBase → abstract stocks → tanker fill → discharge at sea', () => {
+    const terrain = getTerrain();
+    const world = createWorld(20261001);
+    grantAllTrainingResources(world);
+    const queue = createCommandQueue();
+    registerCoreCommands(queue);
+    registerUnitCommands(queue, terrain);
+    registerLogisticsCommands(queue, terrain);
+    addAIPlayer(world, 0, 'marshal', 0, 0);
+    const ai = world.ai.players[0]!;
+    ai.navalStatus = 'coastal';
+    const water = findWaterNear(terrain, 0, 0);
+    ai.navalWater = water;
+    world.ages.age = 'industry';
+    for (let i = 0; i < 6; i++) {
+      spawnUnit(world, 'patrolBoat', 0, water.x + i * 4, water.z);
+    }
+    // A mature marshal: the priority queue has worked down to the
+    // navalBase, whose virtual construction is just finishing
+    // (readyTick at the current tick — this soak exercises the
+    // completion path in thinkConstruction, not the 2700-tick wait).
+    ai.virtualBuildings.completed.push(
+      'barracks',
+      'warFactory',
+      'lab',
+      'airfield',
+      'radarStation',
+      'shipyard',
+      'navalYard',
+    );
+    ai.virtualBuildings.constructing = { kind: 'navalBase', readyTick: world.tick };
+    // A fuel-starved boat with the fleet — the discharge target.
+    const boat = spawnUnit(world, 'patrolBoat', 0, water.x + 8, water.z + 4);
+    boat.fuel = 5; // patrolBoat capacity 70
+    const driver = createTickDriver({
+      queue,
+      systems: [
+        createPathfindingSystem(terrain),
+        createMovementSystem(terrain),
+        createCombatSystem(),
+        createEconomySystem(terrain),
+        createAISystem(queue),
+      ],
+    });
+    // Phase 1: the navalBase completes, the credit lands, the marshal
+    // trains a fuelTanker and abstract-fills its hold from the credit.
+    // (The land abstract-resupply draws first each think, per the
+    // documented order — the tail fills from the remainder.)
+    let tankerId = 0;
+    for (let round = 0; round < 20 && tankerId === 0; round++) {
+      for (let i = 0; i < 30; i++) driver.step(world, TICK_MS); // one marshal think
+      if (ai.virtualBuildings.completed.includes('navalBase')) {
+        const t = world.units.find(
+          (u) => u.kind === 'fuelTanker' && u.owner === 0 && u.cargoFuel > 0,
+        );
+        if (t) tankerId = t.id;
+      }
+    }
+    expect(ai.virtualBuildings.completed).toContain('navalBase');
+    expect(tankerId).toBeGreaterThan(0);
+    // Phase 2: freeze the AI (no more thinks, no abstract resupply, no
+    // re-credit) and watch the filled tanker discharge for real at sea
+    // through runMobileSupply.
+    const tanker = findUnit(world, tankerId)!;
+    const noAIDriver = createTickDriver({
+      queue,
+      systems: [
+        createPathfindingSystem(terrain),
+        createMovementSystem(terrain),
+        createCombatSystem(),
+        createEconomySystem(terrain),
+      ],
+    });
+    const starved = findUnit(world, boat.id)!;
+    starved.fuel = 5;
+    tanker.x = starved.x + 10; // inside the 30-radius discharge ring
+    tanker.z = starved.z;
+    tanker.state = 'idle';
+    ai.virtualFuelStock = 0; // belt and braces — no AI think runs now
+    const cf0 = tanker.cargoFuel;
+    expect(cf0).toBeGreaterThan(0);
+    for (let i = 0; i < 60; i++) noAIDriver.step(world, TICK_MS); // 2 economy ticks
+    expect(findUnit(world, boat.id)!.fuel).toBeGreaterThan(5);
+    expect(findUnit(world, tankerId)!.cargoFuel).toBeLessThan(cf0);
   });
 });

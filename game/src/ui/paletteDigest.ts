@@ -103,6 +103,9 @@ import { airlineRouteIncome } from '../sim/economy';
 // Civilian sea trade (Half A, 2026-10-01): the sea-trade UI contract
 // module — the st:/sa:/sr:/sh: digest segments for the Trade section,
 // the ship detail assignment, and the harbor detail section.
+// Naval-building model (2026-10-01): isShipUnderRepair drives the
+// unit detail panel's "Under repair" badge (ur: segment below).
+import { isShipUnderRepair } from '../sim/shipyardRepair';
 import {
   isSeaTradeHarbor,
   isSeaTradeShip,
@@ -266,6 +269,13 @@ export function selectionDigest(
       } else {
         parts.push(`sr:${id}:x`);
       }
+      // Naval-building model (2026-10-01): the panel renders the "Under
+      // repair" badge for a damaged sea unit inside a same-side
+      // shipyard's repair radius (sim/shipyardRepair.ts). ur: carries
+      // the badge state (1 = badge rendered, 0 = not) so the panel
+      // repaints exactly when the line would appear/disappear. Always
+      // emitted.
+      parts.push(`ur:${id}:${u !== undefined && isShipUnderRepair(world, u) ? 1 : 0}`);
     }
     if (selection.unitIds.length > 6) parts.push(`um:${selection.unitIds.length}`);
     return parts.join('|');
@@ -647,7 +657,9 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // named block reason; always emitted).
     // sr: the civilian sea-trade assignment (Half A: route id + floored
     // cargo holds per selected unit; 'sr:<id>:x' for non-trade ships).
-    digestLabels: ['u:', 'uh:', 'uv:', 'um:', 'uf:', 'us:', 'ue:', 'ew:', 'iu:', 'er:', 'sr:'],
+    // ur: the drydock "Under repair" badge state (naval-building
+    // model, 2026-10-01: 1 = badge rendered, 0 = not; always emitted).
+    digestLabels: ['u:', 'uh:', 'uv:', 'um:', 'uf:', 'us:', 'ue:', 'ew:', 'iu:', 'er:', 'sr:', 'ur:'],
   },
   {
     id: 'selection-building',

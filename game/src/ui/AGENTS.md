@@ -153,9 +153,9 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   minelayer's `deployMine` order), BUILD palette has 13 tabs (Housing /
   Civic / Commerce / Industry / Utilities / Power / Water / Transport /
   Airports / Logistics / Naval-Air / Special / Intel) — the Naval & Air
-  tab holds the 8 naval-air buildings (the 4 Phase 6 ports:
-  commercialPort, containerPort, fishingHarbor, navalBase, plus the 4
-  airport buildings) — the spec groupings plus the Workstream Z civic
+  tab holds the 8 naval-air buildings (the military shipyard +
+  navalYard, airfield + radarStation, and the 4 Phase 6 ports:
+  commercialPort, containerPort, fishingHarbor, navalBase) — the spec groupings plus the Workstream Z civic
   tab (education buildings), plus the Phase 2 utility tabs (the 13 new
   power/water buildings), plus the Phase 3 logistics tab (the 7 new
   fuel/ammo production + depot buildings), see `palettes.ts`.

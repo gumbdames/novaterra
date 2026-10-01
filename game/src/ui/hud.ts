@@ -80,6 +80,11 @@ import type { Selection } from './selection';
 import type { AdvisorItem } from './advisor';
 import { STRINGS, loc, fillLoc, type LocalizedString } from './strings';
 import { vetXpLine } from './veterancy';
+// Naval-building model (2026-10-01): the drydock-repair read path for
+// the unit detail panel's "Under repair" badge (sim/shipyardRepair.ts
+// is a leaf — value-imports city/units/veterancy only — so the UI may
+// import it; the repair itself stays sim-side).
+import { isShipUnderRepair } from '../sim/shipyardRepair';
 // Grand-expansion Phase 5 (S5): the airport/airline UI contract module.
 import {
   AIRLINE_ROUTE_SETUP_COST,
@@ -2152,6 +2157,14 @@ export class HUD {
         // "Veteran ▲▲ · 320/500 XP". Uses the 'stat-row' class — the
         // detail-view stat line (command-menu rebuild, 2026-10-01).
         stats.append(el('div', 'stat-row', vetXpLine(u)));
+        // Naval-building model (2026-10-01): the drydock badge — the
+        // unit is damaged and sitting inside a same-side shipyard's
+        // repair radius (sim/shipyardRepair.ts). Uses the 'stat-row'
+        // class; the ur: digest segment covers the rendered value
+        // (AD11).
+        if (isShipUnderRepair(world, u)) {
+          stats.append(el('div', 'stat-row', loc(sel.underRepair)));
+        }
         // Grand-expansion Phase 7 (intel): a selected owned spy shows
         // its mission state ("Infiltrating Power Plant · 12s left",
         // "Exposed — visible to all enemies · 24s left"). Uses the
