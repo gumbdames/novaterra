@@ -762,6 +762,19 @@ export function formatResearchCostFor(world: World, owner: number, id: UpgradeId
 }
 
 /**
+ * Roadmap B10 (economy legibility, 2026-10-02): the topbar chip rate
+ * suffix and the Economy overview's per-resource rate column render
+ * through this. Signed, one decimal, '/s' suffix; empty string when
+ * the flow is negligible so the topbar stays quiet at rest. Pure (no
+ * world) so headless tests can pin it.
+ */
+export function formatFlowRate(rate: number): string {
+  if (!Number.isFinite(rate) || Math.abs(rate) < 0.05) return '';
+  const sign = rate > 0 ? '+' : '−';
+  return `${sign}${Math.abs(rate).toFixed(1)}/s`;
+}
+
+/**
  * Roadmap B9: localized upgrade name for the research panel —
  * repeatable upgrades show their current level ("Advanced Research ·
  * Lv 2") so the panel reads as a ladder; one-shot upgrades render the

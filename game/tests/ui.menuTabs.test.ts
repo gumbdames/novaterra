@@ -139,12 +139,13 @@ describe('every pre-existing control has a home under the rebuilt menu', () => {
     expect(sw).toContain('onStormTarget');
   });
 
-  it('the Management tab owns Taxes / Focus / Cabinet / Ordinances / Intel / Trade / Research sub-tabs', () => {
+  it('the Management tab owns Taxes / Economy / Focus / Cabinet / Ordinances / Intel / Trade / Research sub-tabs', () => {
     const mgmt = methodBody('appendManagementPanel');
-    for (const sub of ['taxes', 'focus', 'cabinet', 'ordinances', 'intel', 'trade', 'research']) {
+    for (const sub of ['taxes', 'economy', 'focus', 'cabinet', 'ordinances', 'intel', 'trade', 'research']) {
       expect(mgmt, `management sub-tab '${sub}' missing`).toContain(`'${sub}'`);
     }
     expect(mgmt).toContain('taxSectionEl(');
+    expect(mgmt).toContain('economySectionEl(');
     expect(mgmt).toContain('focusSectionEl(');
     expect(mgmt).toContain('cabinetSectionEl(');
     expect(mgmt).toContain('appendResearchPanel(');

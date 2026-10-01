@@ -211,11 +211,13 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   over the card grid; Airlines holds the airline panel. Military →
   Train shows unit-orders hints plus the TRAIN palette; Build shows the
   4 military build tabs as pills over the card grid; Superweapons shows
-  Aegis/Storm as cards. Management → Taxes / City focus / Cabinet /
-  Ordinances / Intelligence / Trade / Research each show one section;
-  Trade surfaces the trade-route commands (sim orders waited for a home
-  since Phase 3); Research needs a completed lab (the sub-tab explains
-  that when there is none). Sub-tab state is remembered per main tab,
+  Aegis/Storm as cards. Management → Taxes / Economy / City focus /
+  Cabinet / Ordinances / Intelligence / Trade / Research each show one
+  section; Economy lists the eight stockpiles with stocks + net flow
+  rates (roadmap B10); Trade surfaces the trade-route commands (sim
+  orders waited for a home since Phase 3); Research needs a completed
+  lab (the sub-tab explains that when there is none). Sub-tab state is
+  remembered per main tab,
   and so is the build tab per main tab. Selecting a unit/building
   replaces the tab content with the contextual branch (as before).
   TRAIN palette has 6 tabs (Infantry / Armor / Air / Navy — the Navy tab
@@ -341,7 +343,12 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   (peaceful, workstream B, 2026-09-30): the Management tab's peaceful-
   objectives section contributes `po:` (player population, treasury
   flag — `po:x` when the section does not render, so
-  the non-peaceful representative state covers the label).
+  the non-peaceful representative state covers the label). Roadmap B10
+  (2026-10-02): the Management tab's Economy overview contributes `ec:`
+  (floored stock + one-decimal net rate per FLOW_RESOURCES entry) and
+  the topbar chips carry write-on-change net-rate suffixes
+  (`hud-rate` / `hud-rate-pos` / `hud-rate-neg`, claimed by the topbar
+  branch — no digest segment, nodes are never rebuilt).
   The contract test asserts each declared label really appears in digest
   output and scans hud.ts for unregistered panel methods / DOM classes —
   see "Adding a HUD panel" below.

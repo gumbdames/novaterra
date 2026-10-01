@@ -94,7 +94,13 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   operational transit stops pay `ridershipIncome`), `recomputeOccupancy`
   (per-building residents/workers; runs after construction + utility
   allocation, before the population recount which sums residents —
-  `generateManpower` stays last of the population chain).
+  `generateManpower` stays last of the population chain). Roadmap B10
+  (economy legibility, 2026-10-02): `runEconomyTick` boundary-diffs the
+  eight stockpiles across the tick and smooths the per-second deltas
+  (EWMA, ~10s memory) into `world.economyFlows` (owner -> resource ->
+  rate), read via `flowRate(world, owner, res)` (`FLOW_RESOURCES`). The
+  table is derived display data — NOT snapshotted, NOT digested, never
+  read by the sim — so save/load simply restarts the averages at 0.
 - `market.ts` — (R1 final-review, 2026-10-01) the fixed-rate market
   price list (`MarketResource`, `MARKET_PRICES`, `MARKET_SPREAD`,
   `marketBuyCost`, `marketSellValue`). A LEAF module: no sim imports,

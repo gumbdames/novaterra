@@ -43,6 +43,13 @@
 - **Manpower** — grows with your population. Training soldiers and
   ships spends it — a big army needs a big city behind it.
 
+Every resource chip in the top bar shows your net income rate
+underneath the stock (green `+2.3/s`, red `−1.5/s`) — the game's
+economy tick measures what you actually gained or lost each second,
+averaged over the last few seconds. **Management → Economy** lists all
+eight stockpiles with their stocks and rates in one place, so when
+fuel is draining you can see it immediately instead of guessing.
+
 ## Power and water
 
 Power and water flow through **networks**, not a shared pool. A network

@@ -245,6 +245,18 @@ body {
   font-weight: 600;
 }
 
+/* Roadmap B10 (economy legibility): the per-chip net-rate suffix. */
+.hud-rate {
+  font-size: 10px;
+  color: var(--ink-dim);
+}
+.hud-rate-pos {
+  color: #6fbf73;
+}
+.hud-rate-neg {
+  color: #d97070;
+}
+
 .hud-age {
   padding: 4px 10px;
   border: 1px solid var(--panel-border);

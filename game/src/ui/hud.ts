@@ -74,6 +74,9 @@ import { AGE_PROGRESSION, getAgeState } from '../sim/ages';
 import {
   TRADE_ROUTE_INCOME_PER_SEC,
   TRADE_ROUTE_SETUP_COST,
+  FLOW_RESOURCES,
+  flowRate,
+  type FlowResource,
 } from '../sim/economy';
 import type { UpgradeId } from '../sim/upgrades';
 import type { Selection } from './selection';
@@ -118,6 +121,7 @@ import {
   playerHasCompletedLab,
   formatTrainCost,
   formatBuildCost,
+  formatFlowRate,
   formatResearchCost,
   formatResearchCostFor,
   upgradeDisplayName,
@@ -460,6 +464,8 @@ export class HUD {
   private readonly actions: HUDActions;
   private readonly topbar: HTMLElement;
   private readonly resEls = new Map<string, HTMLElement>();
+  /** Roadmap B10: per-chip net-rate spans (stockpiles only). */
+  private readonly rateEls = new Map<string, HTMLElement>();
   private readonly ageEl: HTMLElement;
   private readonly ageBtn: HTMLButtonElement;
   private currentAge: string = 'foundation';
@@ -507,6 +513,7 @@ export class HUD {
   private militarySub: 'train' | 'build' | 'superweapons' = 'train';
   private managementSub:
     | 'taxes'
+    | 'economy'
     | 'focus'
     | 'cabinet'
     | 'ordinances'
@@ -598,6 +605,14 @@ export class HUD {
       chip.append(value);
       this.topbar.append(chip);
       this.resEls.set(key, value);
+      // Roadmap B10 (economy legibility): stockpiles get a net-rate
+      // suffix (e.g. "+2.3/s"), written on change like the value —
+      // still no topbar DOM rebuilds, per the branch invariant.
+      if ((FLOW_RESOURCES as readonly string[]).includes(key)) {
+        const rate = el('span', 'hud-rate', '');
+        chip.append(rate);
+        this.rateEls.set(key, rate);
+      }
     }
     this.ageEl = el('div', 'hud-age', '');
     this.topbar.append(this.ageEl);
@@ -1265,6 +1280,7 @@ export class HUD {
     }
     const subs = [
       { id: 'taxes', label: loc(m.subTaxes) },
+      { id: 'economy', label: loc(m.subEconomy) },
       { id: 'focus', label: loc(m.subFocus) },
       { id: 'cabinet', label: loc(m.subCabinet) },
       { id: 'ordinances', label: loc(m.subOrdinances) },
@@ -1279,6 +1295,9 @@ export class HUD {
       }),
     );
     switch (this.managementSub) {
+      case 'economy':
+        panel.append(this.economySectionEl(world));
+        break;
       case 'focus':
         panel.append(this.focusSectionEl(world));
         break;
@@ -1817,6 +1836,42 @@ export class HUD {
     return sec;
   }
 
+  /**
+   * Management → Economy (roadmap B10, 2026-10-02): the stockpile
+   * overview — every stockpile with its stock and net flow rate, so a
+   * player starving for fuel can see the drain at a glance. Renders
+   * through the shared `flowRate` getter and `formatFlowRate` mirror;
+   * digest-covered (`ec:` segment, AD11).
+   */
+  private economySectionEl(world: World): HTMLElement {
+    const m = STRINGS.menuTabs;
+    const s = STRINGS.hud;
+    const sec = this.makeSection(loc(m.economyTitle));
+    const player = getPlayer(world.city, HUMAN_PLAYER_ID);
+    const labels: Record<FlowResource, string> = {
+      funds: s.funds,
+      materials: s.materials,
+      food: s.food,
+      fuel: s.fuel,
+      goods: s.goods,
+      research: s.research,
+      manpower: s.manpower,
+      influence: s.influence,
+    };
+    for (const res of FLOW_RESOURCES) {
+      const row = el('div', 'panel-row');
+      row.append(el('span', 'panel-label', labels[res]));
+      const rateText = formatFlowRate(flowRate(world, HUMAN_PLAYER_ID, res));
+      const stock = player !== undefined ? player[res] : 0;
+      row.append(
+        el('span', 'panel-status', rateText === '' ? fmt(stock) : `${fmt(stock)} (${rateText})`),
+      );
+      sec.append(row);
+    }
+    sec.append(el('div', 'panel-status', loc(m.economyHint)));
+    return sec;
+  }
+
   /** Management → Taxes: per-zone rate steppers over setTaxRate. */
   private taxSectionEl(world: World): HTMLElement {
     const m = STRINGS.menuTabs;
@@ -2050,6 +2105,15 @@ export class HUD {
       this.setText('influence', fmt(player.influence), this.resEls.get('influence'));
       this.setText('manpower', fmt(player.manpower), this.resEls.get('manpower'));
       this.setText('population', fmt(player.population), this.resEls.get('population'));
+      // Roadmap B10: net-rate suffixes on the stockpile chips (same
+      // write-on-change path as the values).
+      for (const res of FLOW_RESOURCES) {
+        this.setRate(
+          `rate:${res}`,
+          flowRate(world, HUMAN_PLAYER_ID, res),
+          this.rateEls.get(res),
+        );
+      }
       // Grand-expansion Phase 7 (intel): the asset counters, same
       // write-on-change path as the resources (floored like fmt).
       const [surv, ops, ci] = intelChipValues(world, HUMAN_PLAYER_ID);
@@ -2957,6 +3021,21 @@ export class HUD {
   private setText(key: string, text: string, target: HTMLElement | undefined): void {
     if (!target || this.lastText.get(key) === text) return;
     this.lastText.set(key, text);
+    target.textContent = text;
+  }
+
+  /**
+   * Roadmap B10: write a chip's net-rate suffix (text + pos/neg class),
+   * write-on-change like setText — the topbar DOM is never rebuilt.
+   */
+  private setRate(key: string, rate: number, target: HTMLElement | undefined): void {
+    if (!target) return;
+    const text = formatFlowRate(rate);
+    const tone = rate >= 0.05 ? 'hud-rate-pos' : rate <= -0.05 ? 'hud-rate-neg' : '';
+    const memo = `${tone}|${text}`;
+    if (this.lastText.get(key) === memo) return;
+    this.lastText.set(key, memo);
+    target.className = tone === '' ? 'hud-rate' : `hud-rate ${tone}`;
     target.textContent = text;
   }
 

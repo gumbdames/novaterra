@@ -137,6 +137,12 @@ export const STRINGS = {
     influence: 'Influence',
     manpower: 'Manpower',
     population: 'Population',
+    /**
+     * Roadmap B10 (economy legibility, 2026-10-02): the research row
+     * of the Management → Economy overview (research has no topbar
+     * chip, so it had no label until now).
+     */
+    research: 'Research',
     // Grand-expansion Phase 7 (intel, 2026-09-30): the top-bar intel
     // asset chips (built once, write-on-change like the other chips).
     intelSurveillance: 'Surveillance',
@@ -931,6 +937,15 @@ export const STRINGS = {
     stormTitle: { en: 'Enter Storm targeting mode, then click the map (Ascendance + Storm Array)' },
     /** Management tab: taxes. */
     taxesTitle: { en: 'Taxes' },
+    /**
+     * Roadmap B10 (economy legibility, 2026-10-02): the Economy
+     * sub-tab — stockpiles with net income/outflow rates.
+     */
+    subEconomy: { en: 'Economy' },
+    economyTitle: { en: 'Economy overview' },
+    economyHint: {
+      en: 'Net income per second, averaged over the last few seconds. A draining stockpile is your cue to check production.',
+    },
     taxZoneNames: {
       0: { en: 'Homes' },
       1: { en: 'Shops' },

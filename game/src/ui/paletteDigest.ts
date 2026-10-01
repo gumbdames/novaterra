@@ -100,7 +100,7 @@ import { parkedAircraft } from './hangars';
 // tool state are dynamic civilian-tab content, so the digest carries
 // them (al: / aa:).
 import { airlineRoutesOf } from './airports';
-import { airlineRouteIncome } from '../sim/economy';
+import { airlineRouteIncome, FLOW_RESOURCES, flowRate } from '../sim/economy';
 // Civilian sea trade (Half A, 2026-10-01): the sea-trade UI contract
 // module — the st:/sa:/sr:/sh: digest segments for the Trade section,
 // the ship detail assignment, and the harbor detail section.
@@ -494,6 +494,18 @@ export function selectionDigest(
       parts.push(
         `sa:${seaTradeArmed === undefined ? 'off' : `${seaTradeArmed.from ?? 'pick'}.${seaTradeArmed.to ?? 'pick'}`}`,
       );
+      // Roadmap B10 (economy legibility, 2026-10-02): the Economy
+      // sub-tab renders every stockpile's stock + net flow rate — the
+      // digest carries the same values (floored stock, one-decimal
+      // rate, FLOW_RESOURCES order) so the panel repaints exactly when
+      // a rendered row would change. Always emitted under Management
+      // (like tx:/ms:/mg:) so the representative state covers the
+      // label.
+      parts.push(
+        `ec:${FLOW_RESOURCES.map(
+          (r) => `${Math.floor(player?.[r] ?? 0)}:${flowRate(world, HUMAN_PLAYER_ID, r).toFixed(1)}`,
+        ).join(',')}`,
+      );
     }
   }
   // The research panel is listed whenever the player owns a completed
@@ -573,6 +585,11 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'hud-chip',
       'hud-chip-label',
       'hud-chip-value',
+      // Roadmap B10: the per-chip net-rate suffix (write-on-change
+      // text + pos/neg tone class, like the chip values).
+      'hud-rate',
+      'hud-rate-pos',
+      'hud-rate-neg',
       'hud-age',
       'hud-age-btn',
       'hud-spacer',
@@ -910,7 +927,9 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // st: the sea-trade section's route list (Half A: id.from.to.policy
     // each); sa: the sea-route tool's armed state ('off' / 'pick.pick' /
     // first id / first+second ids).
-    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:', 'po:', 'ps:', 'oc:', 'tr:', 'st:', 'sa:'],
+    // ec: the Economy sub-tab's stockpile rows (roadmap B10 — floored
+    // stock + one-decimal net rate per FLOW_RESOURCES entry).
+    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:', 'po:', 'ps:', 'oc:', 'tr:', 'st:', 'sa:', 'ec:'],
   },
   {
     id: 'research-panel',

@@ -111,6 +111,14 @@ export interface World {
    */
   upgradeLevels: Record<number, Record<string, number>>;
   /**
+   * Roadmap B10 (2026-10-02): smoothed per-player net flow rates of the
+   * stockpiles (units/second, EWMA over economy ticks): owner ->
+   * resource -> rate. Display data only — NOT snapshotted, NOT
+   * digested, never read by the sim. A save/load restarts the averages
+   * at 0; they converge within ~10 seconds of play.
+   */
+  economyFlows: Record<number, Partial<Record<string, number>>>;
+  /**
    * Grand-expansion Phase 8 (peaceful mode, 2026-09-30): true when this
    * world plays peaceful — rivals exist but play peacefully; military
    * defs (units/buildings/upgrades — see the `military` def flag) and
@@ -202,6 +210,9 @@ export function createWorld(seed: number): World {
     superweapons: initSuperweapons(),
     upgrades: initUpgrades(),
     upgradeLevels: initUpgradeLevels(),
+    // Roadmap B10: flow rates start empty and are filled by the first
+    // economy tick; never snapshotted (derived display data).
+    economyFlows: {},
     // Peaceful defaults to false; the session sets it from
     // SessionOptions.peaceful for fresh worlds, restoreSnapshot for saves.
     peaceful: false,

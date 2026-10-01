@@ -1625,11 +1625,71 @@ function economyTickIndex(world: World): number {
 }
 
 /**
+ * Roadmap B10 (economy legibility, 2026-10-02): the stockpiles the
+ * topbar chips (and the Management -> Economy overview) show net
+ * income/outflow rates for. Population is a derived headcount, not a
+ * spendable stockpile, so it carries no rate; the intel assets already
+ * show accrual rates in the intel panel.
+ */
+export type FlowResource =
+  | 'funds'
+  | 'materials'
+  | 'food'
+  | 'fuel'
+  | 'goods'
+  | 'research'
+  | 'manpower'
+  | 'influence';
+
+export const FLOW_RESOURCES: readonly FlowResource[] = [
+  'funds',
+  'materials',
+  'food',
+  'fuel',
+  'goods',
+  'research',
+  'manpower',
+  'influence',
+];
+
+/** The EWMA smoothing factor: ~10 economy ticks (seconds) of memory. */
+const FLOW_SMOOTHING = 0.1;
+
+function readStocks(player: PlayerState): Record<FlowResource, number> {
+  return {
+    funds: player.funds,
+    materials: player.materials,
+    food: player.food,
+    fuel: player.fuel,
+    goods: player.goods,
+    research: player.research,
+    manpower: player.manpower,
+    influence: player.influence,
+  };
+}
+
+/**
+ * Roadmap B10: the player's net flow rate of a stockpile in units per
+ * second (exponentially-weighted average of the per-tick deltas, so one
+ * big spend does not pin the needle). 0 before the first economy tick
+ * and for unknown owners — never NaN.
+ */
+export function flowRate(world: World, owner: number, res: FlowResource): number {
+  return world.economyFlows[owner]?.[res] ?? 0;
+}
+
+/**
  * One full economy tick. Public for tests; the system wrapper below
  * calls it once per sim-second.
  */
 export function runEconomyTick(world: World, t: TerrainData): void {
   const city = world.city;
+  // Roadmap B10: boundary-diff the stockpiles so the UI can show
+  // income/outflow rates. The diff spans the whole tick (all sub-passes
+  // below plus any commands applied since the last tick — a real flow
+  // either way) and is smoothed into world.economyFlows per player.
+  const before = new Map<number, Record<FlowResource, number>>();
+  for (const p of city.players) before.set(p.id, readStocks(p));
   runConstruction(city);
   const { powerHeadroom, waterHeadroom } = allocateUtilities(world, city);
   // Phase 4 occupancy (2026-09-30): after construction AND the utility
@@ -1673,6 +1733,25 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   runSeaRouteCleanup(world, city);
   runLevels(world);
   runGrowth(t, world, powerHeadroom, waterHeadroom);
+  // Roadmap B10: fold this tick's stockpile deltas into the smoothed
+  // flow rates (1 economy tick = 1 sim-second, so the delta IS the
+  // per-second flow). Purely derived display data: never snapshotted,
+  // never digested, never read back by the sim — a save/load simply
+  // restarts the averages at 0 and they converge within seconds.
+  for (const p of city.players) {
+    const b = before.get(p.id);
+    if (b === undefined) continue;
+    const after = readStocks(p);
+    let table = world.economyFlows[p.id];
+    if (table === undefined) {
+      table = {};
+      world.economyFlows[p.id] = table;
+    }
+    for (const r of FLOW_RESOURCES) {
+      const delta = after[r] - b[r];
+      table[r] = (table[r] ?? 0) * (1 - FLOW_SMOOTHING) + delta * FLOW_SMOOTHING;
+    }
+  }
 }
 
 /** SimSystem wrapper: runs the economy once per sim-second. */
