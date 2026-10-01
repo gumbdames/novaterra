@@ -420,9 +420,10 @@ export type ModelSource =
       piece('cargoContainerC', 3.2, 0, -2.2),
     ],
   },
-  // Civilian sea trade (Half A, 2026-10-01): the Commercial Harbor —
-  // the commercialPort kitbash scaled down to the smaller civilian
-  // harbor (one crane + one container stack; the port carries two).
+  // Civilian sea trade (Half A, 2026-10-01; naval-building model,
+  // 2026-10-01): the Civilian Shipyard — the commercialPort kitbash
+  // scaled down to the smaller civilian yard (one crane + one
+  // container stack; the port carries two).
   // NOTE: the portrait build logs one mergeGeometries attribute warning
   // for this kitbash (the single-container bucket); extractModelGeometry
   // keeps the pieces unmerged and the sprite renders correctly — the

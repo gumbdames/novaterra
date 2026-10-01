@@ -475,7 +475,7 @@ And a support fleet that keeps the war machine — and the economy —
 moving:
 
 - **Cargo Freighter** — earns funds on the sea lanes (civilian sea
-  income); trains at the **Commercial Harbor** (Industry age).
+  income); trains at the **Civilian Shipyard** (Industry age).
 - **Fuel Tanker** — a floating fuel depot for the Phase 3 naval
   logistics chain.
 - **Ammo Ship** — a floating munitions store (needs a shipyard).
@@ -499,24 +499,30 @@ ordnance, not sailors.
 
 ## Ports
 
-**Ports go on the coast.** All four ports must be built on land that
-touches the water — the game rejects inland placement outright. Each
-port earns its keep, and each unlocks part of the navy:
+**Ports go on the coast.** Every coastal port must be built on land
+that touches the water — the game rejects inland placement outright.
+The model is strict: **shipyards build and repair ships; docks handle
+shipping.** The civilian side gets one of each:
 
-- **Commercial Port** (Connectivity, 4×3) — harvests **+1.5
-  Funds/sec**, upkeep 0.8/sec. Counts as a **shipyard** for training:
-  build one and you can train shipyard ships without a shipyard.
+- **Civilian Shipyard** (Industry, 4×3, 1000 funds + 400 materials)
+  — the civilian shipyard. Builds and repairs civilian ships
+  (Cargo Freighter, Fuel Barge); reloads ships and stores 300 fuel.
+  It never trades — sea routes cannot anchor here.
+- **Commercial Docks** (Connectivity, 4×3) — harvests **+1.5
+  Funds/sec**, upkeep 0.8/sec. The civilian trade dock: sea routes
+  anchor here. Counts as a **shipyard** for training: build one and
+  you can train shipyard ships without a shipyard.
 - **Container Port** (Industry, 5×4) — harvests **+2.5 Funds/sec**,
-  upkeep 1.5/sec. The big trade hub.
+  upkeep 1.5/sec. The big trade dock.
 - **Fishing Harbor** (Foundation, 3×2) — harvests **+1.2 Food/sec**,
-  upkeep 0.35/sec. A water economy from the very first age.
-- **Naval Base** (Industry, 5×4) — no harvest, upkeep 2.0/sec. Counts
-  as a **naval yard** for training: your warship program without the
-  full naval yard.
+  upkeep 0.35/sec. The food dock, working from the very first age.
+- **Naval Base** (Industry, 5×4) — no harvest, upkeep 2.0/sec. The
+  military dock. Counts as a **naval yard** for training: your
+  warship program without the full naval yard.
 
-Build **two or more** commercial/container ports and the sea lanes
+Build **two or more** commercial/container docks and the sea lanes
 come alive: decorative container ships start sailing between your
-ports — pausing 90 ticks at each to "load cargo" — purely for show.
+docks — pausing 90 ticks at each to "load cargo" — purely for show.
 More residents means more ships (one per 800, up to 10). They are
 render-only: they never fight, never carry cargo, and never touch the
 simulation.
@@ -527,32 +533,37 @@ water-heavy maps, the navy decides the game.
 
 ## Sea trade
 
-**Commercial Harbors** are the civilian sea-trade hub. Build them on
-the coast (Industry age, 4×3, 1000 funds + 400 materials): they work
-in peaceful mode, they reload ships, and they store 300 fuel. The
-harbor trains two civilian ships:
+**Trade docks are the civilian sea-trade hub.** Build two docks on
+the coast (Commercial Docks, Container Port, or Fishing Harbor) —
+routes anchor dock-to-dock only, never at the Civilian Shipyard
+(that's the no-blur rule: the yard builds and repairs ships, the
+docks ship). They work in peaceful mode.
+
+The Civilian Shipyard trains two civilian ships:
 
 - **Cargo Freighter** — sails sea-trade routes for funds (see below).
 - **Fuel Barge** — a small uncrewed tanker that hauls fuel between
-  harbors on a route.
+  docks on a route.
 
 **Sea-trade routes** work like the airline system. Open the **Trade**
 panel (Management tab), press **New route…**, and click two of your
-completed commercial harbors: the route costs 500 funds to establish.
+completed trade docks: the route costs 500 funds to establish.
 Then assign cargo freighters (or fuel barges) to the route — they
-sail between the harbors automatically:
+sail between the docks automatically:
 
 - **Funds policy** — each voyage pays `40 + 0.25 × distance` funds
   (about 1.8 funds/sec per ship at 200 cells).
-- **Materials policy** — the origin harbor loads materials, the
+- **Materials policy** — the origin dock loads materials, the
   destination sells them at 2.0 funds each (25% better than the
   1.6 instant-sell price).
-- **Fuel policy** — fuel barges haul fuel from the origin's storage
-  to the destination.
+- **Fuel policy** — fuel barges haul fuel from the origin dock's
+  storage to the destination.
 
 Demolish an endpoint and the route closes; assigned ships go idle.
-The peaceful AI builds harbors, establishes a funds route, and
-assigns freighters on its own.
+Routes anchored at a shipyard from older saves keep sailing —
+only new routes must use docks. The peaceful AI builds a shipyard
+and two docks, establishes a funds route, and assigns freighters on
+its own.
 
 ## Veterancy
 

@@ -373,8 +373,8 @@ export interface HUDActions {
   /** Civilian sea trade (Half A): cancel a sea route by its route id. */
   onCancelSeaRoute(id: number): void;
   /**
-   * Civilian sea trade (Half A): establish the armed harbor pair with
-   * the picked cargo policy.
+   * Civilian sea trade (Half A; naval-building model, 2026-10-01):
+   * establish the armed dock pair with the picked cargo policy.
    */
   onSeaTradePolicy(policy: string): void;
   /**
@@ -523,8 +523,8 @@ export class HUD {
    * Civilian sea trade (Half A, 2026-10-01): the sea-route tool state,
    * controller-owned (the airline tool's mirror). `seaTradeArmed` = the
    * "New sea route…" two-click gesture is live; `seaTradeFromId` = the
-   * armed first harbor (null = still picking the first); `seaTradeToId`
-   * = the armed second harbor (null until the second click — the panel
+   * armed first dock (null = still picking the first); `seaTradeToId`
+   * = the armed second dock (null until the second click — the panel
    * then shows the cargo-policy picker). Digest-covered (sa:) so the
    * armed status line repaints on change. The HUD never mutates these
    * — game.ts does.
@@ -1270,9 +1270,9 @@ export class HUD {
         break;
       case 'trade':
         panel.append(this.tradeSectionEl(world));
-        // Civilian sea trade (Half A, 2026-10-01): the harbor-to-harbor
-        // sea-route section sits under the partner-route section in the
-        // same Trade sub-tab.
+        // Civilian sea trade (Half A, 2026-10-01; naval-building
+        // model, 2026-10-01): the dock-to-dock sea-route section sits
+        // under the partner-route section in the same Trade sub-tab.
         panel.append(this.seaTradeSectionEl(world));
         break;
       case 'research':
@@ -1354,9 +1354,10 @@ export class HUD {
 
   /**
    * Management → Trade: the civilian sea-trade section (Half A,
-   * 2026-10-01) — the player's harbor-to-harbor sea routes with their
-   * cargo policies, the "New sea route…" two-click gesture, and the
-   * policy picker that appears once both harbors are picked. Named
+   * 2026-10-01; naval-building model, 2026-10-01) — the player's
+   * dock-to-dock sea routes with their cargo policies, the "New sea
+   * route…" two-click gesture, and the policy picker that appears
+   * once both docks are picked. Named
    * *El (not append/build/update-prefixed) per the ui/AGENTS.md AD11
    * rule — it is covered by the management-panel digest branch (st:/
    * sa: segments), not a branch of its own. All DOM classes are the
@@ -1385,7 +1386,7 @@ export class HUD {
       );
       sec.append(row);
     }
-    // The armed two-click gesture: still picking harbors, or picking the
+    // The armed two-click gesture: still picking docks, or picking the
     // cargo policy for a completed pair.
     if (this.seaTradeArmed) {
       if (this.seaTradeFromId === null) {
@@ -1436,7 +1437,7 @@ export class HUD {
     return sec;
   }
 
-  /** Display name for a sea-trade harbor: kind name + building id. */
+  /** Display name for a sea-trade dock: kind name + building id. */
   private seaHarborName(world: World, id: number): string {
     const b = world.city.buildings.find((x) => x.id === id);
     if (b === undefined) return `Harbor ${id}`;
@@ -2527,13 +2528,14 @@ export class HUD {
         }
         panel.append(hangarBlock);
       }
-      // Civilian sea trade (Half A, 2026-10-01): sea-trade harbors show
-      // the routes calling here (per-route cancel) plus the
-      // ship-training buttons — the peaceful-mode training path, since
-      // the Military tab (and its Train palette) is hidden in peaceful
-      // worlds. Owned harbors only (the actions spend the player's
-      // funds). Uses the shared stat-row / detail-actions / sel-action
-      // classes; digest-covered by the sh: segment (AD11).
+      // Civilian sea trade (Half A, 2026-10-01; naval-building
+      // model, 2026-10-01): trade docks show the routes calling here
+      // (per-route cancel) plus the ship-training buttons — the
+      // peaceful-mode training path, since the Military tab (and its
+      // Train palette) is hidden in peaceful worlds. Owned docks only
+      // (the actions spend the player's funds). Uses the shared
+      // stat-row / detail-actions / sel-action classes;
+      // digest-covered by the sh: segment (AD11).
       if (isSeaTradeHarbor(b) && b.owner === HUMAN_PLAYER_ID) {
         const stm = STRINGS.menuTabs;
         const seaBlock = el('div', 'stat-block');

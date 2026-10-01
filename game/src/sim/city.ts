@@ -396,18 +396,19 @@ export type SeaRoutePolicy =
   (typeof SeaRoutePolicy)[keyof typeof SeaRoutePolicy];
 
 /**
- * Civilian sea trade (Half A, 2026-10-01): one harbor-to-harbor trade
- * route. `from`/`to` are building ids of the owner's completed
- * civilian ports (`portType: 'civilian'` — commercialHarbor,
- * commercialPort, containerPort, fishingHarbor; the navalBase is
- * military and rejected loudly, mirroring the airline rule that bars
- * military airbases). Unlike airline routes (passive per-tick income),
- * sea routes are SAILED: the owner assigns cargo vessels
- * (`assignSeaRoute`) and they shuttle harbor↔harbor through the normal
- * sea A*, earning per voyage (funds policy) or hauling fuel/materials
- * per the route's `policy`. Dead endpoints are removed at the economy
- * tick (the `runAirlineIncome` dead-set shape). Plain data —
- * snapshotted (decode default `[]`) and digest-covered.
+ * Civilian sea trade (Half A, 2026-10-01; naval-building model,
+ * 2026-10-01): one dock-to-dock trade route. `from`/`to` are building
+ * ids of the owner's completed trade docks (`tradeDock: true` —
+ * commercialPort, containerPort, fishingHarbor; the civilian shipyard
+ * (commercialHarbor) is NOT a trade dock — it builds ships, it doesn't
+ * trade — and the military navalBase is rejected, mirroring the airline
+ * rule that bars military airbases). Unlike airline routes (passive
+ * per-tick income), sea routes are SAILED: the owner assigns cargo
+ * vessels (`assignSeaRoute`) and they shuttle dock↔dock through the
+ * normal sea A*, earning per voyage (funds policy) or hauling
+ * fuel/materials per the route's `policy`. Dead endpoints are removed
+ * at the economy tick (the `runAirlineIncome` dead-set shape). Plain
+ * data — snapshotted (decode default `[]`) and digest-covered.
  */
 export interface SeaRoute {
   /** Route id (city.nextSeaRouteId, assigned at establishment). */
@@ -840,6 +841,19 @@ export interface BuildingDef {
    * all ports, no per-kind list.
    */
   portType?: 'civilian' | 'military' | 'mixed';
+  /**
+   * Naval-building model (2026-10-01): the trade-dock flag — the
+   * no-blur rule. When true, a completed building can anchor a sea
+   * trade route (`establishSeaRoute` in economy.ts rejects endpoints
+   * without it, loudly). Set on exactly the three civilian docks —
+   * commercialPort, containerPort, fishingHarbor — and on nothing
+   * else: the civilian shipyard (commercialHarbor) BUILDS ships, the
+   * docks TRADE with them, and the military navalBase is barred from
+   * civilian trade routes. Old saves grandfather: routes store building
+   * ids, and nothing re-validates a route's endpoints after
+   * establishment, so pre-flag routes keep sailing untouched.
+   */
+  tradeDock?: boolean;
   /**
    * Grand-expansion Phase 6 — naval expansion (workstream C,
    * 2026-09-30): passive resource income in resource-units per
@@ -2221,9 +2235,13 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   // ------------------------------------------------------------------
   // Grand-expansion Phase 6 — naval expansion (workstream C,
-  // 2026-09-30): the four ports (S5). All require coastline — the
-  // validatePlacement rule keys on def.portType (one rule, no per-kind
-  // list). commercialPort counts as a shipyard and navalBase as a
+  // 2026-09-30): the three civilian docks + the military naval base
+  // (S5). All require coastline — the validatePlacement rule keys on
+  // def.portType (one rule, no per-kind list). Naval-building model
+  // (2026-10-01): the three civilian kinds carry `tradeDock: true` —
+  // they are the trade-dock interface where sea routes anchor; the
+  // civilian shipyard (commercialHarbor, below) builds ships and never
+  // trades. commercialPort counts as a shipyard and navalBase as a
   // navalYard for production gates (S5 `countsAs`), so a fleet can be
   // built from a mixed-use port town. Ports are the navy-side reload
   // infrastructure: commercialPort stocks fuel, navalBase stocks fuel
@@ -2231,7 +2249,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   // the supply-chain refill path is the same as the depots').
   // ------------------------------------------------------------------
   commercialPort: {
-    kind: 'commercialPort', name: 'Commercial Port', zone: UTILITY_ZONE,
+    kind: 'commercialPort', name: 'Commercial Docks', zone: UTILITY_ZONE,
     hp: 500,
     footprintW: 4, footprintH: 3, costFunds: 800, costMaterials: 300,
     buildSeconds: 45, upkeepFundsPerSec: 0.8,
@@ -2239,6 +2257,9 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: {}, input: {}, population: 0, taxBasePerSec: 8.0,
     minAge: 'connectivity',
     portType: 'civilian',
+    // The civilian shipping interface: the general-cargo trade dock
+    // where sea routes anchor (funds harvest).
+    tradeDock: true,
     countsAs: ['shipyard'],
     harvest: { funds: 1.5 }, // civilian sea-trade income (economy runHarvest)
     reloadPoint: true,
@@ -2254,6 +2275,8 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: {}, input: {}, population: 0, taxBasePerSec: 12.0,
     minAge: 'industry',
     portType: 'civilian',
+    // The bulk-cargo trade dock: heavy sea-trade income.
+    tradeDock: true,
     harvest: { funds: 2.5 }, // heavy sea-trade income (economy runHarvest)
     jobs: 40,
   },
@@ -2266,6 +2289,8 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     output: {}, input: {}, population: 0, taxBasePerSec: 3.0,
     minAge: 'foundation',
     portType: 'civilian',
+    // The food trade dock: the dockside catch (food harvest).
+    tradeDock: true,
     harvest: { food: 1.2 }, // the dockside catch (economy runHarvest)
     jobs: 12,
   },
@@ -2290,22 +2315,28 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     military: true,
   },
   // ------------------------------------------------------------------
-  // Civilian sea trade (Half A, 2026-10-01): the commercial harbor —
-  // the civilian shipyard. NON-military (no `military` flag ⇒
-  // peaceful-buildable, the whole point: peaceful players get a sea
+  // Civilian sea trade (Half A, 2026-10-01): the civilian shipyard —
+  // the civilian production building. NON-military (no `military` flag
+  // ⇒ peaceful-buildable, the whole point: peaceful players get a sea
   // production building), `portType: 'civilian'` (coastline required,
   // the navalYard precedent — no per-kind placement rule), and the
   // requiredBuilding gate for cargoFreighter + fuelBarge (units.ts).
+  // Naval-building model (2026-10-01): it builds AND repairs civilian
+  // ships (repair arrives free via sim/shipyardRepair.ts — the
+  // drydock rule matches production shipyards by side), but it is NOT
+  // a trade dock (`tradeDock` stays unset): sea routes anchor only at
+  // the three civilian docks above — shipyards build, docks trade.
   // A forward fuel depot too: reloadPoint + fuelStorage, so the
-  // supply-truck chain stocks it and fuel barges load here (the
-  // commercialPort precedent). Balance vs shipyard (1200/500,
-  // upkeep 1.5, 20 jobs, military) and commercialPort (800/300,
-  // upkeep 0.8, 30 jobs, 1.5 funds/s harvest): cheaper than the
-  // shipyard (unarmed hulls only), pricier than the port (it is a
-  // production building, not an income building — no harvest).
+  // supply-truck chain stocks it and fuel barges load where they are
+  // built (ships fuel at the yard that built them — not trade blur).
+  // Balance vs shipyard (1200/500, upkeep 1.5, 20 jobs, military) and
+  // commercialPort (800/300, upkeep 0.8, 30 jobs, 1.5 funds/s
+  // harvest): cheaper than the shipyard (unarmed hulls only), pricier
+  // than the docks (it is a production building, not an income
+  // building — no harvest).
   // ------------------------------------------------------------------
   commercialHarbor: {
-    kind: 'commercialHarbor', name: 'Commercial Harbor', zone: UTILITY_ZONE,
+    kind: 'commercialHarbor', name: 'Civilian Shipyard', zone: UTILITY_ZONE,
     hp: 500,
     footprintW: 4, footprintH: 3, costFunds: 1000, costMaterials: 400,
     buildSeconds: 50, upkeepFundsPerSec: 1.0,

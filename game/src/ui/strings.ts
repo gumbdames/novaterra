@@ -505,13 +505,16 @@ export const STRINGS = {
     ordnanceDepot: { en: 'Ordnance Depot' },
     fuelDepot: { en: 'Fuel Depot' },
     // Grand-expansion Phase 6 — naval expansion (workstream C,
-    // 2026-09-30): the four ports.
-    commercialPort: { en: 'Commercial Port' },
+    // 2026-09-30): the three civilian docks + the military naval base.
+    // Naval-building model (2026-10-01): commercialPort is the
+    // "Commercial Docks" — the civilian shipping interface.
+    commercialPort: { en: 'Commercial Docks' },
     containerPort: { en: 'Container Port' },
     fishingHarbor: { en: 'Fishing Harbor' },
     navalBase: { en: 'Naval Base' },
-    // Civilian sea trade (Half A, 2026-10-01): the civilian harbor.
-    commercialHarbor: { en: 'Commercial Harbor' },
+    // Civilian sea trade (Half A, 2026-10-01): the civilian shipyard
+    // (naval-building model, 2026-10-01 — was "Commercial Harbor").
+    commercialHarbor: { en: 'Civilian Shipyard' },
     // Grand-expansion Phase 5 — airports (workstream A, S5+S8,
     // 2026-09-30): the 14 airport kinds.
     civilAirport: { en: 'Civil Airport' },
@@ -933,25 +936,25 @@ export const STRINGS = {
     tradeCancel: { en: 'Cancel route' },
     tradePartnerRival: { en: 'Rival nation' },
     /** Management → Trade: civilian sea trade (Half A, 2026-10-01).
-     * Harbor-to-harbor routes with a cargo policy per route; ships sail
+     * Dock-to-dock routes with a cargo policy per route; ships sail
      * the route physically (the ferry-loop pattern). */
     seaTradeTitle: { en: 'Sea trade' },
     seaTradeEmpty: {
-      en: 'No sea routes yet — build two Commercial Harbors on the coast, then link them.',
+      en: 'No sea routes yet — build two trade docks on the coast, then link them.',
     },
     seaTradeNewRoute: { en: 'New sea route…' },
-    seaTradePickFirst: { en: 'Click one of your completed Commercial Harbors' },
-    seaTradeRouteArmed: { en: 'Click a second Commercial Harbor to complete the route' },
+    seaTradePickFirst: { en: 'Click one of your completed trade docks' },
+    seaTradeRouteArmed: { en: 'Click a second trade dock to complete the route' },
     seaTradePickPolicy: { en: 'Choose the cargo policy for the new route' },
-    seaTradeNotHarbor: { en: 'Sea routes need completed Commercial Harbors' },
-    seaTradeSameHarbor: { en: 'Pick a different harbor for the route\u2019s other end' },
-    seaTradeNeedsOwner: { en: 'Sea routes link your own harbors' },
-    seaTradeNeedsTwo: { en: 'Build two completed Commercial Harbors to link a sea route' },
+    seaTradeNotHarbor: { en: 'Sea routes need completed trade docks' },
+    seaTradeSameHarbor: { en: 'Pick a different dock for the route\u2019s other end' },
+    seaTradeNeedsOwner: { en: 'Sea routes link your own docks' },
+    seaTradeNeedsTwo: { en: 'Build two completed trade docks to link a sea route' },
     seaTradeCancel: { en: 'Cancel route' },
     seaTradePolicyFunds: { en: 'Funds' },
-    seaTradePolicyFundsDesc: { en: 'Pays funds on every voyage into the destination harbor' },
+    seaTradePolicyFundsDesc: { en: 'Pays funds on every voyage into the destination dock' },
     seaTradePolicyFuel: { en: 'Fuel' },
-    seaTradePolicyFuelDesc: { en: 'Shuttles fuel from the origin harbor\u2019s depot to the destination' },
+    seaTradePolicyFuelDesc: { en: 'Shuttles fuel from the origin dock\u2019s depot to the destination' },
     seaTradePolicyMaterials: { en: 'Materials' },
     seaTradePolicyMaterialsDesc: { en: 'Hauls your materials abroad and sells them at the mid-market price' },
     seaTradeIncomeLine: { en: '+{income} funds/voyage' },

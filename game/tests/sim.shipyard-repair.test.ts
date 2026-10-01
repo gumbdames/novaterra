@@ -22,7 +22,7 @@
  *  - A damaged same-side sea unit within SHIPYARD_REPAIR_RADIUS of an
  *    operational shipyard regains SHIPYARD_REPAIR_PER_SEC hp/s, capped
  *    at the veterancy-adjusted max (no overheal, the dead stay dead).
- *  - Side matching: the civilian commercialHarbor repairs civilian hulls
+ *  - Side matching: the civilian shipyard (commercialHarbor) repairs civilian hulls
  *    only; the military shipyard / navalYard repair military hulls only.
  *  - Docks (commercialPort) do NOT repair — production vs. logistics
  *    stays unblurred.
@@ -133,7 +133,7 @@ function damagedAt(
 }
 
 describe('shipyardRepair', () => {
-  it('a damaged civilian freighter repairs at the civilian commercialHarbor', () => {
+  it('a damaged civilian freighter repairs at the civilian shipyard', () => {
     const t = getTerrain();
     const world = setup();
     const f = findCoastalFootprint(t, 4, 3);
@@ -169,7 +169,7 @@ describe('shipyardRepair', () => {
     expect(isShipUnderRepair(world, u)).toBe(false);
   });
 
-  it('side mismatch: military hull at the civilian harbor does not repair', () => {
+  it('side mismatch: military hull at the civilian shipyard does not repair', () => {
     const t = getTerrain();
     const world = setup();
     const f = findCoastalFootprint(t, 4, 3);

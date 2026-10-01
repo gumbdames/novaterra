@@ -343,12 +343,12 @@ export function selectionDigest(
     } else {
       parts.push('bh:x');
     }
-    // Civilian sea trade (Half A, 2026-10-01): the harbor detail panel
-    // renders the routes calling here (each with a Cancel button) and
-    // the two ship-training buttons with the Train-palette availability
-    // semantics. sh: carries the calling route ids + the two kinds'
-    // availability bits ('sh:x' for non-harbors and non-owned harbors,
-    // which render no sea section). Always emitted.
+    // Civilian sea trade (Half A, 2026-10-01): the trade-dock detail
+    // panel renders the routes calling here (each with a Cancel
+    // button) and the two ship-training buttons with the Train-palette
+    // availability semantics. sh: carries the calling route ids + the
+    // two kinds' availability bits ('sh:x' for non-docks and
+    // non-owned docks, which render no sea section). Always emitted.
     if (isSeaTradeHarbor(b) && b.owner === HUMAN_PLAYER_ID) {
       const calling = seaRoutesOf(world, HUMAN_PLAYER_ID)
         .filter((r) => r.from === b.id || r.to === b.id)

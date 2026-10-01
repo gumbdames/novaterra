@@ -312,9 +312,11 @@ export const BUILD_TABS: readonly BuildTab[] = [
   // own tab (civilian infrastructure, not military logistics).
   // Tiered transit stops/stations (2026-09-30): the seven passenger
   // stops join the same tab — the full civilian-transport palette.
-  // Civilian sea trade (Half A, 2026-10-01): the Commercial Harbor is
-  // civilian transport infrastructure (peaceful-buildable), not a
-  // military navalAir port.
+  // Civilian sea trade (Half A, 2026-10-01): the Civilian Shipyard
+  // (commercialHarbor) is civilian production infrastructure
+  // (peaceful-buildable), not a military navalAir port. It builds and
+  // repairs the civilian ships — the trade docks live in the Naval &
+  // Air tab (the no-blur rule: shipyards build, docks trade).
   {
     id: 'transport',
     kinds: [

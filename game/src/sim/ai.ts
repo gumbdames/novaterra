@@ -4204,32 +4204,37 @@ function thinkPeacefulConstruction(
   }
 }
 /**
- * Civilian sea trade (Half A, 2026-10-01): the peaceful AI's sea-trade
- * program. Three phases, in fixed order:
+ * Civilian sea trade (Half A, 2026-10-01; naval-building model,
+ * 2026-10-01): the peaceful AI's sea-trade program. Three phases, in
+ * fixed order:
  *
- *  1. Harbors: build up to 2 commercialHarbors at coastal sites in a
- *     base-centered sweep (the coastal rule is enforced by
- *     validatePlacement, so the site search only accepts shoreline
- *     footprints). Rich-treasury gated — a harbor is 1000 funds + 400
- *     materials, a civic-scale spend.
- *  2. Route: once 2 harbors are completed, establish one 'funds' route
+ *  1. Shipyard + docks: build ONE commercialHarbor (the civilian
+ *     shipyard — cargoFreighters/barges REQUIRE it, so the AI must
+ *     have one) and up to 2 commercialPort docks (the route
+ *     endpoints — the no-blur rule: routes anchor at docks, never at
+ *     the shipyard). Base-centered sweep (the coastal rule is enforced
+ *     by validatePlacement, so the site search only accepts shoreline
+ *     footprints). Rich-treasury gated — a shipyard is 1000 funds +
+ *     400 materials, a dock 800 + 300, a civic-scale spend.
+ *  2. Route: once 2 docks are completed, establish one 'funds' route
  *     between them (the 500 setup is ledger-reserved like any spend).
- *  3. Ships: spawn up to 2 cargoFreighters at the first harbor's water
+ *  3. Ships: spawn up to 2 cargoFreighters at the shipyard's water
  *     cell and assign every unassigned AI freighter to the route.
  *
  * No new AI state (everything is derived from the world), no RNG (the
  * site scan is row-major, the phases are fixed) — same seed, same game.
  * Runs inside thinkPeaceful's terrain branch, after construction, and
- * shares its claim map so a harbor can never overlap a same-think
- * construction placement.
+ * shares its claim map so a shipyard/dock can never overlap a
+ * same-think construction placement.
  */
-const PEACEFUL_SEA_HARBOR_MAX = 2;
+const PEACEFUL_SEA_SHIPYARD_MAX = 1;
+const PEACEFUL_SEA_DOCK_MAX = 2;
 const PEACEFUL_SEA_FREIGHTERS_PER_ROUTE = 2;
 /** Base-centered coastal site search radius, in cells. */
 const PEACEFUL_SEA_SITE_RADIUS = 30;
 
 /**
- * The water cell a harbor's ships spawn at: the lowest-index water
+ * The water cell a shipyard's ships spawn at: the lowest-index water
  * cell in the footprint ring. Mirrors movement.harborWaterCell's
  * deterministic pick, reimplemented here on cellIsWater (already
  * imported) so ai.ts needs no new module edge.
@@ -4268,34 +4273,49 @@ function thinkPeacefulSeaTrade(
   const player = getPlayer(world.city, ai.owner);
   if (!player) return;
   const rich = player.funds >= PEACEFUL_HOUSING_FUNDS;
-  // Phase 1: the harbors. `wanted` counts buildings already placed plus
-  // this think's placement (records don't exist until the command
-  // applies, like thinkPeacefulConstruction's counts).
-  let harbors = world.city.buildings.filter(
+  const bcx = worldToCell(ai.baseX);
+  const bcz = worldToCell(ai.baseZ);
+  const r = PEACEFUL_SEA_SITE_RADIUS;
+  // Base-centered sweep (row-major, deterministic): the first coastal
+  // site wins. findPeacefulSite validates through validatePlacement,
+  // so the portType coastal rule is enforced — inland sweeps simply
+  // find nothing and the AI stays landlocked.
+  const rect = { x0: bcx - r, z0: bcz - r, x1: bcx + r, z1: bcz + r };
+  // Phase 1: the shipyard (one only — freighters/barges require it),
+  // then the docks. Counts include this think's placements (records
+  // don't exist until the command applies, like
+  // thinkPeacefulConstruction's counts). One placement per kind per
+  // think — the treasury-floor guard runs per placement.
+  let shipyards = world.city.buildings.filter(
     (b) => b.owner === ai.owner && b.kind === 'commercialHarbor',
   ).length;
   if (
-    harbors < PEACEFUL_SEA_HARBOR_MAX &&
+    shipyards < PEACEFUL_SEA_SHIPYARD_MAX &&
     rich &&
     peacefulKindAvailable(world, ai, 'commercialHarbor')
   ) {
-    const bcx = worldToCell(ai.baseX);
-    const bcz = worldToCell(ai.baseZ);
-    const r = PEACEFUL_SEA_SITE_RADIUS;
-    // Base-centered sweep (row-major, deterministic): the first coastal
-    // site wins. findPeacefulSite validates through validatePlacement,
-    // so the portType coastal rule is enforced — inland sweeps simply
-    // find nothing and the AI stays landlocked.
-    const rect = { x0: bcx - r, z0: bcz - r, x1: bcx + r, z1: bcz + r };
     if (placePeaceful(world, queue, ai, 'commercialHarbor', rect, claimed, terrain)) {
-      harbors++;
+      shipyards++;
     }
   }
-  // Phase 2: the route. Completed harbors only (the sim's
-  // establishSeaRoute validation is authoritative — issue() swallows
-  // the rejection if a harbor was demolished between think and apply).
+  let docks = world.city.buildings.filter(
+    (b) => b.owner === ai.owner && b.kind === 'commercialPort',
+  ).length;
+  if (
+    docks < PEACEFUL_SEA_DOCK_MAX &&
+    rich &&
+    peacefulKindAvailable(world, ai, 'commercialPort')
+  ) {
+    if (placePeaceful(world, queue, ai, 'commercialPort', rect, claimed, terrain)) {
+      docks++;
+    }
+  }
+  // Phase 2: the route. Completed docks only (the no-blur rule — the
+  // sim's establishSeaRoute validation is authoritative: issue()
+  // swallows the rejection if a dock was demolished between think and
+  // apply).
   const completed = world.city.buildings.filter(
-    (b) => b.owner === ai.owner && b.kind === 'commercialHarbor' && b.progress >= 1,
+    (b) => b.owner === ai.owner && b.kind === 'commercialPort' && b.progress >= 1,
   );
   const route = (world.city.seaRoutes ?? []).find((x) => x.owner === ai.owner) ?? null;
   if (route === null && completed.length >= 2 && rich) {
@@ -4318,18 +4338,24 @@ function thinkPeacefulSeaTrade(
       }
     }
   }
-  // Phase 3: the ships. Spawn idle freighters at the first completed
-  // harbor's water cell (spawn() ledger-guards manpower/funds/
+  // Phase 3: the ships. Spawn idle freighters at the completed
+  // shipyard's water cell (spawn() ledger-guards manpower/funds/
   // materials; the spawnUnit validator enforces the commercialHarbor
   // gate and the water spawn loudly), then assign every unassigned AI
   // freighter to the route.
-  if (route !== null && completed.length >= 1) {
+  const completedShipyards = world.city.buildings.filter(
+    (b) => b.owner === ai.owner && b.kind === 'commercialHarbor' && b.progress >= 1,
+  );
+  if (route !== null && completedShipyards.length >= 1) {
     const assigned = world.units.filter(
       (u) => u.owner === ai.owner && (u.seaRouteId ?? 0) === route.id,
     ).length;
     let want = PEACEFUL_SEA_FREIGHTERS_PER_ROUTE - assigned;
     if (want > 0) {
-      const anchor = completed[0]!;
+      // Freighters are built at the civilian shipyard, not the docks
+      // (the no-blur rule) — the shipyard's water cell is the spawn
+      // point.
+      const anchor = completedShipyards[0]!;
       const water = peacefulHarborWaterCell(terrain, anchor);
       if (water !== null) {
         while (want > 0) {

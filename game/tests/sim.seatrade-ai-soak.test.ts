@@ -15,19 +15,22 @@
  */
 
 /**
- * NOVATERRA — civilian sea-trade AI soak tests (Half A, 2026-10-01).
+ * NOVATERRA — civilian sea-trade AI soak tests (Half A, 2026-10-01;
+ * naval-building model, 2026-10-01).
  *
  * A peaceful marshal AI on a coastal map, with the full system stack.
  * The AI's `thinkPeacefulSeaTrade` should:
- *  - Phase 1: build 2 commercialHarbors (when rich)
- *  - Phase 2: establish 1 funds sea route between them
- *  - Phase 3: train 2 cargoFreighters and assign them to the route
+ *  - Phase 1: build 1 civilian shipyard (commercialHarbor, when rich)
+ *    plus 2 trade docks (commercialPort)
+ *  - Phase 2: establish 1 funds sea route dock↔dock
+ *  - Phase 3: spawn 2 cargoFreighters at the shipyard's water cell
+ *    and assign them to the route
  *
  * Asserts:
- *  - the AI reaches the full sea-trade state (2 harbors, 1 route,
- *    2 assigned freighters) within the tick budget;
+ *  - the AI reaches the full sea-trade state (1 shipyard, 2 docks,
+ *    1 route, 2 assigned freighters) within the tick budget;
  *  - zero rejected AI sea-trade orders (establishSeaRoute, spawnUnit,
- *    assignSeaRoute, placeBuilding for the harbors);
+ *    assignSeaRoute, placeBuilding for the shipyard and the docks);
  *  - same seed ⇒ identical digest (determinism with AI sea trade).
  *
  * Headless (no DOM/three.js). Deterministic: no wall clock, no Math.random.
@@ -79,9 +82,10 @@ function getTerrain(): TerrainData {
 }
 
 /**
- * Find a land cell that has water within the AI's harbor-site sweep
- * radius (PEACEFUL_SEA_SITE_RADIUS = 30 cells). The AI sweeps a
- * 30-cell rect around its base for coastal commercialHarbor sites.
+ * Find a land cell that has water within the AI's shipyard/dock-site
+ * sweep radius (PEACEFUL_SEA_SITE_RADIUS = 30 cells). The AI sweeps a
+ * 30-cell rect around its base for coastal commercialHarbor (shipyard)
+ * and commercialPort (dock) sites.
  */
 function findCoastalBase(t: TerrainData): { x: number; z: number } {
   for (let z = -MAP_HALF_SIZE + 40; z < MAP_HALF_SIZE - 40; z += 4) {
@@ -104,14 +108,17 @@ function setupSeaTradeSoak(seed: number): Ctx {
   const terrain = getTerrain();
   const world = createWorld(seed);
   world.peaceful = true;
-  // The commercialHarbor (and cargoFreighter/fuelBarge) are industry-age.
-  // Start at industry so the sea-trade think isn't age-gated — the test
-  // is about the sea-trade phases, not the age climb.
+  // The civilian shipyard (commercialHarbor), cargoFreighter, and
+  // fuelBarge are industry-age; the docks (commercialPort) are
+  // connectivity-age. Start at industry so the sea-trade think isn't
+  // age-gated — the test is about the sea-trade phases, not the age
+  // climb.
   world.ages.age = 'industry';
   const base = findCoastalBase(terrain);
   addAIPlayer(world, 0, 'marshal', base.x, base.z);
   // Make the AI rich immediately: thinkPeacefulSeaTrade needs
-  // funds >= 2000 (PEACEFUL_HOUSING_FUNDS) for harbors + route.
+  // funds >= 2000 (PEACEFUL_HOUSING_FUNDS) for the shipyard, the
+  // docks, and the route.
   grantAllTrainingResources(world, 1_000_000);
   const queue = createCommandQueue();
   registerCoreCommands(queue);
@@ -151,16 +158,21 @@ function runTicks(ctx: Ctx, n: number): void {
 }
 
 interface SeaTradeState {
-  harbors: number;
-  completedHarbors: number;
+  shipyards: number;
+  completedShipyards: number;
+  docks: number;
+  completedDocks: number;
   routes: number;
   freighters: number;
   assignedFreighters: number;
 }
 
 function seaTradeState(world: World, owner: number): SeaTradeState {
-  const harbors = world.city.buildings.filter(
+  const shipyards = world.city.buildings.filter(
     (b) => b.owner === owner && b.kind === 'commercialHarbor',
+  );
+  const docks = world.city.buildings.filter(
+    (b) => b.owner === owner && b.kind === 'commercialPort',
   );
   const routes = (world.city.seaRoutes ?? []).filter((r) => r.owner === owner);
   const freighters = world.units.filter(
@@ -168,37 +180,46 @@ function seaTradeState(world: World, owner: number): SeaTradeState {
   );
   const routeId = routes[0]?.id ?? 0;
   return {
-    harbors: harbors.length,
-    completedHarbors: harbors.filter((b) => b.progress >= 1).length,
+    shipyards: shipyards.length,
+    completedShipyards: shipyards.filter((b) => b.progress >= 1).length,
+    docks: docks.length,
+    completedDocks: docks.filter((b) => b.progress >= 1).length,
     routes: routes.length,
     freighters: freighters.length,
     assignedFreighters: freighters.filter((u) => (u.seaRouteId ?? 0) === routeId && routeId !== 0).length,
   };
 }
 
-// Marshal thinks every 30 ticks. Harbor construction + 2 harbors
+// Marshal thinks every 30 ticks. Shipyard + 2 dock constructions
 // + route + 2 freighters needs a few hundred ticks; 3600 (120s)
 // matches the peaceful-soak budget and is ample.
 const SOAK_TICKS = 3600;
 
 describe('civilian sea-trade AI soak (peaceful marshal, coastal)', () => {
-  it('builds 2 harbors, 1 funds route, and 2 assigned freighters', () => {
+  it('builds 1 shipyard + 2 docks, 1 funds route, and 2 assigned freighters', () => {
     const ctx = setupSeaTradeSoak(7);
     runTicks(ctx, SOAK_TICKS);
     const s = seaTradeState(ctx.world, 0);
-    expect(s.harbors).toBe(2);
-    expect(s.completedHarbors).toBe(2);
+    expect(s.shipyards).toBe(1);
+    expect(s.completedShipyards).toBe(1);
+    expect(s.docks).toBe(2);
+    expect(s.completedDocks).toBe(2);
     expect(s.routes).toBe(1);
     expect(s.freighters).toBeGreaterThanOrEqual(2);
     expect(s.assignedFreighters).toBeGreaterThanOrEqual(2);
-    // The route is a funds route (the AI's policy choice).
+    // The route is a funds route (the AI's policy choice) anchored
+    // dock↔dock — the no-blur rule holds end to end.
     const route = (ctx.world.city.seaRoutes ?? []).find((r) => r.owner === 0);
     expect(route?.policy).toBe('funds');
+    const endpointKind = (id: number) =>
+      ctx.world.city.buildings.find((b) => b.id === id)?.kind;
+    expect(endpointKind(route!.from)).toBe('commercialPort');
+    expect(endpointKind(route!.to)).toBe('commercialPort');
     // No sea-trade order was rejected at apply.
     const seaRejections = ctx.rejections.filter((r) =>
       r.startsWith('establishSeaRoute') || r.startsWith('assignSeaRoute') ||
       (r.startsWith('spawnUnit') && r.includes('cargoFreighter')) ||
-      (r.startsWith('placeBuilding') && r.includes('commercialHarbor')),
+      (r.startsWith('placeBuilding') && (r.includes('commercialHarbor') || r.includes('commercialPort'))),
     );
     expect(seaRejections).toEqual([]);
   });

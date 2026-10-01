@@ -617,9 +617,9 @@ const BUILDING_ICONS: Record<BuildingKind, string> = {
     '<rect x="5" y="9" width="4" height="5.5"/><rect x="15" y="9" width="4" height="5.5"/>' +
     '<path d="M7 9V5M17 9V5"/>' +
     '<path d="M3 20.5c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/>',
-  // Civilian sea trade (Half A, 2026-10-01): the commercial harbor —
-  // quay + gantry crane + water waves (vs the commercialPort's derrick
-  // crane): the civilian shipyard.
+  // Civilian sea trade (Half A, 2026-10-01; renamed the Civilian
+  // Shipyard, 2026-10-01): the commercialHarbor kind — quay + gantry
+  // crane + water waves (vs the commercialPort's derrick crane).
   commercialHarbor:
     '<path d="M2 17h20"/>' +
     '<path d="M6 17V6h9"/><path d="M15 6v3"/>' +

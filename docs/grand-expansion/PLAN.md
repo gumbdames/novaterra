@@ -780,16 +780,22 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   Marshal AI firing its Storm at the largest visible enemy cluster
   instead of the all-visible centroid.
   Sea-logistics Half A — civilian sea trade (2026-10-01,
-  0.1 Alpha, merged to main): the non-military **Commercial Harbor**
-  (coastal, peaceful-legal; trains cargoFreighter, the new fuel barge,
-  cruiseLiner, yacht), **sea-trade routes** mirroring the airline
-  system (`sim/seaTrade.ts` leaf module — avoids the
-  ai→economy→city→world→ai eval cycle; `establishSeaRoute` /
-  `cancelSeaRoute`, own-harbors-only routes, funds / materials / fuel
-  policies), physical resource hauling (fuel + materials loaded at the
-  origin, sold/unloaded at the destination), AI funds-policy routes
-  (peaceful AI builds two harbors + establishes a funds route on its
-  own), atlas regenerated to 197 kinds (byte-deterministic, <400 KB),
+  0.1 Alpha, merged to main; naval-building model, 2026-10-01): the
+  **Civilian Shipyard** (the old Commercial Harbor, renamed —
+  non-military, coastal, peaceful-legal; builds AND repairs civilian
+  ships: cargoFreighter, the new fuel barge; reloads ships, stores
+  300 fuel) and the civilian **trade docks** (Commercial Docks,
+  Container Port, Fishing Harbor — `tradeDock: true`), **sea-trade
+  routes** mirroring the airline system (`sim/seaTrade.ts` leaf module
+  — avoids the ai→economy→city→world→ai eval cycle;
+  `establishSeaRoute` / `cancelSeaRoute`, own-docks-only routes — the
+  no-blur rule rejects shipyard endpoints loudly; pre-flag shipyard
+  routes grandfathered, funds / materials / fuel policies), physical
+  resource hauling (fuel + materials loaded at the origin dock,
+  sold/unloaded at the destination), AI funds-policy routes (peaceful
+  AI builds one shipyard + two docks and establishes a funds route on
+  its own), atlas regenerated to 197 kinds (byte-deterministic,
+  <400 KB),
   AI soak test green; snapshot stays v8 (AD9 additive fields).
   Sea-logistics Half B — military naval logistics (2026-10-01,
   0.1 Alpha, merged to main): the naval supply chain the docs

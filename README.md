@@ -72,13 +72,15 @@ land, sea and air — or play a fully peaceful game with war disabled.
   stranded fossil-fuel aircraft (+30% tank for 150 funds, airdropped —
   Resupply can't reach an aircraft that can't fly to a depot).
   Civilian sea trade (Half A, 2026-10-01) is in too: the
-  **Commercial Harbor** (civilian coastal port, Industry age — trains
-  the cargo freighter and the new fuel barge, reloads ships, stores
-  fuel) and **sea-trade routes** like the airline system (500 funds to
-  establish between two harbors; funds / materials / fuel policies;
-  ships sail the route automatically). The peaceful AI builds two
-  harbors, establishes a funds route, and assigns freighters on its
-  own. The military half wired the naval supply chain the docs had
+  **Civilian Shipyard** (Industry age — builds and repairs civilian
+  ships: the cargo freighter and the new fuel barge; reloads ships,
+  stores fuel) plus civilian **trade docks** (Commercial Docks,
+  Container Port, Fishing Harbor) and **sea-trade routes** like the
+  airline system (500 funds to establish dock-to-dock — the no-blur
+  rule, routes never anchor at the shipyard; funds / materials / fuel
+  policies; ships sail the route automatically). The peaceful AI builds
+  a shipyard and two docks, establishes a funds route, and assigns
+  freighters on its own. The military half wired the naval supply chain the docs had
   promised: the fuel tanker (400 fuel + 200 materials) and ammo ship
   (80 shells + 100 materials) load at naval bases and serve friendly
   ships at sea, the naval base pulls fuel and caches materials forward,
