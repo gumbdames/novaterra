@@ -28,8 +28,12 @@
  *   ~500 units:  p95 = 1.29ms
  *   ~1000 units: p95 = 3.64ms
  *
- * Budgets below carry ~5x headroom over measured p95 to avoid flakiness
- * while still catching real regressions (e.g. an accidental O(n^2)).
+ * Budgets below carry ~10-14x headroom over measured p95. That sounds
+ * generous, but GitHub's shared CI runners showed a ~7x slowdown vs the
+ * dev machine (200-unit p95 measured 2.03ms there), so ~5x headroom was
+ * NOT enough to avoid flakes. These budgets still catch real
+ * regressions (e.g. an accidental O(n^2) would blow any of them by
+ * 10-100x); they are smoke budgets, not hardware guarantees.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -91,26 +95,27 @@ describe('sim tick performance budgets', () => {
     const session = createSession({ seed: 7, aiDifficulty: 'cadet' });
     const spawned = spawnLoad(session, 200);
     expect(spawned).toBeGreaterThan(150);
-    // Budget: 2ms p95 (measured 0.29ms). Must stay far below the 33.3ms tick.
-    expect(tickP95(session, 60)).toBeLessThan(2);
+    // Budget: 4ms p95 (measured 0.29ms locally, 2.03ms on a contended
+    // GitHub runner — identical code). Must stay far below the 33.3ms tick.
+    expect(tickP95(session, 60)).toBeLessThan(4);
   });
 
   it('500 units: p95 tick well under budget', () => {
     const session = createSession({ seed: 7, aiDifficulty: 'cadet' });
     const spawned = spawnLoad(session, 500);
     expect(spawned).toBeGreaterThan(400);
-    // Budget: 8ms p95 (measured 1.29ms).
-    expect(tickP95(session, 60)).toBeLessThan(8);
+    // Budget: 12ms p95 (measured 1.29ms locally; CI runners run ~7x slower).
+    expect(tickP95(session, 60)).toBeLessThan(12);
   });
 
   it('1000 units: p95 tick stays under the 30Hz tick budget', () => {
     const session = createSession({ seed: 7, aiDifficulty: 'cadet' });
     const spawned = spawnLoad(session, 1000);
     expect(spawned).toBeGreaterThan(800);
-    // Budget: 20ms p95 (measured 3.64ms). Hard ceiling is TICK_MS (33.3ms);
-    // the sim must never eat the whole frame.
+    // Budget: 25ms p95 (measured 3.64ms locally; CI runners run ~7x slower).
+    // Hard ceiling is TICK_MS (33.3ms); the sim must never eat the whole frame.
     const p95 = tickP95(session, 60);
-    expect(p95).toBeLessThan(20);
+    expect(p95).toBeLessThan(25);
     expect(p95).toBeLessThan(TICK_MS);
   });
 
