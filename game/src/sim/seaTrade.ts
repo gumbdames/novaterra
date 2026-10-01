@@ -14,9 +14,11 @@
  * (establish/cancel/assign) stay in economy.ts; the per-tick-callable
  * mechanics live here.
  *
- * Design: docs/research/sea-logistics.md. Routes are own-harbors-only;
- * ships physically sail the ferry loop; policies are funds/fuel/
- * materials (SeaRoutePolicy in city.ts).
+ * Design: docs/research/sea-logistics.md. Routes anchor at the owner's
+ * completed trade docks only (the no-blur rule, 2026-10-01 — the
+ * civilian shipyard builds ships, it never trades); ships physically
+ * sail the ferry loop; policies are funds/fuel/materials
+ * (SeaRoutePolicy in city.ts).
  */
 
 import {
@@ -30,7 +32,7 @@ import type { World } from './world';
 
 /**
  * Per-voyage income for a `funds`-policy route: flat base + per-world-
- * unit of harbor distance. Balance (docs/research/sea-logistics.md
+ * unit of dock distance. Balance (docs/research/sea-logistics.md
  * §4): a 200-unit voyage pays 90 funds; at freighter speed 8 the
  * round trip takes ~50 s ⇒ ~1.8 funds/s per ship — below the airline
  * route's 2.5/s and the partner route's 3.0/s, because sea trade

@@ -725,4 +725,20 @@ describe('marina waterfront amenity (Phase 4)', () => {
     // The full waterfront bonus lands on the near house's footprint.
     expect(nearAfter - nearBase).toBe(WATERFRONT_BONUS);
   });
+
+  it('a completed grand marina grants the same waterfront bonus (regression pin: the 2026-10-01 naval-building refactor must not touch marina amenity)', () => {
+    const ctx = setup(44);
+    const { cx, cz } = findLandRect(ctx.terrain, 30, 10);
+    paintResidential(ctx.world.city, cx, cz, cx + 19, cz + 7);
+    const target = cellIndex(cx + 10, cz + 3);
+    const base = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world, 0), target);
+    // Grand Marina 4×4 just east of the zone, completed, within the
+    // 15-cell waterfront radius of the target (distance ~11,
+    // Chebyshev) — same hook, same WATERFRONT_BONUS, the marinaLarge
+    // half of the waterfrontAmenity hook.
+    completed(ctx.world.city, { kind: 'marinaLarge', owner: 0, cx: cx + 21, cz: cz + 2, facing: 0 });
+    const after = cellDesirability(getDesirabilityModel(ctx.terrain, ctx.world, 0), target);
+    expect(after - base).toBe(WATERFRONT_BONUS);
+    expect(WATERFRONT_BONUS).toBe(10);
+  });
 });

@@ -231,10 +231,12 @@ red military, violet mixed) and gold arcs for your routes. Airliners
 start flying between your airports once your first civil airport is
 done — decorative, but they make the city feel alive.
 
-To run **sea trade**: build two **Commercial Harbors** on the coast
-(Industry age), open the **Trade** panel in the Management tab,
-press **New route…**, and click the two harbors (500 funds). Then
-train **Cargo Freighters** at a harbor and assign them to the route —
+To run **sea trade**: build a **Civilian Shipyard** (Industry age)
+and two trade **docks** (Commercial Docks, Container Port, or Fishing
+Harbor) on the coast, open the **Trade** panel in the Management tab,
+press **New route…**, and click the two docks (500 funds — routes
+anchor dock-to-dock, never at the shipyard). Then train **Cargo
+Freighters** at the shipyard and assign them to the route —
 they sail back and forth earning funds every voyage. Switch the
 route to the **materials** policy to export materials at a premium,
 or use **Fuel Barges** on a **fuel** route to haul fuel between

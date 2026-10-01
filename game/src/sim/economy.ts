@@ -922,7 +922,8 @@ function serveDepotUnit(world: World, d: BuildingRecord, u: UnitRecord, isReserv
   // reservation at this depot sees the full stock, like above.
   //   - cargoFuel / cargoAmmo come from the depot's own stocks;
   //   - cargoMaterials comes from the OWNER's materials stockpile (no
-  //     building stocks materials) — the depot is the loading point.
+  //     building stocks materials) — the depot is only the loading
+  //     point.
   // Deterministic: pure arithmetic, no RNG.
   const cargoFuelCap = def.cargoFuelCapacity ?? 0;
   if (cargoFuelCap > 0) {
@@ -1300,7 +1301,8 @@ const cancelAirlineRouteSpec: CommandSpec = {
 };
 
 // ---------------------------------------------------------------------------
-// Civilian sea trade (Half A, 2026-10-01): harbor-to-harbor routes.
+// Civilian sea trade (Half A, 2026-10-01; naval-building model,
+// 2026-10-01): dock-to-dock routes — the no-blur rule.
 // ---------------------------------------------------------------------------
 
 // The sea-trade constants (SEA_ROUTE_SETUP_COST), the voyage-income
@@ -1316,7 +1318,7 @@ import { SEA_ROUTE_SETUP_COST, isSeaTradeShip } from './seaTrade';
 // leaf move (the market.ts precedent — economy's public API is unchanged).
 export { SEA_ROUTE_SETUP_COST };
 
-/** A sea-route endpoint must be the owner's completed civilian port. */
+/** A sea-route endpoint must be the owner's completed trade dock. */
 function seaRouteEndpointProblem(
   world: World,
   owner: number,
@@ -1327,12 +1329,14 @@ function seaRouteEndpointProblem(
   if (!b) return `establishSeaRoute: unknown ${which} building #${id}`;
   if (b.owner !== owner) return `establishSeaRoute: ${which} building #${id} is not yours`;
   if (b.progress < 1) return `establishSeaRoute: ${which} building #${id} is not completed`;
-  // The airline rule, port-side: civilian ports anchor trade routes;
-  // the military navalBase is rejected loudly (military airbases can't
-  // take airline routes either).
-  const type = BUILDING_DEFS[b.kind].portType;
-  if (type !== 'civilian') {
-    return `establishSeaRoute: ${which} building #${id} is not a civilian port`;
+  // The no-blur rule (naval-building model, 2026-10-01): trade routes
+  // anchor at civilian DOCKS only — the shipyard builds ships, it
+  // doesn't trade; the military navalBase is barred from civilian
+  // routes (the airline rule, port-side). Grandfathered: routes store
+  // building ids and nothing re-validates an established route, so old
+  // harbor-anchored saves keep sailing.
+  if (BUILDING_DEFS[b.kind].tradeDock !== true) {
+    return `establishSeaRoute: ${which} building #${id} is not a trade dock (sea routes anchor at Commercial Docks, Container Port, or Fishing Harbor)`;
   }
   return null;
 }
@@ -1350,7 +1354,7 @@ const establishSeaRouteSpec: CommandSpec = {
     if (from === null || to === null) {
       return 'establishSeaRoute: from/to must be building ids';
     }
-    if (from === to) return 'establishSeaRoute: from and to must be different harbors';
+    if (from === to) return 'establishSeaRoute: from and to must be different docks';
     const policy = cmd.payload['policy'];
     if (typeof policy !== 'string' || !SEA_ROUTE_POLICIES.includes(policy as SeaRoutePolicy)) {
       return `establishSeaRoute: unknown policy ${String(policy)}`;
@@ -1714,7 +1718,8 @@ export function registerEconomyCommands(queue: CommandQueue): void {
   // Grand-expansion Phase 5 (S5, 2026-09-30): civilian airline routes.
   queue.register('establishAirlineRoute', establishAirlineRouteSpec);
   queue.register('cancelAirlineRoute', cancelAirlineRouteSpec);
-  // Civilian sea trade (Half A, 2026-10-01): harbor-to-harbor routes.
+  // Civilian sea trade (Half A, 2026-10-01; naval-building model,
+// 2026-10-01): dock-to-dock routes — the no-blur rule.
   queue.register('establishSeaRoute', establishSeaRouteSpec);
   queue.register('cancelSeaRoute', cancelSeaRouteSpec);
   queue.register('assignSeaRoute', assignSeaRouteSpec);

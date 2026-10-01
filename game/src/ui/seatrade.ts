@@ -22,13 +22,14 @@
  * that reads the sim's sea-trade fields defensively (every read `??` /
  * optional-chained, so a world without the Half-A fields yields an
  * empty view instead of a crash) and never writes sim state. The HUD
- * sea-trade panel (Management → Trade), the harbor/ship detail
+ * sea-trade panel (Management → Trade), the dock/ship detail
  * panels, and the sea-route click resolver all read through this
  * module — never the sim records directly.
  *
  * Sim surface used (read-only):
- * - `BuildingDef.portType` ('civilian' anchors sea routes; the
- *   military navalBase cannot).
+ * - `BuildingDef.tradeDock` (naval-building model, 2026-10-01: the
+ *   civilian docks anchor sea routes — the shipyard builds ships, the
+ *   docks trade; the military navalBase cannot take trade routes).
  * - `BuildingRecord`: `kind`, `owner`, `progress`, `operational`,
  *   `fuelStock`.
  * - `UnitRecord`: `seaRouteId`, `seaRouteLeg`, `cargoFuel`,
@@ -42,7 +43,7 @@
  * `registerEconomyCommands` validates/applies them):
  * - `establishSeaRoute`: payload `{ owner, from, to, policy }`
  *   (building ids + a SeaRoutePolicy) — both endpoints must be the
- *   owner's completed civilian ports; 500 funds setup.
+ *   owner's completed trade docks; 500 funds setup.
  * - `cancelSeaRoute`: payload `{ owner, id }` (route id).
  * - `assignSeaRoute`: payload `{ owner, unitId, routeId }` (routeId 0
  *   = unassign).
@@ -62,15 +63,17 @@ export { SEA_ROUTE_SETUP_COST };
 export { isSeaTradeShip };
 
 /**
- * Whether a building can anchor a sea route: completed, and a
- * civilian port (the military navalBase can't take trade routes —
- * the airline rule, port-side). The sim's `establishSeaRoute`
- * validation is authoritative; this is the UI's pre-check for
- * enabling the "New sea route…" button and the click resolver.
+ * Whether a building can anchor a sea route: completed, and a trade
+ * dock (naval-building model, 2026-10-01 — the no-blur rule: the
+ * civilian shipyard builds ships and never trades, and the military
+ * navalBase can't take civilian trade routes). The sim's
+ * `establishSeaRoute` validation is authoritative; this is the UI's
+ * pre-check for enabling the "New sea route…" button and the click
+ * resolver.
  */
 export function isSeaTradeHarbor(b: BuildingRecord): boolean {
   if (b.progress < 1) return false;
-  return BUILDING_DEFS[b.kind]?.portType === 'civilian';
+  return BUILDING_DEFS[b.kind]?.tradeDock === true;
 }
 
 /** The owner's sea routes, in establishment order. */

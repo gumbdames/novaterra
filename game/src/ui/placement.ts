@@ -192,7 +192,7 @@ export function resolveAirlineClick(
 }
 
 /**
- * What a sea-trade-tool click means: an armed first or second harbor
+ * What a sea-trade-tool click means: an armed first or second dock
  * (the controller remembers both building ids — the second click does
  * NOT emit the order; the Trade panel's cargo-policy picker does), or
  * a hint to toast. Nothing fails silently. The airline tool's mirror
@@ -206,11 +206,11 @@ export type SeaTradeClickResolution =
 
 /**
  * Resolve a sea-trade-tool click. The gesture is two clicks on the
- * owner's completed civilian ports (the sim's establishSeaRoute
+ * owner's completed trade docks (the sim's establishSeaRoute
  * validation is authoritative — the resolver mirrors it: owned,
- * completed, civilian port). The first click arms the first harbor;
- * the second arms the pair (the panel then shows the policy picker).
- * Clicking the armed harbor again disarms the tool. `target` is the
+ * completed, trade dock). The first click arms the first dock; the
+ * second arms the pair (the panel then shows the policy picker).
+ * Clicking the armed dock again disarms the tool. `target` is the
  * controller's picked building (null when the click missed every
  * building).
  */
@@ -233,7 +233,7 @@ export function resolveSeaTradeClick(
     return { kind: 'armFirst', id: target.id };
   }
   if (target.id === fromId) {
-    // Re-clicking the armed harbor disarms the tool (a fresh "New sea
+    // Re-clicking the armed dock disarms the tool (a fresh "New sea
     // route…" click re-arms it).
     return { kind: 'disarm' };
   }

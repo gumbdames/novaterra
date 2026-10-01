@@ -455,8 +455,9 @@ describe('military def classification (roster pinning)', () => {
     // Grand-expansion Phase 8 (civilian, workstream E, 2026-09-30): 89 +
     // the 10 new civilian kinds — all military: false, so the military
     // count stays 21.
-    // Civilian sea trade (Half A, 2026-10-01): + the commercialHarbor —
-    // civilian too, so the military count still stays 21.
+    // Civilian sea trade (Half A, 2026-10-01; renamed the Civilian
+    // Shipyard, 2026-10-01): + the commercialHarbor kind — civilian
+    // too, so the military count still stays 21.
     expect(kinds).toHaveLength(100);
     const military = kinds.filter(
       (k) => BUILDING_DEFS[k as keyof typeof BUILDING_DEFS].military === true,

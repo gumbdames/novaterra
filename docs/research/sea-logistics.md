@@ -75,6 +75,12 @@ is deliberately untouched here.
 
 ### 2.1 The harbor, not the port, builds ships
 
+> **Superseded 2026-10-01 by the naval-building model (§10).** The
+> "harbor" below is the building now named **Civilian Shipyard**; the
+> trade role moved to the three **trade docks**. The reasoning in this
+> section still explains why production and trade were split — the
+> split just got stricter (one yard, three docks, zero overlap).
+
 New building **`commercialHarbor`** (`sim/city.ts`): the civilian
 counterpart to the military `shipyard`. Civilian (no `military`
 flag — peaceful-buildable), `portType: 'civilian'` (coastal rule
@@ -341,13 +347,19 @@ Numbers chosen:
 ## 8. Test summary
 
 - `game/tests/sim.seatrade.test.ts` (new): establishment validation
-  (ownership/completion/civilian-port/dedup/policy/funds),
-  cancellation, assignment gating (civilian cargo hulls only),
-  voyage income math, fuel load/unload against harbor stocks,
-  materials export pricing, dead-route cleanup + assignment clearing,
-  peaceful-mode harbor build + ship training, digest sensitivity,
-  snapshot round-trip incl. legacy-decode defaults, determinism
-  (two runs, identical digests).
+  (ownership/completion/trade-dock/no-blur/dedup/policy/funds),
+  shipyard-endpoint rejection, pre-flag shipyard-route
+  grandfathering, cancellation, assignment gating (civilian cargo
+  hulls only), voyage income math, fuel load/unload against dock
+  stocks, materials export pricing, dead-route cleanup + assignment
+  clearing, peaceful-mode shipyard build + ship training, digest
+  sensitivity, snapshot round-trip incl. legacy-decode defaults,
+  determinism (two runs, identical digests).
+- `game/tests/sim.seatrade-ai-soak.test.ts`: peaceful AI builds one
+  civilian shipyard + two trade docks, establishes a funds route
+  dock↔dock, spawns ≥2 freighters at the shipyard's water cell and
+  assigns them; zero rejected sea-trade orders; digest-identical
+  across runs.
 - `game/tests/ui.seatrade.test.ts` (new): the `ui/seatrade.ts`
   contract (endpoint detection, route views, income estimate,
   assignment views) + AD11 branch registration.
@@ -364,3 +376,58 @@ Numbers chosen:
   obsolete the `commercialPort` 1.5/s harvest; if so, trim
   `SEA_TRADE_VOYAGE_PER_UNIT` to 0.2.
 - Watch harbor fuel contention (§6.2) once barges are common.
+
+## 10. Naval-building model (2026-10-01)
+
+User directive, recorded in `MEMORY.md` 2026-10-01: *civilian
+shipyards build and repair civilian ships while civilian ship docks
+handle the actual shipping; military shipyards build and repair
+military ships while military ship docks/bases handle the actual
+shipping; marinas are civilian buildings that exist only for fun,
+happiness, and increasing property values.*
+
+The key discovery: the model already existed in code — only the
+names lied. `commercialHarbor` (key unchanged, old saves load) was
+already the civilian shipyard; `commercialPort` / `containerPort` /
+`fishingHarbor` were already the civilian docks. Marinas were already
+amenity-only. The refactor is therefore names + one flag, not
+mechanics:
+
+- **Renames are user-facing strings only** (`ui/strings.ts`,
+  English-only via `loc()`): `commercialHarbor` → **Civilian
+  Shipyard**, `commercialPort` → **Commercial Docks**. Building KEYS
+  never change (save compatibility).
+- **The no-blur rule**: new optional `BuildingDef.tradeDock` flag
+  (`sim/city.ts`). `establishSeaRoute` rejects any endpoint without
+  `tradeDock === true` loudly ("not a trade dock — sea routes anchor
+  at Commercial Docks, Container Port, or Fishing Harbor"). A shipyard
+  is a production building; it never trades.
+- **Grandfathering**: the gate lives ONLY in
+  `establishSeaRoute`'s validation. Routes store building ids and
+  nothing re-validates endpoint kinds on load or per tick, so
+  pre-flag shipyard-anchored routes from old saves keep sailing until
+  cancelled or an endpoint dies (pinned by test).
+- **Fuel rationale**: ships fuel at the yard that built them — the
+  yard keeps `reloadPoint` + 300 fuel storage (the existing
+  `sim/shipyardRepair.ts` drives repair there too; untouched). The
+  docks carry the trade-facing fuel: Commercial Docks have a 200
+  depot + `reloadPoint` (the fuel policy loads/unloads at docks).
+- **AI** (`thinkPeacefulSeaTrade`): Phase 1 builds ONE
+  `commercialHarbor` (freighters/barges require it) + up to 2
+  `commercialPort` docks; Phase 2 establishes one funds route
+  dock↔dock; Phase 3 spawns freighters at the completed shipyard's
+  water cell (`peacefulHarborWaterCell`) and assigns them.
+- **UI**: the ship detail panel shows an "Under repair" badge via
+  `isShipUnderRepair(world, unit)` from `sim/shipyardRepair.ts`
+  (digest `ur:` segment, AD11); the Trade panel and building detail
+  sections now read "docks" throughout.
+- **Out of civilian scope, left for the military half**: the
+  military `shipyard` gaining repair + the new `navalBase`-as-military-
+  docks; `commercialPort`'s `countsAs: ['shipyard']` (still lets a
+  civilian dock satisfy the military shipyard training gate) was
+  deliberately not touched — changing it alters military unit
+  availability.
+
+§2.1's rejection of `commercialPort countsAs commercialHarbor`
+stands; §2.7's dead end ("Military-AI virtual sea routes") is
+unaffected.
