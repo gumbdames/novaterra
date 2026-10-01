@@ -30,7 +30,7 @@
 
 | Unit | Cost | Stats | Gate | Notes |
 |---|---|---|---|---|
-| Spy | 400 funds + 40 mats | hp 60, speed 10, sight 30, unarmed | Information age + completed intelHQ | **stealth** (the only stealthed unit in the 68-unit roster) |
+| Spy | 400 funds + 40 mats | hp 60, speed 10, sight 30, unarmed | Information age + completed intelHQ | **stealth** (spy + spectre are the two stealthed units in the 96-unit roster — R1 final-review 2026-10-01, user decision) |
 | Recon Team | 150 funds + 15 mats | hp 100, speed 14, sight 44, dmg 8/rng 12 | Connectivity age + barracks | overt recon — always visible, like everything else |
 
 **Upgrades** (researched at the lab):
@@ -162,7 +162,8 @@ world seed, no `Math.random()`.
 ## 5. Tests
 
 `game/tests/sim.intel-roster.test.ts` — 21 tests: def validity
-(including "the spy is the ONLY stealthed unit"), the intelHQ-trains-
+(including "spy + spectre are the two stealthed units" — R1
+final-review, user decision 2026-10-01), the intelHQ-trains-
 spy gate (rejects without a completed intelHQ, with the building's
 name in the reason), accrual math over 100 sim-seconds, sabotage
 suspends accrual and recovers, upgrade multipliers, detection

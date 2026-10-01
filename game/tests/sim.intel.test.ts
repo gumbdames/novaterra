@@ -56,6 +56,7 @@ import {
   pickStealableTech,
   buildingCenterWorld,
   isSpyUnit,
+  isStealthAsset,
   INFILTRATE_DURATION_TICKS,
   INTEL_ADJACENCY,
   INFILTRATE_ABANDON_RANGE,
@@ -608,6 +609,33 @@ describe('stealth hooks', () => {
     // Burn the spy: now it is the nearest valid target.
     spy.spottedUntil = 99999;
     expect(acquireTarget(ctx.world, tank, def)?.id).toBe(spy.id);
+  });
+
+  it('acquireTarget skips undetected spectres, takes them when burned', () => {
+    const ctx = setup();
+    const tank = spawnUnit(ctx.world, 'tank', 0, 0, 0); // range 19
+    const spectre = spawnUnit(ctx.world, 'spectre', 1, 10, 0); // closer, but hidden
+    const grunt = spawnUnit(ctx.world, 'rifles', 1, 18, 0); // farther, visible
+    const def = UNIT_DEFS[tank.kind as keyof typeof UNIT_DEFS];
+    expect(acquireTarget(ctx.world, tank, def)?.id).toBe(grunt.id);
+    // Burn the spectre: now it is the nearest valid target.
+    spectre.spottedUntil = 99999;
+    expect(acquireTarget(ctx.world, tank, def)?.id).toBe(spectre.id);
+  });
+
+  it('stealth is the detection contract, not a spy role (R1 spectre)', () => {
+    const ctx = setup();
+    const spectre = spawnUnit(ctx.world, 'spectre', 1, 10, 0);
+    const spy = spawnUnit(ctx.world, 'spy', 1, 12, 0);
+    const grunt = spawnUnit(ctx.world, 'rifles', 1, 14, 0);
+    // Both units are stealth assets (invisible until detected), but
+    // only the spy kind may run covert ops — the spectre is a raider.
+    expect(isStealthAsset(spectre)).toBe(true);
+    expect(isStealthAsset(spy)).toBe(true);
+    expect(isStealthAsset(grunt)).toBe(false);
+    expect(isSpyUnit(spectre)).toBe(false);
+    expect(isSpyUnit(spy)).toBe(true);
+    expect(isSpyUnit(grunt)).toBe(false);
   });
 
   it('attackUnit rejects undetected stealth targets', () => {

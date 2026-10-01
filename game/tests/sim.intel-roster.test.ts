@@ -253,12 +253,15 @@ describe('intel roster defs (§3.8/S6)', () => {
       trainFunds: 150,
       trainMaterials: 15,
     });
-    // The spy is the ONLY stealthed unit — the stealth marker is the
-    // contract the core's isDetected hook consumes.
+    // R1 final-review (user decision 2026-10-01): stealth is the
+    // detection contract consumed by isDetected — set on the spy (the
+    // covert-ops role) AND the spectre (the "stealthy raider" the
+    // player docs always described). The role stays spy-only: see
+    // isSpyUnit in sim/intel.ts (kind-gated, never def-gated).
     const stealthed = (Object.keys(UNIT_DEFS) as UnitKind[]).filter(
       (k) => UNIT_DEFS[k].stealth === true,
     );
-    expect(stealthed).toEqual(['spy']);
+    expect([...stealthed].sort()).toEqual(['spectre', 'spy']);
   });
 
   it('registers the two intel upgrades with building prerequisites', () => {

@@ -314,18 +314,31 @@ function virtualDetectorEntries(
 }
 
 /**
- * True when the unit is a spy — the only stealthed kind in the §3.8
- * roster (`UnitDef.stealth === true`, set on `spy` only). The
- * kind-name check is the pre-roster fallback the contract names.
+ * True when the unit is a spy — the covert-ops ROLE (infiltrate,
+ * sabotage, stealTech, the AI's spy doctrine, the intel UI's spy
+ * lists). Kind-gated, never def-gated: stealthed non-spy kinds are
+ * invisible but cannot run covert ops.
+ *
+ * R1 final-review (user decision 2026-10-01): the spectre def gained
+ * `stealth: true` (the docs always called it a "stealthy raider" and
+ * the user ruled the docs right). The old def-gated check here would
+ * have promoted spectres to full spies — infiltrating buildings,
+ * stealing tech, and filling the AI's spy quota instead of raiding —
+ * so the role check is now kind-only and the detection contract moved
+ * to `isStealthAsset` below.
  */
 export function isSpyUnit(u: UnitRecord): boolean {
-  const def = UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS];
-  return def?.stealth === true || u.kind === 'spy';
+  return u.kind === 'spy';
 }
 
-/** True when the unit is a stealth asset (spies, and later stealth kinds). */
+/**
+ * True when the unit is a stealth asset for the DETECTION contract
+ * (`isDetected` below): spies, plus any def-stealthed kind (spectre —
+ * see `isSpyUnit`). Invisibility only; covert ops stay spy-only.
+ */
 export function isStealthAsset(u: UnitRecord): boolean {
-  return isSpyUnit(u);
+  const def = UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS];
+  return def?.stealth === true || u.kind === 'spy';
 }
 
 /**

@@ -24,7 +24,10 @@
  *    nearest enemy inside their weapon range (opportunistic fire — they
  *    hold position, they don't chase). The `attackUnit` command gives an
  *    explicit target that the unit chases until it dies or a new order
- *    arrives.
+ *    arrives. Acquisition runs on a per-tick dense grid (R1
+ *    final-review H1): O(n) rebuild per tick, O(nearby) per query —
+ *    results are exactly the legacy full scan's (order-independent
+ *    nearest-with-id-tiebreak, same filters).
  *  - Damage with readable counters (see UNIT_DEFS in `units.ts`): the
  *    per-kind vsLight/vsMedium/vsHeavy/vsAir multipliers make tanks beat
  *    rifles, artillery beat tanks at range, AA beat anything that flies,
@@ -51,6 +54,7 @@ import { releaseUnitReservation } from './commands';
 import {
   findUnit,
   clearUnitOrder,
+  removeUnitFromIndex,
   UNIT_DEFS,
   HQ_AURA_DAMAGE_BONUS,
   supplyDamageFactor,
@@ -205,31 +209,141 @@ export function damageMultiplier(
 }
 
 /**
+ * Per-tick dense grid of live unit positions for target acquisition
+ * (R1 final-review H1, 2026-10-01). `acquireTarget` used to scan ALL
+ * units per caller — O(n²) per tick, already superlinear at 1000 units
+ * (3.64 ms) and a plausible tick-budget breach at 2000.
+ *
+ * The grid is combat-specific (not the generic `SpatialHash`): cells
+ * hold `UnitRecord`s directly under integer keys, and the query
+ * reduces inline with no per-query allocation. A first version used
+ * the generic hash, but profiling showed it was ~7x SLOWER than the
+ * legacy scan in dense battles (200 rifles packed 3 apart: 0.81ms vs
+ * 0.12ms per sweep) — the per-candidate Map lookups, string cell
+ * keys, and result-array allocation dwarfed the legacy's tight array
+ * loop when most units are within range of each other. The dense grid
+ * keeps the sublinear scaling (query cost independent of n at
+ * constant density) with a constant factor at parity with the scan.
+ *
+ * Cell size 64: the longest effective weapon range in the roster is
+ * 62 (52 base + Cruise Missiles), so a query spans at most 3×3 cells.
+ * The grid is rebuilt once per tick (O(n) inserts); each query then
+ * touches only the cells intersecting the weapon-range disc. Cached
+ * per (world, tick) like `auraSources` above — positions are final
+ * for the tick once movement has run, and the combat pass never
+ * teleports units, so the grid stays valid for the whole pass.
+ * Direct `acquireTarget` callers outside a tick (tests) get a grid
+ * built on first use.
+ *
+ * WASM seam (docs/research/sim-architecture.md §7.3): if combat ever
+ * needs to move off the main thread, this grid build + the radius
+ * query are the natural compiled boundary.
+ */
+const TARGET_CELL_SIZE = 64;
+/** Integer cell key: world coords keep |cx|,|cz| << 32768. */
+function targetCellKey(cx: number, cz: number): number {
+  return (cx + 32768) * 65536 + (cz + 32768);
+}
+let targetGridWorld: World | null = null;
+let targetGridTick = -1;
+let targetGridCells: Map<number, UnitRecord[]> | null = null;
+let targetGridUnits: UnitRecord[] | null = null;
+let targetGridLength = -1;
+let targetGridLast: UnitRecord | undefined;
+
+function targetGridFor(world: World): Map<number, UnitRecord[]> {
+  // The unit set is fixed during the combat pass in production
+  // (spawns apply at tick starts, kills filter via hp), but tests
+  // mutate world.units directly mid-tick — the same lazy validation
+  // the findUnit index uses (array identity, length, last element),
+  // so a stale grid can never hide a live unit.
+  const units = world.units;
+  const last = units.length > 0 ? units[units.length - 1] : undefined;
+  if (
+    targetGridWorld === world &&
+    targetGridTick === world.tick &&
+    targetGridCells !== null &&
+    targetGridUnits === units &&
+    targetGridLength === units.length &&
+    targetGridLast === last
+  ) {
+    return targetGridCells;
+  }
+  targetGridWorld = world;
+  targetGridTick = world.tick;
+  targetGridUnits = units;
+  targetGridLength = units.length;
+  targetGridLast = last;
+  const cells = new Map<number, UnitRecord[]>();
+  for (const u of units) {
+    if (u.hp <= 0) continue;
+    const key = targetCellKey(
+      Math.floor(u.x / TARGET_CELL_SIZE),
+      Math.floor(u.z / TARGET_CELL_SIZE),
+    );
+    let cell = cells.get(key);
+    if (cell === undefined) {
+      cell = [];
+      cells.set(key, cell);
+    }
+    cell.push(u);
+  }
+  targetGridCells = cells;
+  return cells;
+}
+
+/**
  * Nearest enemy this unit could hit, inside weapon range and outside
  * min range. Range runs through the upgrade hook (Cruise Missiles).
  * Ties break by lower id. Returns undefined when unarmed.
+ *
+ * The candidate set comes from the per-tick dense grid
+ * (`targetGridFor`): units in the cells intersecting the range disc.
+ * Candidates are visited in cell order (not id order), but the
+ * nearest-with-id-tiebreak below is an order-independent argmin, so
+ * it reproduces the legacy full scan's result exactly. Every legacy
+ * filter (sheltered, stealth/detection, domain, exact range via
+ * Math.hypot, min range) is applied per candidate, unchanged — the
+ * squared-distance pre-check only skips candidates Math.hypot would
+ * also reject.
  */
 export function acquireTarget(world: World, unit: UnitRecord, def: UnitDef): UnitRecord | undefined {
   if (def.damage <= 0 || def.targets === 'none') return undefined;
   const range = effectiveRange(world, unit.owner, def);
+  const r2 = range * range;
+  const cells = targetGridFor(world);
+  const cs = TARGET_CELL_SIZE;
+  const cx0 = Math.floor((unit.x - range) / cs);
+  const cx1 = Math.floor((unit.x + range) / cs);
+  const cz0 = Math.floor((unit.z - range) / cs);
+  const cz1 = Math.floor((unit.z + range) / cs);
   let best: UnitRecord | undefined;
   let bestDist = Infinity;
-  for (const other of world.units) {
-    if (other.id === unit.id || other.owner === unit.owner || other.hp <= 0) continue;
-    // Grand-expansion Phase 5 (S4): sheltered aircraft (parked in a
-    // hangar or embarked on a carrier) are not valid targets — they
-    // are inside the shelter, not on the battlespace.
-    if (isSheltered(other)) continue;
-    // Grand-expansion Phase 6 (S6 intel): stealthed units (spies) are
-    // invisible unless detected — the shooter cannot acquire what its
-    // side cannot see (the `isDetected` stealth contract in intel.ts).
-    if (!isDetected(other, unit.owner, world)) continue;
-    if (!canTarget(def, other)) continue;
-    const d = Math.hypot(other.x - unit.x, other.z - unit.z);
-    if (d > range || d < def.minRange) continue;
-    if (d < bestDist - 1e-9 || (Math.abs(d - bestDist) < 1e-9 && other.id < (best?.id ?? Infinity))) {
-      best = other;
-      bestDist = d;
+  for (let cx = cx0; cx <= cx1; cx++) {
+    for (let cz = cz0; cz <= cz1; cz++) {
+      const cell = cells.get(targetCellKey(cx, cz));
+      if (cell === undefined) continue;
+      for (const other of cell) {
+        if (other.id === unit.id || other.owner === unit.owner || other.hp <= 0) continue;
+        const dx = other.x - unit.x;
+        const dz = other.z - unit.z;
+        if (dx * dx + dz * dz > r2) continue;
+        // Grand-expansion Phase 5 (S4): sheltered aircraft (parked in a
+        // hangar or embarked on a carrier) are not valid targets — they
+        // are inside the shelter, not on the battlespace.
+        if (isSheltered(other)) continue;
+        // Grand-expansion Phase 6 (S6 intel): stealthed units (spies) are
+        // invisible unless detected — the shooter cannot acquire what its
+        // side cannot see (the `isDetected` stealth contract in intel.ts).
+        if (!isDetected(other, unit.owner, world)) continue;
+        if (!canTarget(def, other)) continue;
+        const d = Math.hypot(dx, dz);
+        if (d > range || d < def.minRange) continue;
+        if (d < bestDist - 1e-9 || (Math.abs(d - bestDist) < 1e-9 && other.id < (best?.id ?? Infinity))) {
+          best = other;
+          bestDist = d;
+        }
+      }
     }
   }
   return best;
@@ -272,8 +386,34 @@ function fireWeapon(world: World, attacker: UnitRecord, def: UnitDef, target: Un
 }
 
 /**
+ * Position of `unit` in `world.units` without a linear scan (R1
+ * final-review H1, 2026-10-01). `world.units` is spawn/id order — ids
+ * are assigned ascending by `spawnUnit`, never reused, and every
+ * removal preserves order (movement.ts documents the same invariant)
+ * — so the position is a binary search, O(log n). Hand-built fixtures
+ * with out-of-order ids (tests) fall back to the linear scan rather
+ * than misbehave. Removal itself stays an order-preserving splice:
+ * swap-remove would be O(1) but would silently change iteration order
+ * for movement/render/AI loops that rely on spawn order.
+ */
+function unitArrayIndex(world: World, unit: UnitRecord): number {
+  const units = world.units;
+  let lo = 0;
+  let hi = units.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const m = units[mid];
+    if (m === undefined) return units.indexOf(unit);
+    if (m.id === unit.id) return m === unit ? mid : units.indexOf(unit);
+    if (m.id < unit.id) lo = mid + 1;
+    else hi = mid - 1;
+  }
+  return units.indexOf(unit);
+}
+
+/**
  * Remove a dead unit: drop it from `world.units`, cancel its pathfinding
- * requests and field membership, and clear anyone targeting it. Ids are
+ * requests and field membership, and clear everyone targeting it. Ids are
  * never reused, so no id fix-up is needed.
  */
 export function killUnit(world: World, unit: UnitRecord): void {
@@ -298,8 +438,9 @@ export function killUnit(world: World, unit: UnitRecord): void {
     const wing = world.units.filter((u) => (u.embarkedOn ?? 0) === unit.id);
     for (const w of wing) killUnit(world, w);
   }
-  const idx = world.units.indexOf(unit);
+  const idx = unitArrayIndex(world, unit);
   if (idx >= 0) world.units.splice(idx, 1);
+  removeUnitFromIndex(world, unit.id);
   // Phase 3 logistics: a dead unit's in-flight depot reservation returns
   // to the depot's available pool (release is idempotent).
   releaseUnitReservation(world, unit);

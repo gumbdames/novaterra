@@ -60,12 +60,22 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   attack path and the only meltdown trigger).
 - `economy.ts` — the 1 Hz economy system (`createEconomySystem`),
   fixed-rate market (`marketTrade`), tax collection. Pure w.r.t.
-  rendering. Phase 4: `runTransportEarnings` (on-network civilian
+  rendering. Market PRICE data lives in the leaf module `market.ts`
+  (below) — economy.ts re-exports it unchanged. Phase 4: `runTransportEarnings` (on-network civilian
   transports pay `transitEarnings`), `runRidershipIncome` (completed,
   operational transit stops pay `ridershipIncome`), `recomputeOccupancy`
   (per-building residents/workers; runs after construction + utility
   allocation, before the population recount which sums residents —
   `generateManpower` stays last of the population chain).
+- `market.ts` — (R1 final-review, 2026-10-01) the fixed-rate market
+  price list (`MarketResource`, `MARKET_PRICES`, `MARKET_SPREAD`,
+  `marketBuyCost`, `marketSellValue`). A LEAF module: no sim imports,
+  pure data + pure functions — it exists so non-economy consumers
+  (ai.ts's virtual economy) can price materials without importing
+  economy.ts, which reads city.ts at module scope (SPEC_ZONE over
+  ZoneType); an ai→economy value import completes the
+  ai→economy→city→world→ai evaluation cycle that breaks module init.
+  economy.ts re-exports everything here; its public API is unchanged.
 - `utilityNetworks.ts` — (grand-expansion Phase 2) the derived utility
   topology: integer-BFS flood fill over conductors (roads ∪ power
   lines/pipes ∪ substation/pumping-station footprints) per player per
@@ -182,7 +192,9 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 - `combat.ts` — deterministic combat resolution: `canTarget` (domain
   checks), `damageMultiplier` (armor counters, vsAir, command auras,
   upgrade hooks), nearest-target acquisition with stable-id tiebreaks
-  (upgrade-aware weapon range), weapon firing with
+  (upgrade-aware weapon range) on a per-tick dense grid (R1
+  final-review H1, 2026-10-01: O(n) rebuild per tick, O(nearby) per
+  query — results are exactly the legacy full scan's), weapon firing with
   cooldowns, opportunistic fire, explicit `attackUnit` chase orders, death
   cleanup. Command auras: HQ (+25%, radius 20, all attacker domains) and
   Command Ship (+25%, radius 24, sea attackers only) — definition-driven,
@@ -226,8 +238,16 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   time (the Phase 3 superweapon-facility precedent); `hasProductionBuilding`
   (city.ts) covers real + virtual buildings for units and upgrade prereqs.
   Completed virtual buildings yield their def.output (the lab's research
-  income is what funds AI research); upkeep is waived — the AI's abstract
-  economy has no tax loop to pay it from. Intel play (grand-expansion
+  income is what funds AI research) AND their def.harvest (R1
+  final-review C2, 2026-10-01: the marshal's civilAirport landing fees
+  are harvest, not output), plus a modest virtual tax stipend scaled by
+  difficulty (taxBasePerSec × DEFAULT_TAX_RATE × per-difficulty factor —
+  the AI owns no physical buildings, so every economy.ts funds path is
+  closed to it) and a materials leg that buys materials on the fixed
+  market rate (the industry age's 2500-material cost is unreachable on
+  the warFactory trickle alone); upkeep is waived — the AI's abstract
+  economy has no tax loop to pay it from. Peaceful AI holds no virtual
+  buildings, so the stipend is a no-op for it. Intel play (grand-expansion
   Phase 7, S6 intel, workstream 3, 2026-09-30): commander+ virtually
   constructs intel buildings (listeningPost → intelHQ → signalsStation;
   marshal adds satelliteUplink) via `thinkIntelConstruction` — gated on
@@ -247,7 +267,11 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   economy line. Per-think spend ledger (`ThinkLedger`, WeakMap by AI):
   every fund/intel-asset spend is reserved before enqueue, so a think's
   command batch never goes stale at apply (stale commands throw by
-  design). Covers research+production+spy+age double-spends; intel
+  design). Covers research+production+spy+age+superweapon-facility
+  double-spends (R1 final-review H2: the facility command deducts at
+  apply, so its cost is reserved before issue — an unreserved
+  same-think spend could otherwise push it stale and crash runTick);
+  intel
   asset costs (sabotage 25 operational, steal 15 surveillance) and
   per-think sabotage/steal target sets prevent cross-spy races.
   `stealTech` apply is idempotent (fizzles if the tech was researched
@@ -305,7 +329,7 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `embarkAircraft`/`moveTo`; `isEmptyWingCarrier` is enforced in BOTH
   attack loops so an empty-wing carrier never chases. `thinkAirlineRoutes`
   and `thinkNavalMines` are documented no-ops (airline income flows
-  through the def.output credit; minelaying needs a player-driven
+  through the def.harvest credit; minelaying needs a player-driven
   field doctrine first) — pinned by digest-unchanged tests. Marshal
   builds `civilAirport` (connectivity+, its landing-fee harvest credits
   through the virtual economy). Exported kind sets: `SUB_KINDS`,

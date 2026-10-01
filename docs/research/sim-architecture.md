@@ -529,6 +529,14 @@ enhancement fallback).
 
 In priority order, if the game ever needs WASM:
 
+0. **Combat target acquisition** (`sim/combat.ts`) — the per-tick
+   dense grid landed in TS (R1 final-review H1, 2026-10-01); the
+   grid build + radius query are the natural compiled boundary, marked
+   with a WASM-seam comment in `targetGridFor`. (A first version used
+   the generic `SpatialHash`; profiling showed its per-candidate
+   overhead was ~7x the legacy scan in dense battles, so combat uses a
+   purpose-built grid with integer keys and inline reduction.) Candidate
+   only if battles ever outgrow the TS grid.
 1. **Pathfinding** (`sim/pathfinding.ts`) — if battles ever scale to hundreds of units pathing at once, a compiled A* would be ~3–5× faster.
 2. **Desirability/migration** (`sim/desirability.ts`, `sim/city.ts`) — the map-wide per-building scans on big cities could move off the main thread into a WASM worker.
 3. **AI think** (`sim/ai/`) — the rival AI's decision pass is the heaviest per-tick CPU cost.

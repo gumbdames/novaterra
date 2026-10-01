@@ -177,6 +177,7 @@ import {
   FOOD_PER_POP_PER_SEC,
   peacefulTreasuryFloor,
   buildingAtCell,
+  DEFAULT_TAX_RATE,
   type BuildingKind,
   type BuildingRecord,
   type HangarClass,
@@ -187,6 +188,14 @@ import type { TerrainData } from './terrain';
 import { isWater } from './terrain';
 import { isAegisReady, isStormReady } from './superweapons';
 import { CommandRejectedError } from './commands';
+// R1 final-review C2 (2026-10-01): the AI's virtual economy converts
+// part of its tax stipend into materials at the fixed market rate —
+// the same buy price a human player pays. Priced from the leaf module
+// sim/market.ts (no sim imports): ai.ts must NOT value-import
+// economy.ts — economy reads city.ts at module scope (SPEC_ZONE over
+// ZoneType), and ai→economy completes the ai→economy→city→world→ai
+// evaluation cycle that breaks module init.
+import { marketBuyCost } from './market';
 
 /** Classic AI difficulty levels. */
 export type AIDifficulty = 'cadet' | 'citizen' | 'commander' | 'general' | 'marshal';
@@ -929,9 +938,12 @@ export const CONSTRUCTION_PRIORITY: Record<AIDifficulty, BuildingKind[]> = {
   citizen: ['barracks', 'warFactory'],
   commander: ['barracks', 'warFactory', 'lab'],
   general: ['barracks', 'warFactory', 'lab'],
-  // Phase 5 (airports + airline): marshal also builds a civil airport —
-  // the AI's static airline income then flows through
-  // creditVirtualEconomy's def.output credit (see thinkAirlineRoutes).
+  // Phase 5 (airports + airline): marshal also builds a civil airport.
+  // R1 final-review C2 (2026-10-01): the old comment here claimed the
+  // airport's income flowed through creditVirtualEconomy's def.output
+  // credit — FALSE. The civilAirport def has no funds output; its
+  // landing fees are def.harvest ({ funds: 1.0 }), which the virtual
+  // economy now credits (see creditVirtualEconomy).
   // The kind is in the BuildingKind union (airport workstream landed);
   // thinkConstruction's unknown-def guard still skips it while
   // BUILDING_DEFS has no entry — no crash, no stall, no behavior
@@ -1296,11 +1308,73 @@ function thinkLogistics(world: World, queue: CommandQueue, ai: AIPlayerState): v
 }
 
 /**
+ * Per-difficulty virtual tax stipend factors (R1 final-review C2,
+ * 2026-10-01). The Classic AI owns no physical buildings, so every
+ * funds-income path in economy.ts is closed to it: runTaxes and
+ * runHarvest iterate physical buildings, trade routes need physical
+ * commercial buildings, kill bounties don't exist. Without a stipend
+ * the age ladder is arithmetically unreachable (industry costs 6000
+ * funds against the 4000 starting-funds lifetime budget — the Phase 9
+ * soak's "marshals reached connectivity; industry never reached").
+ * Cadet keeps 0: it builds nothing and spends nothing, by design.
+ */
+const VIRTUAL_TAX_FACTOR: Record<AIDifficulty, number> = {
+  cadet: 0,
+  citizen: 0.5,
+  commander: 1.0,
+  general: 1.5,
+  marshal: 2.0,
+};
+
+/**
+ * Share of the virtual tax stipend the AI's abstract industry
+ * reinvests as materials each economy tick, at the fixed market buy
+ * price (`marketBuyCost`). Funds alone don't reach industry age (6000
+ * funds + 2500 materials + 100 influence): the warFactory's 0.5
+ * materials/s trickle covers barely a fifth of the lifetime materials
+ * bill, so the virtual economy buys the rest on the market exactly as
+ * a human player would. Deterministic — a pure function of the
+ * completed virtual buildings and the difficulty factor.
+ */
+const VIRTUAL_MATERIALS_REINVEST_SHARE = 0.5;
+
+/**
  * Virtual-building economy: completed virtual buildings yield their
  * def.output rates (per sim-second), credited on the 1 Hz economy
  * cadence — the same tick the economy system runs for real buildings.
  * This is what gives the AI lab research income (and the barracks /
  * warFactory trickles). Upkeep is intentionally waived (see header).
+ *
+ * R1 final-review C2 (2026-10-01) — the AI's real economy path. Two
+ * funds credits close the zero-income gap:
+ *
+ * 1. def.harvest — completed virtual buildings credit their harvest
+ *    rates (per sim-second, mirroring runHarvest's economy-tick
+ *    credit). This is what makes the marshal's civilAirport landing
+ *    fees real (harvest: { funds: 1.0 }).
+ * 2. A modest virtual tax stipend, scaled by difficulty. Each
+ *    completed virtual building pays tax on its def.taxBasePerSec
+ *    exactly like a physical building (runTaxes: rate × taxBasePerSec
+ *    × period), at the fixed 10% DEFAULT_TAX_RATE (the AI runs no tax
+ *    policy) times VIRTUAL_TAX_FACTOR[difficulty]. Formula, per
+ *    economy tick (1 sim-second):
+ *      funds += Σ taxBasePerSec × 0.10 × factor
+ *    e.g. a late-game marshal (≈66 tax base across 9 production
+ *    buildings + intel + depots) × 0.10 × 2.0 ≈ 13 funds/s — enough
+ *    to accumulate toward the industry age over a long soak without
+ *    flooding the early game. The peaceful AI holds no virtual
+ *    buildings, so the stipend is a no-op for it (no cross-mode
+ *    impact).
+ *
+ * Materials leg: half the stipend is reinvested as materials at the
+ * market buy price (VIRTUAL_MATERIALS_REINVEST_SHARE × stipend ÷
+ * marketBuyCost('materials', 1) materials per sim-second) — the
+ * industry age's 2500-material cost is unreachable on the warFactory
+ * trickle alone. Influence still comes from the mediaCenter's
+ * def.output (0.8/s → 100 influence in ~125 s), unchanged.
+ *
+ * Deterministic: no RNG, owner-ordered iteration, pure function of
+ * (completed virtual buildings, difficulty).
  */
 function creditVirtualEconomy(world: World): void {
   if (world.tick % 30 !== 0) return;
@@ -1308,11 +1382,27 @@ function creditVirtualEconomy(world: World): void {
     const player = getPlayer(world.city, ai.owner);
     if (!player) continue;
     const stocks = player as unknown as Record<string, number>;
+    let taxBase = 0;
     for (const kind of ai.virtualBuildings.completed) {
       const def = BUILDING_DEFS[kind];
       for (const [res, rate] of Object.entries(def.output)) {
         stocks[res] = (stocks[res] ?? 0) + (rate ?? 0);
       }
+      // R1 C2: harvest income (the marshal's civilAirport landing
+      // fees) — mirrors runHarvest's per-economy-tick credit.
+      if (def.harvest) {
+        for (const [res, rate] of Object.entries(def.harvest)) {
+          if ((rate ?? 0) > 0) stocks[res] = (stocks[res] ?? 0) + (rate ?? 0);
+        }
+      }
+      taxBase += def.taxBasePerSec ?? 0;
+    }
+    const factor = VIRTUAL_TAX_FACTOR[ai.difficulty] ?? 0;
+    if (factor > 0 && taxBase > 0) {
+      const stipend = taxBase * DEFAULT_TAX_RATE * factor;
+      player.funds += stipend;
+      // Materials leg: buy on the fixed-rate market, like a player.
+      player.materials += (stipend * VIRTUAL_MATERIALS_REINVEST_SHARE) / marketBuyCost('materials', 1);
     }
   }
 }
@@ -2283,9 +2373,11 @@ export function isEmptyWingCarrier(world: World, u: UnitRecord): boolean {
  *   thinkConstruction's unknown-def guard skips it until the airport
  *   workstream's defs land (no crash, no stall).
  * - Income: static airline income flows through creditVirtualEconomy's
- *   def.output credit — the S5 civilian-income pattern (civil buildings
- *   pay output, like the fishingBoat's runHarvest precedent). No
- *   separate route ledger exists in 0.1 Alpha.
+ *   def.harvest credit — the S5 civilian-income pattern (civil
+ *   buildings pay harvest, like the fishingBoat's runHarvest
+ *   precedent; R1 final-review C2 fixed the old comment claiming
+ *   def.output covered it — the civilAirport def carries no funds
+ *   output). No separate route ledger exists in 0.1 Alpha.
  * - Schedules and pricing are the "later" half of PLAN §3.5 and belong
  *   to the future civilian trader rival (PLAN §6: "transport/airline/
  *   peaceful: civilian AI trader rival is a later feature"), not to
@@ -2839,11 +2931,59 @@ function thinkMarshal(
 }
 
 /**
+ * Facility-building defs for the ledger guard below. Costs mirror the
+ * player's `stormArray` / `aegisControl` buildings exactly (the
+ * constructFacilitySpec in superweapons.ts deducts these at apply).
+ */
+const SUPERWEAPON_FACILITY_DEFS: Record<'storm' | 'aegis', { costFunds: number; costMaterials: number }> = {
+  storm: { costFunds: 6000, costMaterials: 2500 },
+  aegis: { costFunds: 5000, costMaterials: 2000 },
+};
+
+/**
+ * Enqueue a `constructSuperweaponFacility` command with its cost
+ * reserved in the per-think ledger (R1 final-review H2). The command
+ * deducts at apply (next tick), after the think's earlier ledger-
+ * covered spends (production, research, age) have applied — without
+ * the reservation those can drain the treasury first and the facility
+ * command goes stale at apply, throwing CommandRejectedError out of
+ * applyDue → crash in runTick. When the ledger says the cost isn't
+ * covered, the facility simply isn't enqueued this think (it retries
+ * on the next think tick) — no stale command, no crash.
+ */
+function reserveSuperweaponFacility(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  kind: 'storm' | 'aegis',
+): void {
+  const def = SUPERWEAPON_FACILITY_DEFS[kind];
+  const player = getPlayer(world.city, ai.owner);
+  if (!player) return;
+  const ledger = thinkLedger(ai);
+  if (player.funds - ledger.funds < def.costFunds) return;
+  if (player.materials - ledger.materials < def.costMaterials) return;
+  if (issue(world, queue, 'constructSuperweaponFacility', { owner: ai.owner, kind })) {
+    ledger.funds += def.costFunds;
+    ledger.materials += def.costMaterials;
+  }
+}
+
+/**
  * Marshal-only superweapon play (Phase 3). Construction goes through the
  * `constructSuperweaponFacility` command (same cost and build time as the
  * player's buildings); firing goes through `fireAegis` / `fireStorm`.
  * Targeting uses only visible enemies — no fog cheating — and the Storm
  * needs a real cluster (3+ visible enemies) so it isn't wasted.
+ *
+ * R1 final-review H2 (2026-10-01): the facility command deducts its
+ * cost at APPLY (next tick), so the cost is reserved in the per-think
+ * ledger BEFORE issue — the same pattern as spawn()/researchForAI().
+ * Without the reservation, a same-think spend that applies first
+ * (production/research/age, all ledger-covered and enqueued earlier)
+ * can push this command stale at apply, and a stale command throws
+ * CommandRejectedError out of applyDue → crash in runTick. The guard
+ * below makes an unaffordable facility fizzle at think time instead.
  */
 function thinkSuperweapons(
   world: World,
@@ -2855,14 +2995,18 @@ function thinkSuperweapons(
   // in createAISystem never reaches this branch).
   if (world.peaceful === true) return;
   if (world.ages.age !== 'ascendance') return;
+  // Firing is costless (no ledger needed); the facility construction
+  // above is ledger-guarded.
   const enqueue = (kind: string, payload: Record<string, unknown>): void => {
     issue(world, queue, kind, payload);
   };
   // Build each facility once, storm first (offense wins games).
+  // Ledger-guarded (see header): the reservation keeps the think's
+  // batch from going stale at apply.
   if (ai.superweapons.stormReadyTick === 0) {
-    enqueue('constructSuperweaponFacility', { owner: ai.owner, kind: 'storm' });
+    reserveSuperweaponFacility(world, queue, ai, 'storm');
   } else if (ai.superweapons.aegisReadyTick === 0) {
-    enqueue('constructSuperweaponFacility', { owner: ai.owner, kind: 'aegis' });
+    reserveSuperweaponFacility(world, queue, ai, 'aegis');
   }
   // Fire the Storm at the largest visible enemy cluster.
   if (isStormReady(world, ai.owner)) {

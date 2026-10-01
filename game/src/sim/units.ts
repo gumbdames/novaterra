@@ -402,11 +402,15 @@ export interface UnitDef {
   // workstream's `isDetected(unit, viewerOwner, world)` (sim/intel.ts)
   // treats a stealthed unit as invisible unless it stands inside a
   // detection radius, and combat.ts `acquireTarget` skips stealthed
-  // units unless detected. Set on `spy` only.
+  // units unless detected. Set on `spy` and `spectre` (R1
+  // final-review, user decision 2026-10-01 — the docs always called
+  // the spectre a "stealthy raider").
   // ------------------------------------------------------------------
   /**
    * When true, this unit is invisible to enemies unless detected (see
-   * `isDetected` in sim/intel.ts). Only the spy sets this.
+   * `isDetected` in sim/intel.ts). Detection only — the covert-ops
+   * role (infiltrate/sabotage/steal) stays kind-gated on the spy via
+   * `isSpyUnit`.
    */
   stealth?: boolean;
   // ------------------------------------------------------------------
@@ -574,6 +578,13 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     damage: 75, range: 10, minRange: 0, cooldownTicks: 45, targets: 'ground',
     vsLight: 1.0, vsMedium: 1.6, vsHeavy: 1.3, vsAir: 1.0, sight: 24, minAge: 'foundation',
     manpowerCost: 3, trainFunds: 300, trainMaterials: 20, requiredBuilding: 'barracks',
+    // R1 final-review (user decision 2026-10-01): the docs always called
+    // the spectre a "stealthy raider" and the user ruled the docs right —
+    // the missing flag was the bug. Stealth here is the detection
+    // contract only (invisible outside detection radii, see isDetected in
+    // sim/intel.ts); it grants no covert-ops role — infiltrate/sabotage/
+    // stealTech stay spy-only (isSpyUnit is kind-gated).
+    stealth: true,
     military: true,
   },
   hq: {
@@ -1619,6 +1630,15 @@ export function spawnUnit(world: World, kind: string, owner: number, x: number, 
   };
   world.nextId += 1;
   world.units.push(record);
+  // R1 final-review H1: keep the id→unit index fresh (see findUnit).
+  // Identity-checked: untracked worlds (direct test pushes, snapshot
+  // restore) simply rebuild lazily on the next lookup.
+  const e = unitIndexByWorld.get(world);
+  if (e !== undefined && e.arr === world.units) {
+    e.map.set(record.id, record);
+    e.n = world.units.length;
+    e.last = record;
+  }
   // Veterancy (Phase 1): an armed unit trained while its owner has a
   // completed Military Academy graduates as Regular — spawn XP 200, the
   // first threshold in veterancy.ts (hardcoded to keep this module from
@@ -1635,9 +1655,72 @@ export function spawnUnit(world: World, kind: string, owner: number, x: number, 
   return record;
 }
 
-/** Find a unit by id. Linear scan — fine until the ECS perf step. */
+/**
+ * id → unit index (R1 final-review H1, 2026-10-01). `findUnit` sits on
+ * the hottest paths (combat target validation every tick per armed
+ * unit, command validators), and the old linear scan made each call
+ * O(n). The index is a per-world cache: maintained incrementally at
+ * the sim's mutation points (`spawnUnit` adds; `removeUnitFromIndex` —
+ * called by `killUnit` in combat.ts — deletes) and validated on every
+ * read, so hand-built fixtures that push to `world.units` directly
+ * (tests) or wholesale array replacement (`restoreSnapshot`) stay
+ * correct via a lazy rebuild. The Map is never iterated for sim
+ * logic — pure O(1) lookup, so it has no determinism footprint
+ * (insertion order is never observed).
+ */
+interface UnitIndexEntry {
+  /** The array this entry was built from (identity check). */
+  arr: UnitRecord[];
+  /** Length at build/maintenance time. */
+  n: number;
+  /** Last element at build/maintenance time (catches same-length swaps). */
+  last: UnitRecord | undefined;
+  map: Map<number, UnitRecord>;
+}
+const unitIndexByWorld = new WeakMap<World, UnitIndexEntry>();
+
+function rebuildUnitIndex(world: World): UnitIndexEntry {
+  const units = world.units;
+  const map = new Map<number, UnitRecord>();
+  for (const u of units) map.set(u.id, u);
+  const entry: UnitIndexEntry = {
+    arr: units,
+    n: units.length,
+    last: units[units.length - 1],
+    map,
+  };
+  unitIndexByWorld.set(world, entry);
+  return entry;
+}
+
+/** True when the cached index matches the world's current unit array. */
+function unitIndexFresh(world: World, e: UnitIndexEntry): boolean {
+  const units = world.units;
+  return e.arr === units && e.n === units.length && e.last === units[units.length - 1];
+}
+
+/**
+ * Find a unit by id. O(1) via the per-world index (see above); the
+ * first call after an untracked mutation (a test fixture pushing
+ * directly, a snapshot restore replacing the array) rebuilds lazily.
+ */
 export function findUnit(world: World, id: number): UnitRecord | undefined {
-  return world.units.find((u) => u.id === id);
+  let e = unitIndexByWorld.get(world);
+  if (e === undefined || !unitIndexFresh(world, e)) e = rebuildUnitIndex(world);
+  return e.map.get(id);
+}
+
+/**
+ * Drop a unit id from the index. Called by `killUnit` (combat.ts)
+ * after the order-preserving splice. Safe to call with a stale or
+ * missing entry — the next `findUnit` rebuilds from the array.
+ */
+export function removeUnitFromIndex(world: World, id: number): void {
+  const e = unitIndexByWorld.get(world);
+  if (e === undefined || e.arr !== world.units) return;
+  e.map.delete(id);
+  e.n = world.units.length;
+  e.last = world.units[world.units.length - 1];
 }
 
 /**

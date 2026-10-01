@@ -130,28 +130,28 @@ export const LOGISTICS_RADIUS = 18;
  */
 export const FUEL_DEPOT_PULL_RATE_PER_SEC = 5;
 
-/** Market resources (funds is the numeraire, never traded directly). */
-export const MarketResource = {
-  MATERIALS: 'materials',
-  FUEL: 'fuel',
-  FOOD: 'food',
-  RESEARCH: 'research',
-} as const;
-export type MarketResource = (typeof MarketResource)[keyof typeof MarketResource];
-
-/** Fixed funds-per-unit prices (Phase 1; dynamic pricing deferred). */
-export const MARKET_PRICES: Record<MarketResource, number> = {
-  materials: 2,
-  fuel: 3,
-  food: 1,
-  research: 12,
-};
-
 /**
- * Spread: buying costs (1 + spread) × price, selling pays (1 − spread) ×
- * price. A buy-then-sell round trip returns (1−s)/(1+s) = 2/3 of the funds.
+ * Fixed-rate market price list (R1 final-review, 2026-10-01): moved to
+ * the leaf module sim/market.ts (no sim imports) so non-economy
+ * consumers can price materials without importing economy.ts — an
+ * ai→economy value import completes the ai→economy→city→world→ai
+ * evaluation cycle that breaks module init. Re-exported here unchanged
+ * so this module's public API is stable.
  */
-export const MARKET_SPREAD = 0.2;
+export {
+  MarketResource,
+  MARKET_PRICES,
+  MARKET_SPREAD,
+  marketBuyCost,
+  marketSellValue,
+} from './market';
+import {
+  MarketResource,
+  MARKET_PRICES,
+  MARKET_SPREAD,
+  marketBuyCost,
+  marketSellValue,
+} from './market';
 
 /** Read a player's stockpile. */
 export function getStock(player: PlayerState, resource: ResourceKey): number {
@@ -182,16 +182,6 @@ export function addStock(player: PlayerState, resource: ResourceKey, amount: num
 }
 
 const RESOURCE_KEYS: ResourceKey[] = ['funds', 'materials', 'fuel', 'food', 'research', 'goods', 'influence', 'manpower'];
-
-/** Funds to buy `amount` units of a market resource. */
-export function marketBuyCost(resource: MarketResource, amount: number): number {
-  return amount * MARKET_PRICES[resource] * (1 + MARKET_SPREAD);
-}
-
-/** Funds received for selling `amount` units of a market resource. */
-export function marketSellValue(resource: MarketResource, amount: number): number {
-  return amount * MARKET_PRICES[resource] * (1 - MARKET_SPREAD);
-}
 
 // ---------------------------------------------------------------------------
 // The economy tick
