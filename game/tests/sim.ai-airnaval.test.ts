@@ -45,6 +45,7 @@ import {
   thinkCarrierEscorts,
   thinkNavalMines,
   isEmptyWingCarrier,
+  pickWingAircraftKind,
   SUB_KINDS,
   CAPITAL_KINDS,
   ESCORT_KINDS,
@@ -194,5 +195,63 @@ describe('marshal airport construction', () => {
     // Marshal reaches connectivity (ages.ts advance path), so the
     // priority entry is live, not aspirational.
     expect(CONSTRUCTION_PRIORITY.marshal.indexOf('civilAirport')).toBeGreaterThan(-1);
+  });
+});
+
+describe('carrier wing composition (final-review R5 H3)', () => {
+  /** All four carrier-capable kinds, in def order. */
+  const CAP_KINDS: UnitKind[] = ['reconUAV', 'armedUAV', 'trainer', 'navalFighter'].filter(
+    (k): k is UnitKind => k in UNIT_DEFS,
+  ) as UnitKind[];
+
+  function wingWorld(): { world: World; carrierId: number } {
+    const world = createWorld(99);
+    const carrier = spawnUnit(world, 'carrier', 0, 100, 100);
+    return { world, carrierId: carrier.id };
+  }
+
+  it('prefers armed kinds over unarmed ones (armed-first)', () => {
+    const { world, carrierId } = wingWorld();
+    const kind = pickWingAircraftKind(world, 0, carrierId, CAP_KINDS);
+    // armedUAV (damage 45) must come before reconUAV/trainer even
+    // though reconUAV is first in def order.
+    expect(kind).toBe('armedUAV');
+    expect((UNIT_DEFS[kind!] as { damage: number }).damage).toBeGreaterThan(0);
+  });
+
+  it('caps spotters at one per wing (embarked or converging)', () => {
+    const { world, carrierId } = wingWorld();
+    // A reconUAV already embarked on the carrier...
+    const spotter = spawnUnit(world, 'reconUAV', 0, 100, 100);
+    spotter.embarkedOn = carrierId;
+    // ...and another converging (idle, no target, not embarked).
+    const converging = spawnUnit(world, 'reconUAV', 0, 200, 200);
+    expect(converging.state).toBe('idle');
+    const kind = pickWingAircraftKind(world, 0, carrierId, CAP_KINDS);
+    expect(kind).not.toBe('reconUAV');
+    expect(kind).toBe('armedUAV');
+  });
+
+  it('returns null when the only kinds left are blocked spotters', () => {
+    const { world, carrierId } = wingWorld();
+    const spotter = spawnUnit(world, 'reconUAV', 0, 100, 100);
+    spotter.embarkedOn = carrierId;
+    expect(pickWingAircraftKind(world, 0, carrierId, ['reconUAV'])).toBeNull();
+  });
+
+  it('falls back to unarmed kinds when no armed kind is offered', () => {
+    const { world, carrierId } = wingWorld();
+    // Trainer is unarmed but a legitimate wing member (not a spotter).
+    expect(pickWingAircraftKind(world, 0, carrierId, ['trainer'])).toBe('trainer');
+  });
+
+  it('is deterministic: same world state gives the same pick', () => {
+    const a = wingWorld();
+    const b = wingWorld();
+    spawnUnit(a.world, 'armedUAV', 0, 100, 100).embarkedOn = a.carrierId;
+    spawnUnit(b.world, 'armedUAV', 0, 100, 100).embarkedOn = b.carrierId;
+    expect(pickWingAircraftKind(a.world, 0, a.carrierId, CAP_KINDS)).toBe(
+      pickWingAircraftKind(b.world, 0, b.carrierId, CAP_KINDS),
+    );
   });
 });

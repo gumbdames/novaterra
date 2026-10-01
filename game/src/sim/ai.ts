@@ -2593,6 +2593,61 @@ function carrierWing(world: World, owner: number, carrierId: number): UnitRecord
   return wing;
 }
 
+/**
+ * Choose the next aircraft kind to train for a carrier's wing
+ * (final-review R5 H3, 2026-10-01): armed-first composition.
+ *
+ * - Armed kinds (`damage > 0`: armedUAV, navalFighter) train before
+ *   unarmed ones — a carrier wing that can't fight is a liability.
+ * - At most ONE spotter (recon kind) per wing: the wing's existing
+ *   aircraft count toward the cap, embarked or still converging, so
+ *   the AI never queues a second spotter while one is flying in.
+ * - Fallback order within a tier follows `capKinds` (def) order.
+ *
+ * Returns null when every kind is composition-blocked (e.g. the only
+ * kinds left are spotters and the wing already has one) — the caller
+ * then trains nothing this think.
+ *
+ * Exported for the wing-composition tests.
+ */
+export function pickWingAircraftKind(
+  world: World,
+  owner: number,
+  carrierId: number,
+  capKinds: UnitKind[],
+): UnitKind | null {
+  let spotters = 0;
+  for (const u of world.units) {
+    if (u.owner !== owner || u.hp <= 0) continue;
+    const def = UNIT_DEFS[u.kind as UnitKind];
+    if (!def?.carrierCapable) continue;
+    // Embarked on this carrier, or still converging on it.
+    if ((u.embarkedOn ?? 0) !== carrierId && !isConvergingOnCarrier(u)) continue;
+    if (def.recon === true) spotters++;
+  }
+  const spotterBlocked = spotters >= 1;
+  const armed: UnitKind[] = [];
+  const unarmed: UnitKind[] = [];
+  for (const kind of capKinds) {
+    const def = UNIT_DEFS[kind];
+    if (def.recon === true && spotterBlocked) continue;
+    if ((def.damage ?? 0) > 0) armed.push(kind);
+    else unarmed.push(kind);
+  }
+  return armed[0] ?? unarmed[0] ?? null;
+}
+
+/**
+ * True when an aircraft looks like it is already joining a carrier
+ * wing: carrier-capable, alive, not embarked, and holding no combat
+ * target (thinkCarrierWings' 2b loop issues embark/moveTo orders to
+ * exactly these units — the convergence heuristic mirrors it).
+ */
+function isConvergingOnCarrier(u: UnitRecord): boolean {
+  if ((u.embarkedOn ?? 0) !== 0) return false;
+  return u.state === 'idle' && u.targetId === 0;
+}
+
 /** Living escort-screen ships of `owner` (the ESCORT_KINDS pool, def-guarded). */
 function countEscorts(world: World, owner: number): number {
   const pool = ESCORT_KINDS.filter((k) => UNIT_DEFS[k as UnitKind]);
@@ -2665,7 +2720,11 @@ export function thinkAirlineRoutes(world: World, ai: AIPlayerState): void {
  *  2. Fill: while the wing has room, train carrier-capable aircraft
  *     (army cap + hangar-aware canTrain) and order idle
  *     carrier-capable aircraft to the carrier — embark when close,
- *     moveTo when far (they converge over a few thinks).
+ *     moveTo when far (they converge over a few thinks). The wing
+ *     trains ARMED-FIRST (final-review R5 H3, 2026-10-01): armed
+ *     kinds (armedUAV, navalFighter) before unarmed ones, and at
+ *     most one spotter (recon) per wing — a wing that can't fight
+ *     is a liability.
  *  3. Never sails empty: the attack loops skip empty-wing carriers
  *     (isEmptyWingCarrier), so a carrier with an unfilled wing holds
  *     at the naval base until its wing is complete. A full-wing
@@ -2705,12 +2764,20 @@ export function thinkCarrierWings(world: World, queue: CommandQueue, ai: AIPlaye
     const wing = carrierWing(world, ai.owner, c.id);
     if (wingCapacity - wing.length <= 0) continue;
     // 2a. Train wing aircraft (army cap + hangar-aware canTrain).
+    // Final-review R5 H3 (2026-10-01): armed-first composition —
+    // armed kinds (armedUAV, navalFighter) before unarmed ones, and
+    // at most one spotter (recon) per wing. Walk the preference order
+    // and train the first kind the AI can actually train this think
+    // (age/building/affordability), so the wing keeps filling even
+    // when the top pick is locked.
     const n = totalUnits(world, ai.owner);
-    const kind = capKinds[0]!;
-    if (n < AI_MAX_UNITS[ai.difficulty] && canTrain(world, ai.owner, kind)) {
-      const p = spawnPoint(ai, kind, n);
-      if (spawn(world, queue, ai, kind, p.x, p.z)) {
-        ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
+    if (n < AI_MAX_UNITS[ai.difficulty]) {
+      const kind = pickWingAircraftKind(world, ai.owner, c.id, capKinds);
+      if (kind !== null && canTrain(world, ai.owner, kind)) {
+        const p = spawnPoint(ai, kind, n);
+        if (spawn(world, queue, ai, kind, p.x, p.z)) {
+          ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
+        }
       }
     }
     // 2b. Idle carrier-capable aircraft converge on the carrier:
