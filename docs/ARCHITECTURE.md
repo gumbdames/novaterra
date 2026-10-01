@@ -31,7 +31,7 @@ rewritten. Last updated: 2026-09-28 (v1, post-Phase-0-research).
 | Audio | Raw Web Audio, own `audio/` module, no runtime library | Adaptive stem engine needs bespoke lookahead scheduling; Howler/Tone.js rejected (see `docs/research/audio.md`) |
 | Music source | Kevin MacLeod "Meditation Impromptu 01" (peace) + "Volatile Reaction" (war), CC BY 4.0, ~5.4 MB shipped | Incompetech direct downloads verified 2026-09-29; attribution in `THIRD_PARTY_NOTICES.md` + `docs/HOW_TO_PLAY.md`; research-stage Tallbeard/Pixabay plan superseded |
 | Save storage | IndexedDB (one record per save, single tx; 0.1 Alpha stores the SaveFile object directly, no compression) + in-memory fallback when IndexedDB is unavailable | Large late-game saves; `navigator.storage.persist()`; compression + export/import file fallback are Phase 2+ |
-| WASM | **None in Phase 1** | Evidence: wasm-bindgen slower than JS on our workload shape; no WASM threads on Pages (no COOP/COEP) |
+| WASM | **None** — entire game is TypeScript; no WASM anywhere | Evidence: wasm-bindgen slower than JS on our workload shape; no WASM threads on Pages (no COOP/COEP). First candidate if ever needed: `sim/pathfinding.ts` (compiled A* at scale); then map-wide desirability scans. See `docs/research/sim-architecture.md` §7 |
 | Threads | Sim single-threaded on main thread (Phase 1); workers only for periphery (audio decode, save serialize, asset load, seeded mapgen before tick 0) | Worker completion order is nondeterministic; clone tax; debugging tax (see Decision Log D3) |
 
 ## 3. Module map (`game/src/`)
