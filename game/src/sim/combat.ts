@@ -113,6 +113,7 @@ import {
   MELTDOWN_ATTACK_DENOMINATOR,
   MELTDOWN_OFFLINE_SECONDS,
 } from './utilityNetworks';
+import { runShipyardRepair } from './shipyardRepair';
 
 /** Can this weapon be aimed at that target's domain? */
 export function canTarget(def: UnitDef, target: UnitRecord): boolean {
@@ -780,7 +781,8 @@ function applyHealAuras(world: World): void {
 /**
  * The combat system. Runs after movement each tick:
  *  1. Cooldowns tick down.
- *  2. Heal auras apply (combatMedic on land, repairShip on sea).
+ *  2. Heal auras apply (combatMedic on land, repairShip on sea),
+ *     then drydock repair at production shipyards (shipyardRepair.ts).
  *  3. Naval mines detonate (grand-expansion Phase 6, workstream C).
  *  4. In id order, every armed unit with a ready weapon validates its
  *     target (or auto-acquires), fires when in range, or chases an
@@ -803,6 +805,10 @@ export function createCombatSystem(t?: TerrainData): SimSystem {
       }
     }
     applyHealAuras(world);
+    // Naval-building model (2026-10-01): shipyards build AND repair —
+    // damaged same-side sea units near an operational shipyard drydock
+    // back to health. Runs with the other hp-restoring passes.
+    runShipyardRepair(world, TICK_DT);
     // Grand-expansion Phase 6 (workstream C): naval-mine detonation pass.
     // Deployable-only kinds never enter the fire pass below (their
     // `damage` is spent here, by their own detonation logic — never by

@@ -101,6 +101,15 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   movement→economy→city or ai→economy→city→world→ai evaluation cycle
   (economy.ts re-exports `SEA_ROUTE_SETUP_COST`; its public API is
   unchanged — the market.ts precedent).
+- `shipyardRepair.ts` — (naval-building model, 2026-10-01) drydock repair:
+  damaged same-side sea units within `SHIPYARD_REPAIR_RADIUS` (14) of an
+  operational production shipyard (`commercialHarbor` civilian,
+  `shipyard`/`navalYard` military) regain `SHIPYARD_REPAIR_PER_SEC` (3)
+  hp/s, capped at the veterancy-adjusted max. Docks never repair —
+  production vs. logistics stays unblurred. Called from the combat system
+  right after the heal auras; `isShipUnderRepair` is the UI read path.
+  Position-derived, no new fields ⇒ no snapshot/digest changes. Leaf:
+  value-imports city/units/veterancy only.
 - `utilityNetworks.ts` — (grand-expansion Phase 2) the derived utility
   topology: integer-BFS flood fill over conductors (roads ∪ power
   lines/pipes ∪ substation/pumping-station footprints) per player per
