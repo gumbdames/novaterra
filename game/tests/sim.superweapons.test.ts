@@ -530,8 +530,10 @@ describe('sim/superweapons — determinism', () => {
   });
 
   it('STORM_DAMAGE sanity: one strike cannot one-shot a tank, a full storm can', () => {
-    // 120 per strike vs 500 tank hp: a single strike won't kill a tank, but
-    // all 8 strikes landing (960 raw) will — storms punish clumped armor.
+    // 200 per strike vs 500 tank hp (roadmap B7, 2026-10-02 — was 120): a
+    // single strike won't kill a tank, but all 8 strikes landing (1600
+    // raw) will — storms punish clumped armor. Three strikes kill a
+    // tank, five crack a 1000-hp bunker.
     expect(STORM_DAMAGE).toBeLessThan(UNIT_DEFS.tank.hp);
     expect(STORM_DAMAGE * STORM_STRIKE_COUNT).toBeGreaterThan(UNIT_DEFS.tank.hp);
   });

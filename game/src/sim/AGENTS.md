@@ -76,7 +76,7 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 - `superweapons.ts` — the Storm Engine strike and the Aegis shield:
   `constructSuperweaponFacility` (Marshal-AI virtual construction),
   `fireStorm`, `fireAegis`. Final-review R2 (2026-10-01): the storm
-  strike now deals flat `STORM_DAMAGE` (120) to every enemy building in
+  strike now deals flat `STORM_DAMAGE` (200) to every enemy building in
   the blast radius through `damageBuilding` (the one attack path — the
   nuclear attack-meltdown roll lives there, so a strike on a nuclear
   plant still rolls exactly as before); an active Aegis holds. Grand-expansion Phase 8 (peaceful mode,

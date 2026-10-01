@@ -24,8 +24,14 @@
  *                    owner's units for 60 seconds.
  *      Storm Engine: needs a Storm Array building. Firing calls down 8
  *                    lightning strikes over ~8 seconds around a target
- *                    point (120 damage each in a radius of 10, small
- *                    deterministic scatter).
+ *                    point (200 damage each in a radius of 10, small
+ *                    deterministic scatter). Roadmap B7 (2026-10-02):
+ *                    retuned from 120 — at the highest price point in the
+ *                    game (6000 funds + 2500 materials + ascendance) the
+ *                    strikes only scratched tanks; 200 makes a full storm
+ *                    kill a tank in 3 strikes and crack a 1000-hp bunker
+ *                    in 5, without one-shotting anything (tanks have 500
+ *                    hp, the smallest building 150).
  *  - Both are expensive with a 10-minute cooldown: game-changing, not
  *    game-breaking. Firing goes through the command queue (loud
  *    validation: age, building, cooldown).
@@ -64,7 +70,7 @@ export const STORM_STRIKE_COUNT = 8;
 /** Ticks between storm strikes (~1 second). */
 export const STORM_STRIKE_INTERVAL_TICKS = 30;
 /** Damage per storm strike. */
-export const STORM_DAMAGE = 120;
+export const STORM_DAMAGE = 200;
 /** Damage radius per strike (world units). */
 export const STORM_RADIUS = 10;
 /** Deterministic scatter of each strike around the target point. */

@@ -876,7 +876,7 @@ shield holds. The Marshal AI builds and uses it fairly.
 
 **Storm Array** (6,000 funds + 2,500 materials, 150s build): fire the
 **Storm Engine** — 8 lightning strikes over ~8 seconds at your target
-point (±3 scatter, 120 damage, radius 10). Storm clouds gather, lightning
+point (±3 scatter, 200 damage, radius 10). Storm clouds gather, lightning
 flashes, and each strike kicks up a fireball. 10-minute cooldown. Aegis
 shields block storm damage too. Enter Storm targeting, then click — or
 drag and release — on the map; a drag fires at the release point. The
