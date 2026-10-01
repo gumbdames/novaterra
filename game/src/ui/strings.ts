@@ -720,6 +720,8 @@ export const STRINGS = {
     fuelLabel: { en: 'Fuel' },
     ammoLabel: { en: 'Ammo' },
     cargoLabel: { en: 'Cargo' },
+    /** Sea-logistics Half B (2026-10-01): the materials hold label. */
+    materialsLabel: { en: 'Materials' },
     stockLabel: { en: 'Stock' },
     servicesLabel: { en: 'Field services' },
     repairToggle: { en: 'Repair' },
@@ -728,6 +730,13 @@ export const STRINGS = {
     resupplyVerb: { en: 'Resupply' },
     /** Final-review R5 (2026-10-01): stranded-aircraft affordance. */
     emergencyRefuelVerb: { en: 'Emergency refuel' },
+    /**
+     * Sea-logistics Half B (2026-10-01): the Load/Unload cargo verbs
+     * for supply units at naval supply points.
+     */
+    loadCargoVerb: { en: 'Load cargo' },
+    unloadCargoVerb: { en: 'Unload cargo' },
+    noNavalDepotReason: { en: 'No naval supply point in range' },
     lowSupplyWarning: { en: 'Low supply — resupply soon' },
     resupplyingTo: { en: 'Resupplying at depot' },
     noDepotReason: { en: 'No depot with available stock in range' },

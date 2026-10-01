@@ -157,7 +157,10 @@ import {
 // the sim applies the resupply/toggle commands it validates.
 import {
   ammoFracOf,
-  cargoLine,
+  cargoAmmoOf,
+  cargoBlockReason,
+  cargoFuelOf,
+  cargoMaterialsOf,
   depotStockLine,
   emergencyRefuelBlockReason,
   fuelFracOf,
@@ -165,6 +168,7 @@ import {
   isSupplyUnit,
   isTrackedUnit,
   nearestDepot,
+  nearestNavalDepot,
   resupplyBlockReason,
   serviceTogglesOf,
 } from './logistics';
@@ -309,6 +313,13 @@ export interface HUDActions {
     unitId: number,
     services: { repair: boolean; rearm: boolean; refuel: boolean },
   ): void;
+  /**
+   * Sea-logistics Half B (2026-10-01): load / unload a supply unit's
+   * cargo holds at a naval supply point. The sim validates and rejects
+   * loudly.
+   */
+  onLoadCargo(unitId: number, buildingId: number): void;
+  onUnloadCargo(unitId: number, buildingId: number): void;
   /** Phase 3: fire the Aegis shield. */
   onFireAegis(): void;
   /** Phase 3: enter Storm targeting mode (click map). */
@@ -2029,7 +2040,36 @@ export class HUD {
         }
         if (def !== undefined && isSupplyUnit(def) && u.owner === HUMAN_PLAYER_ID) {
           const lg = STRINGS.logistics;
-          stats.append(el('div', 'stat-row', cargoLine(u)));
+          // Sea-logistics Half B (2026-10-01): cargo holds as bars —
+          // one per hold the def has ("Cargo fuel 120/400"), replacing
+          // the old text cargo line.
+          const fuelHoldCap = def.cargoFuelCapacity ?? 0;
+          if (fuelHoldCap > 0) {
+            stats.append(
+              supplyBar(
+                `${loc(lg.cargoLabel)} ${loc(lg.fuelLabel).toLowerCase()} ${Math.floor(cargoFuelOf(u))}/${fuelHoldCap}`,
+                cargoFuelOf(u) / fuelHoldCap,
+              ),
+            );
+          }
+          const ammoHoldCap = def.cargoAmmoCapacity ?? 0;
+          if (ammoHoldCap > 0) {
+            stats.append(
+              supplyBar(
+                `${loc(lg.cargoLabel)} ${loc(lg.ammoLabel).toLowerCase()} ${Math.floor(cargoAmmoOf(u))}/${ammoHoldCap}`,
+                cargoAmmoOf(u) / ammoHoldCap,
+              ),
+            );
+          }
+          const matHoldCap = def.cargoMaterialsCapacity ?? 0;
+          if (matHoldCap > 0) {
+            stats.append(
+              supplyBar(
+                `${loc(lg.cargoLabel)} ${loc(lg.materialsLabel).toLowerCase()} ${Math.floor(cargoMaterialsOf(u))}/${matHoldCap}`,
+                cargoMaterialsOf(u) / matHoldCap,
+              ),
+            );
+          }
           const svc = serviceTogglesOf(u);
           const toggleRow = el('div', 'sel-toggle-row');
           const toggles = [
@@ -2065,6 +2105,30 @@ export class HUD {
             rs.title = block ?? loc(lg.noDepotReason);
           }
           actions.append(rs);
+          // Sea-logistics Half B (2026-10-01): Load / Unload cargo. The
+          // UI proposes the nearest naval supply point (reload point on
+          // water); the sim validates range, stocks, and headroom and
+          // rejects loudly. The disabled reason names the blocker —
+          // never a dead button, never a silent no-op.
+          const navalDepot = nearestNavalDepot(world, terrain, u);
+          for (const mode of ['load', 'unload'] as const) {
+            const cblock = cargoBlockReason(world, terrain, u, navalDepot, mode);
+            const cb = document.createElement('button');
+            cb.className = 'sel-action';
+            cb.textContent = loc(mode === 'load' ? lg.loadCargoVerb : lg.unloadCargoVerb);
+            if (cblock === null && navalDepot !== null) {
+              const depId = navalDepot.id;
+              cb.addEventListener('click', () =>
+                mode === 'load'
+                  ? this.actions.onLoadCargo(u.id, depId)
+                  : this.actions.onUnloadCargo(u.id, depId),
+              );
+            } else {
+              cb.disabled = true;
+              cb.title = cblock ?? loc(lg.noNavalDepotReason);
+            }
+            actions.append(cb);
+          }
         }
         // Grand-expansion Phase 5 (hangar/carrier shelter): the shelter
         // line + Embark / Park / Launch buttons for aircraft, and the

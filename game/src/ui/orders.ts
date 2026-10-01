@@ -479,6 +479,47 @@ export function buildResupplyOrder(
 }
 
 /**
+ * Sea-logistics Half B (2026-10-01): load a supply unit's cargo holds
+ * at a friendly completed naval supply point (reload point on water —
+ * navalYard, navalBase, ports). The sim (`loadCargo` in
+ * registerLogisticsCommands) validates unit/building/owner, the
+ * LOGISTICS_RADIUS range, and the transferable amounts: fuel/ammo move
+ * from the depot's stocks (never from resupply reservations),
+ * materials move from the owner's stockpile. Emitted by the selection
+ * panel's Load button with the depot picked by `nearestNavalDepot`
+ * (ui/logistics.ts). Loud rejections — nothing fails silently.
+ */
+export function buildLoadCargoOrder(
+  unitId: number,
+  buildingId: number,
+  owner: number,
+): OrderIntent {
+  return {
+    kind: 'loadCargo',
+    payload: { unitId, buildingId, owner },
+  };
+}
+
+/**
+ * Sea-logistics Half B (2026-10-01): unload a supply unit's cargo holds
+ * into a friendly completed naval supply point. Fuel → fuelStock and
+ * ammo → ammoStock (effective storage headroom), materials →
+ * materialsStock (raw def headroom). This is how the navalBase's
+ * forward caches get filled. Same validate/reject contract as
+ * buildLoadCargoOrder.
+ */
+export function buildUnloadCargoOrder(
+  unitId: number,
+  buildingId: number,
+  owner: number,
+): OrderIntent {
+  return {
+    kind: 'unloadCargo',
+    payload: { unitId, buildingId, owner },
+  };
+}
+
+/**
  * Final-review R5 UI feel (2026-10-01): emergency-refuel a stranded
  * fossil-fuel aircraft (empty tank — it cannot move to a depot, so the
  * normal resupply flow can't reach it). The sim (`emergencyRefuel` in
