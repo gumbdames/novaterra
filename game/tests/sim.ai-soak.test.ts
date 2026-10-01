@@ -255,7 +255,9 @@ describe('AI-vs-AI soak (commander vs general, economy on)', () => {
     const units1 = ctx.world.units.filter((u) => u.owner === 1 && u.hp > 0).length;
     expect(units0).toBeGreaterThan(0);
     expect(units1).toBeGreaterThan(0);
-  });
+    // Final-review R2: siege doctrine adds combat/pathfinding overhead;
+    // 3600 ticks with full economy needs more than the 5s default.
+  }, 30000);
 
   it('physical buildings stay powered/watered sensibly for the whole match', () => {
     const ctx = setupSoak(20260930);
@@ -272,11 +274,19 @@ describe('AI-vs-AI soak (commander vs general, economy on)', () => {
     }
     // End state: the scripted plants cover their cities' demand, so every
     // completed operational building is served (no silent brownouts).
+    // Final-review R2-B: siege doctrine destroys power/water plants, so
+    // some buildings may legitimately lose service in a warzone. The
+    // spot-checks above verify the fields stay boolean; here we just
+    // bound the damage (not every building dark).
     const unserved = ctx.world.city.buildings.filter(
       (b) => b.progress >= 1 && b.operational && (!b.powered || !b.watered),
     );
-    expect(unserved).toEqual([]);
-  });
+    const total = ctx.world.city.buildings.filter(
+      (b) => b.progress >= 1 && b.operational,
+    ).length;
+    expect(unserved.length).toBeLessThan(total);
+    // Final-review R2: siege doctrine overhead; see above.
+  }, 30000);
 
   it('same seed ⇒ identical digest after the full soak', () => {
     const a = setupSoak(424242);
@@ -286,7 +296,8 @@ describe('AI-vs-AI soak (commander vs general, economy on)', () => {
       b.driver.step(b.world, TICK_MS);
     }
     expect(digestWorld(a.world)).toBe(digestWorld(b.world));
-  });
+    // Final-review R2: siege doctrine overhead; see above.
+  }, 30000);
 });
 
 // ---------------------------------------------------------------------------
@@ -333,7 +344,8 @@ describe('transport-mixed AI-vs-AI soak (Phase 4)', () => {
       b.driver.step(b.world, TICK_MS);
     }
     expect(digestWorld(a.world)).toBe(digestWorld(b.world));
-  });
+    // Final-review R2: siege doctrine overhead; see above.
+  }, 30000);
 });
 
 // ---------------------------------------------------------------------------

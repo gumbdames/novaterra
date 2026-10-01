@@ -124,16 +124,17 @@ export interface SessionOptions {
    */
   sandbox?: boolean;
   /**
-   * Peaceful mode (grand-expansion Phase 8, workstream A, 2026-09-30):
-   * the Classic AI rival EXISTS and plays, but the world is peaceful —
-   * `world.peaceful` is set at tick 0 (never toggled mid-game), military
-   * defs (units/buildings/upgrades) and covert ops are locked out at
-   * the command layer, conquest victory/defeat checks are bypassed, and
-   * the peaceful victory (`checkPeacefulVictory` in sim/peaceful.ts)
-   * applies instead. NOT the same as `sandbox`: sandbox skips the rival
-   * entirely and has no victory condition; peaceful keeps the rival
-   * (it plays peacefully) and has a builder's victory condition.
-   * Defaults to false; every existing caller keeps its war game.
+   * Peaceful mode (grand-expansion Phase 8, workstream A, 2026-09-30;
+   * endless revision, 2026-10-01): the Classic AI rival EXISTS and
+   * plays, but the world is peaceful — `world.peaceful` is set at
+   * tick 0 (never toggled mid-game), military defs
+   * (units/buildings/upgrades) and covert ops are locked out at the
+   * command layer, and conquest victory/defeat checks are bypassed.
+   * There is NO victory condition: peaceful mode is endless, the game
+   * never declares a winner or a loser, it just keeps simulating.
+   * NOT the same as `sandbox`: sandbox skips the rival entirely;
+   * peaceful keeps the rival (it plays peacefully). Defaults to
+   * false; every existing caller keeps its war game.
    */
   peaceful?: boolean;
 }
@@ -262,9 +263,9 @@ function startingForces(
  */
 export function checkSkirmishVictory(world: World): boolean {
   // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): conquest is
-  // unreachable when nothing military exists — the peaceful victory
-  // (checkPeacefulVictory) owns the outcome instead. Loud-and-clear:
-  // this returns false, never a conquest verdict.
+  // unreachable when nothing military exists — and peaceful mode is
+  // endless (2026-10-01), with no victory condition at all.
+  // Loud-and-clear: this returns false, never a conquest verdict.
   //
   // Final-review R2 (2026-10-01): this check needs zero rival units
   // AND zero rival buildings — reachable now that buildings are
@@ -290,9 +291,8 @@ export function checkSkirmishVictory(world: World): boolean {
 export function checkSkirmishDefeat(world: World): boolean {
   // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): conquest
   // defeat is unreachable in peaceful worlds (nothing hostile exists)
-  // — the peaceful DEFEAT is the rival winning the builder's race
-  // first, owned by ui/peaceful.ts `peacefulOutcome`, not by this
-  // conquest check.
+  // — and peaceful mode is endless (2026-10-01), with no defeat
+  // condition at all. Not by this conquest check, not by anything.
   //
   // Final-review R2 (2026-10-01): this check needs zero human units
   // AND zero human buildings — reachable now that buildings take

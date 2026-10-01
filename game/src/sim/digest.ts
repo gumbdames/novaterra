@@ -240,6 +240,10 @@ export function canonicalizeWorld(world: World): string {
     // Phase 3 logistics (workstream 3): virtual depot stocks. Behavior-
     // affecting (they refill AI units) ⇒ digest-covered (PLAN §11).
     out += `vls=${canonicalNumber(p.virtualAmmoStock ?? 0)},${canonicalNumber(p.virtualFuelStock ?? 0)},`;
+    // Final-review R2-B (AI siege doctrine): the quiet-think counter
+    // drives when a siege starts and the target id drives where the
+    // force converges — both behavior-affecting ⇒ digest-covered.
+    out += `sie=${p.siegeQuietThinks ?? 0},${p.siegeTargetBuildingId ?? 0},`;
     // Grand-expansion Phase 7 (AI intel play): the virtual intel queue —
     // construction slot, surge latch, and ordered-op counts all drive
     // future behavior ⇒ digest-covered (PLAN §11).

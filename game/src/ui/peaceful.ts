@@ -18,29 +18,29 @@
  * NOVATERRA — ui/peaceful.ts — peaceful-mode UI contract (pure, tested).
  *
  * The UI-side mirror of the sim's peaceful system (sim/peaceful.ts,
- * grand-expansion Phase 8, workstream B, 2026-09-30):
+ * grand-expansion Phase 8, workstream B, 2026-09-30; endless revision,
+ * 2026-10-01):
  *  - which main menu tabs render in a peaceful world (Military hidden),
- *  - the Management tab's peaceful-objectives display lines
- *    (`peacefulObjectiveProgress` → player-facing copy),
- *  - the end-screen outcome helper (`peacefulOutcome`) and its copy
- *    (`peacefulEndCopy`).
+ *  - the Management tab's peaceful-status display lines
+ *    (`peacefulStatus` → player-facing copy).
+ *
+ * Peaceful mode is ENDLESS (2026-10-01): there is no victory
+ * condition, no end screen, no rival race. The Management tab shows
+ * the city's status (population, treasury health) as information —
+ * not as progress toward a goal. The old builder's-race victory
+ * (`peacefulOutcome` / `peacefulEndCopy`, 8,000 residents) was
+ * removed; `ui/game.ts` shows no end screen for peaceful worlds.
  *
  * Pure module: no DOM, no three.js, no wall clock, no RNG. Safe under
  * Node/vitest. It reads sim state defensively (a missing player record
- * reports zero progress — never throws) and never writes sim state.
+ * reports zero population — never throws) and never writes sim state.
  *
- * Import discipline: value-imports sim/peaceful.ts (pure) and
- * ui/session.ts (AI_PLAYER_ID only — session.ts imports only sim, so no
- * cycle). The MenuTabId type import from ui/palettes is type-only.
+ * Import discipline: value-imports sim/peaceful.ts (pure). The
+ * MenuTabId type import from ui/palettes is type-only.
  */
 
 import type { World } from '../sim/world';
-import {
-  checkPeacefulVictory,
-  peacefulObjectiveProgress,
-  PEACEFUL_VICTORY_POPULATION,
-} from '../sim/peaceful';
-import { AI_PLAYER_ID } from './session';
+import { peacefulStatus } from '../sim/peaceful';
 import type { MenuTabId } from './palettes';
 import { STRINGS, loc, fillLoc } from './strings';
 
@@ -68,96 +68,27 @@ export function formatCount(n: number): string {
   return neg ? `-${grouped}` : grouped;
 }
 
-/** Display lines for the Management tab's peaceful-objectives section. */
-export interface PeacefulObjectiveLines {
-  /** e.g. "Population: 3,412 / 8,000". */
+/** Display lines for the Management tab's peaceful-status section. */
+export interface PeacefulStatusLines {
+  /** e.g. "Population: 3,412". */
   populationLine: string;
   /** e.g. "Treasury: healthy" / "Treasury: negative". */
   treasuryLine: string;
-  /** e.g. "Rival: 5,201 / 8,000" — null when the rival isn't playing. */
-  rivalLine: string | null;
-  /** True when the owner's victory conditions both hold. */
-  achieved: boolean;
 }
 
 /**
- * Player-facing peaceful-objective lines for one owner, from the sim's
- * `peacefulObjectiveProgress`. The rival line is included because the
- * rival can win first (an AI rival that hits the target first is the
- * peaceful defeat) — the player needs to see the race.
+ * Player-facing peaceful-status lines for one owner, from the sim's
+ * `peacefulStatus`. There is no rival line: peaceful mode is endless
+ * (2026-10-01) and there is no builder's race to report — the panel
+ * shows how the player's own city is doing, nothing more.
  */
-export function peacefulObjectiveLines(
-  world: World,
-  owner: number,
-  rivalId: number = AI_PLAYER_ID,
-): PeacefulObjectiveLines {
+export function peacefulStatusLines(world: World, owner: number): PeacefulStatusLines {
   const p = STRINGS.peaceful;
-  const prog = peacefulObjectiveProgress(world, owner);
-  const rival = peacefulObjectiveProgress(world, rivalId);
-  // A missing rival REGISTRATION (sandbox skirmishes have no AI
-  // player) renders no rival line — never a "0 / 8,000" phantom racer.
-  // The signal is world.ai.players, not the city player record: the
-  // city always creates both Player records (a dormant 'Rival' shell
-  // funds scripted raids in sandbox), while addAIPlayer only runs when
-  // a rival actually plays.
-  const rivalPlays = world.ai.players.some((p) => p.owner === rivalId);
-  const rivalLine =
-    rivalPlays
-      ? fillLoc(p.rivalLine, {
-          pop: formatCount(rival.population),
-          target: formatCount(prog.target),
-        })
-      : null;
+  const status = peacefulStatus(world, owner);
   return {
     populationLine: fillLoc(p.populationLine, {
-      pop: formatCount(prog.population),
-      target: formatCount(prog.target),
+      pop: formatCount(status.population),
     }),
-    treasuryLine: loc(prog.treasuryOk ? p.treasuryOk : p.treasuryBad),
-    rivalLine,
-    achieved: prog.achieved,
+    treasuryLine: loc(status.treasuryOk ? p.treasuryOk : p.treasuryBad),
   };
 }
-
-/** The peaceful end-screen outcome for a world. */
-export type PeacefulOutcome = 'victory' | 'defeat' | null;
-
-/**
- * Which end screen a peaceful world shows, if any. The player is
- * checked first, so a same-tick tie goes to the player (the peaceful
- * race is a builder's race, not a survival check — the opposite of the
- * conquest tiebreak, where defeat takes precedence).
- *
- * Only the sim's `checkPeacefulVictory` decides; the UI never
- * re-implements the threshold. Pure and headless-testable — game.ts's
- * `maybeShowConquestOutcome` calls this for peaceful worlds.
- */
-export function peacefulOutcome(
-  world: World,
-  owner: number,
-  rivalId: number = AI_PLAYER_ID,
-): PeacefulOutcome {
-  if (checkPeacefulVictory(world, owner)) return 'victory';
-  if (checkPeacefulVictory(world, rivalId)) return 'defeat';
-  return null;
-}
-
-/**
- * End-screen title + detail copy for a peaceful outcome. Pure so the
- * copy is headless-testable; game.ts passes it into the existing
- * `EndScreen.showVictory()` / `showDefeat()` path.
- */
-export function peacefulEndCopy(
-  world: World,
-  owner: number,
-  outcome: 'victory' | 'defeat',
-): { title: string; detail: string } {
-  const p = STRINGS.peaceful;
-  const pop = formatCount(peacefulObjectiveProgress(world, owner).population);
-  return outcome === 'victory'
-    ? { title: loc(p.victoryTitle), detail: fillLoc(p.victoryDetail, { pop }) }
-    : { title: loc(p.defeatTitle), detail: fillLoc(p.defeatDetail, { pop }) };
-}
-
-/** Re-exported for UI call sites that quote the target. */
-export { PEACEFUL_VICTORY_POPULATION };

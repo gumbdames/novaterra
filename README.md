@@ -37,11 +37,11 @@ land, sea and air — or play a fully peaceful game with war disabled.
   counter-intel surge). Phase 8 (peaceful mode + tech levels + civilian
   deep-dive) is complete: `world.peaceful` + the def-level `military` predicate lock out all
   war apparatus at the command layer (the AI rival keeps playing
-  peacefully), conquest is bypassed, and the builder's victory is
-  8,000 housed residents — the skirmish-setup toggle, the hidden
-  Military tab, the Management tab's live objectives section, the
-  peaceful victory/defeat end screens, and the greyed-out palette
-  lockout are all wired. The civilian deep-dive is in too: 99 buildings
+  peacefully), conquest is bypassed, and peaceful mode is endless
+  (2026-10-01) — no victory condition, no end screen, just build —
+  the skirmish-setup toggle, the hidden Military tab, the Management
+  tab's live status section, and the greyed-out palette lockout are
+  all wired. The civilian deep-dive is in too: 99 buildings
   (museum, theater, sports stadium, botanical garden, grand market,
   bank, office tower, clinic, medicalCenter, fire station) and five
   city ordinances on the Management tab — Green Initiative, Transit
@@ -78,9 +78,8 @@ land, sea and air — or play a fully peaceful game with war disabled.
 - Peaceful mode (Phase 8, sim core + UI panel in): war disabled by
   design — the full military roster (units, buildings, upgrades,
   covert ops, superweapons) is locked out at the command layer while
-  the AI rival keeps playing peacefully beside you; it is a race to
-  8,000 housed residents with a solvent treasury (no conquest — but the
-  rival can win the race first, which ends the game in defeat)
+  the AI rival keeps playing peacefully beside you; it is endless
+  (2026-10-01) — no victory, no defeat, no end screen, just build
 - Unit veterancy (Recruit → Elite), a Military Academy, education and civic
   systems, land value and desirability (elevation, shoreline, clean air,
   and nearby libraries/parks/schools/museums/stadiums/parking/marinas set each block's

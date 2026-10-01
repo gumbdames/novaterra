@@ -108,7 +108,7 @@ import {
 // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
 // the peaceful-objectives section (po:) reads the sim's pure progress
 // helper — no DOM, safe in the digest.
-import { peacefulObjectiveProgress } from '../sim/peaceful';
+import { peacefulStatus } from '../sim/peaceful';
 
 /**
  * Digest of the selection panel's dynamic content. Stable when nothing
@@ -357,17 +357,15 @@ export function selectionDigest(
       // Grand-expansion Phase 8 (peaceful mode, workstream B,
       // 2026-09-30): the peaceful-objectives section renders only in
       // peaceful worlds on the Management tab — the digest carries the
-      // player's population, the treasury flag, and the rival's
-      // population (the rival can win first), so the panel repaints
-      // exactly when a rendered number would change. 'po:x' when the
-      // section does not render, so the branch's representative state
-      // (non-peaceful) covers the label.
+      // Final-review (2026-10-01): peaceful mode is endless — the
+      // panel shows the player's status only (population, treasury
+      // flag). The old builder's-race victory is gone, so there is no
+      // rival line and no target. 'po:x' when the section does not
+      // render, so the branch's representative state (non-peaceful)
+      // covers the label.
       if (world.peaceful === true) {
-        const prog = peacefulObjectiveProgress(world, HUMAN_PLAYER_ID);
-        const rival = peacefulObjectiveProgress(world, AI_PLAYER_ID);
-        parts.push(
-          `po:${prog.population}:${prog.treasuryOk ? 1 : 0}:${rival.population}`,
-        );
+        const status = peacefulStatus(world, HUMAN_PLAYER_ID);
+        parts.push(`po:${status.population}:${status.treasuryOk ? 1 : 0}`);
       } else {
         parts.push('po:x');
       }

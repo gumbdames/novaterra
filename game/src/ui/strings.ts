@@ -963,32 +963,20 @@ export const STRINGS = {
     setupToggle: { en: 'Peaceful mode' },
     /** Skirmish setup: one-line explanation of what peaceful means. */
     setupExplanation: {
-      en: 'No military — you and your rival build peacefully. Win by growing your city to 8,000 residents.',
+      en: 'No military — you and your rival build peacefully. Endless: no victory, no defeat, just build.',
     },
     /** Civilian tab note (the Military tab is hidden in peaceful games). */
     militaryHiddenNote: {
-      en: 'Peaceful mode: the military is disabled. Grow your city — 8,000 residents wins the game.',
+      en: 'Peaceful mode: the military is disabled. Build freely — there is no victory condition.',
     },
-    /** Management tab: the peaceful objectives section title. */
-    objectivesTitle: { en: 'Peaceful victory' },
-    /** Objectives panel: population vs the victory target. */
-    populationLine: { en: 'Population: {pop} / {target}' },
-    /** Objectives panel: treasury is at or above the floor. */
+    /** Management tab: the peaceful status section title. */
+    statusTitle: { en: 'City status' },
+    /** Status panel: housed population. */
+    populationLine: { en: 'Population: {pop}' },
+    /** Status panel: treasury is non-negative. */
     treasuryOk: { en: 'Treasury: healthy' },
-    /** Objectives panel: treasury is below the floor. */
+    /** Status panel: treasury is negative. */
     treasuryBad: { en: 'Treasury: negative' },
-    /** Objectives panel: the rival's progress (the rival can win first). */
-    rivalLine: { en: 'Rival: {pop} / {target}' },
-    /** End screen: the player reached the target first. */
-    victoryTitle: { en: 'Peaceful victory!' },
-    victoryDetail: {
-      en: 'Your city thrives — {pop} residents call it home. A triumph built, not conquered.',
-    },
-    /** End screen: the rival reached the target first. */
-    defeatTitle: { en: 'Rival wins' },
-    defeatDetail: {
-      en: 'Your rival reached {pop} residents first. Keep building — or start a new city and outgrow them.',
-    },
     /** Intel panel: covert ops are not offered in peaceful games. */
     covertOpsDisabled: {
       en: 'Covert operations are not available in peaceful mode.',

@@ -26,30 +26,28 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   training costs. `sandbox: true` builds a peaceful world with no AI
   rival and no victory condition — the living menu demo uses it (the
   director is the sole author); default false, existing callers unchanged.
-  `peaceful: true` (grand-expansion Phase 8, workstream A, 2026-09-30)
-  builds a PEACEFUL skirmish: `world.peaceful` is set at tick 0 (never
-  toggled mid-game; restored sessions carry the snapshot's flag) and the
-  AI rival KEEPS PLAYING — it just plays peacefully (grand-expansion
-  Phase 8, workstream C, 2026-09-30: the rival runs `thinkPeaceful`
-  and no longer even FORMS military orders — the `canTrain` gate plus
-  the peaceful dispatch mean zero military orders reach the command
+  `peaceful: true` (grand-expansion Phase 8, workstream A, 2026-09-30;
+  endless revision, final-review 2026-10-01) builds a PEACEFUL
+  skirmish: `world.peaceful` is set at tick 0 (never toggled mid-game;
+  restored sessions carry the snapshot's flag) and the AI rival KEEPS
+  PLAYING — it just plays peacefully (grand-expansion Phase 8,
+  workstream C, 2026-09-30: the rival runs `thinkPeaceful` and no
+  longer even FORMS military orders — the `canTrain` gate plus the
+  peaceful dispatch mean zero military orders reach the command
   layer, not merely rejected ones). Starting forces swap the 4 rifles
-  for 4 haulers
-  (same count — the AI's cap headroom math is unchanged). Conquest is
-  bypassed: `checkSkirmishVictory` / `checkSkirmishDefeat` return false
-  and `getSkirmishOutcome` returns null for peaceful worlds (the
-  peaceful victory `checkPeacefulVictory` in sim/peaceful.ts owns the
-  outcome; `game.ts`'s `maybeShowConquestOutcome` early-returns). NOT
-  the same as `sandbox`: sandbox skips the rival entirely; peaceful
-  keeps the rival and has a builder's victory condition (8,000 housed
-  residents, non-negative treasury). The peaceful victory UI panel
-  (workstream B, 2026-09-30) is in: the skirmish-setup toggle
-  (`menus.ts`) flows through `main.ts` → `GameOptions.peaceful` →
-  `createSession`; `game.ts`'s `maybeShowConquestOutcome` routes
-  peaceful worlds to `peacefulOutcome` / `peacefulEndCopy`
-  (ui/peaceful.ts) and the existing `EndScreen` with peaceful copy —
-  the rival winning the race first is a peaceful DEFEAT (same-tick
-  ties go to the player). The Management tab heads with the live
+  for 4 haulers (same count — the AI's cap headroom math is
+  unchanged). Conquest is bypassed: `checkSkirmishVictory` /
+  `checkSkirmishDefeat` return false and `getSkirmishOutcome` returns
+  null for peaceful worlds. There is NO victory condition: peaceful
+  mode is ENDLESS (2026-10-01) — no end screen ever fires, the game
+  just keeps simulating; `game.ts`'s `maybeShowConquestOutcome` falls
+  through to the (null) conquest outcome for peaceful worlds. NOT the
+  same as `sandbox`: sandbox skips the rival entirely; peaceful keeps
+  the rival (it plays peacefully) and simply never ends. The peaceful
+  status panel (workstream B, 2026-09-30) is in: the skirmish-setup
+  toggle (`menus.ts`) flows through `main.ts` →
+  `GameOptions.peaceful` → `createSession`. The Management tab heads
+  with the live
   objectives section, the Military tab is hidden, and covert-op
   buttons are replaced by a note.
 - `demoDirector.ts` — the living menu demo (workstream X, 2026-09-30).
@@ -103,9 +101,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `win`/`lose` cheats also use it. No-rival skirmishes are sandbox
   (no win/lose condition). Grand-expansion Phase 8 (peaceful,
   workstream B, 2026-09-30): `showVictory(title?, detail?)` /
-  `showDefeat(title?, detail?)` take optional copy overrides for the
-  peaceful end screens (defaults = the existing conquest/cheat copy —
-  existing callers pass nothing and see no change).
+  `showDefeat(title?, detail?)` take optional copy overrides
+  (defaults = the existing conquest/cheat copy — existing callers pass
+  nothing and see no change; peaceful mode is endless since
+  2026-10-01 and never shows an end screen, so the overrides now serve
+  only the cheats).
 - `saveslots.ts` — save/load slot picker dialog + pure
   `formatSaveSummary`.
 - `hud.ts` — top bar, advisor panel, selection panel, tabbed train/build
@@ -151,7 +151,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   progress, e.g. "Veteran ▲▲ · 320/500 XP" via `ui/veterancy.ts`); selected
   buildings show their crew training level ("Level 2/3", from economy.ts)
   AND a Phase 2 power/water diagnosis line ("Power: Shortage", "Water:
-  Disconnected" — from the sim's `powerDiag`/`waterDiag`). All are
+  Disconnected" — from the sim's `powerDiag`/`waterDiag`). Final-review
+  R2 (2026-10-01): selected buildings ALSO show their structural HP
+  ("HP 73%") — digest-covered (`bw:` segment, AD11), registered in
+  `HUD_PANEL_BRANCHES`'s `selection-building` branch (always emitted).
+  All are
   digest-covered (`uv:` / `bl:` / `bu:` segments, AD11).
   Topbar (Phase 2): a "Utilities" toggle shows the utility overlay —
   served-power / served-water / fouled-source tint decals plus marker
@@ -206,9 +210,10 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   hidden entirely in peaceful worlds (a remembered 'military' selection
   falls back to Civilian for rendering; the stored state is untouched).
   The Civilian tab heads with the one-line "military units are disabled"
-  note; the Management tab heads with the peaceful-objectives section
-  (`peacefulObjectivesEl` — population / treasury / rival lines from
-  ui/peaceful.ts, first in the tab); the intel panel skips the
+  note; the Management tab heads with the peaceful-status section
+  (`peacefulObjectivesEl` — population / treasury lines from
+  ui/peaceful.ts `peacefulStatusLines`, first in the tab; no target,
+  no rival — endless mode has no race); the intel panel skips the
   infiltrate / sabotage / steal-tech buttons and shows the
   "covert operations are disabled" note instead (the sim would reject
   them loudly — offering the buttons would be a lie).
@@ -233,7 +238,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   appear while the Management tab renders them. Grand-expansion Phase 8
   (peaceful, workstream B, 2026-09-30): the Management tab's peaceful-
   objectives section contributes `po:` (player population, treasury
-  flag, rival population — `po:x` when the section does not render, so
+  flag — `po:x` when the section does not render, so
   the non-peaceful representative state covers the label).
   The contract test asserts each declared label really appears in digest
   output and scans hud.ts for unregistered panel methods / DOM classes —
@@ -296,18 +301,14 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `peaceful.ts` — **peaceful-mode UI contract (pure, tested,
   `tests/ui.peaceful.test.ts`).** The UI-side mirror of the sim's
   peaceful system (`sim/peaceful.ts`, grand-expansion Phase 8,
-  workstream B, 2026-09-30): `menuTabsForWorld(peaceful)` (the Military
-  tab list — hud.ts renders from this), `formatCount` (deterministic
-  thousands separators, no `toLocaleString`), `peacefulObjectiveLines`
-  (the Management tab's objectives section: population vs the 8,000
-  target, treasury status, the rival's progress — the rival line is
-  null when the rival isn't actually playing, detected via
-  `world.ai.players`, NOT the city player record, which always creates
-  a dormant 'Rival' shell), `peacefulOutcome` (the end-screen decider:
-  the player is checked first, so a same-tick tie goes to the player —
-  the opposite of the conquest tiebreak), and `peacefulEndCopy` (the
-  victory/defeat title+detail, incl. the rival-won-first defeat).
-  Reads sim state defensively, never writes it.
+  workstream B, 2026-09-30; endless revision, final-review
+  2026-10-01): `menuTabsForWorld(peaceful)` (the Military tab list —
+  hud.ts renders from this), `formatCount` (deterministic thousands
+  separators, no `toLocaleString`), and `peacefulStatusLines` (the
+  Management tab's status section: housed population and treasury
+  health — no target, no rival line, no end-screen outcome; peaceful
+  mode is endless and never declares a winner). Reads sim state
+  defensively, never writes it.
 - `utilities.ts` — **Phase 2 utility contract module (pure, tested,
   `tests/ui.utilities.test.ts`).** The UI/render boundary for the sim's
   utility networks: the 13-building roster (`UTILITY_BUILDING_KINDS`),

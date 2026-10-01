@@ -92,9 +92,18 @@ pieces. Counts (pinned in `tests/sim.peaceful.test.ts`):
   capacity for the resupply chain), `signalsIntel`, `counterIntel` (the
   whole intel roster is hostile apparatus for peaceful-mode purposes).
 
-## 3. Victory numbers
+## 3. Victory numbers — REMOVED (endless revision, 2026-10-01)
 
-**Win = reach 8,000 housed residents with a non-negative treasury.**
+**Peaceful mode is endless: there is no victory condition.** The
+builder's-race victory below was removed in the final review
+(2026-10-01). A peaceful world never declares a winner or a loser; it
+just keeps simulating. The sim exposes `peacefulStatus(world, owner)`
+(housed population + treasury health) as a status readout, and the UI
+shows it as information — not as progress toward a goal. No end
+screen ever fires for a peaceful world.
+
+The original design (kept for the record): **Win = reach 8,000 housed
+residents with a non-negative treasury.**
 
 Why 8,000: an apartment block houses 30 on a 3×3 footprint, so 8,000 ≈
 267 apartments ≈ 2,400 city-grid cells — under 4% of the 256×256 grid. A
@@ -114,11 +123,11 @@ No "influence" system exists in 0.1 Alpha — none was invented. PLAN §3.9's
 influence and scenario goals stay UI/campaign work.
 
 No defeat path: with every military def locked out, conquest is
-unreachable, so peaceful games can only be won, never lost. The conquest
-checks (`checkSkirmishVictory` / `checkSkirmishDefeat` /
+unreachable, so peaceful games can only be played, never won or lost.
+The conquest checks (`checkSkirmishVictory` / `checkSkirmishDefeat` /
 `getSkirmishOutcome` in `ui/session.ts`) return false/null for peaceful
-worlds, and `game.ts`'s `maybeShowConquestOutcome` early-returns — the
-two victory systems never race.
+worlds, and `game.ts`'s `maybeShowConquestOutcome` falls through to the
+null conquest outcome — no end screen, ever.
 
 ## 4. Disasters audit
 
@@ -143,7 +152,8 @@ needed for the mode.
   condition. The living menu demo uses it.
 - **Peaceful** (`SessionOptions.peaceful`): the Classic AI rival EXISTS
   and plays — it just plays peacefully (its military orders are rejected
-  and swallowed). Conquest is bypassed; the peaceful victory applies.
+  and swallowed). Conquest is bypassed; peaceful mode is endless
+  (2026-10-01) — no victory condition, no end screen.
 
 This overrides PLAN §3.9's "no AI rival" line — per the task, peaceful
 keeps the rival.

@@ -110,7 +110,6 @@ import {
   createAISystem,
 } from '../src/sim/ai';
 import type { AIDifficulty } from '../src/sim/ai';
-import { checkPeacefulVictory } from '../src/sim/peaceful';
 import { grantAllTrainingResources } from './sim.roster-fixtures';
 
 // ---------------------------------------------------------------------------
@@ -372,18 +371,13 @@ function runLongGame(opts: LongGameOptions): LongGameResult {
       if (fuel > s.fuelPeak) s.fuelPeak = fuel;
     }
 
-    // Natural conclusion checks.
+    // Natural conclusion checks. Peaceful mode is endless
+    // (2026-10-01): no victory condition, so a peaceful soak never
+    // concludes — it just runs to the tick budget.
     if (!opts.peaceful && tick > 30) {
       for (const o of [0, 1] as const) {
         if (isEliminated(world, o)) {
           conclusion = `elimination: owner ${1 - o} wins at tick ${tick}`;
-          break;
-        }
-      }
-    } else if (opts.peaceful) {
-      for (const o of [0, 1] as const) {
-        if (checkPeacefulVictory(world, o)) {
-          conclusion = `peaceful victory: owner ${o} at tick ${tick}`;
           break;
         }
       }

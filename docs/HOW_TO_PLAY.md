@@ -53,13 +53,11 @@ open — housing, economy, utilities, power and water, transport,
 airlines, research, and city life.
 
 Your rival still plays, peacefully: the Classic AI builds its own city
-but no army. There is no conquest — instead it is a **race**. The
-first side to reach **8,000 housed residents** with a non-negative
-treasury wins. Reach it first for the victory screen; if the rival's
-city gets there before yours, the game ends in defeat. The
-**Management** tab's objectives section shows the race live: your
-population against the target, your treasury status, and the rival's
-progress.
+but no army. There is no conquest — and there is no victory either.
+Peaceful mode is **endless**: no win screen, no defeat screen, no
+race. Build for as long as you like; the **Management** tab's status
+section shows your city's housed population and treasury health as
+plain information, not as progress toward a goal.
 
 ## Mouse
 

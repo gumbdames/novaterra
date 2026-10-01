@@ -55,14 +55,22 @@
  *    own `BuildingRecord.discovery` viewer records (suspected/revealed),
  *    never by reading the true airportType.
  *  - The AI issues the same commands a human player would (spawnUnit,
- *    moveUnit, moveGroup, attackUnit, researchUpgrade) through the command
- *    queue. It does not mutate world state directly (except its own
- *    `world.ai` record and the virtual-economy credit, which mirrors what
- *    the economy system does for real buildings).
+ *    moveUnit, moveGroup, attackUnit, attackBuilding, researchUpgrade)
+ *    through the command queue. It does not mutate world state directly
+ *    (except its own `world.ai` record and the virtual-economy credit,
+ *    which mirrors what the economy system does for real buildings).
  *  - Water detection is by trial, not maphack: the AI probes for water by
  *    attempting real fishing-boat spawns around its base. Failed probes
  *    cost nothing (rejected at enqueue); a successful probe IS the first
  *    fishing boat.
+ *
+ * Final-review R2-B (AI siege doctrine, 2026-10-01):
+ *  - When no enemy units are visible for N consecutive thinks (the
+ *    "army destroyed" signal), the AI escalates from whack-a-mole to a
+ *    SIEGE: it picks the highest-value known enemy building (sticky
+ *    target) and orders a siege force onto it via `attackBuilding`,
+ *    while a difficulty-scaled home guard stays back to defend the
+ *    base. Wars can now end in elimination, not stalemate.
  *
  * Grand-expansion Phase 7 (AI intel play, 2026-09-30):
  *  - The AI's intel infrastructure is VIRTUAL (a second one-at-a-time
@@ -138,7 +146,7 @@ import { findUnit, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
 import { preferHighestVariant } from './variants';
 import { rngBank } from './world';
 import type { RngBank } from './rng';
-import { canTarget } from './combat';
+import { canTarget, canTargetBuilding } from './combat';
 import { isUnitAvailableForAge, getSightBonus, AGE_PROGRESSION } from './ages';
 import { effectiveSight, hasUpgrade, registerUpgradeCommands, UPGRADE_DEFS, type UpgradeId } from './upgrades';
 import {
@@ -437,6 +445,18 @@ export interface AIPlayerState {
    * default below).
    */
   intel: AIIntelState;
+  /**
+   * Final-review R2-B (AI siege doctrine, 2026-10-01): the siege
+   * campaign state. `siegeQuietThinks` counts consecutive thinks with
+   * no visible enemy units (the "army destroyed" signal); once it
+   * reaches the difficulty's quiet threshold the AI escalates from
+   * whack-a-mole to attacking the enemy base. `siegeTargetBuildingId`
+   * is the sticky siege target (0 = none) so the whole siege force
+   * converges instead of flapping between targets each think.
+   * Plain data — snapshotted + digested (AD9: missing decodes to 0).
+   */
+  siegeQuietThinks?: number;
+  siegeTargetBuildingId?: number;
 }
 
 /**
@@ -510,6 +530,11 @@ export function addAIPlayer(
     // Grand-expansion Phase 7 (AI intel play): the virtual intel queue
     // starts empty; cadet/citizen never touch it (empty priority table).
     intel: defaultAIIntelState(),
+    // Final-review R2-B (AI siege doctrine): no siege in progress at
+    // registration — initialized here (not just in decode) so a fresh
+    // AI player deep-equals its own save/load round trip.
+    siegeQuietThinks: 0,
+    siegeTargetBuildingId: 0,
   });
 }
 
@@ -803,6 +828,241 @@ function attack(
   targetId: number,
 ): void {
   issue(world, queue, 'attackUnit', { unitId, targetId, owner });
+}
+
+// ---------------------------------------------------------------------------
+// AI siege doctrine (final-review R2-B, 2026-10-01).
+//
+// Before this workstream the AI's wars ended as whack-a-mole: the attack
+// loops issued only `attackUnit`, so after wiping the visible enemy army
+// the AI idled (and cold-war standoffs were structural — scouts only
+// reach 120–220 units out on a 512-wide map). The new doctrine: when no
+// enemy units have been visible for N consecutive thinks (the army is
+// destroyed or hiding), the AI escalates to a siege — it picks the
+// highest-value known enemy building and orders a siege force to attack
+// it via the `attackBuilding` command, while a difficulty-scaled home
+// guard stays back to defend the base.
+//
+// The command contract (R2-A, final-review C3 — landed): command name
+// `attackBuilding`, payload `{ unitId, buildingId, owner }` — the same
+// payload shape as the building-targeted covert-op commands
+// (`infiltrateBuilding` / `sabotage` / `stealTech`). Apply sets the
+// unit's `buildingTargetId` + `chasing` and moves it onto the
+// building's footprint center; the combat loop chases and fires
+// `fireWeaponAtBuilding` in range, re-validating per tick (a destroyed
+// building clears the order instead of throwing). Verified against the
+// real command at sign-off: the name, payload, and `buildingTargetId`
+// semantics here match combat.ts exactly.
+//
+// "Known enemy infrastructure" reuses `getVisibleEnemyBuildings` — the
+// same abstraction the spy doctrine uses (the AI's intel picture of the
+// enemy's completed buildings). Siege targeting is therefore consistent
+// with the existing AI, and it is what makes 220+ base separations
+// eliminable instead of permanent stalemates.
+// ---------------------------------------------------------------------------
+
+/**
+ * The attack-building command name this doctrine issues. R2-A
+ * (final-review C3) provides it; see the section header for the
+ * coordination contract.
+ */
+export const ATTACK_BUILDING_COMMAND = 'attackBuilding';
+
+/**
+ * Consecutive thinks with zero visible enemy units before the AI
+ * starts a siege. Higher difficulties escalate faster (marshal: the
+ * very first quiet think).
+ */
+export const SIEGE_QUIET_THINKS: Record<AIDifficulty, number> = {
+  cadet: Infinity, // cadet never attacks — no siege either
+  citizen: 3,
+  commander: 2,
+  general: 2,
+  marshal: 1,
+};
+
+/**
+ * Fraction of the siege-capable force that stays home as the base
+ * guard while the rest sieges. The AI must not strip its base bare:
+ * higher difficulties commit more to the siege but always keep a
+ * guard.
+ */
+export const SIEGE_HOME_GUARD_FRACTION: Record<AIDifficulty, number> = {
+  cadet: 1,
+  citizen: 0.5,
+  commander: 0.4,
+  general: 0.3,
+  marshal: 0.2,
+};
+
+/**
+ * When a siege campaign starts, guard units farther than this (world
+ * units) from the base are recalled once — the guard defends the base
+ * area, it doesn't wander the midfield.
+ */
+const SIEGE_GUARD_RECALL_RADIUS = 150;
+
+/**
+ * Siege target value for an enemy building kind: production and war
+ * apparatus first (killing production ends the whack-a-mole), then
+ * research, intel, and utility plants; civilian buildings are the
+ * fallback — a base of only houses must still be removable, or
+ * elimination stays structurally unreachable.
+ */
+export function siegeTargetValue(kind: BuildingKind): number {
+  const def = BUILDING_DEFS[kind];
+  if (!def) return 0;
+  if (def.military === true) return 100;
+  if (kind === 'lab') return 90;
+  if (def.intelOutput) return 85;
+  if ((def.powerSupply ?? 0) > 0 || (def.waterSupply ?? 0) > 0) return 70;
+  if (def.storageKind) return 60;
+  if (kind === 'ordnanceDepot' || kind === 'fuelDepot') return 55;
+  return 10;
+}
+
+/** Issue an attackBuilding order through the queue (rejections swallowed). */
+function siegeBuilding(
+  world: World,
+  queue: CommandQueue,
+  owner: number,
+  unitId: number,
+  buildingId: number,
+): void {
+  issue(world, queue, ATTACK_BUILDING_COMMAND, { unitId, buildingId, owner });
+}
+
+/**
+ * Pick the siege target: the sticky target while it still stands
+ * (completed, still enemy-owned), otherwise the best known enemy
+ * building. Citizen aims at the nearest building (dumb but effective);
+ * commander+ aim at the highest siege value. Deterministic tiebreaks
+ * (lowest id) — no RNG in thinks. Returns null when no enemy
+ * infrastructure is known.
+ */
+function pickSiegeTarget(
+  world: World,
+  ai: AIPlayerState,
+  currentId: number,
+): BuildingRecord | null {
+  const owner = ai.owner;
+  const difficulty = ai.difficulty;
+  if (currentId > 0) {
+    const cur = world.city.buildings.find((b) => b.id === currentId);
+    if (cur && cur.owner !== owner && cur.progress >= 1) return cur;
+  }
+  let target: BuildingRecord | null = null;
+  if (difficulty === 'citizen') {
+    let best = Infinity;
+    for (const b of getVisibleEnemyBuildings(world, owner)) {
+      if (b.owner === owner) continue;
+      const c = buildingCenterWorld(b);
+      const dx = c.x - ai.baseX;
+      const dz = c.z - ai.baseZ;
+      const d = dx * dx + dz * dz;
+      if (d < best || (d === best && target !== null && b.id < target.id)) {
+        best = d;
+        target = b;
+      }
+    }
+    return target;
+  }
+  let best = -1;
+  for (const b of getVisibleEnemyBuildings(world, owner)) {
+    if (b.owner === owner) continue;
+    const v = siegeTargetValue(b.kind);
+    if (v > best || (v === best && target !== null && b.id < target.id)) {
+      best = v;
+      target = b;
+    }
+  }
+  return target;
+}
+
+/**
+ * How many of a siege force of `n` units stay home as the base guard.
+ * The guard is the difficulty-scaled fraction, but it never exceeds
+ * n-1: a lone unit still sieges (a one-unit "guard" defends nothing,
+ * and the siege needs at least one attacker). Exported for tests.
+ */
+export function siegeGuardCount(n: number, difficulty: AIDifficulty): number {
+  const frac = SIEGE_HOME_GUARD_FRACTION[difficulty] ?? 0;
+  return Math.min(Math.ceil(n * frac), Math.max(0, n - 1));
+}
+
+/**
+ * The siege think: called when no enemy units are visible and the
+ * quiet has persisted past the difficulty threshold (checked by the
+ * caller). Splits the siege-capable force into a home guard (stays,
+ * recalled once toward the base when the campaign starts) and a siege
+ * force (ordered onto the sticky target building). Cadet never sieges.
+ */
+function thinkSiege(world: World, queue: CommandQueue, ai: AIPlayerState): void {
+  const difficulty = ai.difficulty;
+  if (difficulty === 'cadet') return;
+  const quiet = ai.siegeQuietThinks ?? 0;
+  if (quiet < SIEGE_QUIET_THINKS[difficulty]) return;
+
+  // Siege-capable combat units, id order (deterministic). Same gates
+  // as the attack loops: armed, ground-targeting weapons (R2-A's
+  // `canTargetBuilding` — the same predicate the command validates),
+  // loaded magazines, no scouts, no empty-wing carriers.
+  // Final-review R2-B: siege uses GROUND and NAVAL units only — air
+  // units (especially carrier-based) are managed by the wing/hangar
+  // systems, and their embark/park state races with queued siege
+  // orders (the command rejects parked/embarked aircraft).
+  const fighters: UnitRecord[] = [];
+  for (const u of world.units) {
+    if (u.owner !== ai.owner || u.hp <= 0) continue;
+    const def = UNIT_DEFS[u.kind as UnitKind];
+    if (!canTargetBuilding(def)) continue;
+    if (u.kind === 'drone' || u.kind === 'awacs') continue; // scouts don't fight
+    if (u.domain === 'air') continue; // air power is wing-managed, not siege
+    // Embarked (on a carrier) or parked (in a hangar) aircraft can't
+    // attack — the command rejects them. Launch first via the carrier/
+    // hangar systems, don't siege with them.
+    if ((u.embarkedOn ?? 0) !== 0) continue;
+    if ((u.hangarBuildingId ?? 0) !== 0) continue;
+    // Dry magazines don't get new attack orders — they fall back in
+    // thinkAmmoRetreats instead (they can't shoot anyway).
+    if ((def.ammoCapacity ?? 0) > 0 && u.ammo <= 0) continue;
+    // Carriers with unfilled wings never sail into combat (their wings
+    // are filled by thinkCarrierWings first).
+    if (isEmptyWingCarrier(world, u)) continue;
+    fighters.push(u);
+  }
+  if (fighters.length === 0) return;
+
+  const target = pickSiegeTarget(world, ai, ai.siegeTargetBuildingId ?? 0);
+  if (!target) return; // no enemy infrastructure known — hold position
+  const campaignStart = (ai.siegeTargetBuildingId ?? 0) !== target.id;
+  ai.siegeTargetBuildingId = target.id;
+
+  // Home guard: the first K units by id stay on defense; the rest form
+  // the siege force (siegeGuardCount: never more than n-1).
+  const guard = siegeGuardCount(fighters.length, difficulty);
+  for (let i = 0; i < fighters.length; i++) {
+    const u = fighters[i]!;
+    if (i < guard) {
+      // Home guard: on campaign start, recall stragglers toward the
+      // base so the guard actually defends the base area. One order
+      // per campaign start — no per-think churn.
+      if (campaignStart) {
+        const dx = u.x - ai.baseX;
+        const dz = u.z - ai.baseZ;
+        if (dx * dx + dz * dz > SIEGE_GUARD_RECALL_RADIUS * SIEGE_GUARD_RECALL_RADIUS) {
+          moveTo(world, queue, ai.owner, u.id, ai.baseX, ai.baseZ);
+        }
+      }
+      continue;
+    }
+    // Only re-issue if not already sieging this building (mirrors the
+    // attack loop's `targetId`/`chasing` dedup — R2-A's command sets
+    // `buildingTargetId` + `chasing` at apply, and the combat loop
+    // clears `buildingTargetId` when the building falls).
+    if ((u.buildingTargetId ?? 0) === target.id && u.chasing) continue;
+    siegeBuilding(world, queue, ai.owner, u.id, target.id);
+  }
 }
 
 /** Issue a moveUnit command through the queue. */
@@ -2604,6 +2864,16 @@ function thinkCitizen(
   // no-op in 0.1 Alpha (see thinkCivilianTransport).
   thinkCivilianTransport(world, ai);
 
+  // Siege state (final-review R2-B): no visible enemy units means the
+  // army is destroyed or hiding — count the quiet thinks; visible
+  // enemies reset the count and drop any siege target.
+  if (visible.length > 0) {
+    ai.siegeQuietThinks = 0;
+    ai.siegeTargetBuildingId = 0;
+  } else {
+    ai.siegeQuietThinks = (ai.siegeQuietThinks ?? 0) + 1;
+  }
+
   // Attack: order all combat units to attack the nearest visible enemy.
   // (Personality may stagger new attack orders to every other think.)
   if (visible.length > 0 && attacksThisThink(world, ai)) {
@@ -2637,6 +2907,11 @@ function thinkCitizen(
       if (u.targetId === nearest.id && u.chasing) continue;
       attack(world, queue, ai.owner, u.id, nearest.id);
     }
+  } else if (visible.length === 0 && attacksThisThink(world, ai)) {
+    // No visible enemies: escalate to a siege of the enemy base once
+    // the quiet persists past the difficulty threshold (thinkSiege
+    // checks it) — the R2-B answer to whack-a-mole wars.
+    thinkSiege(world, queue, ai);
   }
 }
 
@@ -2821,6 +3096,16 @@ function thinkCommander(
     }
   }
 
+  // --- Siege state (final-review R2-B): like citizen — count the
+  //     quiet thinks with no visible enemy units; visible enemies reset
+  //     the count and drop any siege target.
+  if (visible.length > 0) {
+    ai.siegeQuietThinks = 0;
+    ai.siegeTargetBuildingId = 0;
+  } else {
+    ai.siegeQuietThinks = (ai.siegeQuietThinks ?? 0) + 1;
+  }
+
   // --- Attack: like citizen, but fighters prefer air targets and
   //     missile boats stay in their pack (group order already issued).
   //     (Personality may stagger new attack orders to every other think.)
@@ -2864,6 +3149,10 @@ function thinkCommander(
       if (isEmptyWingCarrier(world, u)) continue;
       attack(world, queue, ai.owner, u.id, nearest.id);
     }
+  } else if (visible.length === 0 && attacksThisThink(world, ai)) {
+    // No visible enemies: escalate to a siege of the enemy base once
+    // the quiet persists (final-review R2-B).
+    thinkSiege(world, queue, ai);
   }
 
   // --- Capital ships (marshal, coastal): keep the command ship and
@@ -3941,6 +4230,11 @@ export function encodeAIState(ai: AIState): unknown {
       // queue. Missing (pre-Phase-6 snapshots) decodes to the default —
       // no version bump (AD9).
       intel: encodeAIIntelState(p.intel),
+      // Final-review R2-B (AI siege doctrine): the siege campaign
+      // state. ?? 0 so pre-siege snapshots decode to "no siege in
+      // progress" — no version bump (AD9).
+      siegeQuietThinks: p.siegeQuietThinks ?? 0,
+      siegeTargetBuildingId: p.siegeTargetBuildingId ?? 0,
       personality: encodePersonality(p.personality ?? NEUTRAL_PERSONALITY),
       builtCounts: Object.keys(p.builtCounts).sort().reduce<Record<string, number>>(
         (acc, k) => {
@@ -3977,6 +4271,10 @@ export function decodeAIState(data: unknown): AIState {
       seenSubmarine?: boolean;
       virtualAmmoStock?: number;
       virtualFuelStock?: number;
+      // Final-review R2-B (AI siege doctrine): pre-siege snapshots
+      // carry neither field (AD9).
+      siegeQuietThinks?: number;
+      siegeTargetBuildingId?: number;
       personality?: unknown;
       // Grand-expansion Phase 7 (AI intel play): pre-Phase-6 snapshots
       // have no intel block — it decodes to the default (AD9).
@@ -4018,6 +4316,11 @@ export function decodeAIState(data: unknown): AIState {
       // Grand-expansion Phase 7 (AI intel play): missing (pre-Phase-6
       // snapshots) decodes to the default — no version bump (AD9).
       intel: decodeAIIntelState(p.intel),
+      // Final-review R2-B (AI siege doctrine): missing (pre-siege
+      // snapshots) decodes to "no siege in progress" — no version
+      // bump (AD9).
+      siegeQuietThinks: p.siegeQuietThinks ?? 0,
+      siegeTargetBuildingId: p.siegeTargetBuildingId ?? 0,
       personality: decodePersonality(p.personality),
     })),
   };

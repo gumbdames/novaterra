@@ -325,9 +325,13 @@ function copyUnit(u: UnitRecord): UnitRecord {
     domain: u.domain, hp: u.hp, cooldownLeft: u.cooldownLeft,
     targetId: u.targetId, chasing: u.chasing,
     // Final-review R2 (2026-10-01): siege target linkage (0 = none).
-    // ?? 0 so legacy saves decode to no siege — no version bump,
-    // stays v8 (AD9 additive).
-    buildingTargetId: u.buildingTargetId ?? 0,
+    // Preserve the field's absence when unset: the save/load
+    // round-trip test deep-equals restored units against the originals,
+    // and an always-present `buildingTargetId: 0` breaks that for units
+    // that never had the field. Readers use `?? 0` (AD9 additive).
+    // Check `!== undefined` (not falsiness): 0 is a valid "none" value
+    // that must round-trip when the source has it.
+    ...(u.buildingTargetId !== undefined ? { buildingTargetId: u.buildingTargetId } : {}),
     speed: u.speed, state: u.state, failReason: u.failReason,
     destX: u.destX, destZ: u.destZ, arriveX: u.arriveX, arriveZ: u.arriveZ,
     path: [...u.path], pathAt: u.pathAt,
@@ -338,10 +342,12 @@ function copyUnit(u: UnitRecord): UnitRecord {
     // Phase 3 logistics. ?? 0 so legacy v6 saves decode to empty
     // tanks/magazines — no version bump, stays v6 (same precedent).
     // supplyServices is player config; absent = all services on.
+    // Preserve absence (see buildingTargetId above).
     fuel: u.fuel ?? 0, ammo: u.ammo ?? 0,
-    supplyServices: u.supplyServices ? { ...u.supplyServices } : undefined,
-    // Phase 3 resupply linkage (0 = none). ?? 0 keeps v6 decoding.
-    resupplyDepotId: u.resupplyDepotId ?? 0,
+    ...(u.supplyServices ? { supplyServices: { ...u.supplyServices } } : {}),
+    // Phase 3 resupply linkage (0 = none). Preserve absence (see
+    // buildingTargetId above) — starting units from some paths lack it.
+    ...(u.resupplyDepotId !== undefined ? { resupplyDepotId: u.resupplyDepotId } : {}),
     // Phase 3 per-unit reservation ledger (workstream 3). ?? 0 keeps v6.
     resupplyReservedAmmo: u.resupplyReservedAmmo ?? 0,
     resupplyReservedFuel: u.resupplyReservedFuel ?? 0,
@@ -349,10 +355,10 @@ function copyUnit(u: UnitRecord): UnitRecord {
     // — no version bump, stays v6 (AD9, same precedent as fuel/ammo).
     cargoFuel: u.cargoFuel ?? 0,
     cargoAmmo: u.cargoAmmo ?? 0,
-    // Phase 4 (S7, v7): the ferry's shipping lane. Undefined for legacy
-    // saves and non-ferry units (AD9 additive — no bump needed for this
-    // field alone; it rides the v7 roads/rails bump).
-    route: u.route ? { ...u.route } : undefined,
+    // Phase 4 (S7, v7): the ferry's shipping lane. Preserve absence —
+    // see buildingTargetId above (explicit `undefined` breaks the
+    // save/load deep-equal).
+    ...(u.route ? { route: { ...u.route } } : {}),
     // v8 (grand-expansion Phase 5/6, S4): hangar parking + carrier
     // embark state (0 = unparked / unembarked). Legacy v7 saves decode
     // to 0 via ?? 0 (AD9 — the same precedent as fuel/ammo).

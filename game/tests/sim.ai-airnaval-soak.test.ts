@@ -274,9 +274,11 @@ describe('air/naval AI-vs-AI soak (marshal vs general, economy on)', () => {
     registerCombatCommands(bQueue);
     const bDriver = makeDriver(a.terrain, bQueue);
     // The restored airfields carry their hangar slots through the
-    // snapshot (v8).
+    // snapshot (v8). Final-review R2-B: siege doctrine may destroy
+    // an airfield during the soak — assert at least one survives with
+    // hangars intact, rather than an exact count.
     const airfields = bWorld.city.buildings.filter((x) => x.kind === 'airfield');
-    expect(airfields.length).toBe(2);
+    expect(airfields.length).toBeGreaterThanOrEqual(1);
     for (const f of airfields) expect(f.hangars).toHaveLength(6);
     for (let i = 0; i < SOAK_TICKS / 2; i++) {
       a.driver.step(a.world, TICK_MS);

@@ -699,13 +699,12 @@ transport, civilian airlines and shipping, research, and city life.
 Your rival still plays — peacefully. The Classic AI builds its own city
 beside yours but fields no army and launches no attacks; there is no way
 for either side to conquer the other, so the conquest and defeat screens
-never appear. Instead it is a **race**: the first side to reach **8,000
-housed residents** with a non-negative treasury wins. Reach it first and
-you claim the peaceful victory; if your rival's city gets there before
-yours, the game ends in defeat — watch the Management tab's objectives
-section to see how the race is going. Grow a genuinely great city —
-roughly 270 apartment blocks' worth of people on under 4% of the map —
-and the win is yours.
+never appear. There is no peaceful victory either: peaceful mode is
+**endless** (2026-10-01) — no win condition, no end screen, no race.
+Build for as long as you like; the Management tab's status section shows
+your housed population and treasury health as plain information. Grow a
+genuinely great city — roughly 270 apartment blocks' worth of people on
+under 4% of the map — because building it is the whole game.
 
 ## The campaign: "The First Term"
 

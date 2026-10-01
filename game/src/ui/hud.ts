@@ -121,7 +121,7 @@ import {
 import { HUMAN_PLAYER_ID } from './session';
 // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
 // the peaceful UI contract (tab visibility, objectives lines).
-import { menuTabsForWorld, peacefulObjectiveLines } from './peaceful';
+import { menuTabsForWorld, peacefulStatusLines } from './peaceful';
 import { getMayor, getGeneral } from '../sim/delegation';
 import { selectionDigest as paletteDigest } from './paletteDigest';
 import {
@@ -900,11 +900,11 @@ export class HUD {
   }
 
   /**
-   * Management → Peaceful objectives (grand-expansion Phase 8,
-   * workstream B). Renders only in peaceful worlds: live progress
-   * toward the peaceful victory — population vs the 8,000 target,
-   * treasury status, and the rival's progress (the rival can win
-   * first, which is the peaceful defeat).
+   * Management → Peaceful status (grand-expansion Phase 8, workstream
+   * B; endless revision 2026-10-01). Renders only in peaceful worlds:
+   * the city's live status — housed population and treasury health.
+   * There is no victory condition, no target, no rival race; this is
+   * information, not progress toward a goal.
    *
    * Named *El (not append/build/update-prefixed) per the ui/AGENTS.md
    * AD11 rule — it is covered by the management-panel digest branch
@@ -912,8 +912,8 @@ export class HUD {
    * shared panel classes that branch already claims.
    */
   private peacefulObjectivesEl(world: World): HTMLElement {
-    const lines = peacefulObjectiveLines(world, HUMAN_PLAYER_ID);
-    const sec = this.makeSection(loc(STRINGS.peaceful.objectivesTitle));
+    const lines = peacefulStatusLines(world, HUMAN_PLAYER_ID);
+    const sec = this.makeSection(loc(STRINGS.peaceful.statusTitle));
     {
       const row = el('div', 'panel-row');
       row.append(el('span', 'panel-label', lines.populationLine));
@@ -922,11 +922,6 @@ export class HUD {
     {
       const row = el('div', 'panel-row');
       row.append(el('span', 'panel-label', lines.treasuryLine));
-      sec.append(row);
-    }
-    if (lines.rivalLine !== null) {
-      const row = el('div', 'panel-row');
-      row.append(el('span', 'panel-label', lines.rivalLine));
       sec.append(row);
     }
     return sec;

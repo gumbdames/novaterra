@@ -275,8 +275,9 @@ upgrades (classification pinned in `tests/sim.peaceful.test.ts`); loud
 lockout in `spawnUnit` / `placeBuilding` / `researchUpgrade` / the
 three covert-op validates / `constructSuperweaponFacility` /
 `fireStorm` / `fireAegis`; conquest checks bypassed;
-`checkPeacefulVictory` / `peacefulObjectiveProgress` (8,000 population
-+ non-negative treasury; 28 sim tests, 1976/1976 green at merge). The AI
+`peacefulStatus` (population + treasury health — peaceful mode is
+endless since 2026-10-01, no victory condition; 28+ sim tests,
+1976/1976 green at merge). The AI
 rival KEEPS PLAYING in peaceful games
 (rejected military orders are swallowed) — this overrides the old "no
 AI rival" line. Workstream B (UI panel) complete: skirmish-setup
@@ -1049,13 +1050,13 @@ integration gate is green (full suite 2100/2100, tsc clean).
 - Workstream A (peaceful-mode sim core): def-level `military`
   predicate, command-layer lockout (spawnUnit/deployMine/placeBuilding/
   researchUpgrade/covert ops/superweapons), `world.peaceful` (tick-0,
-  immutable, snapshot v8, digest), `checkPeacefulVictory` (8,000 housed
-  residents + non-negative treasury), conquest bypass, 28 sim tests.
+  immutable, snapshot v8, digest), `peacefulStatus` (population +
+  treasury health — endless since 2026-10-01, no victory condition),
+  conquest bypass, 28+ sim tests.
 - Workstream B (peaceful UI): skirmish-setup peaceful toggle, hidden
   Military tab (the Civilian tab carries the note), Management tab's
-  live objectives section, peaceful victory/defeat end screens (the
-  rival can win the race first — a peaceful defeat exists), palette
-  lockout with reasons, `po:` digest segment, 23 UI tests.
+  live status section (no target, no rival — endless), palette
+  lockout with reasons, `po:` digest segment, 23+ UI tests.
 - Workstream C (peaceful AI): the rival keeps playing — `thinkPeaceful`
   (3 compact districts, infrastructure-first) issues zero military
   orders and never even forms them (`canTrain` gate + peaceful

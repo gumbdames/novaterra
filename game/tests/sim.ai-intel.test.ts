@@ -365,9 +365,15 @@ describe('AI spy doctrine', () => {
     expect(spies.length).toBeGreaterThan(0);
     // The spy embedded in the high-value target (infiltration takes
     // 20 s; the mission may still be running at the end of the window).
+    // Final-review R2-B: the marshal AI now also runs siege doctrine —
+    // if the siege destroys the barracks before infiltration completes,
+    // that is correct behavior (the spy tried; the army got there first).
     const embedded = spies.some((s) => s.embeddedIn === target.id);
     const infiltrating = spies.some((s) => (s.missionEndsAt ?? 0) > 0);
-    expect(embedded || infiltrating).toBe(true);
+    const targetDestroyed = !ctx.world.city.buildings.some(
+      (b) => b.id === target.id && (b.hp ?? 0) > 0,
+    );
+    expect(embedded || infiltrating || targetDestroyed).toBe(true);
   });
 
   it('target values rank intel > airports > production > depots > plants', () => {

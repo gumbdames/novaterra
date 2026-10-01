@@ -12,16 +12,16 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `initCity` from `city.ts`). Grand-expansion Phase 8 (peaceful mode,
   workstream A, 2026-09-30): `World.peaceful: boolean` — tick-0,
   never toggled mid-game, defaults false; snapshotted and digested.
-- `peaceful.ts` — (grand-expansion Phase 8, workstream A, 2026-09-30)
-  the peaceful victory as sim-side pure checks: `checkPeacefulVictory
-  (world, owner)` (win = 8,000 housed residents with a non-negative
-  treasury — `PEACEFUL_VICTORY_POPULATION = 8000`,
-  `PEACEFUL_VICTORY_MIN_TREASURY = 0`; rationale in
-  docs/research/phase8-civilian-peaceful.md §3) and
-  `peacefulObjectiveProgress(world, owner)` (the UI panel's progress
-  view). Pure module: no DOM, no three.js, no wall clock, no RNG;
-  value-imports only city.ts (`getPlayer`). A peaceful game can only be
-  won, never lost — conquest is unreachable when every military def is
+- `peaceful.ts` — (grand-expansion Phase 8, workstream A, 2026-09-30;
+  endless revision, final-review 2026-10-01) the peaceful-mode status
+  as a sim-side pure check: `peacefulStatus(world, owner)` (housed
+  population + treasury health). Peaceful mode is ENDLESS — there is
+  no victory condition (the old 8,000-resident builder's-race victory
+  was removed); the UI shows the status as information, never as
+  progress toward a goal, and no end screen ever fires. Pure module:
+  no DOM, no three.js, no wall clock, no RNG; value-imports only
+  city.ts (`getPlayer`). A peaceful game can only be played, never
+  won or lost — conquest is unreachable when every military def is
   locked out (the conquest checks are bypassed in ui/session.ts).
 - `tick.ts` — 30 Hz accumulator driver, fixed system registration order.
 - `commands.ts` — tick-aligned queue, `{ validate, apply }` specs,
@@ -238,8 +238,21 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   sees enemies via `getVisibleEnemies()`,
   never reads enemy positions directly; water is found by probe spawns, never
   maphack). Issues standard commands (`spawnUnit`, `moveUnit`, `moveGroup`,
-  `attackUnit`, `researchUpgrade`) through the queue — rejections are
+  `attackUnit`, `attackBuilding`, `researchUpgrade`) through the queue — rejections are
   swallowed, never crash the tick. Think cadence: 240/120/60/45/30 ticks.
+  Siege doctrine (final-review R2-B, 2026-10-01): when no enemy units
+  are visible for N consecutive thinks (N: citizen 3, commander/general
+  2, marshal 1; cadet never sieges), the AI escalates from whack-a-mole
+  to a siege — it picks the highest-value known enemy building
+  (`siegeTargetValue`: military 100 > lab 90 > intel 85 > power/water 70
+  > storage 60 > depots 55 > civilian 10; citizen targets the nearest
+  building instead), keeps a difficulty-scaled home guard back
+  (50/40/30/20%), recalls far-flung stragglers once at campaign start,
+  and orders the whole siege force onto the sticky target via
+  `attackBuilding` (re-issue deduped on `buildingTargetId`+`chasing`;
+  a destroyed building clears the order per tick). Siege state
+  (`siegeQuietThinks`, `siegeTargetBuildingId`) is snapshotted and
+  digest-covered.
   Army caps: 6/14/26/34/48 (`AI_MAX_UNITS`, exported). Personality
   (`AIPersonality`, plain data): drawn once at `addAIPlayer` from the
   named `ai-<owner>` RNG stream (per-owner streams never shift each other;

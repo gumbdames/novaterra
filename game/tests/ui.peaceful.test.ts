@@ -17,17 +17,14 @@
 /**
  * NOVATERRA — peaceful-mode UI tests (grand-expansion Phase 8,
  * workstream B).
- *
  * Headless coverage for the peaceful UI contract module
  * (game/src/ui/peaceful.ts) plus the peaceful gates it drives:
  *  - the skirmish-setup toggle end-to-end: `createSession({ peaceful:
  *    true })` sets `world.peaceful` (default sessions are not peaceful),
  *  - `menuTabsForWorld` hides the Military tab in peaceful worlds,
- *  - the objectives lines render the live progress values (population
- *    vs the 8,000 target, treasury status, rival progress — and NO rival
- *    line when there is no rival record, e.g. sandbox),
- *  - `peacefulOutcome`: player victory, rival victory, same-tick tie
- *    goes to the player, nothing when nobody has hit the target,
+ *  - the status lines render the live values (population, treasury
+ *    status) — no target, no rival line, no end-screen outcome:
+ *    peaceful mode is endless (2026-10-01),
  *  - the research-group no-drift invariant: the military-flag partition
  *    over UPGRADE_GROUPS never drifts silently (the peaceful lockout is
  *    keyed off the def flag, never the visual group),
@@ -51,10 +48,7 @@ import { UPGRADE_DEFS, type UpgradeId } from '../src/sim/upgrades';
 import {
   menuTabsForWorld,
   formatCount,
-  peacefulObjectiveLines,
-  peacefulOutcome,
-  peacefulEndCopy,
-  PEACEFUL_VICTORY_POPULATION,
+  peacefulStatusLines,
 } from '../src/ui/peaceful';
 import {
   UPGRADE_GROUPS,
@@ -116,98 +110,31 @@ describe('formatCount', () => {
   });
 });
 
-describe('peacefulObjectiveLines', () => {
-  it('renders population progress, treasury status and the rival line', () => {
+describe('peacefulStatusLines', () => {
+  it('renders population and treasury status (no target, no rival)', () => {
     const session = createSession({ seed: 11, peaceful: true });
     setPeacefulInputs(session, HUMAN_PLAYER_ID, 7999, -5);
     setPeacefulInputs(session, AI_PLAYER_ID, 1234);
-    const lines = peacefulObjectiveLines(session.world, HUMAN_PLAYER_ID);
+    const lines = peacefulStatusLines(session.world, HUMAN_PLAYER_ID);
     expect(lines.populationLine).toContain('7,999');
-    expect(lines.populationLine).toContain('8,000');
+    // No victory target to measure against — endless mode.
+    expect(lines.populationLine).not.toContain('8,000');
+    expect(lines.populationLine).not.toContain('/');
     expect(lines.treasuryLine).toContain(
       loc(STRINGS.peaceful.treasuryBad),
     );
-    expect(lines.achieved).toBe(false);
-    expect(lines.rivalLine).not.toBeNull();
-    expect(lines.rivalLine!).toContain('1,234');
+    // No rival line: there is no builder's race in endless mode.
+    expect('rivalLine' in lines).toBe(false);
+    expect('achieved' in lines).toBe(false);
   });
 
   it('shows the treasury-ok line when funds are non-negative', () => {
     const session = createSession({ seed: 11, peaceful: true });
     setPeacefulInputs(session, HUMAN_PLAYER_ID, 100, 0);
-    const lines = peacefulObjectiveLines(session.world, HUMAN_PLAYER_ID);
+    const lines = peacefulStatusLines(session.world, HUMAN_PLAYER_ID);
     expect(lines.treasuryLine).toContain(
       loc(STRINGS.peaceful.treasuryOk),
     );
-  });
-
-  it('renders no rival line when there is no rival record (sandbox)', () => {
-    const session = createSession({ seed: 11, sandbox: true });
-    setPeacefulInputs(session, HUMAN_PLAYER_ID, 100);
-    const lines = peacefulObjectiveLines(session.world, HUMAN_PLAYER_ID);
-    expect(lines.rivalLine).toBeNull();
-  });
-});
-
-describe('peacefulOutcome', () => {
-  it('is a player victory when the player hits the target first', () => {
-    const session = createSession({ seed: 13, peaceful: true });
-    setPeacefulInputs(session, HUMAN_PLAYER_ID, 8000);
-    setPeacefulInputs(session, AI_PLAYER_ID, 100);
-    expect(peacefulOutcome(session.world, HUMAN_PLAYER_ID, AI_PLAYER_ID)).toBe(
-      'victory',
-    );
-  });
-
-  it('is a defeat when the rival hits the target first', () => {
-    const session = createSession({ seed: 13, peaceful: true });
-    setPeacefulInputs(session, HUMAN_PLAYER_ID, 100);
-    setPeacefulInputs(session, AI_PLAYER_ID, 8000);
-    expect(peacefulOutcome(session.world, HUMAN_PLAYER_ID, AI_PLAYER_ID)).toBe(
-      'defeat',
-    );
-  });
-
-  it('breaks a same-tick tie for the player', () => {
-    const session = createSession({ seed: 13, peaceful: true });
-    setPeacefulInputs(session, HUMAN_PLAYER_ID, 8000);
-    setPeacefulInputs(session, AI_PLAYER_ID, 8000);
-    expect(peacefulOutcome(session.world, HUMAN_PLAYER_ID, AI_PLAYER_ID)).toBe(
-      'victory',
-    );
-  });
-
-  it('is null when nobody has hit the target', () => {
-    const session = createSession({ seed: 13, peaceful: true });
-    setPeacefulInputs(session, HUMAN_PLAYER_ID, 7999);
-    setPeacefulInputs(session, AI_PLAYER_ID, 7999);
-    expect(peacefulOutcome(session.world, HUMAN_PLAYER_ID, AI_PLAYER_ID)).toBeNull();
-  });
-
-  it('requires a non-negative treasury (target population alone is not enough)', () => {
-    const session = createSession({ seed: 13, peaceful: true });
-    setPeacefulInputs(session, HUMAN_PLAYER_ID, 9000, -1);
-    setPeacefulInputs(session, AI_PLAYER_ID, 100);
-    expect(peacefulOutcome(session.world, HUMAN_PLAYER_ID, AI_PLAYER_ID)).toBeNull();
-  });
-});
-
-describe('peacefulEndCopy', () => {
-  it('writes a builder victory screen', () => {
-    const session = createSession({ seed: 17, peaceful: true });
-    setPeacefulInputs(session, HUMAN_PLAYER_ID, 8000);
-    const copy = peacefulEndCopy(session.world, HUMAN_PLAYER_ID, 'victory');
-    expect(copy.title).toBe(loc(STRINGS.peaceful.victoryTitle));
-    expect(copy.detail).toContain('8,000');
-  });
-
-  it('writes a rival-won-first defeat screen distinct from victory', () => {
-    const session = createSession({ seed: 17, peaceful: true });
-    setPeacefulInputs(session, AI_PLAYER_ID, 8000);
-    const defeat = peacefulEndCopy(session.world, AI_PLAYER_ID, 'defeat');
-    const victory = peacefulEndCopy(session.world, HUMAN_PLAYER_ID, 'victory');
-    expect(defeat.title).not.toBe(victory.title);
-    expect(defeat.detail).toContain('8,000');
   });
 });
 
@@ -319,7 +246,10 @@ describe('peaceful digest segment (po:)', () => {
     setPeacefulInputs(session, HUMAN_PLAYER_ID, 7999);
     setPeacefulInputs(session, AI_PLAYER_ID, 1234);
     const digest = managementDigest(session);
-    expect(digest).toContain('po:7999:1:1234');
+    // Endless mode: player population + treasury flag only — no rival,
+    // no target.
+    expect(digest).toContain('po:7999:1');
+    expect(digest).not.toContain('po:7999:1:1234');
   });
 
   it('emits po:x on the Management tab in non-peaceful worlds', () => {

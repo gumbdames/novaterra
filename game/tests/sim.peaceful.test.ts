@@ -32,11 +32,13 @@
  *    that moves a kind breaks the suite loudly instead of silently
  *    re-tuning the lockout).
  *  - Conquest is bypassed in peaceful worlds (checkSkirmishVictory /
- *    checkSkirmishDefeat / getSkirmishOutcome), so the peaceful victory
- *    (`checkPeacefulVictory`) owns the outcome.
- *  - The peaceful victory fires at exactly the population target with a
- *    non-negative treasury — and not before, and not with a negative
- *    treasury.
+ *    checkSkirmishDefeat / getSkirmishOutcome return false/null) — and
+ *    peaceful mode is ENDLESS (2026-10-01): there is no victory
+ *    condition at all, so a peaceful world never declares a winner.
+ *  - The peaceful status reports housed population + treasury health
+ *    (`peacefulStatus`) — a status readout, not a victory check.
+ *  - Regression: past the OLD 8,000-resident victory threshold, no
+ *    victory fires and the sim keeps ticking (endless).
  *  - Determinism: same seed + peaceful ⇒ identical digest across runs,
  *    and the flag itself is digest-covered.
  *
@@ -66,11 +68,8 @@ import { registerIntelCommands } from '../src/sim/intel';
 import { registerSuperweaponCommands } from '../src/sim/superweapons';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
 import { digestWorld } from '../src/sim/digest';
-import {
-  checkPeacefulVictory,
-  peacefulObjectiveProgress,
-  PEACEFUL_VICTORY_POPULATION,
-} from '../src/sim/peaceful';
+import { peacefulStatus } from '../src/sim/peaceful';
+import { TICK_MS } from '../src/sim/tick';
 import {
   generateTerrain,
   MERIDIAN_PLAINS,
@@ -537,71 +536,63 @@ function setCensus(world: World, owner: number, population: number, funds: numbe
   player.funds = funds;
 }
 
-describe('checkPeacefulVictory', () => {
-  it('the target threshold is 8,000 housed residents', () => {
-    expect(PEACEFUL_VICTORY_POPULATION).toBe(8000);
-  });
-
-  it('fires at exactly the target with a non-negative treasury', () => {
-    const world = createWorld(3);
-    setCensus(world, 0, 8000, 0);
-    expect(checkPeacefulVictory(world, 0)).toBe(true);
-  });
-
-  it('does not fire below the target', () => {
-    const world = createWorld(3);
-    setCensus(world, 0, 7999, 1_000_000);
-    expect(checkPeacefulVictory(world, 0)).toBe(false);
-  });
-
-  it('does not fire with a negative treasury', () => {
-    const world = createWorld(3);
-    setCensus(world, 0, 8000, -1);
-    expect(checkPeacefulVictory(world, 0)).toBe(false);
-  });
-
-  it('does not fire for a missing player', () => {
-    const world = createWorld(3);
-    expect(checkPeacefulVictory(world, 99)).toBe(false);
-  });
-});
-
-describe('peacefulObjectiveProgress', () => {
-  it('reports the full progress shape', () => {
+describe('peacefulStatus', () => {
+  it('reports population and treasury health', () => {
     const world = createWorld(3);
     setCensus(world, 0, 4500, 5000);
-    expect(peacefulObjectiveProgress(world, 0)).toEqual({
+    expect(peacefulStatus(world, 0)).toEqual({
       population: 4500,
-      target: PEACEFUL_VICTORY_POPULATION,
       treasuryOk: true,
-      achieved: false,
     });
-  });
-
-  it('reports achieved when both conditions hold', () => {
-    const world = createWorld(3);
-    setCensus(world, 0, 9000, 100);
-    const p = peacefulObjectiveProgress(world, 0);
-    expect(p.achieved).toBe(true);
-    expect(p.treasuryOk).toBe(true);
   });
 
   it('flags a negative treasury without throwing', () => {
     const world = createWorld(3);
     setCensus(world, 0, 9000, -50);
-    const p = peacefulObjectiveProgress(world, 0);
-    expect(p.treasuryOk).toBe(false);
-    expect(p.achieved).toBe(false);
+    const s = peacefulStatus(world, 0);
+    expect(s.population).toBe(9000);
+    expect(s.treasuryOk).toBe(false);
   });
 
-  it('reports zero progress for a missing player', () => {
+  it('reports zero population for a missing player', () => {
     const world = createWorld(3);
-    expect(peacefulObjectiveProgress(world, 99)).toEqual({
+    expect(peacefulStatus(world, 99)).toEqual({
       population: 0,
-      target: PEACEFUL_VICTORY_POPULATION,
       treasuryOk: false,
-      achieved: false,
     });
+  });
+
+  it('has no victory threshold: past the old 8,000 mark it is still just a status', () => {
+    const world = createWorld(3);
+    setCensus(world, 0, 12_000, 1_000_000);
+    const s = peacefulStatus(world, 0);
+    expect(s.population).toBe(12_000);
+    expect(s.treasuryOk).toBe(true);
+    // No 'achieved' flag, no target — the shape is status-only.
+    expect('achieved' in s).toBe(false);
+    expect('target' in s).toBe(false);
+  });
+});
+
+describe('peaceful is endless (no victory condition)', () => {
+  it('past the old 8,000 threshold, no victory fires and the sim keeps ticking', () => {
+    const session = createSession({ seed: 99, peaceful: true });
+    const world = session.world;
+    // Push well past the removed 8,000-resident victory threshold.
+    setCensus(world, 0, 15_000, 1_000_000);
+    setCensus(world, 1, 15_000, 1_000_000);
+    // The old victory check is gone; the conquest checks stay bypassed.
+    expect(peacefulStatus(world, 0).population).toBeGreaterThan(8000);
+    expect(getSkirmishOutcome(world)).toBeNull();
+    const tickBefore = world.tick;
+    // The sim keeps simulating: advance ticks and confirm the world
+    // is still alive and still outcome-less. (The economy recounts
+    // housed population from actual residents each tick, so the
+    // directly-set census does not survive — that is fine; the point
+    // is no victory ever fires.)
+    for (let i = 0; i < 300; i++) session.driver.step(world, TICK_MS);
+    expect(world.tick).toBeGreaterThan(tickBefore);
+    expect(getSkirmishOutcome(world)).toBeNull();
   });
 });
 

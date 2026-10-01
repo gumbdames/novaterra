@@ -108,9 +108,6 @@ import {
   TREE_MODEL_KEYS,
 } from '../render/lazyModels';
 import { createSession, getSkirmishOutcome, HUMAN_PLAYER_ID, AI_PLAYER_ID, type GameSession } from './session';
-// Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
-// the peaceful end-screen outcome helper (pure, headless-tested).
-import { peacefulOutcome, peacefulEndCopy } from './peaceful';
 import {
   applyCameraState,
   createCameraState,
@@ -1533,39 +1530,17 @@ class GameController {
    * Defeat takes precedence on mutual elimination (see getSkirmishOutcome):
    * the player must survive their victory to claim it.
    *
-   * Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
-   * peaceful worlds take the builder's path instead — the peaceful
-   * victory owns the outcome (`peacefulOutcome` in ui/peaceful.ts): the
-   * player wins by reaching 8,000 housed residents with a non-negative
-   * treasury, and the RIVAL can win first (an AI city that hits the
-   * target first is the peaceful defeat). A same-tick tie goes to the
-   * player. Both use the existing end-screen overlay with peaceful copy.
+   * Final-review (2026-10-01): peaceful worlds are ENDLESS — they take
+   * no end-screen path at all. The old builder's-race victory
+   * (`peacefulOutcome` in ui/peaceful.ts, 8,000 residents) was removed;
+   * a peaceful world never declares a winner or a loser, it just keeps
+   * simulating. `getSkirmishOutcome` already returns null for peaceful
+   * worlds (conquest is bypassed in ui/session.ts), so falling through
+   * to the conquest check below is a no-op for them.
    */
   private maybeShowConquestOutcome(): void {
     if (this.disposed || this.victoryShown || this.defeatShown) return;
     if (!this.session.hasRival) return;
-    if (this.session.world.peaceful === true) {
-      const outcome = peacefulOutcome(
-        this.session.world,
-        HUMAN_PLAYER_ID,
-        AI_PLAYER_ID,
-      );
-      if (outcome !== null) {
-        const copy = peacefulEndCopy(
-          this.session.world,
-          outcome === 'victory' ? HUMAN_PLAYER_ID : AI_PLAYER_ID,
-          outcome,
-        );
-        if (outcome === 'victory') {
-          this.victoryShown = true;
-          this.endScreen.showVictory(copy.title, copy.detail);
-        } else {
-          this.defeatShown = true;
-          this.endScreen.showDefeat(copy.title, copy.detail);
-        }
-      }
-      return;
-    }
     const outcome = getSkirmishOutcome(this.session.world);
     if (outcome === 'victory') {
       this.victoryShown = true;

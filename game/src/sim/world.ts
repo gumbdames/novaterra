@@ -99,13 +99,14 @@ export interface World {
    * Grand-expansion Phase 8 (peaceful mode, 2026-09-30): true when this
    * world plays peaceful — rivals exist but play peacefully; military
    * defs (units/buildings/upgrades — see the `military` def flag) and
-   * covert ops are locked out at the command layer, conquest victory
-   * checks are bypassed, and the peaceful victory
-   * (`checkPeacefulVictory`) applies instead. Set at tick 0 from
-   * `SessionOptions.peaceful` and NEVER toggled mid-game (the lockout
-   * validates only at enqueue because the flag is immutable).
-   * Snapshotted and digested; legacy snapshots decode to false (no
-   * version bump — the AD9 neutral-default precedent).
+   * covert ops are locked out at the command layer, and conquest
+   * victory checks are bypassed. There is NO victory condition:
+   * peaceful mode is endless (2026-10-01) — the game never declares
+   * a winner or a loser. Set at tick 0 from `SessionOptions.peaceful`
+   * and NEVER toggled mid-game (the lockout validates only at enqueue
+   * because the flag is immutable). Snapshotted and digested; legacy
+   * snapshots decode to false (no version bump — the AD9
+   * neutral-default precedent).
    */
   peaceful: boolean;
 }
