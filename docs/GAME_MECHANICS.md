@@ -740,6 +740,15 @@ first, the **defeat** screen ends your run. (If both sides fall on the
 same tick, defeat takes precedence: you must survive your victory to
 claim it.)
 
+Skirmishes can also be won without firing a shot. The setup screen's
+**victory** picker offers four ways to win: **Conquest** (the classic —
+destroy every enemy unit and building), **Economic** (first to a
+100,000-fund treasury), **Population** (first to house 10,000
+residents), and **Monument** (first to complete a Monument). The rival
+can win the economic race too — if its treasury, population, or
+Monument gets there first, you lose. (Peaceful mode has no victory
+condition at all: it is endless.)
+
 ## Peaceful mode
 
 Prefer building to fighting? A **peaceful** skirmish disables war

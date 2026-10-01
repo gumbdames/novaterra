@@ -160,3 +160,141 @@ describe('getSkirmishOutcome', () => {
     expect(getSkirmishOutcome(world)).toBe('defeat');
   });
 });
+
+// ---------------------------------------------------------------------------
+// Roadmap B2 (2026-10-02): alternative skirmish victories
+// ---------------------------------------------------------------------------
+
+import {
+  ECONOMIC_VICTORY_FUNDS,
+  POPULATION_VICTORY_POP,
+  SKIRMISH_VICTORY_KINDS,
+} from '../src/ui/session';
+import type { SkirmishVictoryKind } from '../src/sim/world';
+import { takeSnapshot, restoreSnapshot, type Snapshot } from '../src/sim/snapshot';
+import { digestWorld } from '../src/sim/digest';
+import { getPlayer } from '../src/sim/city';
+
+/** A fresh world with the given victory kind (tick 1 after starting forces). */
+function victoryWorld(kind: SkirmishVictoryKind): World {
+  return createSession({ seed: 4242, victoryKind: kind }).world;
+}
+
+function setFunds(world: World, owner: number, funds: number): void {
+  getPlayer(world.city, owner)!.funds = funds;
+}
+
+function setPopulation(world: World, owner: number, population: number): void {
+  getPlayer(world.city, owner)!.population = population;
+}
+
+function monument(owner: number, progress: number): BuildingRecord {
+  return {
+    ...playerBuilding(),
+    id: 9100 + owner,
+    kind: 'monument',
+    owner,
+    progress,
+  };
+}
+
+describe('alternative skirmish victories (roadmap B2)', () => {
+  it('defaults to conquest: the classic checks are unchanged', () => {
+    const world = freshWorld();
+    expect(world.victoryKind).toBe('conquest');
+    expect(checkSkirmishVictory(world)).toBe(false);
+    eliminate(world, AI_PLAYER_ID);
+    expect(checkSkirmishVictory(world)).toBe(true);
+  });
+
+  it('resolves an unknown victory kind to conquest', () => {
+    const world = createSession({
+      seed: 4242,
+      victoryKind: 'space-race' as SkirmishVictoryKind,
+    }).world;
+    expect(world.victoryKind).toBe('conquest');
+  });
+
+  it('economic: first to 100,000 funds wins, symmetric for the rival', () => {
+    expect(ECONOMIC_VICTORY_FUNDS).toBe(100_000);
+    const world = victoryWorld('economic');
+    setFunds(world, HUMAN_PLAYER_ID, 99_999);
+    expect(checkSkirmishVictory(world)).toBe(false);
+    setFunds(world, HUMAN_PLAYER_ID, 100_000);
+    expect(checkSkirmishVictory(world)).toBe(true);
+    // Wiping the rival's army no longer wins an economic game.
+    const conquestOnly = victoryWorld('economic');
+    eliminate(conquestOnly, AI_PLAYER_ID);
+    expect(checkSkirmishVictory(conquestOnly)).toBe(false);
+    // The rival reaching the threshold first is a defeat.
+    const defeat = victoryWorld('economic');
+    setFunds(defeat, AI_PLAYER_ID, 100_000);
+    expect(checkSkirmishDefeat(defeat)).toBe(true);
+    expect(checkSkirmishVictory(defeat)).toBe(false);
+  });
+
+  it('population: first to 10,000 housed wins, symmetric for the rival', () => {
+    expect(POPULATION_VICTORY_POP).toBe(10_000);
+    const world = victoryWorld('population');
+    setPopulation(world, HUMAN_PLAYER_ID, 9_999);
+    expect(checkSkirmishVictory(world)).toBe(false);
+    setPopulation(world, HUMAN_PLAYER_ID, 10_000);
+    expect(checkSkirmishVictory(world)).toBe(true);
+    const defeat = victoryWorld('population');
+    setPopulation(defeat, AI_PLAYER_ID, 10_000);
+    expect(checkSkirmishDefeat(defeat)).toBe(true);
+  });
+
+  it('monument: first completed Monument wins; incomplete does not', () => {
+    const world = victoryWorld('monument');
+    world.city.buildings.push(monument(HUMAN_PLAYER_ID, 0.5));
+    expect(checkSkirmishVictory(world)).toBe(false);
+    world.city.buildings.push(monument(HUMAN_PLAYER_ID, 1));
+    expect(checkSkirmishVictory(world)).toBe(true);
+    // The rival's monument is the rival's win, not the player's.
+    const rival = victoryWorld('monument');
+    rival.city.buildings.push(monument(AI_PLAYER_ID, 1));
+    expect(checkSkirmishVictory(rival)).toBe(false);
+    expect(checkSkirmishDefeat(rival)).toBe(true);
+  });
+
+  it('peaceful worlds ignore every victory kind (still endless)', () => {
+    for (const kind of SKIRMISH_VICTORY_KINDS) {
+      const world = createSession({ seed: 4242, peaceful: true, victoryKind: kind }).world;
+      setFunds(world, HUMAN_PLAYER_ID, 1_000_000);
+      setPopulation(world, HUMAN_PLAYER_ID, 1_000_000);
+      world.city.buildings.push(monument(HUMAN_PLAYER_ID, 1));
+      expect(checkSkirmishVictory(world)).toBe(false);
+      expect(checkSkirmishDefeat(world)).toBe(false);
+      expect(getSkirmishOutcome(world)).toBeNull();
+    }
+  });
+
+  it('the kind round-trips through snapshots', () => {
+    const world = victoryWorld('economic');
+    const restored = restoreSnapshot(takeSnapshot(world));
+    expect(restored.victoryKind).toBe('economic');
+  });
+
+  it('a legacy snapshot without the field decodes to conquest', () => {
+    const world = victoryWorld('economic');
+    const snap = takeSnapshot(world) as unknown as Record<string, unknown>;
+    delete snap['victoryKind'];
+    const restored = restoreSnapshot(snap as unknown as Snapshot);
+    expect(restored.victoryKind).toBe('conquest');
+  });
+
+  it('a corrupt snapshot victory kind falls back to conquest', () => {
+    const world = victoryWorld('monument');
+    const snap = takeSnapshot(world) as unknown as Record<string, unknown>;
+    snap['victoryKind'] = 'total-war';
+    const restored = restoreSnapshot(snap as unknown as Parameters<typeof restoreSnapshot>[0]);
+    expect(restored.victoryKind).toBe('conquest');
+  });
+
+  it('the kind is digest-covered: different kinds digest differently', () => {
+    const a = victoryWorld('conquest');
+    const b = victoryWorld('economic');
+    expect(digestWorld(a)).not.toBe(digestWorld(b));
+  });
+});

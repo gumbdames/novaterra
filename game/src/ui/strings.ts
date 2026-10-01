@@ -110,6 +110,20 @@ export const STRINGS = {
     difficultyGeneral: 'General — combined arms',
     difficultyMarshal: 'Marshal — all-out war',
     chooseMap: 'Choose your map',
+    /**
+     * Roadmap B2 (2026-10-02): the skirmish victory-condition picker.
+     * Plain strings like the rest of this section.
+     */
+    chooseVictory: 'Choose your victory',
+    victoryNote: 'How the skirmish is won. Conquest is the classic; the others let a rich economy win instead of an army. (No victory in peaceful mode — it is endless.)',
+    victoryConquest: 'Conquest',
+    victoryConquestBlurb: 'Destroy all rival units and buildings.',
+    victoryEconomic: 'Economic',
+    victoryEconomicBlurb: 'First to a 100,000-fund treasury.',
+    victoryPopulation: 'Population',
+    victoryPopulationBlurb: 'First to house 10,000 residents.',
+    victoryMonument: 'Monument',
+    victoryMonumentBlurb: 'First to complete a Monument.',
     start: 'Start game',
     back: 'Back',
     version: 'v0.1 Alpha',
@@ -312,6 +326,31 @@ export const STRINGS = {
     defeatDetail: 'Your nation has fallen. (Shown via the `lose` cheat in 0.1 Alpha.)',
     keepPlaying: 'Keep playing',
     exitToMenu: 'Exit to menu',
+    /**
+     * Roadmap B2 (2026-10-02): per-victory-kind end-screen copy. The
+     * game controller passes the matching title/detail to
+     * showVictory/showDefeat based on world.victoryKind. Plain strings
+     * like the rest of this section (English-only by section
+     * convention).
+     */
+    victoryEconomicTitle: 'Economic victory!',
+    victoryEconomicDetail:
+      'Your treasury reached 100,000 funds first. Wealth wins — no shot fired.',
+    victoryPopulationTitle: 'Population victory!',
+    victoryPopulationDetail:
+      'Your city housed 10,000 residents first. People are the true measure of a nation.',
+    victoryMonumentTitle: 'Monument victory!',
+    victoryMonumentDetail:
+      'Your Monument stands complete — a wonder for the ages, and the game is yours.',
+    defeatEconomicTitle: 'Economic defeat',
+    defeatEconomicDetail:
+      'The rival treasury reached 100,000 funds first. Out-built, out-earned.',
+    defeatPopulationTitle: 'Population defeat',
+    defeatPopulationDetail:
+      'The rival city housed 10,000 residents first. Their streets are fuller than yours.',
+    defeatMonumentTitle: 'Monument defeat',
+    defeatMonumentDetail:
+      'The rival completed their Monument first. History remembers the builders.',
   },
   // ------------------------------------------------------------------
   // English-only sections (roster expansion). Every entry is en-only,

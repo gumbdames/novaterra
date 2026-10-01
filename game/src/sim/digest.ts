@@ -82,6 +82,11 @@ export function canonicalizeWorld(world: World): string {
   // digest-covered (PLAN §11). `?? false` keeps hand-built fixture
   // worlds (which predate the field) digesting identically.
   out += `|peaceful=${world.peaceful === true ? 1 : 0}|`;
+  // Roadmap B2 (2026-10-02): the victory kind is behavior-affecting
+  // (victory routing) ⇒ digest-covered (PLAN §11). `?? 'conquest'`
+  // keeps hand-built fixture worlds (which predate the field)
+  // digesting identically.
+  out += `|victoryKind=${world.victoryKind ?? 'conquest'}|`;
   for (const e of world.entities) {
     out += `${e.id},${e.kind},${canonicalNumber(e.x)},${canonicalNumber(e.z)};`;
   }

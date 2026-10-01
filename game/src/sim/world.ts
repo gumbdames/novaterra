@@ -115,12 +115,52 @@ export interface World {
    */
   peaceful: boolean;
   /**
+   * Roadmap B2 (2026-10-02): the skirmish victory condition, chosen at
+   * setup. 'conquest' is the classic wipe-the-rival win; the others let
+   * a rich economy win the game instead of an army. Set at tick 0 from
+   * `SessionOptions.victoryKind` and NEVER toggled mid-game (like
+   * `peaceful`). Snapshotted; legacy snapshots decode to 'conquest'
+   * (no version bump — the AD9 neutral-default precedent). Peaceful
+   * worlds ignore it (endless, no victory at all).
+   */
+  victoryKind: SkirmishVictoryKind;
+  /**
    * Combat VFX event stream (B16, 2026-10-01): visual cues the sim
    * emits during the tick for the render layer. Drained by the render
    * each frame, cleared by the sim at tick start. NOT snapshotted,
    * NOT digested — pure view, derived from deterministic state.
    */
   combatEvents: import('./combat').CombatEvent[];
+}
+
+/**
+ * Roadmap B2 (2026-10-02): skirmish victory conditions. Defined in
+ * sim/world.ts (not ui/session.ts) so the World type and the snapshot
+ * codec can use it without a sim→ui import (ui/session.ts owns the
+ * checks and re-exports the type).
+ */
+export type SkirmishVictoryKind = 'conquest' | 'economic' | 'population' | 'monument';
+
+/** All victory kinds, in setup-UI order. */
+export const SKIRMISH_VICTORY_KINDS: SkirmishVictoryKind[] = [
+  'conquest',
+  'economic',
+  'population',
+  'monument',
+];
+
+/**
+ * Roadmap B2 (2026-10-02): narrows an unknown snapshot value to a
+ * victory kind. Anything outside the union (corrupt saves, future
+ * kinds) falls back to conquest rather than crashing.
+ */
+export function isSkirmishVictoryKind(value: unknown): value is SkirmishVictoryKind {
+  return (
+    value === 'conquest' ||
+    value === 'economic' ||
+    value === 'population' ||
+    value === 'monument'
+  );
 }
 
 /** First assignable entity id (0 stays reserved as the "no entity" sentinel). */
@@ -146,6 +186,9 @@ export function createWorld(seed: number): World {
     // Peaceful defaults to false; the session sets it from
     // SessionOptions.peaceful for fresh worlds, restoreSnapshot for saves.
     peaceful: false,
+    // Roadmap B2: conquest default; the session overrides from
+    // SessionOptions.victoryKind for fresh worlds, restoreSnapshot for saves.
+    victoryKind: 'conquest',
     // Combat VFX stream starts empty (B16).
     combatEvents: [],
   };

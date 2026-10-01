@@ -12,6 +12,12 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `initCity` from `city.ts`). Grand-expansion Phase 8 (peaceful mode,
   workstream A, 2026-09-30): `World.peaceful: boolean` — tick-0,
   never toggled mid-game, defaults false; snapshotted and digested.
+  Roadmap B2 (2026-10-02): `World.victoryKind: SkirmishVictoryKind`
+  ('conquest' | 'economic' | 'population' | 'monument') — tick-0,
+  never toggled mid-game, defaults 'conquest'; snapshotted (legacy
+  decodes 'conquest', no version bump) and digested. The kind type
+  lives here so sim code never imports from ui/ (ui/session.ts owns
+  the checks and re-exports it).
 - `peaceful.ts` — (grand-expansion Phase 8, workstream A, 2026-09-30;
   endless revision, final-review 2026-10-01; roadmap B1 score,
   2026-10-02) the peaceful-mode status as a sim-side pure check:

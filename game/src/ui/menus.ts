@@ -35,6 +35,8 @@
 import { GAME_TAGLINE, GAME_TITLE } from '../config';
 import type { AIDifficulty } from '../sim/ai';
 import { MAP_PRESETS } from '../sim/terrain';
+import type { SkirmishVictoryKind } from '../sim/world';
+import { SKIRMISH_VICTORY_KINDS } from '../sim/world';
 import { STRINGS, loc } from './strings';
 import { difficultyIcon, mapIcon, menuIcon } from './icons';
 import {
@@ -98,9 +100,11 @@ export interface MenuActions {
    * Start a skirmish against the chosen AI difficulty on the chosen map.
    * `peaceful` (grand-expansion Phase 8, workstream B, 2026-09-30) starts
    * a peaceful skirmish: no military, the rival builds peacefully, and
-   * the builder's victory (8,000 residents) applies.
+   * there is no victory condition (endless, 2026-10-01). `victoryKind`
+   * (roadmap B2, 2026-10-02) picks the victory condition for war
+   * skirmishes; it is ignored when `peaceful` is true.
    */
-  onStartSkirmish(difficulty: AIDifficulty, mapPreset: string, peaceful: boolean): void;
+  onStartSkirmish(difficulty: AIDifficulty, mapPreset: string, peaceful: boolean, victoryKind: SkirmishVictoryKind): void;
   /** Resume the paused game. */
   onResume(): void;
   /** Leave the game and return to the main menu. */
@@ -252,6 +256,9 @@ export class MainMenu {
     peacefulBox.setAttribute('aria-label', loc(p.setupToggle));
     peacefulBox.addEventListener('change', () => {
       peacefulMode = peacefulBox.checked;
+      // Roadmap B2: no victory condition in peaceful mode (endless) —
+      // the picker is hidden while peaceful is on.
+      victorySection.style.display = peacefulMode ? 'none' : '';
     });
     peacefulRow.append(
       peacefulBox,
@@ -259,6 +266,45 @@ export class MainMenu {
     );
     buttons.append(peacefulRow);
     buttons.append(el('div', 'settings-note', loc(p.setupExplanation)));
+
+    // Roadmap B2 (2026-10-02): the victory-condition picker. A row of
+    // selectable buttons like the map row; the selected kind is
+    // highlighted. Hidden while peaceful mode is on (endless — no
+    // victory at all). Reuses the map row's classes (no new CSS).
+    buttons.append(el('div', 'difficulty-title', s.chooseVictory));
+    const victorySection = el('div', 'victory-section');
+    const victoryBlurb: Record<SkirmishVictoryKind, string> = {
+      conquest: s.victoryConquestBlurb,
+      economic: s.victoryEconomicBlurb,
+      population: s.victoryPopulationBlurb,
+      monument: s.victoryMonumentBlurb,
+    };
+    const victoryName: Record<SkirmishVictoryKind, string> = {
+      conquest: s.victoryConquest,
+      economic: s.victoryEconomic,
+      population: s.victoryPopulation,
+      monument: s.victoryMonument,
+    };
+    let selectedVictory: SkirmishVictoryKind = 'conquest';
+    const victoryButtons: HTMLButtonElement[] = [];
+    const victoryRow = el('div', 'map-row');
+    for (const kind of SKIRMISH_VICTORY_KINDS) {
+      const b = menuButton(victoryName[kind], () => {
+        selectedVictory = kind;
+        for (const vb of victoryButtons) {
+          vb.classList.toggle('selected', vb.dataset['victory'] === selectedVictory);
+        }
+      }, false);
+      b.dataset['victory'] = kind;
+      b.title = victoryBlurb[kind];
+      b.classList.add('map-btn');
+      if (kind === selectedVictory) b.classList.add('selected');
+      victoryButtons.push(b);
+      victoryRow.append(b);
+    }
+    victorySection.append(victoryRow);
+    victorySection.append(el('div', 'settings-note', s.victoryNote));
+    buttons.append(victorySection);
 
     buttons.append(el('div', 'difficulty-title', s.chooseDifficulty));
     const options: Array<[AIDifficulty, string]> = [
@@ -270,7 +316,7 @@ export class MainMenu {
     ];
     for (const [difficulty, label] of options) {
       buttons.append(
-        menuButton(label, () => this.actions.onStartSkirmish(difficulty, selectedMap, peacefulMode), false, difficultyIcon(difficulty)),
+        menuButton(label, () => this.actions.onStartSkirmish(difficulty, selectedMap, peacefulMode, selectedVictory), false, difficultyIcon(difficulty)),
       );
     }
     buttons.append(menuButton(s.back, () => this.show(), false, menuIcon('back')));

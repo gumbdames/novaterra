@@ -47,6 +47,7 @@ import { MainMenu, loadSettings, type QualityLevel } from './ui/menus';
 import { AudioEngine } from './audio/engine';
 import { startGame } from './ui/game';
 import type { AIDifficulty } from './sim/ai';
+import type { SkirmishVictoryKind } from './sim/world';
 import { createSaveStore } from './netSave/store';
 import { validateSaveVersion, saveMapPreset } from './netSave/savefile';
 import { CorruptSaveError } from './sim/snapshot';
@@ -259,7 +260,7 @@ export async function boot(): Promise<void> {
   window.addEventListener('keydown', unlockMenuOnce);
 
   const menu = new MainMenu(app, {
-    onStartSkirmish: (difficulty: AIDifficulty, mapPreset: string, peaceful: boolean) => {
+    onStartSkirmish: (difficulty: AIDifficulty, mapPreset: string, peaceful: boolean, victoryKind: SkirmishVictoryKind) => {
       menu.hide();
       renderer.setAnimationLoop(null);
       canvas.style.display = 'none';
@@ -277,6 +278,8 @@ export async function boot(): Promise<void> {
         // Grand-expansion Phase 8 (peaceful mode, workstream B,
         // 2026-09-30): the skirmish setup's peaceful toggle.
         peaceful,
+        // Roadmap B2 (2026-10-02): the setup's victory picker.
+        victoryKind,
         quality: loadSettings().quality,
         onExitToMenu: () => {
           canvas.style.display = '';

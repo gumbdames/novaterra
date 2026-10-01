@@ -38,8 +38,8 @@
  * Pure module: no DOM, no three.js, no wall clock. Safe under Node/vitest.
  */
 
-import type { EntityRecord, World } from './world';
-import { createWorld } from './world';
+import type { EntityRecord, World, SkirmishVictoryKind } from './world';
+import { createWorld, isSkirmishVictoryKind } from './world';
 import type { RngState } from './rng';
 import type { BuildingRecord, CityState, PlayerState } from './city';
 import type { RailCell, RoadCell } from './city';
@@ -132,6 +132,12 @@ export interface Snapshot {
    * and decode to `false` (no old save was peaceful).
    */
   peaceful: boolean;
+  /**
+   * Roadmap B2 (2026-10-02): the skirmish victory kind. Added without
+   * a version bump — legacy snapshots predate the field and decode to
+   * `'conquest'` (no old save played an alternative victory).
+   */
+  victoryKind: SkirmishVictoryKind;
 }
 
 /** Thrown when a snapshot's version doesn't match. Names expected vs found. */
@@ -474,6 +480,8 @@ export function takeSnapshot(world: World): Snapshot {
     // Grand-expansion Phase 8 (peaceful mode): faithful copy of the
     // immutable tick-0 flag.
     peaceful: world.peaceful,
+    // Roadmap B2: faithful copy of the immutable tick-0 victory kind.
+    victoryKind: world.victoryKind,
   };
 }
 
@@ -542,5 +550,12 @@ function restoreSnapshotInner(snap: Snapshot): World {
   // no version bump). A hand-built snapshot without the field (e.g.
   // the legacy fixtures in sim.snapshot.test.ts) behaves identically.
   world.peaceful = snap.peaceful ?? false;
+  // Roadmap B2: pre-kind snapshots decode to 'conquest' — no old save
+  // played an alternative victory (AD9 neutral default, no version
+  // bump). Defensive against corrupt values too: anything outside the
+  // kind union falls back to conquest rather than crashing.
+  world.victoryKind = isSkirmishVictoryKind(snap.victoryKind)
+    ? snap.victoryKind
+    : 'conquest';
   return world;
 }

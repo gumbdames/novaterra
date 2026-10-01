@@ -44,8 +44,8 @@
  * seeds for determinism).
  */
 
-import type { World } from '../sim/world';
-import { createWorld } from '../sim/world';
+import type { World, SkirmishVictoryKind } from '../sim/world';
+import { createWorld, SKIRMISH_VICTORY_KINDS, isSkirmishVictoryKind } from '../sim/world';
 import type { CommandQueue, NewCommand } from '../sim/commands';
 import {
   createCommandQueue,
@@ -57,7 +57,7 @@ import { createTickDriver, TICK_MS } from '../sim/tick';
 import type { TerrainData } from '../sim/terrain';
 import { generateTerrain, getMapPreset, isWater } from '../sim/terrain';
 import { digestWorld } from '../sim/digest';
-import { registerCityCommands } from '../sim/city';
+import { registerCityCommands, getPlayer } from '../sim/city';
 import { createEconomySystem, registerEconomyCommands } from '../sim/economy';
 import { registerUnitCommands } from '../sim/units';
 import {
@@ -137,6 +137,17 @@ export interface SessionOptions {
    * false; every existing caller keeps its war game.
    */
   peaceful?: boolean;
+  /**
+   * Roadmap B2 (2026-10-02): the skirmish victory condition, chosen
+   * at setup. 'conquest' (wipe the rival's units + buildings) is the
+   * classic; 'economic' (first to 100,000 funds), 'population' (first
+   * to 10,000 housed) and 'monument' (first to complete a Monument)
+   * let a rich economy win instead of an army. Ignored in peaceful
+   * worlds (endless — no victory at all) and in sandbox games (no
+   * rival). Defaults to 'conquest'; an unknown value resolves to
+   * conquest rather than crashing.
+   */
+  victoryKind?: SkirmishVictoryKind;
 }
 
 /** Everything a running game needs. Plain data + live driver/queue. */
@@ -256,10 +267,62 @@ function startingForces(
 }
 
 /**
+ * Roadmap B2 (2026-10-02): alternative victory thresholds.
+ *
+ * ECONOMIC_VICTORY_FUNDS — first side to hold this treasury wins the
+ * economic game (25× the 4,000 starting funds: a real mid-game
+ * economy, not an opening rush).
+ *
+ * POPULATION_VICTORY_POP — first side to house this many residents
+ * wins the population game (a genuine city, not a hamlet).
+ *
+ * Monument victory needs no threshold: the first side to COMPLETE a
+ * Monument (progress 1, operational) wins.
+ */
+export const ECONOMIC_VICTORY_FUNDS = 100_000;
+export const POPULATION_VICTORY_POP = 10_000;
+
+/** Re-exported so setup UI / tests import the kind from this module. */
+export type { SkirmishVictoryKind };
+export { SKIRMISH_VICTORY_KINDS };
+
+/**
+ * Whether one side has met an alternative (non-conquest) victory
+ * condition. Pure function of world state — no wall clock, no RNG.
+ */
+function checkAltVictory(world: World, owner: number): boolean {
+  switch (world.victoryKind) {
+    case 'economic': {
+      const player = getPlayer(world.city, owner);
+      return (player?.funds ?? 0) >= ECONOMIC_VICTORY_FUNDS;
+    }
+    case 'population': {
+      const player = getPlayer(world.city, owner);
+      return (player?.population ?? 0) >= POPULATION_VICTORY_POP;
+    }
+    case 'monument': {
+      for (const b of world.city.buildings) {
+        if (b.owner === owner && b.kind === 'monument' && b.progress >= 1) {
+          return true;
+        }
+      }
+      return false;
+    }
+    case 'conquest':
+    default:
+      return false;
+  }
+}
+
+/**
  * Conquest victory check (deterministic): true when the rival (owner 1)
  * has no units and no buildings left. Pure function of world state —
  * no wall clock, no RNG. Callers should only check when `hasRival` is
  * true; sandbox games (no rival) have no victory condition by design.
+ *
+ * Roadmap B2 (2026-10-02): dispatches on `world.victoryKind` — the
+ * alternative victories compare the human's economy against the same
+ * thresholds, so a rich economy can win the game instead of an army.
  */
 export function checkSkirmishVictory(world: World): boolean {
   // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): conquest is
@@ -274,6 +337,9 @@ export function checkSkirmishVictory(world: World): boolean {
   // The AI's own production is virtual (no physical buildings), so vs
   // the AI this still reduces to wiping its fielded army.
   if (world.peaceful === true) return false;
+  if (world.victoryKind !== undefined && world.victoryKind !== 'conquest') {
+    return checkAltVictory(world, HUMAN_PLAYER_ID);
+  }
   for (const unit of world.units) {
     if (unit.owner === AI_PLAYER_ID) return false;
   }
@@ -300,6 +366,10 @@ export function checkSkirmishDefeat(world: World): boolean {
   // player's base to the ground, so defeat is a live threat at every
   // difficulty for the first time.
   if (world.peaceful === true) return false;
+  if (world.victoryKind !== undefined && world.victoryKind !== 'conquest') {
+    // Roadmap B2: symmetric — the rival can win the economic race too.
+    return checkAltVictory(world, AI_PLAYER_ID);
+  }
   for (const unit of world.units) {
     if (unit.owner === HUMAN_PLAYER_ID) return false;
   }
@@ -396,6 +466,13 @@ export function createSession(options: SessionOptions): GameSession {
   // in peaceful worlds (rifles are a military def).
   if (!options.snapshot) {
     world.peaceful = options.peaceful === true;
+    // Roadmap B2 (2026-10-02): the victory kind is set at tick 0 from
+    // the session options and never toggled mid-game (like peaceful).
+    // Restored sessions carry whatever the snapshot saved. Unknown
+    // values resolve to conquest rather than crashing.
+    world.victoryKind = isSkirmishVictoryKind(options.victoryKind)
+      ? options.victoryKind
+      : 'conquest';
   }
   const queue = createCommandQueue();
   registerCoreCommands(queue);

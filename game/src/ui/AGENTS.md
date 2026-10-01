@@ -50,6 +50,18 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   with the live
   objectives section, the Military tab is hidden, and covert-op
   buttons are replaced by a note.
+  Roadmap B2 (2026-10-02): `createSession({ victoryKind })` sets the
+  immutable tick-0 `world.victoryKind` ('conquest' default; unknown
+  values resolve to conquest) and `checkSkirmishVictory` /
+  `checkSkirmishDefeat` dispatch on it — 'economic' (first to 100,000
+  funds), 'population' (first to 10,000 housed), 'monument' (first
+  completed Monument) — symmetric for the rival (rival-first is a
+  defeat; defeat takes precedence on a shared tick). Peaceful worlds
+  bypass every kind (endless). The kind is snapshotted (legacy saves
+  decode 'conquest', no version bump) and digest-covered; the skirmish
+  setup's victory picker (`menus.ts`, hidden while peaceful is on)
+  flows through `main.ts` → `GameOptions.victoryKind` →
+  `createSession`, and the end screen names the kind that was won.
 - `demoDirector.ts` — the living menu demo (workstream X, 2026-09-30).
   `createDemoSession()` = canonical `createSession()` (sandbox, fixed
   `DEMO_SEED`) + a designed opening stockpile (campaign
@@ -327,9 +339,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   setup shows all 8 MAP_PRESETS (name
   + water %) and all 5 AI difficulties, plus the grand-expansion Phase 8
   (workstream B, 2026-09-30) **Peaceful mode** checkbox with its one-line
-  explanation (no military, rivals build peacefully, win by growing your
-  city); `onStartSkirmish(difficulty, mapPreset, peaceful)`. The setup
-  column scrolls (`#menu .buttons` has
+  explanation (no military, rivals build peacefully, endless — no
+  victory). Roadmap B2 (2026-10-02) adds the **victory-condition**
+  picker (Conquest / Economic / Population / Monument, hidden while
+  peaceful is on); `onStartSkirmish(difficulty, mapPreset, peaceful,
+  victoryKind)`. The setup column scrolls (`#menu .buttons` has
   `overflow-y: auto`) so every map/difficulty stays clickable on short
   viewports.
 - `camera.ts` / `selection.ts` — pure state + transitions, fully tested.

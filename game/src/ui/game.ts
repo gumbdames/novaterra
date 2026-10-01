@@ -109,6 +109,7 @@ import {
   TREE_MODEL_KEYS,
 } from '../render/lazyModels';
 import { createSession, getSkirmishOutcome, HUMAN_PLAYER_ID, AI_PLAYER_ID, type GameSession } from './session';
+import type { SkirmishVictoryKind } from '../sim/world';
 import {
   applyCameraState,
   createCameraState,
@@ -271,6 +272,12 @@ export interface GameOptions {
    * outcome. Defaults to false.
    */
   peaceful?: boolean;
+  /**
+   * Roadmap B2 (2026-10-02): the skirmish victory condition, forwarded
+   * to `SessionOptions.victoryKind`. Ignored for peaceful games
+   * (endless) and campaign missions. Defaults to 'conquest'.
+   */
+  victoryKind?: SkirmishVictoryKind;
 }
 
 /** Placement modes entered from the HUD train/build panels. */
@@ -439,6 +446,9 @@ export async function startGame(
     // the skirmish setup's peaceful toggle (main.ts) reaches the sim
     // here. Restored saves carry the snapshot's own flag.
     peaceful: opts.peaceful,
+    // Roadmap B2 (2026-10-02): the setup's victory picker. Restored
+    // saves carry the snapshot's own kind.
+    victoryKind: opts.victoryKind,
   });
   // A loaded game resumes exactly where it was saved — including its
   // cheated marker, which is honest metadata, not sim state.
@@ -1697,10 +1707,22 @@ class GameController {
     const outcome = getSkirmishOutcome(this.session.world);
     if (outcome === 'victory') {
       this.victoryShown = true;
-      this.endScreen.showVictory();
+      // Roadmap B2 (2026-10-02): the end screen names the victory that
+      // was actually won — conquest keeps the classic default copy.
+      const e = STRINGS.end;
+      const kind = this.session.world.victoryKind;
+      if (kind === 'economic') this.endScreen.showVictory(e.victoryEconomicTitle, e.victoryEconomicDetail);
+      else if (kind === 'population') this.endScreen.showVictory(e.victoryPopulationTitle, e.victoryPopulationDetail);
+      else if (kind === 'monument') this.endScreen.showVictory(e.victoryMonumentTitle, e.victoryMonumentDetail);
+      else this.endScreen.showVictory();
     } else if (outcome === 'defeat') {
       this.defeatShown = true;
-      this.endScreen.showDefeat();
+      const e = STRINGS.end;
+      const kind = this.session.world.victoryKind;
+      if (kind === 'economic') this.endScreen.showDefeat(e.defeatEconomicTitle, e.defeatEconomicDetail);
+      else if (kind === 'population') this.endScreen.showDefeat(e.defeatPopulationTitle, e.defeatPopulationDetail);
+      else if (kind === 'monument') this.endScreen.showDefeat(e.defeatMonumentTitle, e.defeatMonumentDetail);
+      else this.endScreen.showDefeat();
     }
   }
 
