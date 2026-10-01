@@ -46,9 +46,10 @@ import {
   cellCoords,
   cellIndex,
   cellIsWater,
+  registerCityCommands,
   type RoadCell,
 } from '../src/sim/city';
-import { findUnit, registerUnitCommands } from '../src/sim/units';
+import { findUnit, registerUnitCommands, spawnUnit, isSheltered } from '../src/sim/units';
 import {
   computeFlowField,
   beginFieldBuild,
@@ -70,6 +71,7 @@ import {
   slotOffset,
   unitGroundHeight,
   ARRIVAL_RADIUS,
+  FERRY_RETRY_TICKS,
 } from '../src/sim/movement';
 import { digestWorld } from '../src/sim/digest';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
@@ -787,5 +789,169 @@ describe('determinism', () => {
       if (u.state === 'idle') break;
     }
     expect(findUnit(ctx.world, id)?.state).toBe('idle');
+  });
+});
+
+describe('ferry route recovery (final-review R1 M9)', () => {
+  /**
+   * All-water terrain: every point is sea, so the two route endpoints are
+   * trivially connected. This makes the tests independent of the map's
+   * actual sea layout instead of hunting for two connected water points.
+   */
+  function waterTerrain(src: TerrainData): TerrainData {
+    return { ...src, name: 'ferry-test-water', waterLevel: 1e9 };
+  }
+
+  function ferrySetup(seed = 909001): Ctx {
+    const terrain = waterTerrain(getTerrain());
+    const world = createWorld(seed);
+    world.ages.age = 'connectivity'; // ferries unlock at the connectivity age
+    const queue = createCommandQueue();
+    registerCoreCommands(queue);
+    registerCityCommands(queue, terrain);
+    registerUnitCommands(queue, terrain);
+    registerMovementCommands(queue, terrain);
+    const driver = createTickDriver({
+      queue,
+      systems: [createPathfindingSystem(terrain), createMovementSystem(terrain)],
+    });
+    const ctx: Ctx = { terrain, world, queue, driver };
+    grantAllTrainingResources(ctx.world, 0);
+    completeBuildings(ctx.world, 0, ['ferryTerminal']);
+    return ctx;
+  }
+
+  function ferryRoute(ctx: Ctx): { id: number; ax: number; az: number; bx: number; bz: number } {
+    // Short legs: the sim's sea A* (heuristic tuned for land move costs)
+    // caps its search budget on long open-water runs — a pre-existing
+    // limitation unrelated to the retry fix, so the test stays well inside
+    // it (~28 world units, ~240 expansions of the 1000 budget).
+    const ax = -10; const az = -10;
+    const bx = 10; const bz = 10;
+    const id = spawnAt(ctx, ax, az, 'ferry', 0);
+    enqueue(ctx, [{ kind: 'setFerryRoute', payload: { unitId: id, owner: 0, ax, az, bx, bz } }]);
+    runTicks(ctx, 1);
+    return { id, ax, az, bx, bz };
+  }
+
+  it('a ferry that runs out of fuel retries the SAME leg instead of dying', () => {
+    const ctx = ferrySetup();
+    const { id, ax, bx } = ferryRoute(ctx);
+    const ferry = findUnit(ctx.world, id)!;
+    expect(ferry.route).toBeDefined();
+    expect(ferry.route!.leg).toBe('b'); // dispatched toward the other endpoint
+
+    // Drain the tank mid-dispatch: the fuel gate fails the order loudly...
+    ferry.fuel = 0;
+    runTicks(ctx, 3);
+    expect(ferry.state).toBe('failed');
+    expect(ferry.failReason).toBe('out of fuel');
+
+    // ...and the next retry boundary resets and re-dispatches the SAME leg.
+    // (Without the fix, 'failed' was never reset: the route died here.)
+    // The driver advances world.tick AFTER systems run, so the boundary is
+    // only "seen" mid-step: run one tick past the arithmetic boundary.
+    const toBoundary = FERRY_RETRY_TICKS - (ctx.world.tick % FERRY_RETRY_TICKS) + 1;
+    runTicks(ctx, toBoundary);
+    expect(ferry.route!.leg).toBe('b');
+    expect(ferry.failReason).toBeNull();
+    expect(ferry.state).toBe('awaitingPath');
+
+    // Refueled, the ferry sails again on its own — the route survived.
+    ferry.fuel = 1000;
+    runTicks(ctx, FERRY_RETRY_TICKS + 5);
+    expect(ferry.state).toBe('moving');
+    expect(ferry.failReason).toBeNull();
+    expect(ferry.x).toBeGreaterThan(ax + 1); // actually under way toward B
+    expect(ferry.x).toBeLessThan(bx);
+  });
+
+  it('a ferry whose endpoint is unreachable by water stays failed loudly (no doomed retries)', () => {
+    const ctx = ferrySetup();
+    const { id } = ferryRoute(ctx);
+    const ferry = findUnit(ctx.world, id)!;
+    // Simulate the coordinator's permanent failure: static terrain means a
+    // sea path that does not exist can never appear, so retrying is doomed.
+    ferry.state = 'failed';
+    ferry.failReason = 'no path: destination unreachable by water';
+    runTicks(ctx, FERRY_RETRY_TICKS * 3 + 5);
+    expect(ferry.state).toBe('failed');
+    expect(ferry.failReason).toBe('no path: destination unreachable by water');
+    expect(ferry.route!.leg).toBe('b'); // route intact, not clobbered by retries
+  });
+});
+
+describe('moveGroup sheltered guard (final-review R1 M10)', () => {
+  /** Spiral out from (x, z) for the nearest water point (deterministic). */
+  function findWaterNear(t: TerrainData, x: number, z: number): { x: number; z: number } {
+    for (let r = 0; r < 150; r += 2) {
+      for (let dz = -r; dz <= r; dz += 2) {
+        for (let dx = -r; dx <= r; dx += 2) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+          const cx = x + dx;
+          const cz = z + dz;
+          if (Math.abs(cx) > 250 || Math.abs(cz) > 250) continue;
+          if (isWater(t, cx, cz)) return { x: cx, z: cz };
+        }
+      }
+    }
+    throw new Error(`no water near (${x}, ${z})`);
+  }
+
+  /** A carrier with one embarked (sheltered) naval fighter, plus land start/dest. */
+  function shelterSetup(seed = 909002): { ctx: Ctx; jetId: number; land: { x: number; z: number }; dest: { x: number; z: number } } {
+    const ctx = setup(seed);
+    const t = ctx.terrain;
+    const wpos = findWaterNear(t, 60, 60);
+    const carrier = spawnUnit(ctx.world, 'carrier', 1, wpos.x, wpos.z);
+    const jet = spawnUnit(ctx.world, 'navalFighter', 1, wpos.x + 5, wpos.z);
+    enqueue(ctx, [{ kind: 'embarkAircraft', payload: { unitId: jet.id, carrierId: carrier.id, owner: 1 } }]);
+    runTicks(ctx, 1);
+    expect(isSheltered(jet)).toBe(true); // embarked: the M10 "sheltered" case
+    const land = findLandNear(t, -150, -150);
+    const dest = findLandNear(t, -50, -50);
+    return { ctx, jetId: jet.id, land, dest };
+  }
+
+  it('moveGroup rejects a group containing a parked/embarked aircraft', () => {
+    const { ctx, jetId, land, dest } = shelterSetup();
+    const riflesId = spawnAt(ctx, land.x, land.z, 'rifles', 1);
+    const reason = rejectionReason(() =>
+      ctx.queue.enqueue(ctx.world, {
+        issuer: 'player',
+        kind: 'moveGroup',
+        payload: { unitIds: [jetId, riflesId], owner: 1, x: dest.x, z: dest.z },
+      }),
+    );
+    expect(reason).toMatch(/parked or embarked/);
+    // The sheltered unit is untouched: still embarked, no order leaked.
+    const jet = findUnit(ctx.world, jetId)!;
+    expect(isSheltered(jet)).toBe(true);
+    expect(jet.state).toBe('idle');
+  });
+
+  it('moveUnit rejects a parked/embarked aircraft (the guard moveGroup mirrors)', () => {
+    const { ctx, jetId, dest } = shelterSetup();
+    const reason = rejectionReason(() =>
+      ctx.queue.enqueue(ctx.world, {
+        issuer: 'player',
+        kind: 'moveUnit',
+        payload: { unitId: jetId, owner: 1, x: dest.x, z: dest.z },
+      }),
+    );
+    expect(reason).toMatch(/parked or embarked/);
+  });
+
+  it('moveGroup still accepts a group with no sheltered units', () => {
+    const { ctx, land, dest } = shelterSetup();
+    const riflesId = spawnAt(ctx, land.x, land.z, 'rifles', 1);
+    ctx.queue.enqueue(ctx.world, {
+      issuer: 'player',
+      kind: 'moveGroup',
+      payload: { unitIds: [riflesId], owner: 1, x: dest.x, z: dest.z },
+    }); // must not throw
+    runTicks(ctx, 2);
+    const state = findUnit(ctx.world, riflesId)!.state;
+    expect(['awaitingPath', 'moving']).toContain(state);
   });
 });

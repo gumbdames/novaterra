@@ -217,9 +217,11 @@ describe('resupply — validate/apply', () => {
     expect(mlrs.resupplyDepotId).toBe(depot.id);
     expect(mlrs.resupplyReservedAmmo).toBe(6);
     expect(mlrs.resupplyReservedFuel).toBe(0);
-    // Routed to the depot's cell center via the shared move internals.
-    expect(mlrs.destX).toBe(cellCenterWorld(depot.cx));
-    expect(mlrs.destZ).toBe(cellCenterWorld(depot.cz));
+    // Routed to the depot's FOOTPRINT CENTER via the shared move
+    // internals (final-review R1 M18: the corner cell was up to ~2 cells
+    // off for a 3x3 depot).
+    expect(mlrs.destX).toBe(cellCenterWorld(depot.cx + 1));
+    expect(mlrs.destZ).toBe(cellCenterWorld(depot.cz + 1));
     // Exactly one timeout pending (the 60 s hold).
     expect(ctx.queue.pendingCount()).toBe(1);
   });

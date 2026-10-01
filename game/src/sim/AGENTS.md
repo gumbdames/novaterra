@@ -335,8 +335,11 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   data — snapshotted (v6) and digested. `advanceAge` command validates:
   current age is Foundation, program is fiberGrid/signalsGrid, and the
   player can afford the cost (3000 funds + 1200 materials). The choice is
-  permanent. Effects: Fiber Grid ×1.25 tax income (`getTaxMultiplier`,
-  applied in `economy.ts` `runTaxes`); Signals Grid +8 sight
+  permanent. Effects: Fiber Grid ×1.25 tax income, stacked with the
+  Prosperity Program ×1.5 (`getTaxMultiplierFull`, applied in
+  `economy.ts` `runTaxes` — final-review R1 C7, 2026-10-01: runTaxes
+  previously used the fiber-only `getTaxMultiplier`, silently dropping
+  Prosperity's advertised +50%); Signals Grid +8 sight
   (`getSightBonus`, applied in `ai.ts` `getVisibleEnemies`). `UnitDef`
   carries `minAge`; fighter requires Connectivity (gated in `spawnUnit`
   validation).

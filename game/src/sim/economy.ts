@@ -46,7 +46,7 @@ import type { World } from './world';
 import { rngBank } from './world';
 import type { SimSystem } from './tick';
 import type { CommandQueue, CommandSpec } from './commands';
-import { getTaxMultiplier, getFactoryOutputMult, getInfluenceMult, getGoodsOutputMult, getTaxMultiplierFull } from './ages';
+import { getFactoryOutputMult, getInfluenceMult, getGoodsOutputMult, getTaxMultiplierFull } from './ages';
 import {
   hasUpgrade,
   effectivePowerSupply,
@@ -996,8 +996,12 @@ function runFood(city: CityState): void {
 function runTaxes(world: World, economyTickIndex: number, t: TerrainData): void {
   if (economyTickIndex % TAX_PERIOD_ECONOMY_TICKS !== 0) return;
   const city = world.city;
-  // Fiber Grid (Connectivity age) boosts tax income by 25%.
-  const mult = getTaxMultiplier(world);
+  // Final-review R1 (C7, 2026-10-01): the FULL program stack. Fiber
+  // Grid (Connectivity age) boosts tax income by 25% and the Ascendance
+  // Prosperity Program adds a further 50% — the stacked multiplier
+  // (1.25 × 1.5 = 1.875) is what the program advertises. Using the
+  // fiber-only multiplier here silently dropped the Prosperity bonus.
+  const mult = getTaxMultiplierFull(world);
   // Workstream W: land value — the derived desirability model (rebuilt
   // only on structural change; the cached instance is free here).
   // Workstream W: land value — the derived desirability model (rebuilt

@@ -25,6 +25,7 @@ import {
 import { createTickDriver, TICK_MS, type TickDriver } from '../src/sim/tick';
 import { generateTerrain, MERIDIAN_PLAINS, type TerrainData } from '../src/sim/terrain';
 import {
+  cellCenterWorld,
   cellIndex,
   cellIsWater,
   getPlayer,
@@ -234,6 +235,23 @@ describe('sim/superweapons — Aegis', () => {
       ctx.queue.enqueue(ctx.world, { issuer: 'player', kind: 'fireAegis', payload: { owner: 42 } }),
     ).toThrow(CommandRejectedError);
   });
+
+  it('the aegis fx is anchored in world units at the firing bases (final-review R1 M18)', () => {
+    const ctx = setup();
+    godAscendance(ctx, 'aegisControl');
+    enqueue(ctx, [{ kind: 'fireAegis', payload: { owner: 0 } }]);
+    runTicks(ctx, 2);
+    const fx = ctx.world.superweapons.fx.filter((f) => f.kind === 'aegis');
+    expect(fx).toHaveLength(1);
+    // The single completed Aegis Control: centroid == its cell center, in
+    // WORLD units. The bug averaged raw cell indices (~10), which the
+    // render layer reads as world coords — the shield rendered at the map
+    // origin instead of over the base (~-200).
+    const b = ctx.world.city.buildings.find((bb) => bb.kind === 'aegisControl' && bb.owner === 0)!;
+    expect(b).toBeDefined();
+    expect(fx[0]!.x).toBe(cellCenterWorld(b.cx));
+    expect(fx[0]!.z).toBe(cellCenterWorld(b.cz));
+  });
 });
 
 describe('sim/superweapons — Storm Engine', () => {
@@ -376,6 +394,77 @@ describe('sim/superweapons — Marshal AI', () => {
         payload: { owner: 1, kind: 'storm' },
       }),
     ).toThrow(/Marshal/);
+  });
+});
+
+describe('sim/superweapons — AI ledger guard (R1 H2)', () => {
+  /**
+   * Drive exactly one marshal think + applyDue, without the other
+   * systems (economy upkeep would move funds between setup and
+   * assert). Returns the kinds applied at tick 0.
+   */
+  function thinkOnce(ctx: Ctx, owner: number): string[] {
+    const ai = ctx.world.ai.players.find((p) => p.owner === owner);
+    if (!ai) throw new Error('H2: AI player missing');
+    ai.nextThinkTick = 0;
+    ctx.world.tick = 0;
+    createAISystem(ctx.queue)(ctx.world, 0);
+    // applyDue must never throw: before the H2 guard, a think whose
+    // production/research pass reserved the treasury left the bare
+    // facility command stale, and applyDue threw CommandRejectedError
+    // out of runTick (a hard crash).
+    const applied = ctx.queue.applyDue(ctx.world, 0);
+    return applied.map((a) => a.command.kind);
+  }
+
+  function marshalAtAscendance(ctx: Ctx, owner: number): void {
+    ctx.world.ages.age = 'ascendance';
+    addAIPlayer(ctx.world, owner, 'marshal', 0, 0);
+    const ai = ctx.world.ai.players.find((p) => p.owner === owner);
+    if (!ai) throw new Error('H2: AI player missing');
+    ai.virtualBuildings.completed = [
+      'barracks',
+      'warFactory',
+      'airfield',
+      'lab',
+      'radarStation',
+    ];
+  }
+
+  it('a think that spends its treasury on units does not enqueue an unaffordable facility', () => {
+    const ctx = setup(424242);
+    marshalAtAscendance(ctx, 1);
+    const player = getPlayer(ctx.world.city, 1);
+    if (!player) throw new Error('H2: player missing');
+    // 6050 funds looks affordable for the 6000-fund storm facility —
+    // but thinkSuperweapons runs AFTER production/research in the same
+    // think (see thinkMarshal), and production reserves at least 600
+    // funds here (the 20 starting manpower trains 10+ rifles at 60
+    // funds each). The ledger guard sees 6050 − ledger < 6000 and
+    // fizzles the facility at think time instead of crashing at apply.
+    player.funds = 6050;
+    player.materials = 3000;
+    const kinds = thinkOnce(ctx, 1);
+    expect(kinds).not.toContain('constructSuperweaponFacility');
+    const ai = ctx.world.ai.players.find((p) => p.owner === 1);
+    expect(ai?.superweapons.stormReadyTick).toBe(0);
+  });
+
+  it('an affordable facility is still enqueued and applies cleanly', () => {
+    const ctx = setup(434343);
+    marshalAtAscendance(ctx, 1);
+    const player = getPlayer(ctx.world.city, 1);
+    if (!player) throw new Error('H2: player missing');
+    // Army at the marshal cap (48) so production reserves nothing;
+    // the 20000 treasury covers the 6000-fund facility even after the
+    // scout pass trains its drone.
+    for (let i = 0; i < 48; i++) spawnUnit(ctx.world, 'rifles', 1, i, 0);
+    player.funds = 20000;
+    player.materials = 20000;
+    const kinds = thinkOnce(ctx, 1);
+    expect(kinds).toContain('constructSuperweaponFacility');
+    const ai = ctx.world.ai.players.find((p) => p.owner === 1);
+    expect(ai?.superweapons.stormReadyTick).toBeGreaterThan(0);
   });
 });
 

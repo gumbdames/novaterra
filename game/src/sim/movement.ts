@@ -444,22 +444,49 @@ export function createMovementSystem(t: TerrainData): (world: World, dt: number)
 }
 
 /**
+ * How often (ticks) the ferry loop retries a dispatch that failed on an
+ * empty tank. 30 ticks = 1 sim-second: prompt enough to sail the moment a
+ * tanker or depot refuels the ferry, sparse enough that a permanently
+ * stranded ferry doesn't burn the pathfinding budget (PATHS_PER_TICK)
+ * re-requesting a doomed route every tick. Deterministic: keyed on
+ * world.tick, no new state (the digest/snapshot are untouched).
+ */
+export const FERRY_RETRY_TICKS = 30;
+
+/**
  * Phase 4 (S7): the ferry loop. An idle ferry with a route (`route`
  * set by `setFerryRoute`) flips `leg` and dispatches to the other
  * endpoint via the normal sea A* (orderMoveTo) — the ferry shuttles
  * a↔b forever. Runs in unit-id order for determinism. A manual
  * moveUnit order is a DETOUR: the ferry finishes it, idles, and the
- * loop resumes from there. If dispatch fails (e.g. no sea path), the
- * order fails loudly with the A* reason and the loop tries again next
- * tick once idle.
+ * loop resumes from there.
+ *
+ * Final-review R1 (M9, 2026-10-01): failed dispatches RETRY instead of
+ * killing the route. An empty tank ('out of fuel') is TRANSIENT — a
+ * tanker or depot refuels the ferry — so the ferry resets to idle and
+ * the loop re-dispatches the SAME leg (the failed dispatch's leg flip
+ * is undone first, then re-applied by the normal path, so the net flip
+ * is zero whether the failure came from the loop or a manual detour).
+ * The failure stays loud while it lasts (unit.failReason). Permanent
+ * failures ('no path: destination unreachable by water' — static
+ * terrain, fail-fast capped sea search) are never retried: retrying
+ * them could not succeed, so they stay failed loudly for the player
+ * to see.
  */
 function advanceFerryRoutes(world: World): void {
   const ordered = [...world.units].sort((a, b) => a.id - b.id);
   for (const unit of ordered) {
     if (unit.kind !== 'ferry' || unit.hp <= 0) continue;
     if (unit.route === undefined) continue;
-    if (unit.state !== 'idle') continue;
     const r = unit.route;
+    if (unit.state === 'failed' && unit.failReason === 'out of fuel' && world.tick % FERRY_RETRY_TICKS === 0) {
+      // Transient failure: undo the failed dispatch's leg flip so the
+      // normal path below re-flips to the SAME leg (retry, not skip).
+      r.leg = r.leg === 'a' ? 'b' : 'a';
+      unit.state = 'idle';
+      unit.failReason = null;
+    }
+    if (unit.state !== 'idle') continue;
     r.leg = r.leg === 'a' ? 'b' : 'a';
     const tx = r.leg === 'a' ? r.ax : r.bx;
     const tz = r.leg === 'a' ? r.az : r.bz;
@@ -809,6 +836,14 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
         const unit = findUnit(world, id);
         if (!unit) return `moveGroup: no unit with id ${id}`;
         if (unit.owner !== owner) return `moveGroup: unit ${id} is not owned by player ${owner}`;
+      }
+      // Final-review R1 (M10, 2026-10-01): the same sheltered guard as
+      // moveUnit (validateOwnedUnit) — a parked/embarked aircraft in the
+      // group rejects the whole order loudly instead of being silently
+      // retasked (and yanked out of its hangar) by apply.
+      for (const id of ids) {
+        const unit = findUnit(world, id) as UnitRecord;
+        if (isSheltered(unit)) return `moveGroup: unit ${id} is parked or embarked (launch it first)`;
       }
       // Per-unit domain validation (like moveUnit): air flies anywhere,
       // land needs land, sea needs water. A mixed group fails if ANY

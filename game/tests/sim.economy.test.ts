@@ -21,7 +21,9 @@ import { createTickDriver, TICK_MS, type TickDriver } from '../src/sim/tick';
 import { generateTerrain, MERIDIAN_PLAINS, type TerrainData } from '../src/sim/terrain';
 import {
   CITY_GRID_CELLS,
+  BUILDING_DEFS,
   ZoneType,
+  canAutoDevelop,
   cellIndex,
   cellIsWater,
   placeBuilding,
@@ -241,6 +243,26 @@ describe('taxes', () => {
     expect(fundsHalf - fundsZero).toBeCloseTo(0.5 * 1.0 * 60, 6);
   });
 
+  it('Prosperity Program +50% tax stacks with Fiber Grid 1.25x (final-review R1 C7)', () => {
+    // The zero-rate world isolates the tax term from every other flow.
+    const zero = houseWorld(21, 0.0);
+    const fiber = houseWorld(21, 0.5);
+    fiber.world.ages.age = 'connectivity';
+    fiber.world.ages.program = 'fiberGrid';
+    const both = houseWorld(21, 0.5);
+    both.world.ages.age = 'ascendance';
+    both.world.ages.program = 'prosperityProgram';
+    both.world.ages.programs = { connectivity: 'fiberGrid' };
+    for (const ctx of [zero, fiber, both]) runEconomySeconds(ctx, 61);
+    const taxOf = (ctx: Ctx) => ctx.world.city.players[0]!.funds - zero.world.city.players[0]!.funds;
+    // Fiber Grid alone: the advertised 25% boost...
+    expect(taxOf(fiber)).toBeCloseTo(0.5 * 1.0 * 60 * 1.25, 6);
+    // ...and Prosperity stacks the full advertised +50% on top (1.875x).
+    // Before the fix runTaxes used the fiber-only multiplier, so the
+    // Prosperity bonus was silently dead and this collected only 37.5.
+    expect(taxOf(both)).toBeCloseTo(0.5 * 1.0 * 60 * 1.25 * 1.5, 6);
+  });
+
   it('growth desirability falls with taxes and missing utility headroom', () => {
     expect(growthDesirability(0.1, 10, 10)).toBeCloseTo(0.484, 6);
     expect(growthDesirability(0.5, 10, 10)).toBeCloseTo(0.22, 6);
@@ -314,6 +336,46 @@ describe('auto-development', () => {
     runTicks(ctx, 7200); // 240 s of growth pulses
     expect(ctx.world.city.roads).toHaveLength(0);
     expect(ctx.world.city.buildings.length).toBeGreaterThan(0);
+  });
+
+  it('canAutoDevelop refuses military defs in peaceful worlds (final-review R1 C1)', () => {
+    const ctx = setup(77);
+    ctx.world.peaceful = true;
+    const p = ctx.world.city.players[0]!;
+    p.funds = 100000;
+    p.materials = 100000;
+    // The academy's barracks prerequisite, satisfied via the fixture (the
+    // "somehow exists" case the gate is defense-in-depth for).
+    const { cx, cz } = findLandRect(ctx.terrain, 20, 8);
+    completed(ctx.world.city, { kind: 'barracks', owner: 0, cx, cz, facing: 0 });
+    // The academy is fully affordable and unlocked: the ONLY thing refusing
+    // it is the peaceful gate. (A long-run growth test cannot trip this —
+    // farm is cheaper and list-earlier, so tryAutoDevelop never reaches a
+    // military def with the current roster; this pins the gate itself.)
+    expect(canAutoDevelop(ctx.world, 0, BUILDING_DEFS.militaryAcademy)).toBe(false);
+    // ...but civilian defs still develop in peaceful worlds...
+    expect(canAutoDevelop(ctx.world, 0, BUILDING_DEFS.factory)).toBe(true);
+    expect(canAutoDevelop(ctx.world, 0, BUILDING_DEFS.farm)).toBe(true);
+    // ...and military defs are fine when the world is NOT peaceful.
+    ctx.world.peaceful = false;
+    expect(canAutoDevelop(ctx.world, 0, BUILDING_DEFS.militaryAcademy)).toBe(true);
+  });
+
+  it('a long peaceful run with industrial zones grows only civilian buildings (final-review R1 C1)', () => {
+    const ctx = setup(78);
+    ctx.world.peaceful = true;
+    const { cx, cz } = findLandRect(ctx.terrain, 24, 10);
+    enqueue(ctx, [
+      { kind: 'paintZone', issuer: 'p', payload: { owner: 0, zone: ZoneType.INDUSTRIAL, x0: cx, z0: cz, x1: cx + 23, z1: cz + 9 } },
+    ]);
+    runTicks(ctx, 1);
+    ctx.world.city.players[0]!.funds = 100000;
+    ctx.world.city.players[0]!.materials = 100000;
+    runTicks(ctx, 14400); // 480 s of growth pulses
+    const buildings = ctx.world.city.buildings;
+    expect(buildings.length).toBeGreaterThan(0); // organic growth happened...
+    const military = buildings.filter((b) => BUILDING_DEFS[b.kind].military === true);
+    expect(military).toEqual([]); // ...but never military
   });
 });
 

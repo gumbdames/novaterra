@@ -277,7 +277,7 @@ function findDepotBuilding(world: World, depotId: number): BuildingRecord | unde
 interface ResupplyPlan {
   unit: UnitRecord;
   depot: BuildingRecord;
-  /** Depot world position — the route target. */
+  /** Depot world position (footprint center) — the route target. */
   x: number;
   z: number;
   /** Amounts to reserve (clamped to available stock). */
@@ -342,8 +342,12 @@ function computeResupply(
   if ((ammoNeed <= 0 || ammoReserve <= 0) && (fuelNeed <= 0 || fuelReserve <= 0)) {
     return `resupply: depot ${depotId} has no available ammo or fuel for unit ${unitId}`;
   }
-  const x = cellCenterWorld(depot.cx);
-  const z = cellCenterWorld(depot.cz);
+  // Final-review R1 (M18, 2026-10-01): route to the depot's FOOTPRINT
+  // CENTER, not its corner cell. (cx, cz) is the footprint origin — for
+  // a 3x3 depot the corner target was up to ~2 cells off, sending units
+  // to the building's edge instead of its middle.
+  const x = cellCenterWorld(depot.cx + (bdef.footprintW - 1) / 2);
+  const z = cellCenterWorld(depot.cz + (bdef.footprintH - 1) / 2);
   const water = isWater(t, x, z);
   if (unit.domain === 'land' && water) {
     return `resupply: depot ${depotId} is on water (land units cannot reach it)`;

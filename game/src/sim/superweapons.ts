@@ -51,7 +51,7 @@ import type { World } from './world';
 import { rngBank } from './world';
 import type { CommandQueue, CommandSpec } from './commands';
 import type { SimSystem } from './tick';
-import { BUILDING_DEFS, getPlayer, CELL_WORLD_SIZE, MAP_HALF_SIZE } from './city';
+import { BUILDING_DEFS, getPlayer, CELL_WORLD_SIZE, MAP_HALF_SIZE, cellCenterWorld } from './city';
 import { killUnit } from './combat';
 import { hasUpgrade } from './upgrades';
 import {
@@ -192,15 +192,22 @@ export function isStormReady(world: World, owner: number): boolean {
   return world.tick >= p.storm.cooldownUntil;
 }
 
-/** Centroid of an owner's completed buildings (dome anchor; 0,0 when none). */
+/**
+ * World-unit centroid of an owner's completed buildings (dome anchor;
+ * 0,0 when none). Final-review R1 (M18, 2026-10-01): the average is over
+ * building CELL coordinates, so each term must be converted to world
+ * units — pushing raw cell indices into the fx record (which the
+ * renderer positions in world space) put the dome near the map origin
+ * instead of over the base.
+ */
 function ownerBaseCentroid(world: World, owner: number): { x: number; z: number } {
   let x = 0;
   let z = 0;
   let n = 0;
   for (const b of world.city.buildings) {
     if (b.owner === owner && b.progress >= 1) {
-      x += b.cx;
-      z += b.cz;
+      x += cellCenterWorld(b.cx);
+      z += cellCenterWorld(b.cz);
       n += 1;
     }
   }

@@ -3162,10 +3162,20 @@ export function buildingOccupancy(world: World, buildingId: number): BuildingOcc
  * Can `owner` afford AND build this def right now (funds, materials,
  * prerequisite building, research gate)? Shared by the auto-grow
  * pickers below — same rules as manual placement.
+ *
+ * Final-review R1 (C1, 2026-10-01): mirrors the placeBuilding command's
+ * peaceful lockout. tryAutoDevelop calls placeBuilding() directly,
+ * bypassing command validation — without this gate, industrial zones in
+ * a peaceful game would auto-build barracks/warFactory/munitionsFactory/
+ * militaryAcademy/missilePlant (all ZoneType.INDUSTRIAL, military: true):
+ * dead weight the player never ordered, breaking peaceful mode's core
+ * invariant. A peaceful game can NEVER auto-develop a military def.
+ * Exported for the peaceful-lockout regression test (final-review R1 C1).
  */
-function canAutoDevelop(world: World, owner: number, def: BuildingDef): boolean {
+export function canAutoDevelop(world: World, owner: number, def: BuildingDef): boolean {
   const city = world.city;
   const player = getPlayer(city, owner) as PlayerState;
+  if (world.peaceful === true && def.military === true) return false;
   if (player.funds < def.costFunds || player.materials < def.costMaterials) return false;
   if (def.requiredBuilding && !hasProductionBuilding(world, owner, def.requiredBuilding)) return false;
   if (def.requiredUpgrade && !((world.upgrades[owner] ?? []) as string[]).includes(def.requiredUpgrade)) return false;
