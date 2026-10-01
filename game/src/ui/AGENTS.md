@@ -77,6 +77,54 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   first reached through city (a new entry point like this demo) — the
   first move order died with `RangeError: Invalid array length`. Now a
   lazily-computed `gridCells()`; every call site runs at sim time.
+- `trailerDirector.ts` — the scripted gameplay trailer (trailer
+  workstream, 2026-10-01; see `docs/trailer.md`). A separate director
+  from the menu demo: a denser, battle-bearing ~7,400-tick (~4 minute)
+  cinematic with its own camera choreography and title cards, driven
+  through the REAL command queue (`issuer: 'trailer'`) on a real
+  skirmish world (fixed `TRAILER_SEED = 0x7a11e4`, cadet AI rival — the
+  cadet never attacks, so the script is safe, and the AI supplies the
+  finale's real battle + the real storm strike). 34 chapters fire on
+  `world.tick` only (sorted by tick at build; the fire loop consumes in
+  array order); the director's RNG is a director-owned
+  `createRngBank(session.seed)` stream — `world.rng` never gains a
+  `trailer` stream. Rejections recorded loudly in `failures`; the suite
+  (`tests/ui.trailer.test.ts`) pins `failures` empty, identical command
+  log + digest across runs, the full arc's world effects (city, trade
+  docks + shipyard, sailed sea route, airline, ascendance age, battle,
+  storm strike), and the title-card schedule (non-overlapping) —
+  including a `&trailerseed=` re-shoot path. Headless-safe
+  (no DOM/three.js). Sim facts the script depends on (pinned by test):
+  sea routes anchor at `tradeDock` buildings (commercialPort — the
+  commercialHarbor shipyard is NOT a trade dock), freighters need the
+  real `commercialHarbor` kind (a dock's `countsAs:['shipyard']` doesn't
+  cover it), airline routes need civil/mixed `airportType` (civilAirport
+  — the Airport Interchange has none).
+- `trailerCamera.ts` — the trailer's scripted camera (pure,
+  headless-safe, tested). `TrailerShot` = tick range + anchor-relative
+  `from`/`to` poses + easing; `poseAtTick` is a pure function of
+  (tick, anchors) so footage is identical at any frame rate; the 13
+  shipped shots tile 0–`TRAILER_END_TICK` gapless and overlap-free
+  (`validateShots` enforces it — the suite pins the schedule).
+- `trailerCapture.ts` — in-game trailer recording: `canvas.captureStream()`
+  + `MediaRecorder` (vp9 → vp8 → container default, 10 Mbps), 1s
+  timeslices; `startTrailerCapture()` returns `null` (never throws) when
+  the runtime can't record, and the trailer mode shows the OBS fallback
+  note instead. Pure `resolveTrailerMimeType` is unit-tested headless.
+- `trailerMode.ts` — the `?trailer=1` capture mode (DOM + three.js +
+  MediaRecorder; dynamically imported by `main.ts`, never by headless
+  tests). Takes over `#app`: renderer, shared menu scene, trailer
+  session, terrain + entity views, real-time 30 ticks/s accumulator
+  (capped catch-up — a slow machine slows the movie, never the script),
+  scripted camera + title-card overlays, automatic recording; at
+  `director.done` the recording stops and a
+  `novaterra-trailer-<seed>.webm` download triggers, with a manual link
+  + replay button. `&trailerseed=<n>` re-shoots on another seed. No
+  audio by design (video-only capture; music goes on in post).
+- `menuScene.ts` — the shared menu scene base (gradient sky, fog, sun,
+  environment lighting; extracted from `main.ts` in the trailer
+  workstream so `?trailer=1` renders the same look). Callers attach
+  their own terrain view.
 - `game.ts` — the game controller: renderer, daylight scene, camera
   input, selection, placement modes, fixed-timestep loop, pause menu.
   DOM + three.js; never imported by headless tests. `startGame()` tags

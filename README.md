@@ -93,6 +93,10 @@ land, sea and air — or play a fully peaceful game with war disabled.
   ships at a friendly yard show **Under repair** while the drydock
   works, and the marshal AI builds its own naval base and loads its
   supply tail from it.
+  The scripted gameplay trailer (2026-10-01) is in too: `?trailer=1`
+  plays a deterministic ~4-minute in-game movie — a real skirmish vs a
+  cadet AI with title cards and a scripted camera — recorded straight
+  to a downloadable `.webm` (see `docs/trailer.md`).
   See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
@@ -163,6 +167,11 @@ land, sea and air — or play a fully peaceful game with war disabled.
   Storm Engine strike damages buildings in its blast radius and the
   Aegis shield holds damage off yours. Conquest victory needs every
   enemy unit AND every enemy building destroyed
+- Scripted gameplay trailer (2026-10-01): `?trailer=1` plays a
+  deterministic ~4-minute in-game movie — a real skirmish vs a cadet AI
+  (title cards, scripted camera) — recorded straight to a downloadable
+  `.webm`; `&trailerseed=<n>` re-shoots on another seed (see
+  `docs/trailer.md`)
 
 ## Building from source
 

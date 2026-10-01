@@ -1736,3 +1736,115 @@ body {
   font-size: 12px;
   line-height: 1.5;
 }
+
+/* ------------------------------------------------------------------ */
+/* Trailer mode (?trailer=1) — title cards + outro (2026-10-01).       */
+/* Cinematic typography: big letterspaced titles over the footage,    */
+/* fading in/out on the director's tick schedule. Pointer-events none */
+/* so the cards never intercept input; the canvas keeps rendering.    */
+/* ------------------------------------------------------------------ */
+#trailer-cards {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.trailer-card {
+  position: absolute;
+  text-align: center;
+  opacity: 0;
+  transition: opacity 0.9s ease-in-out;
+}
+
+.trailer-card.visible {
+  opacity: 1;
+}
+
+.trailer-card-title {
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  font-size: clamp(48px, 9vw, 120px);
+  font-weight: 200;
+  letter-spacing: 0.35em;
+  text-indent: 0.35em;
+  color: #f4f1e8;
+  text-shadow:
+    0 2px 24px rgba(0, 0, 0, 0.85),
+    0 0 90px rgba(216, 163, 95, 0.35);
+}
+
+.trailer-card-sub {
+  margin-top: 18px;
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  font-size: clamp(14px, 2.2vw, 24px);
+  font-weight: 300;
+  letter-spacing: 0.28em;
+  text-indent: 0.28em;
+  text-transform: uppercase;
+  color: #d8a35f;
+  text-shadow: 0 2px 16px rgba(0, 0, 0, 0.9);
+}
+
+#trailer-capture-note {
+  position: fixed;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 60;
+  padding: 10px 18px;
+  background: rgba(8, 14, 22, 0.92);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  color: var(--ink);
+  font-size: 13px;
+  pointer-events: none;
+}
+
+#trailer-outro {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  background: rgba(4, 8, 14, 0.72);
+}
+
+.trailer-outro-title {
+  font-size: clamp(36px, 6vw, 72px);
+  font-weight: 200;
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  color: #f4f1e8;
+}
+
+.trailer-outro-note {
+  color: var(--ink-dim);
+  font-size: 14px;
+}
+
+.trailer-outro-link {
+  color: #d8a35f;
+  font-size: 16px;
+}
+
+.trailer-outro-button {
+  margin-top: 8px;
+  padding: 12px 28px;
+  font-size: 16px;
+  letter-spacing: 0.12em;
+  background: #1c2b3f;
+  color: #f4f1e8;
+  border: 1px solid #d8a35f;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.trailer-outro-button:hover {
+  background: #27405c;
+}

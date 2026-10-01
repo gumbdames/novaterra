@@ -41,7 +41,8 @@ import * as THREE from 'three';
 import './style.css';
 import { generateTerrain, MERIDIAN_PLAINS } from './sim/terrain';
 import { buildTerrainView, type TerrainView } from './render/terrain';
-import { createRenderer, applyEnvironmentLighting } from './render/renderer';
+import { createRenderer } from './render/renderer';
+import { buildMenuScene } from './ui/menuScene';
 import { MainMenu, loadSettings, type QualityLevel } from './ui/menus';
 import { AudioEngine } from './audio/engine';
 import { startGame } from './ui/game';
@@ -377,46 +378,11 @@ function applyMenuQuality(
 }
 
 /**
- * Menu scene base: gradient sky, fog, lights, environment lighting — no
- * terrain. The living demo (or the static fallback) attaches its own
- * terrain view; entity views ride on it via EntityRenderer's `terrain`
- * option. Replaces the old buildBackdropScene's scene half (terrain moved
- * to the demo/static paths so the demo session's terrain is reused).
+ * Menu scene base: gradient sky, fog, lights, environment lighting.
+ * Moved to ui/menuScene.ts (trailer workstream, 2026-10-01) so the
+ * ?trailer=1 capture mode shares the exact same sky/lighting.
  */
-function buildMenuScene(): THREE.Scene {
-  const scene = new THREE.Scene();
-
-  // Gradient sky baked to a canvas texture (cheap, no shader yet).
-  const skyCanvas = document.createElement('canvas');
-  skyCanvas.width = 4;
-  skyCanvas.height = 256;
-  const ctx = skyCanvas.getContext('2d');
-  if (ctx === null) {
-    throw new Error('menu scene: 2d canvas context unavailable');
-  }
-  const gradient = ctx.createLinearGradient(0, 0, 0, 256);
-  gradient.addColorStop(0.0, '#0b1e3a'); // zenith
-  gradient.addColorStop(0.55, '#274b73'); // horizon glow
-  gradient.addColorStop(0.62, '#d8a35f'); // sunset band
-  gradient.addColorStop(1.0, '#1a2230'); // below horizon
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 4, 256);
-  const skyTexture = new THREE.CanvasTexture(skyCanvas);
-  skyTexture.colorSpace = THREE.SRGBColorSpace;
-  scene.background = skyTexture;
-  scene.fog = new THREE.Fog(0x1a2230, 320, 1150);
-
-  // Lighting: hemisphere for sky bounce + one directional "sun" (the key
-  // light), plus the shared procedural environment map so PBR metals on
-  // entity views shade correctly (see render/renderer.ts).
-  scene.add(new THREE.HemisphereLight(0x9db8dd, 0x1c2420, 0.9));
-  const sun = new THREE.DirectionalLight(0xffe0b3, 1.6);
-  sun.position.set(80, 120, 40);
-  scene.add(sun);
-  applyEnvironmentLighting(scene);
-
-  return scene;
-}
+export { buildMenuScene };
 
 /** Full-screen, human-readable failure instead of a blank page. */
 function showFatal(error: unknown): void {
@@ -595,9 +561,20 @@ async function showMissions(
 // Auto-boot only in a real browser. Under vitest (Node, no document) the
 // module simply exports boot() for the smoke tests — see tests/smoke.test.ts.
 if (typeof document !== 'undefined') {
-  const benchRequested =
-    new URLSearchParams(window.location.search).get('bench') === '1';
-  if (benchRequested) {
+  const params = new URLSearchParams(window.location.search);
+  const trailerRequested = params.get('trailer') === '1';
+  const benchRequested = params.get('bench') === '1';
+  if (trailerRequested) {
+    // Scripted gameplay-trailer capture mode (trailer workstream,
+    // 2026-10-01): a deterministic cinematic movie with title cards and
+    // scripted camera, recorded straight to a downloadable .webm.
+    // Dynamically imported so the normal game bundle never pays for it.
+    // Optional &trailerseed=<n> re-shoots with a different seed. See
+    // docs/trailer.md.
+    import('./ui/trailerMode')
+      .then((mod) => mod.runTrailerMode(window.location.search))
+      .catch(showFatal);
+  } else if (benchRequested) {
     // Render benchmark harness (Phase 1, step 2). Dynamically imported so the
     // normal game bundle never pays for it: Vite code-splits src/bench into
     // a separate chunk that is only fetched with ?bench=1. See

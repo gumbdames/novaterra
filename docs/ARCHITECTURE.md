@@ -109,6 +109,12 @@ game/src/
     musebox.ts    # Muse widget + threat meter (DOM only, offline persona)
     strings.ts    # all UI copy, English-only (LocalizedString indirection)
     icons.ts      # hand-drawn inline SVG set (icon AND text on buttons)
+    demoDirector.ts # living menu demo: scripted sandbox movie (issuer: 'demo')
+    trailerDirector.ts / trailerCamera.ts / trailerCapture.ts /
+    trailerMode.ts # scripted gameplay trailer (?trailer=1, issuer: 'trailer'):
+                  # 34-chapter real-skirmish movie, pure scripted camera,
+                  # MediaRecorder capture, DOM capture controller
+    menuScene.ts  # shared menu sky/lighting scene base (menu + trailer)
   audio/          # adaptive music engine (peace/war crossfade) + procedural
                   # SFX synth on raw Web Audio; observes sim, never mutates
   campaign/       # 8-mission "The First Term": mission data, objectives,
@@ -116,7 +122,8 @@ game/src/
   muse/           # offline Muse persona (deterministic lines, threat meter);
                   # live.ts = honest offline "hopefully coming" placeholder
   net_save/       # IndexedDB driver, save slots, version validation
-  main.ts         # boot, menu wiring, save-load entry
+  main.ts         # boot, menu wiring, save-load entry, ?trailer=1 /
+                  # ?bench=1 branches (trailer mode is dynamically imported)
 game/tests/       # 137 files, ~2100 tests — see docs/TESTING.md
 game/public/      # static assets: models/ (989 CC0 files), audio/
 ```
@@ -289,6 +296,13 @@ state.
   so loads regenerate the right terrain (R1). Rejected old saves get a
   plain-language toast, never a raw error.
 - English-only, icon+text buttons (user directives).
+- **Scripted gameplay trailer** (`?trailer=1`, 2026-10-01 — see
+  `docs/trailer.md`): a deterministic in-game movie (real skirmish vs a
+  cadet AI, real command queue, scripted camera, title cards) recorded
+  straight to a downloadable `.webm` via `canvas.captureStream()` +
+  `MediaRecorder`. UI-layer only — the sim is untouched. `main.ts`
+  dynamically imports `ui/trailerMode.ts` only when the flag is present,
+  so the normal bundle never pays for it.
 
 ## 8. Decision log
 
