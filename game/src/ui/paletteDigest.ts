@@ -545,16 +545,23 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     id: 'selection-units',
     renderedIn: 'updateSelection',
     // Command-menu rebuild (2026-10-01): the detail view — detail-back
-    // (Back to the tab menu), detail-header / detail-title (icon +
-    // name), one stat-block of stat-row lines per unit, and one
-    // detail-actions row per unit holding the sel-action buttons.
+    // (Back to the tab menu), detail-header / detail-hero (the
+    // selection "dossier photo") / detail-title, one stat-block of
+    // stat-row lines per unit, and one detail-actions row per unit
+    // holding the sel-action buttons.
     // sel-bar / sel-bar-fill / sel-bar-label: the Phase 3 fuel/ammo
     // bars; sel-toggle / sel-toggle-row: the Repair/Rearm/Refuel buttons
     // on supply units.
+    // Entity portraits (2026-10-01): detail-hero + portrait (the atlas
+    // CSS-sprite overlay) are decorative — no digest segment; the panel
+    // rebuilds on content changes exactly as before and hud.ts patches
+    // overlays in after each build.
     domClasses: [
       'detail-back',
       'detail-header',
+      'detail-hero',
       'detail-title',
+      'portrait',
       'stat-block',
       'stat-row',
       'detail-actions',
@@ -585,14 +592,21 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     id: 'selection-building',
     renderedIn: 'updateSelection',
     // Command-menu rebuild (2026-10-01): the detail view — detail-back
-    // (Back to the tab menu), detail-header / detail-title (icon +
-    // name), the stat-block of stat-row lines, the hangar manifest
-    // stat-block, and the detail-actions row (parked-aircraft Launch
-    // buttons + the Demolish button, all 'sel-action').
+    // (Back to the tab menu), detail-header / detail-hero (the
+    // selection "dossier photo") / detail-title, the stat-block of
+    // stat-row lines, the hangar manifest stat-block, and the
+    // detail-actions row (parked-aircraft Launch buttons + the Demolish
+    // button, all 'sel-action').
+    // Entity portraits (2026-10-01): detail-hero + portrait (the atlas
+    // CSS-sprite overlay) are decorative — no digest segment; the panel
+    // rebuilds on content changes exactly as before and hud.ts patches
+    // overlays in after each build.
     domClasses: [
       'detail-back',
       'detail-header',
+      'detail-hero',
       'detail-title',
+      'portrait',
       'stat-block',
       'stat-row',
       'detail-actions',
@@ -621,10 +635,15 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'palette-tab',
       'palette-grid',
       'train-btn',
+      'palette-thumb',
       'palette-icon',
+      'portrait',
       'palette-name',
       'palette-cost',
     ],
+    // Entity portraits (2026-10-01): palette-thumb + portrait (the
+    // atlas CSS-sprite overlay on card thumbnails) are decorative — no
+    // digest segment; hud.ts patches overlays in after each build.
     digestLabels: ['tt:', 'ta:'],
   },
   {
@@ -638,10 +657,15 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'palette-grid',
       'build-btn',
       'build-btn cancel',
+      'palette-thumb',
       'palette-icon',
+      'portrait',
       'palette-name',
       'palette-cost',
     ],
+    // Entity portraits (2026-10-01): palette-thumb + portrait (the
+    // atlas CSS-sprite overlay on card thumbnails) are decorative — no
+    // digest segment; hud.ts patches overlays in after each build.
     digestLabels: ['bt:', 'ba:'],
   },
   {
@@ -728,6 +752,10 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // sw-desc: the superweapon cards (icon + name + requirement +
     // fire button). The train/build palettes embedded here are
     // digest-covered by their own branches.
+    // Entity portraits (2026-10-01): palette-thumb + portrait (the
+    // atlas CSS-sprite overlay on the superweapon card thumbnails) are
+    // decorative — no digest segment; hud.ts patches overlays in after
+    // each build.
     domClasses: [
       'panel-section',
       'panel-section-title',
@@ -737,6 +765,8 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'panel-status',
       'order-hint',
       'sw-card',
+      'palette-thumb',
+      'portrait',
       'sw-body',
       'sw-name',
       'sw-desc',

@@ -86,6 +86,10 @@ land, sea and air — or play a fully peaceful game with war disabled.
   selecting a unit or building shows a detail view with its stats and
   action buttons; trade routes are established from Management →
   Trade
+- Entity portraits (2026-10-01): the command-menu cards (train / build /
+  superweapon) and the selection detail "dossier photo" show the real
+  model portrait from a generated sprite atlas (195 sprites), with the
+  hand-drawn icon glyph as the fallback — lazy-loaded, zero boot cost
 - City ordinances (Phase 8): five city-wide policies on the Management
   tab — Green Initiative, Transit Subsidy, Business Incentives,
   Nightlife Ordinance, Education Grants — each with real per-second

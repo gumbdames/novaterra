@@ -78,3 +78,26 @@ on reboot): `driver.mjs` (CDP screenshot driver), `start-chrome.sh`,
 - Kill Chrome by exact PID from the pidfile/ss — never `pkill -f` with a
   pattern that also appears in your own command line (it SIGKILLs your
   own shell).
+
+## Addendum 2026-10-01: entity portraits (atlas) — option (a) revisited
+
+The 2026-09-30 rejection of build-time 3D thumbnails no longer holds:
+the roster has since grown to 96 units / 99 buildings and a
+deterministic CPU-rasterizer atlas pipeline now exists
+(`game/scripts/portrait-atlas.ts` + `render-portraits.mjs`, Worker A),
+producing `game/public/img/entity-atlas.png` (195 sprites, 96×96 tiles,
+~840KB) + `entity-atlas.json`. The old objections fell away: no
+headless-GPU pipeline was needed (software rasterizer over the game's
+own processed geometry), the PNG lazy-loads after first menu paint
+(zero boot-budget impact — see `ui/entityPortraits.ts`), and at the
+larger hero size (96px) the 3D render reads better than a 24px
+silhouette.
+
+The SVG glyphs are NOT removed — they stay as the permanent fallback
+(and the only art when the atlas has no sprite for a kind):
+`ui/entityPortraits.ts` (`hasPortrait` / `portraitStyle` /
+`applyPortraits`) overlays the atlas sprite as a plain CSS sprite on
+the command-menu card thumbnails (train/build/superweapon) and the
+selection detail "dossier photo" hero, glyph-first with no layout
+shift. Digest-neutral (AD11): portraits are decorative, no digest
+segment. See `game/src/ui/AGENTS.md` ("Menu imagery").

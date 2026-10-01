@@ -483,6 +483,34 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   tabMilitary / tabManagement, workstream Y). 24×24 viewBox, `stroke="currentColor"` so button
   CSS (including locked dimming) drives the color. Decision record:
   `docs/research/ui-icons.md`.
+- `entityPortraits.ts` — **entity portraits from the sprite atlas
+  (consumer side, 2026-10-01).** The consumer contract for the atlas
+  pipeline (Worker A owns `game/public/img/entity-atlas.png` +
+  `entity-atlas.json`, 195 sprites for all 96 units + 99 buildings):
+  `hasPortrait(kind)` / `portraitStyle(kind, boxPx)` /
+  `applyPortraits(scope, makeOverlay)` / `ensurePortraitsLoaded()` /
+  `portraitsReady()`. Headless-safe (no DOM at module scope); the
+  manifest format is documented in the module header — do not change it
+  unilaterally, both workers note contract changes. Loading: the
+  manifest JSON is fetched lazily on first command-menu paint and the
+  PNG downloads once via the inline `background-image` on the first
+  portrait overlay — zero boot-budget bytes (the 8 MiB gate in
+  tests/render.boot-budget.test.ts is untouched). Any load failure
+  resolves false → pure glyph mode; `hasPortrait` false → the card
+  keeps its SVG glyph — no card ever blank. hud.ts renders every card
+  thumbnail as a fixed-size `.palette-thumb` box carrying
+  `data-portrait-kind`/`data-portrait-box` and calls
+  `refreshPortraits()` after each panel build; the detail header's
+  `.detail-hero` is the 96px "dossier photo" (same sprite, bigger crop
+  via CSS scaling). Plain CSS sprites — zero per-frame cost, no canvas.
+  Digest-neutral (AD11): portraits are decorative, no digest segment;
+  `palette-thumb` / `portrait` / `detail-hero` are claimed in
+  HUD_PANEL_BRANCHES. Overlays are aria-hidden — the text label stays
+  the accessible name. Covered by `tests/ui.entityPortraits.test.ts`
+  (manifest parsing, sprite math, lazy-load failure modes,
+  applyPortraits idempotence, manifest-missing resilience, digest
+  neutrality, and a skip-if-absent contract test that the generated
+  atlas covers every palette kind).
 - `session.ts` also assembles campaign missions:
   `createSession({ campaignMission })` — map/AI/starting resources from
   the mission, no AI rival when difficulty is 'none', owner 1 always
@@ -571,6 +599,34 @@ the `append*/build*/update*` name pattern (workstream Y uses
 each one. When a branch renders only under a state the default
 `digestForBranch` helper does not produce (e.g. the Management tab's
 `menuTab='management'`), add a case for it in the helper.
+
+## Menu imagery (entity portraits, 2026-10-01)
+
+Command-menu cards (train/build/superweapon) and the selection detail
+hero show atlas portraits from `ui/entityPortraits.ts`, falling back to
+the `ui/icons.ts` SVG glyphs. Rules for touching this area:
+
+1. Portraits are decorative: never add a digest segment for them, never
+   let portrait state into `selectionDigest()` (AD11 neutrality), and
+   keep overlays `aria-hidden` — the text label is the accessible name.
+2. Never blank: every thumbnail/hero renders its glyph unconditionally;
+   the portrait is an overlay applied by `applyPortraits()`. A kind
+   with no sprite, a missing manifest, or a failed fetch all degrade to
+   glyph mode — test the fallback, don't assume the atlas.
+3. No layout shift: thumbnail boxes are fixed-size in CSS
+   (`.palette-thumb` per context, `.detail-hero` 96px). The glyph shows
+   until the PNG paints.
+4. Boot budget: nothing portrait-related may enter the boot payload —
+   no static import of the atlas, no `<link rel=preload>`, no
+   index.html reference. Lazy `fetch()` + inline `background-image`
+   only. If the atlas ever needs to be boot-critical, that is a
+   measured decision recorded in `ui/entityPortraits.ts` and the boot
+   gate must stay green.
+5. Contract: `hasPortrait(kind)` / `portraitStyle(kind, boxPx)` and the
+   manifest JSON shape are shared with the atlas pipeline (Worker A).
+   Changes are noted by both sides — never silently diverge. The
+   skip-if-absent test in `tests/ui.entityPortraits.test.ts` pins that
+   the generated atlas covers every palette kind.
 
 ## Adding a linear-network kind (Phase 2/4)
 

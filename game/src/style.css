@@ -435,16 +435,47 @@ body {
   color: var(--ink);
 }
 
+/* Command-menu rebuild (2026-10-01): the detail view header — the
+ * Back button back to the tab menu, the "dossier photo" hero + name,
+ * one stat block per unit/building, and the action row. */
 .detail-header {
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
   margin-bottom: 10px;
 }
 
-.detail-header .palette-icon {
-  width: 40px;
-  height: 40px;
+/* Entity portraits (2026-10-01): the selection "dossier photo" — a
+ * fixed 96px hero box at the top of the detail view. The SVG glyph
+ * stays inside as the fallback (and the only art when the atlas has
+ * no sprite for the kind); the atlas portrait overlays it through the
+ * same .portrait CSS-sprite mechanism as the cards. aria-hidden like
+ * every other icon — the detail-title is the accessible name. The box
+ * size is reserved up front so the portrait popping in never shifts
+ * the layout. */
+.detail-hero {
+  position: relative;
+  width: 96px;
+  height: 96px;
+  flex: none;
+  border: 1px solid var(--panel-border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+
+.detail-hero .palette-icon {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.detail-hero .palette-icon svg {
+  width: 56px;
+  height: 56px;
 }
 
 .detail-title {
@@ -885,6 +916,41 @@ body {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+/* Entity portraits (2026-10-01): the fixed-size thumbnail box for a
+ * command-menu card. The glyph paints inside it; when the atlas has a
+ * sprite for the kind, a .portrait overlay (plain CSS sprite — zero
+ * per-frame cost, no canvas work) covers the glyph. The box size is
+ * reserved up front so portraits popping in never shift the card
+ * grid. */
+.palette-thumb {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+.palette-thumb .palette-icon {
+  width: 100%;
+  height: 100%;
+}
+
+.palette-grid .palette-thumb {
+  grid-area: icon;
+  width: 30px;
+  height: 30px;
+}
+
+.sw-card .palette-thumb {
+  width: 34px;
+  height: 34px;
+}
+
+.portrait {
+  position: absolute;
+  inset: 0;
+  background-repeat: no-repeat;
+  pointer-events: none;
 }
 
 /* Palette buttons: icon left, name + cost stacked right. */

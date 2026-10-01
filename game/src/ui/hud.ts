@@ -124,6 +124,18 @@ import {
 } from './policies';
 import { HUMAN_PLAYER_ID } from './session';
 import { ToastQueue } from './toastQueue';
+// Entity portraits (2026-10-01): the atlas consumer contract —
+// hasPortrait / portraitStyle for the card thumbnails and the detail
+// hero, plus the lazy manifest load (boot-budget-neutral) and the
+// idempotent applyPortraits DOM patch.
+import {
+  applyPortraits,
+  ensurePortraitsLoaded,
+  CARD_PORTRAIT_BOX_PX,
+  SW_CARD_PORTRAIT_BOX_PX,
+  DETAIL_HERO_BOX_PX,
+  type PortraitStyle,
+} from './entityPortraits';
 // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
 // the peaceful UI contract (tab visibility, objectives lines).
 import { menuTabsForWorld, peacefulStatusLines } from './peaceful';
@@ -645,6 +657,17 @@ export class HUD {
     hud.append(this.toastEl);
 
     root.append(hud);
+
+    // Entity portraits (2026-10-01): kick off the lazy atlas load with
+    // the first menu paint — never at boot, so the 8 MiB boot budget is
+    // untouched. Glyphs render until the manifest + PNG arrive; then
+    // refreshPortraits() patches the overlays in without a digest
+    // rebuild (portraits are decorative — digest-neutral by design).
+    // Never rejects (ensurePortraitsLoaded resolves false on any
+    // failure → pure glyph mode).
+    void ensurePortraitsLoaded().then((ok) => {
+      if (ok) this.refreshPortraits();
+    });
   }
 
   /**
@@ -755,12 +778,63 @@ export class HUD {
   }
 
   /**
+   * Entity portraits (2026-10-01): a fixed-size thumbnail box for a
+   * command-menu card — the SVG glyph (aria-hidden, as before) plus a
+   * `data-portrait-kind` / `data-portrait-box` hook. refreshPortraits()
+   * appends the atlas `.portrait` overlay once the manifest is in; until
+   * then (or when the kind has no atlas sprite) the glyph is the whole
+   * art — no card ever renders blank. Named *El per the ui/AGENTS.md
+   * AD11 rule; the 'palette-thumb' class is claimed by the card's digest
+   * branch (decorative — no digest segment).
+   */
+  private portraitThumbEl(kind: string, glyph: string, boxPx: number): HTMLElement {
+    const thumb = el('span', 'palette-thumb');
+    thumb.dataset['portraitKind'] = kind;
+    thumb.dataset['portraitBox'] = String(boxPx);
+    thumb.append(iconSpan(glyph));
+    return thumb;
+  }
+
+  /**
+   * Entity portraits (2026-10-01): patch atlas overlays into every
+   * thumbnail host in the selection panel. Idempotent and cheap, and
+   * digest-neutral — the digest key is untouched, so no rebuild loop.
+   * Called after every panel build and once when the lazy atlas load
+   * resolves.
+   */
+  private refreshPortraits(): void {
+    applyPortraits(this.selectionPanel, (style: PortraitStyle): HTMLElement => {
+      const s = el('span', 'portrait');
+      s.setAttribute('aria-hidden', 'true');
+      s.style.backgroundImage = style.backgroundImage;
+      s.style.backgroundPosition = style.backgroundPosition;
+      s.style.backgroundSize = style.backgroundSize;
+      s.style.backgroundRepeat = style.backgroundRepeat;
+      return s;
+    });
+  }
+
+  /**
    * Command-menu rebuild (2026-10-01): the detail header — the
    * selected unit/building's icon plus its name.
+   *
+   * Entity portraits (2026-10-01): when a kind is given, the icon
+   * becomes a large "dossier photo" hero — a fixed 96px box holding
+   * the glyph (the fallback) with the atlas portrait overlaid via
+   * refreshPortraits(). The title stays the accessible name; the hero
+   * art is aria-hidden through the glyph/overlay spans.
    */
-  private detailHeaderEl(icon: string, title: string): HTMLElement {
+  private detailHeaderEl(icon: string, title: string, kind?: string): HTMLElement {
     const h = el('div', 'detail-header');
-    if (icon !== '') h.prepend(iconSpan(icon));
+    if (kind !== undefined && icon !== '') {
+      const hero = el('div', 'detail-hero');
+      hero.dataset['portraitKind'] = kind;
+      hero.dataset['portraitBox'] = String(DETAIL_HERO_BOX_PX);
+      hero.append(iconSpan(icon));
+      h.prepend(hero);
+    } else if (icon !== '') {
+      h.prepend(iconSpan(icon));
+    }
     h.append(el('div', 'detail-title', title));
     return h;
   }
@@ -1080,7 +1154,7 @@ export class HUD {
     ];
     for (const c of cards) {
       const card = el('div', 'sw-card');
-      card.prepend(iconSpan(buildingIcon(c.kind)));
+      card.prepend(this.portraitThumbEl(c.kind, buildingIcon(c.kind), SW_CARD_PORTRAIT_BOX_PX));
       const body = el('div', 'sw-body');
       body.append(el('div', 'sw-name', buildingName(c.kind)));
       body.append(el('div', 'sw-desc', c.desc));
@@ -1874,6 +1948,10 @@ export class HUD {
       } else {
         this.appendManagementPanel(content, world);
       }
+      // Entity portraits (2026-10-01): patch atlas overlays into the
+      // freshly built card thumbnails (no-op until the lazy load
+      // resolves; digest-neutral).
+      this.refreshPortraits();
       return;
     }
 
@@ -1892,6 +1970,7 @@ export class HUD {
         this.detailHeaderEl(
           firstKind !== undefined ? unitIcon(firstKind) : '',
           sel.unitsSelected(units.length),
+          firstKind,
         ),
       );
       for (const u of units.slice(0, 6)) {
@@ -2079,6 +2158,8 @@ export class HUD {
       stopBtn.addEventListener('click', () => this.actions.onStopSelection());
       stopRow.append(stopBtn);
       panel.append(stopRow);
+      // Entity portraits (2026-10-01): the detail hero's atlas overlay.
+      this.refreshPortraits();
       return;
     }
 
@@ -2091,7 +2172,7 @@ export class HUD {
       // new detail classes are claimed by the 'selection-building'
       // digest branch.
       panel.append(this.detailBackEl());
-      panel.append(this.detailHeaderEl(buildingIcon(b.kind), buildingName(b.kind)));
+      panel.append(this.detailHeaderEl(buildingIcon(b.kind), buildingName(b.kind), b.kind));
       const stats = el('div', 'stat-block');
       stats.append(
         el('div', 'stat-row', b.operational ? loc(sel.operational) : loc(sel.notOperational)),
@@ -2196,6 +2277,8 @@ export class HUD {
         this.appendResearchPanel(panel, world);
       }
     }
+    // Entity portraits (2026-10-01): the detail hero's atlas overlay.
+    this.refreshPortraits();
   }
 
   /** Tabbed train palette: 6 tabs for the 96 units (spec §8 + Phase 4 S7 transport). */
@@ -2214,7 +2297,7 @@ export class HUD {
       const b = document.createElement('button');
       b.className = `train-btn${av.ok ? '' : ' locked'}`;
       b.disabled = !av.ok;
-      b.prepend(iconSpan(unitIcon(kind)));
+      b.prepend(this.portraitThumbEl(kind, unitIcon(kind), CARD_PORTRAIT_BOX_PX));
       b.append(el('div', 'palette-name', unitName(kind)));
       b.append(el('div', 'palette-cost', formatTrainCost(kind)));
       b.title = trainTooltip(world, HUMAN_PLAYER_ID, kind);
@@ -2258,7 +2341,7 @@ export class HUD {
       const b = document.createElement('button');
       b.className = `build-btn${avail.ok ? '' : ' locked'}`;
       b.disabled = !avail.ok;
-      b.prepend(iconSpan(buildingIcon(kind as BuildingKind)));
+      b.prepend(this.portraitThumbEl(kind, buildingIcon(kind as BuildingKind), CARD_PORTRAIT_BOX_PX));
       b.append(el('div', 'palette-name', isUtility ? utilityBuildingName(kind) : buildingName(kind as BuildingKind)));
       b.append(
         el('div', 'palette-cost', isUtility ? formatUtilityBuildCost(kind) : formatBuildCost(kind as BuildingKind)),
