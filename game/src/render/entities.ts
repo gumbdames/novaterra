@@ -509,10 +509,10 @@ export type ModelSource =
   // 2026-09-30): the ten civilian buildings — all-shared art, zero new
   // model keys (AD12: no boot-download growth). museum/theater/
   // grandMarket/bank/officeTower/clinic/medicalCenter reuse existing
-  // GLBs; the stadium, botanical garden, and fire station ride the
-  // procedural fallback until the render workstream's Phase 8 pass
-  // (the Phase-4-hub precedent — `{ type: 'procedural' }` renders the
-  // seeded placeholder, never nothing).
+  // GLBs; the stadium, botanical garden, and fire station stay
+  // `{ type: 'procedural' }` (lazy-load set — no GLB keys) and now get
+  // real builders in proceduralModels.ts (final-review R5, 2026-10-01)
+  // instead of the seeded placeholder.
   museum: { type: 'glb', pieces: [piece('university')] },
   theater: { type: 'glb', pieces: [piece('college')] },
   grandMarket: {

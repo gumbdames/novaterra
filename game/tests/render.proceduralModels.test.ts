@@ -58,3 +58,62 @@ describe('render/proceduralModels — registry/switch agreement', () => {
     expect(buildProceduralModel('notARealKind')).toBeUndefined();
   });
 });
+
+describe('render/proceduralModels — final-review R5 civic gap models', () => {
+  const SPECS = [
+    { kind: 'sportsStadium', footprintCells: 4 },
+    { kind: 'botanicalGarden', footprintCells: 4 },
+    { kind: 'fireStation', footprintCells: 2 },
+  ] as const;
+
+  function extents(kind: string): { x: number; z: number; parts: number } {
+    const model = buildProceduralModel(kind);
+    expect(model, `${kind} should build`).toBeDefined();
+    let minX = Infinity;
+    let maxX = -Infinity;
+    let minZ = Infinity;
+    let maxZ = -Infinity;
+    for (const g of model!.geometries) {
+      g.computeBoundingBox();
+      const bb = g.boundingBox!;
+      minX = Math.min(minX, bb.min.x);
+      maxX = Math.max(maxX, bb.max.x);
+      minZ = Math.min(minZ, bb.min.z);
+      maxZ = Math.max(maxZ, bb.max.z);
+    }
+    return { x: maxX - minX, z: maxZ - minZ, parts: model!.geometries.length };
+  }
+
+  it('builds all three (no placeholder fall-through)', () => {
+    for (const { kind } of SPECS) {
+      expect(buildProceduralModel(kind)).toBeDefined();
+    }
+  });
+
+  it('fits the sim footprint (CELL_WORLD_SIZE = 2 world units per cell)', () => {
+    for (const { kind, footprintCells } of SPECS) {
+      const { x, z } = extents(kind);
+      const worldSize = footprintCells * 2;
+      expect(
+        x,
+        `${kind}: x extent ${x.toFixed(2)} exceeds ${worldSize}-unit footprint`,
+      ).toBeLessThanOrEqual(worldSize + 0.01);
+      expect(
+        z,
+        `${kind}: z extent ${z.toFixed(2)} exceeds ${worldSize}-unit footprint`,
+      ).toBeLessThanOrEqual(worldSize + 0.01);
+    }
+  });
+
+  it('is deterministic: two builds give identical extents and part counts', () => {
+    for (const { kind } of SPECS) {
+      expect(extents(kind)).toEqual(extents(kind));
+    }
+  });
+
+  it('has real substance (more than a placeholder box)', () => {
+    for (const { kind } of SPECS) {
+      expect(extents(kind).parts).toBeGreaterThan(8);
+    }
+  });
+});

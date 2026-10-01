@@ -1129,6 +1129,167 @@ function buildParkingGarage(): LoadedModel {
   return b.build();
 }
 
+/**
+ * Final-review R5 (2026-10-01): the sports stadium — an oval bowl on a
+ * 4×4 footprint (8×8 world units). Tiered seating rings (three stepped
+ * concrete annuli) around a green pitch, a glass press box on the west
+ * rim, and four floodlight pylons. Deterministic (no RNG).
+ */
+function buildSportsStadium(): LoadedModel {
+  const b = new ModelBuilder();
+  const concrete = smat('concrete', { color: 0xcfc9ba });
+  const concreteDark = smat('concrete', { color: 0x8f8a7c });
+  const pitch = smat('canvasFabric', { color: 0x3f8a3f });
+  const pitchStripe = smat('canvasFabric', { color: 0x4a9a4a });
+  const seat = smat('paintedMetal', { color: 0xa33b32 });
+  const seatAlt = smat('paintedMetal', { color: 0xd8d4c8 });
+  const glass = smat('glassBlue', { color: 0x9fd4e8 });
+  const steel = smat('gunmetal', { color: 0x4a4f55 });
+  const lampGlow = pmat(0xfff2c8, { emissive: 0xffe9a8, emissiveIntensity: 0.9 });
+  // Pitch slab + alternating mow stripes.
+  b.add(new THREE.BoxGeometry(5.6, 0.12, 7.2), pitch, tr(0, 0.06, 0));
+  for (let i = -3; i <= 3; i++) {
+    if (i % 2 === 0) continue;
+    b.add(new THREE.BoxGeometry(0.8, 0.14, 7.2), pitchStripe, tr(i * 0.8, 0.07, 0));
+  }
+  // Center line + center circle (thin white boxes).
+  const line = smat('paintedMetal', { color: 0xf2f0e8 });
+  b.add(new THREE.BoxGeometry(0.12, 0.14, 7.2), line, tr(0, 0.07, 0));
+  b.add(new THREE.CylinderGeometry(0.9, 0.9, 0.14, 20), line, tr(0, 0.07, 0));
+  // Three stepped seating annuli (boxes clipped by eye into an oval bowl).
+  const tiers: Array<[number, number, number]> = [
+    [6.8, 0.5, 0.35], // [width, height, y]
+    [7.4, 0.9, 0.55],
+    [8.0, 1.3, 0.75],
+  ];
+  for (const [w, h, y] of tiers) {
+    b.add(new THREE.BoxGeometry(w, h, w * 0.82), concrete, tr(0, y, 0));
+  }
+  // Seat band on the top tier (alternating red/white blocks).
+  for (let i = -5; i <= 5; i++) {
+    const m = i % 2 === 0 ? seat : seatAlt;
+    b.add(new THREE.BoxGeometry(0.6, 0.18, 0.5), m, tr(i * 0.72, 1.5, 3.1));
+    b.add(new THREE.BoxGeometry(0.6, 0.18, 0.5), m, tr(i * 0.72, 1.5, -3.1));
+  }
+  // Press box: glass band on the west rim.
+  b.add(new THREE.BoxGeometry(0.5, 0.9, 4.6), glass, tr(-3.55, 1.9, 0));
+  b.add(new THREE.BoxGeometry(0.7, 0.18, 4.8), concreteDark, tr(-3.55, 2.4, 0));
+  // Four floodlight pylons mounted on the top tier corners.
+  for (const px of [-3.6, 3.6]) {
+    for (const pz of [-3.2, 3.2]) {
+      b.add(new THREE.CylinderGeometry(0.09, 0.12, 4.0, 8), steel, tr(px, 3.4, pz));
+      b.add(new THREE.BoxGeometry(0.7, 0.5, 0.24), lampGlow, tr(px, 5.5, pz));
+    }
+  }
+  return b.build();
+}
+
+/**
+ * Final-review R5 (2026-10-01): the botanical garden — a glass
+ * conservatory dome on a 4×4 footprint (8×8 world units). Lawns with
+ * flower beds, a central pond, winding gravel paths, and the ribbed
+ * glasshouse dome at the back. Deterministic (no RNG).
+ */
+function buildBotanicalGarden(): LoadedModel {
+  const b = new ModelBuilder();
+  const lawn = smat('canvasFabric', { color: 0x4a8a42 });
+  const path = smat('concrete', { color: 0xc8bfa8 });
+  const water = smat('glassBlue', { color: 0x6fb8d8 });
+  const glass = smat('glassBlue', { color: 0xbfe4f2 });
+  const rib = smat('paintedMetal', { color: 0xe8e4d8 });
+  const stone = smat('concrete', { color: 0xd8d4c8 });
+  const flowerA = smat('canvasFabric', { color: 0xc84a6a });
+  const flowerB = smat('canvasFabric', { color: 0xe8b83a });
+  const flowerC = smat('canvasFabric', { color: 0x8a4ac8 });
+  const trunk = smat('woodPlank', { color: 0x6b4a2f });
+  const leaf = smat('canvasFabric', { color: 0x3f7a3a });
+  // Lawn slab + cross gravel paths.
+  b.add(new THREE.BoxGeometry(7.6, 0.12, 7.6), lawn, tr(0, 0.06, 0));
+  b.add(new THREE.BoxGeometry(7.6, 0.14, 0.9), path, tr(0, 0.07, 0));
+  b.add(new THREE.BoxGeometry(0.9, 0.14, 7.6), path, tr(0, 0.07, 0));
+  // Flower beds: three colored strips in the front quadrants.
+  const beds: Array<[THREE.Material, number, number]> = [
+    [flowerA, -2.2, 2.2],
+    [flowerB, 2.2, 2.2],
+    [flowerC, -2.2, -2.2],
+  ];
+  for (const [m, px, pz] of beds) {
+    b.add(new THREE.BoxGeometry(2.0, 0.22, 1.2), stone, tr(px, 0.16, pz));
+    b.add(new THREE.BoxGeometry(1.8, 0.3, 1.0), m, tr(px, 0.3, pz));
+  }
+  // Ornamental pond in the remaining quadrant.
+  b.add(new THREE.CylinderGeometry(1.1, 1.1, 0.2, 18), stone, tr(2.2, 0.16, -2.2));
+  b.add(new THREE.CylinderGeometry(0.92, 0.92, 0.12, 18), water, tr(2.2, 0.26, -2.2));
+  // Conservatory: stone drum + ribbed glass dome at the back center.
+  b.add(new THREE.CylinderGeometry(1.9, 2.0, 1.0, 16), stone, tr(0, 0.6, -2.0));
+  b.add(new THREE.SphereGeometry(1.9, 16, 10, 0, Math.PI * 2, 0, Math.PI / 2), glass, tr(0, 1.1, -2.0));
+  for (let i = 0; i < 8; i++) {
+    const a = (i / 8) * Math.PI * 2;
+    b.add(
+      new THREE.BoxGeometry(0.1, 2.0, 0.1),
+      rib,
+      tr(Math.cos(a) * 1.9, 1.6, -2.0 + Math.sin(a) * 1.9, 0, 0, 0.5),
+    );
+  }
+  b.add(new THREE.SphereGeometry(0.22, 10, 8), rib, tr(0, 3.1, -2.0));
+  // Two specimen trees flanking the dome.
+  for (const px of [-3.0, 3.0]) {
+    b.add(new THREE.CylinderGeometry(0.1, 0.14, 1.0, 7), trunk, tr(px, 0.5, -2.6));
+    b.add(new THREE.ConeGeometry(0.7, 1.4, 8), leaf, tr(px, 1.5, -2.6));
+  }
+  return b.build();
+}
+
+/**
+ * Final-review R5 (2026-10-01): the fire station — a 2×2 footprint
+ * (4×4 world units) red-brick engine house. Two apparatus-bay doors,
+ * a hose-drying tower, the station sign band, and a parked fire
+ * engine (cab + ladder). Deterministic (no RNG).
+ */
+function buildFireStation(): LoadedModel {
+  const b = new ModelBuilder();
+  const brick = smat('brickRed', { color: 0xa34a38 });
+  const trim = smat('concrete', { color: 0xe8e4d8 });
+  const door = smat('paintedMetal', { color: 0x8a8a92 });
+  const roof = smat('paintedMetal', { color: 0x5a5f66 });
+  const glass = smat('glassBlue', { color: 0x9fd4e8 });
+  const engine = smat('paintedMetal', { color: 0xc8332a });
+  const ladder = smat('gunmetal', { color: 0x9aa0a8 });
+  const tire = smat('tireRubber', { color: 0x1a1a1c });
+  const bayDark = pmat(0x14161a, { roughness: 0.95, metalness: 0 });
+  // Engine house: brick hall + parapet roof.
+  b.add(new THREE.BoxGeometry(3.6, 2.2, 3.0), brick, tr(0, 1.1, -0.3));
+  b.add(new THREE.BoxGeometry(3.8, 0.25, 3.2), trim, tr(0, 2.32, -0.3));
+  b.add(new THREE.BoxGeometry(3.4, 0.3, 2.8), roof, tr(0, 2.55, -0.3));
+  // Left apparatus bay: closed door. Right bay: open, with the engine's
+  // nose out (the engine lives inside the 2x2 footprint, no overhang).
+  b.add(new THREE.BoxGeometry(1.5, 1.7, 0.12), door, tr(-0.95, 0.95, 1.24));
+  b.add(new THREE.BoxGeometry(1.5, 0.14, 0.14), trim, tr(-0.95, 1.9, 1.24));
+  b.add(new THREE.BoxGeometry(1.5, 1.7, 0.1), bayDark, tr(0.95, 0.95, 1.22));
+  b.add(new THREE.BoxGeometry(1.7, 0.14, 0.14), trim, tr(0.95, 1.9, 1.24));
+  b.add(new THREE.BoxGeometry(0.3, 2.2, 0.14), trim, tr(0, 1.1, 1.24));
+  // Upper windows + station sign band.
+  for (const px of [-1.2, 0, 1.2]) {
+    b.add(new THREE.BoxGeometry(0.6, 0.5, 0.1), glass, tr(px, 1.85, 1.24));
+  }
+  b.add(new THREE.BoxGeometry(2.6, 0.3, 0.12), trim, tr(0, 2.15, 1.24));
+  // Hose-drying tower at the rear corner.
+  b.add(new THREE.BoxGeometry(0.8, 3.4, 0.8), brick, tr(1.3, 1.7, -1.6));
+  b.add(new THREE.BoxGeometry(1.0, 0.2, 1.0), trim, tr(1.3, 3.5, -1.6));
+  // Fire engine pulling out of the open bay: chassis, cab, ladder,
+  // wheels — nose pokes 0.5 out of the doorway, tail inside the hall.
+  b.add(new THREE.BoxGeometry(1.0, 0.45, 2.4), engine, tr(0.95, 0.52, 0.5));
+  b.add(new THREE.BoxGeometry(0.95, 0.55, 0.8), engine, tr(0.95, 1.0, 1.25));
+  b.add(new THREE.BoxGeometry(0.85, 0.35, 0.6), glass, tr(0.95, 1.05, 1.2));
+  b.add(new THREE.BoxGeometry(0.5, 0.1, 2.0), ladder, tr(0.95, 0.82, 0.3));
+  for (const pz of [-0.2, 1.2]) {
+    for (const px of [0.3, 1.6]) {
+      b.add(new THREE.CylinderGeometry(0.22, 0.22, 0.16, 10), tire, tr(px, 0.22, pz, 0, 0, Math.PI / 2));
+    }
+  }
+  return b.build();
+}
+
 function buildMonument(): LoadedModel {
   const b = new ModelBuilder();
   const stone = smat('concrete', { color: 0xd8d4c8 });
@@ -2637,6 +2798,12 @@ export const PROCEDURAL_KINDS = [
   // (final-review R6/L3, 2026-10-01).
   'library',
   'park',
+  // Final-review R5 (2026-10-01): the three civic gap models — the
+  // stadium, botanical garden, and fire station finally get real
+  // builders instead of the seeded placeholder.
+  'sportsStadium',
+  'botanicalGarden',
+  'fireStation',
   // Grand-expansion Phase 2 (utilities): the 13 new utility buildings.
   'coalPlant',
   'gasPlant',
@@ -2756,6 +2923,13 @@ export function buildProceduralModel(kind: string): LoadedModel | undefined {
       return buildLibrary();
     case 'park':
       return buildPark();
+    // Final-review R5 (2026-10-01): the three civic gap models.
+    case 'sportsStadium':
+      return buildSportsStadium();
+    case 'botanicalGarden':
+      return buildBotanicalGarden();
+    case 'fireStation':
+      return buildFireStation();
     // Phase 2 (utilities): the 13 new utility buildings.
     case 'coalPlant':
       return buildCoalPlant();

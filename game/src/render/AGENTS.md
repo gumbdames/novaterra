@@ -151,6 +151,14 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   cargoTerminal (ribbed warehouse, dock canopy, roller doors, yard
   crane). Each
   builder is a detailed smooth (never blocky) composite;
+  Final-review R5 (2026-10-01) adds the 3 civic gap models:
+  sportsStadium (tiered oval bowl + pitch + press box + 4 floodlight
+  pylons, 4×4), botanicalGarden (ribbed glass conservatory dome +
+  flower beds + pond, 4×4), fireStation (brick engine house, one open
+  bay with the engine's nose out, hose-drying tower, 2×2). All three
+  stay `{ type: 'procedural' }` in entities.ts (lazy-load set — zero
+  new model keys, AD12); tested for build/footprint/determinism in
+  `tests/render.proceduralModels.test.ts`.
   `PROCEDURAL_KINDS` / `buildProceduralModel(kind)` is the registry.
   Builders rest at y=0 (destroyer / submarine / frigate / carrier
   excepted — waterline at y=0 by design, keels below).
