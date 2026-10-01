@@ -1480,6 +1480,131 @@ function thinkAmmoRetreats(world: World, queue: CommandQueue, ai: AIPlayerState)
   }
 }
 
+// ---------------------------------------------------------------------------
+// Sea-logistics Half B (2026-10-01): marshal's naval supply tail.
+// ---------------------------------------------------------------------------
+
+/** One fleet oiler per this many sea combat units (rounded up). */
+const NAVAL_FUEL_SHIP_RATIO = 6;
+/** One ammunition ship per this many missile-armed sea units (rounded up). */
+const NAVAL_AMMO_SHIP_RATIO = 4;
+/**
+ * A supply ship further than this (world units) from the fleet centroid
+ * gets a moveTo toward it; closer ships hold station — no order spam
+ * every think, since the mobile-supply aura does the work in radius.
+ */
+const NAVAL_SUPPLY_RALLY_DISTANCE = 40;
+
+/**
+ * Marshal-only naval logistics (coastal maps only): train the fleet's
+ * supply tail — 1 fuelTanker per 6 sea combat units, 1 ammoShip per 4
+ * missile-armed sea units (rounded up, within the army cap, one per
+ * think like thinkProduction) — then service the existing tail:
+ *   - role-specialize through the real `setSupplyToggles` command
+ *     (fuelTanker: refuel only; ammoShip: rearm only — idempotent,
+ *     skipped once set, like the truck tail);
+ *   - abstract-load the holds from the virtual depot stocks, extending
+ *     the thinkAbstractResupply sanctioned exception (the AI owns no
+ *     physical depots to load at). Materials deliberately skipped:
+ *     the AI's materials are a global stockpile, so a visible
+ *     materials hold would be theater;
+ *   - sail idle supply ships toward the fleet centroid (or the probed
+ *     water when no combat fleet exists yet) — the real
+ *     `runMobileSupply` aura discharges their holds automatically in
+ *     radius 30, honoring the toggles above.
+ * Called from thinkMarshal after thinkGeneral (which runs the land
+ * logistics thinks first — the ships load from the virtual stocks'
+ * remainder). No RNG; id-ordered iteration.
+ */
+function thinkNavalSupply(world: World, queue: CommandQueue, ai: AIPlayerState): void {
+  if (ai.difficulty !== 'marshal') return;
+  if (ai.navalStatus !== 'coastal') return;
+  const counts = countUnits(world, ai.owner);
+  const n = totalUnits(world, ai.owner);
+  const cap = AI_MAX_UNITS[ai.difficulty];
+  let seaCombat = 0;
+  let seaMissile = 0;
+  let cx = 0;
+  let cz = 0;
+  for (const u of world.units) {
+    if (u.owner !== ai.owner || u.hp <= 0) continue;
+    const def = UNIT_DEFS[u.kind as UnitKind];
+    if (!def || def.domain !== 'sea') continue;
+    if (def.damage > 0) {
+      seaCombat++;
+      cx += u.x;
+      cz += u.z;
+    }
+    if ((def.ammoCapacity ?? 0) > 0) seaMissile++;
+  }
+  // Train the tail (one ship per think at most — the else-if).
+  const wantFuel = Math.ceil(seaCombat / NAVAL_FUEL_SHIP_RATIO);
+  const wantAmmo = Math.ceil(seaMissile / NAVAL_AMMO_SHIP_RATIO);
+  if (seaCombat > 0 && (counts.get('fuelTanker') ?? 0) < wantFuel && n < cap && canTrain(world, ai.owner, 'fuelTanker')) {
+    const p = spawnPoint(ai, 'fuelTanker', n);
+    if (spawn(world, queue, ai, 'fuelTanker', p.x, p.z)) {
+      ai.builtCounts['fuelTanker'] = (ai.builtCounts['fuelTanker'] ?? 0) + 1;
+    }
+  } else if (
+    seaMissile > 0 &&
+    (counts.get('ammoShip') ?? 0) < wantAmmo &&
+    n < cap &&
+    canTrain(world, ai.owner, 'ammoShip')
+  ) {
+    const p = spawnPoint(ai, 'ammoShip', n);
+    if (spawn(world, queue, ai, 'ammoShip', p.x, p.z)) {
+      ai.builtCounts['ammoShip'] = (ai.builtCounts['ammoShip'] ?? 0) + 1;
+    }
+  }
+  // Service the tail.
+  let rallyX = ai.navalWater?.x ?? ai.baseX;
+  let rallyZ = ai.navalWater?.z ?? ai.baseZ;
+  if (seaCombat > 0) {
+    rallyX = cx / seaCombat;
+    rallyZ = cz / seaCombat;
+  }
+  for (const u of world.units) {
+    if (u.owner !== ai.owner || u.hp <= 0) continue;
+    if (u.kind !== 'fuelTanker' && u.kind !== 'ammoShip') continue;
+    const def = UNIT_DEFS[u.kind as UnitKind];
+    if (u.supplyServices === undefined) {
+      if (u.kind === 'fuelTanker') {
+        issue(world, queue, 'setSupplyToggles', {
+          unitId: u.id, owner: ai.owner, repair: false, rearm: false, refuel: true,
+        });
+      } else {
+        issue(world, queue, 'setSupplyToggles', {
+          unitId: u.id, owner: ai.owner, repair: false, rearm: true, refuel: false,
+        });
+      }
+    }
+    if (u.kind === 'fuelTanker') {
+      const holdCap = def?.cargoFuelCapacity ?? 0;
+      const need = holdCap - u.cargoFuel;
+      if (need > 0 && (ai.virtualFuelStock ?? 0) > 0) {
+        const take = Math.min(need, ai.virtualFuelStock ?? 0);
+        u.cargoFuel += take;
+        ai.virtualFuelStock = (ai.virtualFuelStock ?? 0) - take;
+      }
+    } else {
+      const holdCap = def?.cargoAmmoCapacity ?? 0;
+      const need = Math.floor(holdCap - u.cargoAmmo);
+      if (need >= 1 && (ai.virtualAmmoStock ?? 0) >= 1) {
+        const take = Math.min(need, Math.floor(ai.virtualAmmoStock ?? 0));
+        u.cargoAmmo += take;
+        ai.virtualAmmoStock = (ai.virtualAmmoStock ?? 0) - take;
+      }
+    }
+    if (u.state === 'idle' && u.targetId === 0) {
+      const dx = u.x - rallyX;
+      const dz = u.z - rallyZ;
+      if (dx * dx + dz * dz > NAVAL_SUPPLY_RALLY_DISTANCE * NAVAL_SUPPLY_RALLY_DISTANCE) {
+        moveTo(world, queue, ai.owner, u.id, rallyX, rallyZ);
+      }
+    }
+  }
+}
+
 /**
  * Phase 4 transport (S7, grand expansion): the civilian-transport AI
  * hook — deliberately a NO-OP in 0.1 Alpha. PLAN §6 requires every new
@@ -3289,6 +3414,13 @@ function thinkMarshal(
 ): void {
   // Start with General's behavior (includes Commander base + naval probe).
   thinkGeneral(world, queue, ai, terrain);
+
+  // Sea-logistics Half B (2026-10-01): marshal's naval supply tail —
+  // fuelTanker/ammoShip ratios, abstract hold-loading, and rallying to
+  // the fleet centroid. After thinkGeneral so the land logistics thinks
+  // (thinkAbstractResupply) draw first; the ships load from the
+  // virtual stocks' remainder.
+  thinkNavalSupply(world, queue, ai);
 
   // --- Age advancement: if we can afford the next age, take it.
   // Choose programs that boost military: Heavy Industry, Cyber Command, Arsenal.
