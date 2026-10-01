@@ -600,9 +600,17 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
   },
   spectre: {
     kind: 'spectre', name: 'Spectre', domain: 'land', hp: 130, speed: 12, armor: 'light',
-    damage: 75, range: 10, minRange: 0, cooldownTicks: 45, targets: 'ground',
+    damage: 60, range: 10, minRange: 0, cooldownTicks: 45, targets: 'ground',
     vsLight: 1.0, vsMedium: 1.6, vsHeavy: 1.3, vsAir: 1.0, sight: 24, minAge: 'foundation',
-    manpowerCost: 3, trainFunds: 300, trainMaterials: 20, requiredBuilding: 'barracks',
+    manpowerCost: 3, trainFunds: 450, trainMaterials: 20, requiredBuilding: 'barracks',
+    // Roadmap A7 (balance, 2026-10-01): the spectre was a 2.5x
+    // cost-efficiency outlier — 75 dmg / 45 ticks = 50 DPS for ~340
+    // funds-equiv = 0.147 DPS/fund vs the tank's 0.058. Rebalanced to
+    // 60 dmg (40 DPS) at 450 funds (~490 funds-equiv) = 0.082
+    // DPS/fund, ~1.4x the tank band: a fair premium for genuine
+    // stealth + speed 12 + foundation availability, keeping its
+    // identity as the vsMedium (anti-artillery/AA) raider. Pinned by
+    // tests/sim.balance-cost-efficiency.test.ts.
     // R1 final-review (user decision 2026-10-01): the docs always called
     // the spectre a "stealthy raider" and the user ruled the docs right —
     // the missing flag was the bug. Stealth here is the detection
