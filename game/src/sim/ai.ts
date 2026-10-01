@@ -216,6 +216,7 @@ import { CommandRejectedError } from './commands';
 // ZoneType), and ai→economy completes the ai→economy→city→world→ai
 // evaluation cycle that breaks module init.
 import { marketBuyCost } from './market';
+import { ceasefireActive } from './diplomacy';
 
 /** Classic AI difficulty levels. */
 export type AIDifficulty = 'cadet' | 'citizen' | 'commander' | 'general' | 'marshal';
@@ -3228,8 +3229,14 @@ export function thinkNavalMines(world: World, ai: AIPlayerState): void {
  * think. Units already chasing keep chasing via the combat system, so
  * this only staggers NEW orders — it never cancels an ongoing attack.
  * The think index is floor(tick / cadence): deterministic, no RNG draws.
+ *
+ * Roadmap B3 (2026-10-02): an active ceasefire also suppresses new
+ * attack orders (and therefore the siege escalation, which routes
+ * through the same call sites). Ongoing engagements still resolve —
+ * the engine never cancels an ongoing attack.
  */
 function attacksThisThink(world: World, ai: AIPlayerState): boolean {
+  if (ceasefireActive(world)) return false;
   const every = ai.personality.attackEveryNthThink;
   if (every <= 1) return true;
   return Math.floor(world.tick / AI_THINK_TICKS[ai.difficulty]) % every === 0;

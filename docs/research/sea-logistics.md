@@ -120,7 +120,9 @@ completed civilian ports** — the exact `airlineEndpointProblem`
 shape (unknown / not-yours / not-completed / not-civilian-port),
 undirected dedup, 500 funds setup. Rival-harbor trade was considered
 and deferred: it needs a trade-treaty/diplomacy layer that does not
-exist (the partner `TradeRoute` system is funds-only and abstract),
+exist (the partner `TradeRoute` system is funds-only and abstract).
+Roadmap B3 (2026-10-02) added minimal diplomacy (tribute, demands,
+ceasefires) but no trade treaties, so the deferral stands.
 and consistency with the airline rule keeps one mental model. Noted
 as a future extension in §7.
 
@@ -304,7 +306,9 @@ Numbers chosen:
 ## 6. Deliberate simplifications (with why)
 
 1. **Own harbors only** — the airline consistency rule (§2.3).
-   Rival-harbor trade needs diplomacy that does not exist.
+   Rival-harbor trade needs a trade-treaty layer that does not exist
+   (roadmap B3, 2026-10-02, added minimal diplomacy — tribute,
+   demands, ceasefires — but no trade treaties, so this still holds).
 2. **No harbor fuel reservations** — barge loading is first-come in
    unit-id order against `fuelStock - reservedFuel`… actually first-
    come against the raw stock, ignoring the reservation pool the
@@ -331,7 +335,9 @@ Numbers chosen:
 
 ## 7. Dead ends & future work
 
-- **Rival-harbor routes**: deferred for the diplomacy layer (§2.3).
+- **Rival-harbor routes**: deferred for a trade-treaty layer (§2.3).
+  Roadmap B3 (2026-10-02) added minimal diplomacy (tribute, demands,
+  ceasefires) but no trade treaties, so the deferral stands.
 - **Per-ship cargo manifests / mixed policies**: rejected per the
   no-micromanagement rule (§6.6).
 - **Harbor fuel reservations**: considered, rejected for now (§6.2).

@@ -280,7 +280,11 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   in one O(units) sweep at the end of the combat / superweapon systems,
   so a 500-kill storm tick costs ~4.5ms instead of ~53ms), weapon firing with
   cooldowns, opportunistic fire, explicit `attackUnit` chase orders, death
-  cleanup. Command auras: HQ (+25%, radius 20, all attacker domains) and
+  cleanup. Roadmap B3 (2026-10-02): while a ceasefire holds, the
+  combat loop skips cross-pair opportunistic acquisition (the front
+  freezes — neither side gets free kills), and `attackUnit` /
+  `attackBuilding` orders against the AI rival break the ceasefire
+  (betrayal). Command auras: HQ (+25%, radius 20, all attacker domains) and
   Command Ship (+25%, radius 24, sea attackers only) — definition-driven,
   never stacking. Combat Medics heal friendly living land units in
   radius 12 at 2 HP/s (4 HP/s with Field Medicine). No RNG — fully deterministic.
@@ -587,6 +591,21 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   v8). The UI seam lives in ui/airports.ts (`discoveryStateOf`,
   `airportDisplayType`) and ui/intel.ts (`discoveryWarnings`, the rival
   airports list with real discovery state).
+- `diplomacy.ts` — minimal two-player diplomacy (roadmap B3,
+  2026-10-02). Owns `DiplomacyState` (on `World`: disposition 0..100,
+  `ceasefireUntilTick`, tribute totals, last AI answers; one tracked
+  pair — a second pair is rejected loudly) and the three commands
+  `sendTribute` / `demandTribute` / `proposeCeasefire`
+  (`registerDiplomacyCommands`, wired in ui/session.ts). AI verdicts
+  (`demandAccepted` / `ceasefireAccepted`) are pure functions of
+  disposition, treasury, difficulty pride, and seeded personality
+  aggression — no RNG, so replays can't diverge. Ceasefire effects:
+  `attacksThisThink` (ai.ts) issues no new attack/siege orders,
+  the combat loop skips cross-pair opportunistic acquisition, and
+  attackUnit/attackBuilding orders against the AI rival break it
+  (betrayal, −15 disposition). Demand/ceasefire reject loudly in
+  peaceful worlds; tribute works everywhere. Snapshot-covered (AD9
+  additive, stays v8) and digest-covered (`|diplomacy=…|`).
 - `veterancy.ts` — unit veterancy (grand-expansion Phase 1, pure: no
   imports from combat/city, so no cycles). `UnitRecord.xp` grows on
   kills (`xpForKillValue = trainFunds + trainMaterials`), `vetLevel`

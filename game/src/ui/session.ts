@@ -67,6 +67,7 @@ import {
 } from '../sim/movement';
 import { createCombatSystem, registerCombatCommands } from '../sim/combat';
 import { createIntelSystem, registerIntelCommands } from '../sim/intel';
+import { registerDiplomacyCommands } from '../sim/diplomacy';
 import { registerLogisticsCommands } from '../sim/commands';
 import { registerAgeCommands } from '../sim/ages';
 import { registerCheatCommands } from '../sim/cheats';
@@ -484,6 +485,9 @@ export function createSession(options: SessionOptions): GameSession {
   // Grand-expansion Phase 6 (S6 intel): the covert-op commands
   // (infiltrateBuilding / sabotage / stealTech).
   registerIntelCommands(queue);
+  // Roadmap B3 (2026-10-02): the diplomacy commands
+  // (sendTribute / demandTribute / proposeCeasefire).
+  registerDiplomacyCommands(queue);
   // Phase 3 logistics (workstream 3): resupply + supply toggles.
   registerLogisticsCommands(queue, terrain);
   registerAgeCommands(queue);

@@ -62,6 +62,15 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   setup's victory picker (`menus.ts`, hidden while peaceful is on)
   flows through `main.ts` → `GameOptions.victoryKind` →
   `createSession`, and the end screen names the kind that was won.
+  Roadmap B3 (2026-10-02): registers the diplomacy commands
+  (`registerDiplomacyCommands` — sendTribute / demandTribute /
+  proposeCeasefire) alongside the intel commands. UI seam: the
+  Management tab's 'diplomacy' sub-tab (`hud.ts`
+  `diplomacySectionEl`, strings in `STRINGS.diplomacy`) issues
+  `buildSendTributeOrder` / `buildDemandTributeOrder` /
+  `buildProposeCeasefireOrder` (ui/orders.ts) via game.ts actions
+  (`onSendTribute` / `onDemandTribute` / `onProposeCeasefire`);
+  rejections toast loudly, AI answers render from sim state.
 - `demoDirector.ts` — the living menu demo (workstream X, 2026-09-30).
   `createDemoSession()` = canonical `createSession()` (sandbox, fixed
   `DEMO_SEED`) + a designed opening stockpile (campaign

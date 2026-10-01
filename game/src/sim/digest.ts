@@ -87,6 +87,20 @@ export function canonicalizeWorld(world: World): string {
   // keeps hand-built fixture worlds (which predate the field)
   // digesting identically.
   out += `|victoryKind=${world.victoryKind ?? 'conquest'}|`;
+  // Roadmap B3 (2026-10-02): diplomacy is behavior-affecting
+  // (ceasefire gates AI attacks; disposition drives AI verdicts) ⇒
+  // digest-covered (PLAN §11). The `??` chain keeps hand-built fixture
+  // worlds (which predate the field) digesting identically.
+  {
+    const d = world.diplomacy;
+    const parties = d?.parties;
+    out +=
+      `|diplomacy=${d?.disposition ?? 50},${d?.ceasefireUntilTick ?? 0},` +
+      `${d?.totalTributeSent ?? 0},${d?.totalTributeReceived ?? 0},` +
+      `${d?.demandsRefused ?? 0},${d?.lastDemand ?? '-'},${d?.lastDemandAmount ?? 0},` +
+      `${d?.lastCeasefireAsk ?? '-'},` +
+      `${parties ? `${parties.owner}:${parties.aiOwner}` : '-'}|`;
+  }
   for (const e of world.entities) {
     out += `${e.id},${e.kind},${canonicalNumber(e.x)},${canonicalNumber(e.z)};`;
   }

@@ -971,6 +971,7 @@ export const STRINGS = {
     subCabinet: { en: 'Cabinet' },
     subOrdinances: { en: 'Ordinances' },
     subIntel: { en: 'Intelligence' },
+    subDiplomacy: { en: 'Diplomacy' },
     subTrade: { en: 'Trade' },
     subResearch: { en: 'Research' },
     /** Management → Trade: the trade-route surface (0.1 Alpha adds the
@@ -1100,6 +1101,50 @@ export const STRINGS = {
       en: 'When confirmed, the site reads as mixed-use and may be treated as a military target.',
     },
     discoveryRevealedFlag: { en: 'CONFIRMED — military-capable' },
+  },
+  /**
+   * Roadmap B3 (2026-10-02): the diplomacy panel — disposition readout,
+   * tribute / demand / ceasefire actions, and the AI's answers.
+   * English-only via loc()/fillLoc().
+   */
+  diplomacy: {
+    /** Management sub-tab panel title. */
+    panelTitle: { en: 'Diplomacy' },
+    /** Disposition readout line. */
+    dispositionLine: { en: 'Rival disposition: {mood} ({value}/100)' },
+    dispositionWarm: { en: 'Warm' },
+    dispositionNeutral: { en: 'Neutral' },
+    dispositionCold: { en: 'Cold' },
+    dispositionHostile: { en: 'Hostile' },
+    /** Ceasefire status lines. */
+    ceasefireNone: { en: 'No ceasefire in effect.' },
+    ceasefireActive: { en: 'Ceasefire: the rival holds fire for {time} more.' },
+    /** Section labels. */
+    tributeTitle: { en: 'Send tribute' },
+    tributeHint: {
+      en: 'A gift of funds warms relations (+1 disposition per 500 funds, up to +20).',
+    },
+    demandTitle: { en: 'Demand tribute' },
+    demandHint: {
+      en: 'Demand funds from the rival. It pays or refuses by personality and pride — refused demands sour relations.',
+    },
+    ceasefireTitle: { en: 'Ceasefire' },
+    ceasefireHint: {
+      en: 'Ask the rival to stop attacking for 5 minutes. Your next attack breaks it.',
+    },
+    ceasefireButton: { en: 'Propose ceasefire' },
+    /** Last AI answers. */
+    demandAccepted: { en: 'The rival paid {amount} funds.' },
+    demandRefused: { en: 'The rival refused your demand.' },
+    ceasefireAccepted: { en: 'The rival accepted — 5 minutes of quiet.' },
+    ceasefireDeclined: { en: 'The rival declined the ceasefire.' },
+    ceasefireBroken: { en: 'You broke the ceasefire by attacking.' },
+    /** Tribute/demand amount buttons. */
+    amountButtonTitle: { en: '{verb} {amount} funds' },
+    sendVerb: { en: 'Send' },
+    demandVerb: { en: 'Demand' },
+    /** Lifetime totals. */
+    totalsLine: { en: 'Tribute sent: {sent} · received: {received}' },
   },
   /**
    * Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):

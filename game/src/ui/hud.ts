@@ -234,6 +234,7 @@ import {
   warningLine,
 } from './intel';
 import { SABOTAGE_COST_OPERATIONAL, isSpyUnit } from '../sim/intel';
+import { ceasefireActive, ceasefireTicksLeft } from '../sim/diplomacy';
 
 /** Build-palette tools the HUD can request. */
 export type BuildTool =
@@ -327,6 +328,25 @@ export interface HUDActions {
    * deterministically — success grants research, failure burns the spy).
    */
   onStealTech(spyId: number, buildingId: number): void;
+  /**
+   * Roadmap B3 (2026-10-02): gift funds to the AI rival (warms
+   * disposition). The sim validates (funds, parties) and rejects
+   * loudly in plain English — the controller toasts the reason.
+   */
+  onSendTribute(amount: number): void;
+  /**
+   * Roadmap B3 (2026-10-02): demand funds from the AI rival. The sim
+   * resolves accept/refuse deterministically from disposition,
+   * treasury, difficulty pride, and personality aggression. Rejected
+   * loudly in peaceful worlds.
+   */
+  onDemandTribute(amount: number): void;
+  /**
+   * Roadmap B3 (2026-10-02): ask the AI rival for a 5-minute
+   * ceasefire. The sim resolves accept/decline; rejected loudly in
+   * peaceful worlds and while one is already active.
+   */
+  onProposeCeasefire(): void;
   /** Phase 3 (logistics): set a supply unit's field services. */
   onSetSupplyToggles(
     unitId: number,
@@ -489,6 +509,7 @@ export class HUD {
     | 'cabinet'
     | 'ordinances'
     | 'intel'
+    | 'diplomacy'
     | 'trade'
     | 'research' = 'taxes';
   /** The active main tab's sub-tab — the digest's sb: segment. */
@@ -1246,6 +1267,7 @@ export class HUD {
       { id: 'cabinet', label: loc(m.subCabinet) },
       { id: 'ordinances', label: loc(m.subOrdinances) },
       { id: 'intel', label: loc(m.subIntel) },
+      { id: 'diplomacy', label: loc(m.subDiplomacy) },
       { id: 'trade', label: loc(m.subTrade) },
       { id: 'research', label: loc(m.subResearch) },
     ];
@@ -1272,6 +1294,11 @@ export class HUD {
         // Grand-expansion Phase 7 (intel): the intel panel — asset
         // counters, spies + covert actions, warnings, rival airports.
         panel.append(this.intelSectionEl(world));
+        break;
+      case 'diplomacy':
+        // Roadmap B3 (2026-10-02): the diplomacy panel — disposition
+        // readout, tribute / demand / ceasefire actions, AI answers.
+        panel.append(this.diplomacySectionEl(world));
         break;
       case 'trade':
         panel.append(this.tradeSectionEl(world));
@@ -1665,6 +1692,126 @@ export class HUD {
       row.append(el('span', 'panel-label', rivalAirportLine(a)));
       sec.append(row);
     }
+    return sec;
+  }
+
+  /**
+   * Roadmap B3 (2026-10-02): Management → Diplomacy — the
+   * disposition readout, tribute / demand / ceasefire actions, and the
+   * AI's last answers. The panel never re-implements sim checks: the
+   * sim validates every order and rejects loudly (game.ts toasts it).
+   */
+  private diplomacySectionEl(world: World): HTMLElement {
+    const s = STRINGS.diplomacy;
+    const sec = this.makeSection(loc(s.panelTitle));
+    const d = world.diplomacy;
+
+    // Disposition readout.
+    const mood =
+      d.disposition >= 75
+        ? loc(s.dispositionWarm)
+        : d.disposition >= 50
+          ? loc(s.dispositionNeutral)
+          : d.disposition >= 25
+            ? loc(s.dispositionCold)
+            : loc(s.dispositionHostile);
+    sec.append(
+      el(
+        'div',
+        'panel-row',
+        fillLoc(s.dispositionLine, { mood, value: Math.round(d.disposition) }),
+      ),
+    );
+
+    // Ceasefire status.
+    if (ceasefireActive(world)) {
+      const secs = Math.ceil(ceasefireTicksLeft(world) / 30);
+      const time = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+      sec.append(el('div', 'panel-row', fillLoc(s.ceasefireActive, { time })));
+    } else {
+      sec.append(el('div', 'panel-status', loc(s.ceasefireNone)));
+    }
+
+    // Last AI answers.
+    if (d.lastDemand === 'accepted') {
+      sec.append(
+        el(
+          'div',
+          'panel-row',
+          fillLoc(s.demandAccepted, { amount: Math.floor(d.lastDemandAmount) }),
+        ),
+      );
+    } else if (d.lastDemand === 'refused') {
+      sec.append(el('div', 'panel-row', loc(s.demandRefused)));
+    }
+    if (d.lastCeasefireAsk === 'accepted') {
+      sec.append(el('div', 'panel-row', loc(s.ceasefireAccepted)));
+    } else if (d.lastCeasefireAsk === 'declined') {
+      sec.append(el('div', 'panel-row', loc(s.ceasefireDeclined)));
+    } else if (d.lastCeasefireAsk === 'broken') {
+      sec.append(el('div', 'panel-row', loc(s.ceasefireBroken)));
+    }
+
+    // Send tribute.
+    sec.append(el('div', 'panel-row', loc(s.tributeTitle)));
+    sec.append(el('div', 'panel-status', loc(s.tributeHint)));
+    {
+      const row = el('div', 'panel-row');
+      for (const amount of [500, 2000, 10000]) {
+        row.append(
+          this.makePanelButton(
+            fillLoc(s.amountButtonTitle, { verb: loc(s.sendVerb), amount }),
+            fillLoc(s.amountButtonTitle, { verb: loc(s.sendVerb), amount }),
+            () => this.actions.onSendTribute(amount),
+          ),
+        );
+      }
+      sec.append(row);
+    }
+
+    // Demand tribute (war only — the sim rejects loudly in peaceful).
+    if (world.peaceful !== true) {
+      sec.append(el('div', 'panel-row', loc(s.demandTitle)));
+      sec.append(el('div', 'panel-status', loc(s.demandHint)));
+      {
+        const row = el('div', 'panel-row');
+        for (const amount of [500, 2000, 10000]) {
+          row.append(
+            this.makePanelButton(
+              fillLoc(s.amountButtonTitle, { verb: loc(s.demandVerb), amount }),
+              fillLoc(s.amountButtonTitle, { verb: loc(s.demandVerb), amount }),
+              () => this.actions.onDemandTribute(amount),
+            ),
+          );
+        }
+        sec.append(row);
+      }
+
+      // Ceasefire.
+      sec.append(el('div', 'panel-row', loc(s.ceasefireTitle)));
+      sec.append(el('div', 'panel-status', loc(s.ceasefireHint)));
+      if (!ceasefireActive(world)) {
+        const row = el('div', 'panel-row');
+        row.append(
+          this.makePanelButton(loc(s.ceasefireButton), loc(s.ceasefireButton), () =>
+            this.actions.onProposeCeasefire(),
+          ),
+        );
+        sec.append(row);
+      }
+    }
+
+    // Lifetime totals.
+    sec.append(
+      el(
+        'div',
+        'panel-status',
+        fillLoc(s.totalsLine, {
+          sent: Math.floor(d.totalTributeSent),
+          received: Math.floor(d.totalTributeReceived),
+        }),
+      ),
+    );
     return sec;
   }
 

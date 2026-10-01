@@ -49,6 +49,8 @@ import { initAI } from './ai';
 import type { PerSideAges } from './ages';
 import type { DelegationState } from './delegation';
 import { initDelegation } from './delegation';
+import type { DiplomacyState } from './diplomacy';
+import { initDiplomacy } from './diplomacy';
 import type { SuperweaponState } from './superweapons';
 import { initSuperweapons } from './superweapons';
 import { initUpgrades } from './upgrades';
@@ -125,6 +127,14 @@ export interface World {
    */
   victoryKind: SkirmishVictoryKind;
   /**
+   * Roadmap B3 (2026-10-02): the bilateral diplomacy state (tribute,
+   * demands, ceasefires) between the player and the AI rival. Plain
+   * data; snapshotted (legacy snapshots decode to a neutral fresh
+   * state, no version bump — the AD9 neutral-default precedent) and
+   * digested.
+   */
+  diplomacy: DiplomacyState;
+  /**
    * Combat VFX event stream (B16, 2026-10-01): visual cues the sim
    * emits during the tick for the render layer. Drained by the render
    * each frame, cleared by the sim at tick start. NOT snapshotted,
@@ -189,6 +199,8 @@ export function createWorld(seed: number): World {
     // Roadmap B2: conquest default; the session overrides from
     // SessionOptions.victoryKind for fresh worlds, restoreSnapshot for saves.
     victoryKind: 'conquest',
+    // Roadmap B3: neutral diplomacy; restoreSnapshot for saves.
+    diplomacy: initDiplomacy(),
     // Combat VFX stream starts empty (B16).
     combatEvents: [],
   };

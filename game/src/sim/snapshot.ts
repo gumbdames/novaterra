@@ -55,6 +55,8 @@ import { encodeDelegationState, decodeDelegationState, initDelegation } from './
 import type { SuperweaponState } from './superweapons';
 import { encodeSuperweaponState, decodeSuperweaponState, initSuperweapons } from './superweapons';
 import { encodeUpgrades, decodeUpgrades } from './upgrades';
+import type { DiplomacyState } from './diplomacy';
+import { decodeDiplomacyState } from './diplomacy';
 
 /**
  * Snapshot format version. Bump on any breaking change to the shape below.
@@ -103,6 +105,9 @@ import { encodeUpgrades, decodeUpgrades } from './upgrades';
  * `?? false`: no old save was peaceful, so the neutral default is
  * exactly the old behavior. PLAN §11's "no bump" line for this field
  * holds — no shape migration, v5/v6/v7 still load.
+ * Roadmap B3 (2026-10-02): `diplomacy` is PURELY ADDITIVE on top of
+ * v8 — plain data, no version bump. Older saves decode to a neutral
+ * fresh state via decodeDiplomacyState: no old save had diplomacy.
  */
 export const SNAPSHOT_VERSION = 8;
 
@@ -138,6 +143,12 @@ export interface Snapshot {
    * `'conquest'` (no old save played an alternative victory).
    */
   victoryKind: SkirmishVictoryKind;
+  /**
+   * Roadmap B3 (2026-10-02): the diplomacy state. Added without a
+   * version bump — legacy snapshots predate the field and decode to a
+   * neutral fresh state (no old save had any diplomacy).
+   */
+  diplomacy: DiplomacyState;
 }
 
 /** Thrown when a snapshot's version doesn't match. Names expected vs found. */
@@ -482,6 +493,8 @@ export function takeSnapshot(world: World): Snapshot {
     peaceful: world.peaceful,
     // Roadmap B2: faithful copy of the immutable tick-0 victory kind.
     victoryKind: world.victoryKind,
+    // Roadmap B3: faithful copy of the diplomacy state (plain data).
+    diplomacy: JSON.parse(JSON.stringify(world.diplomacy)) as DiplomacyState,
   };
 }
 
@@ -557,5 +570,10 @@ function restoreSnapshotInner(snap: Snapshot): World {
   world.victoryKind = isSkirmishVictoryKind(snap.victoryKind)
     ? snap.victoryKind
     : 'conquest';
+  // Roadmap B3: pre-diplomacy snapshots decode to a neutral fresh
+  // state — no old save had any diplomacy (AD9 neutral default, no
+  // version bump). decodeDiplomacyState is defensive against corrupt
+  // values too.
+  world.diplomacy = decodeDiplomacyState(snap.diplomacy);
   return world;
 }

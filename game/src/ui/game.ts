@@ -156,6 +156,10 @@ import {
   buildInfiltrateOrder,
   buildSabotageOrder,
   buildStealTechOrder,
+  // Roadmap B3 (2026-10-02): the diplomacy orders.
+  buildSendTributeOrder,
+  buildDemandTributeOrder,
+  buildProposeCeasefireOrder,
   buildSetMayorBuildPolicyOrder,
   buildSetGeneralStanceOrder,
   buildSetSpecializationOrder,
@@ -979,6 +983,18 @@ class GameController {
       onStealTech: (spyId, buildingId) => {
         this.enqueue(buildStealTechOrder(HUMAN_PLAYER_ID, spyId, buildingId));
         this.audio.playSfx('intelOp');
+      },
+      // Roadmap B3 (2026-10-02): diplomacy. Rejections toast via
+      // enqueue (CommandRejectedError → loud, never silent); the
+      // panel shows the AI's answer from sim state on re-render.
+      onSendTribute: (amount) => {
+        this.enqueue(buildSendTributeOrder(HUMAN_PLAYER_ID, AI_PLAYER_ID, amount));
+      },
+      onDemandTribute: (amount) => {
+        this.enqueue(buildDemandTributeOrder(HUMAN_PLAYER_ID, AI_PLAYER_ID, amount));
+      },
+      onProposeCeasefire: () => {
+        this.enqueue(buildProposeCeasefireOrder(HUMAN_PLAYER_ID, AI_PLAYER_ID));
       },
       // Phase 3: superweapons, specialization, trade, delegation.
       onFireAegis: () => this.issueOrder(buildFireAegisOrder(HUMAN_PLAYER_ID)),

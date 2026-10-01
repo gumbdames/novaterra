@@ -749,6 +749,29 @@ can win the economic race too — if its treasury, population, or
 Monument gets there first, you lose. (Peaceful mode has no victory
 condition at all: it is endless.)
 
+## Diplomacy
+
+War isn't the only language. The Management tab's **Diplomacy**
+sub-tab lets you negotiate with the rival:
+
+- **Send tribute** — gift funds (500 / 2,000 / 10,000). Every 500
+  funds warms the rival's disposition by 1, up to +20 per gift.
+- **Demand tribute** — demand funds from the rival. It pays or refuses
+  based on its personality and pride: higher difficulties refuse more,
+  aggressive rivals refuse more, and a warm disposition persuades.
+  Refused demands sour relations.
+- **Propose ceasefire** — ask the rival to stop attacking for
+  5 minutes. While it holds, the AI issues no new attacks and both
+  sides stop opportunistically engaging each other — the front
+  freezes. But your next attack order breaks it (betrayal costs
+  15 disposition).
+
+The AI answers deterministically from its seeded personality and
+difficulty — the same game always answers the same way, so no save or
+replay can diverge. Demands and ceasefires are war-game tools and are
+not offered in peaceful mode (sending tribute works there too, as a
+plain gift).
+
 ## Peaceful mode
 
 Prefer building to fighting? A **peaceful** skirmish disables war

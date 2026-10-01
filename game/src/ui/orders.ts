@@ -682,6 +682,60 @@ export function buildInfiltrateOrder(
   };
 }
 
+// ---------------------------------------------------------------------------
+// Roadmap B3 (2026-10-02): diplomacy orders.
+// ---------------------------------------------------------------------------
+
+/**
+ * Gift funds to the AI rival (warms disposition: +1 per 500 funds, up
+ * to +20). Payload shape is the sim's: `registerDiplomacyCommands`
+ * (sim/diplomacy.ts) validates `{ owner, targetOwner, amount }` — the
+ * sim rejects (funds, parties) in plain English at enqueue; the UI
+ * wraps the rejection (game.ts toasts it) and never re-checks it.
+ */
+export function buildSendTributeOrder(
+  owner: number,
+  targetOwner: number,
+  amount: number,
+): OrderIntent {
+  return {
+    kind: 'sendTribute',
+    payload: { owner, targetOwner, amount },
+  };
+}
+
+/**
+ * Demand funds from the AI rival. The sim resolves the verdict
+ * deterministically from disposition, the AI's treasury, difficulty
+ * pride, and personality aggression — accepted demands transfer funds,
+ * refused ones sour relations. Rejected loudly in peaceful worlds.
+ */
+export function buildDemandTributeOrder(
+  owner: number,
+  targetOwner: number,
+  amount: number,
+): OrderIntent {
+  return {
+    kind: 'demandTribute',
+    payload: { owner, targetOwner, amount },
+  };
+}
+
+/**
+ * Ask the AI rival for a 5-minute ceasefire. The sim resolves
+ * accept/decline from disposition, aggression, and difficulty pride.
+ * Rejected loudly in peaceful worlds and while one is already active.
+ */
+export function buildProposeCeasefireOrder(
+  owner: number,
+  targetOwner: number,
+): OrderIntent {
+  return {
+    kind: 'proposeCeasefire',
+    payload: { owner, targetOwner },
+  };
+}
+
 /**
  * Sabotage an enemy building (25 operational assets; the building goes
  * offline until `sabotagedUntil`). The UI resolves the target building

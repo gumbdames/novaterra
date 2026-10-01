@@ -118,6 +118,7 @@ import type { BuildingRecord, CityState } from './city';
 import type { TerrainData } from './terrain';
 import { cellMoveCost } from './pathfinding';
 import { isDetected } from './intel';
+import { ceasefireActive, breakCeasefire, isAIOwner, isCeasefirePair } from './diplomacy';
 import {
   attackMeltdownRoll,
   MELTDOWN_ATTACK_DENOMINATOR,
@@ -945,9 +946,18 @@ export function createCombatSystem(t?: TerrainData): SimSystem {
         }
       }
       // Opportunistic fire: nearest enemy inside weapon range.
+      // Roadmap B3 (2026-10-02): while a ceasefire holds, neither side
+      // opportunistically acquires the other's units — the front
+      // freezes instead of one side getting free kills. (Deliberate
+      // attack orders still work, and break the ceasefire.) Units
+      // already fighting keep their target.
       if (!siege && !target) {
         const acquired = acquireTarget(world, u, def);
-        if (acquired) {
+        const frozen =
+          acquired !== undefined &&
+          ceasefireActive(world) &&
+          isCeasefirePair(world, u.owner, acquired.owner);
+        if (acquired && !frozen) {
           u.targetId = acquired.id;
           target = acquired;
         }
@@ -1082,6 +1092,14 @@ export function registerCombatCommands(queue: CommandQueue, t?: TerrainData): vo
       const attacker = findUnit(world, cmd.payload['unitId'] as number) as UnitRecord;
       const target = findUnit(world, cmd.payload['targetId'] as number) as UnitRecord;
       attacker.failReason = null;
+      // Roadmap B3 (2026-10-02): attacking the AI rival while a
+      // ceasefire holds is a betrayal — the ceasefire breaks
+      // immediately (disposition −15). The AI's own orders never reach
+      // here during a ceasefire (think-gated in ai.ts), so any order
+      // that does is a deliberate hostile act.
+      if (ceasefireActive(world) && isAIOwner(world, target.owner)) {
+        breakCeasefire(world);
+      }
       // orderMoveTo clears targeting (a plain move supersedes an attack),
       // so set the attack state after issuing the move.
       orderMoveTo(world, attacker, target.x, target.z);
@@ -1145,6 +1163,11 @@ export function registerCombatCommands(queue: CommandQueue, t?: TerrainData): vo
         (x) => x.id === (cmd.payload['buildingId'] as number),
       ) as BuildingRecord;
       attacker.failReason = null;
+      // Roadmap B3 (2026-10-02): sieging the AI rival's building while
+      // a ceasefire holds is a betrayal — same rule as attackUnit.
+      if (ceasefireActive(world) && isAIOwner(world, b.owner)) {
+        breakCeasefire(world);
+      }
       // orderMoveTo clears targeting (a plain move supersedes an
       // attack), so set the siege state after issuing the move — the
       // same pattern as attackUnit's apply above. The unit walks to a
