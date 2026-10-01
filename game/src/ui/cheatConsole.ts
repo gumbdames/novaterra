@@ -15,7 +15,7 @@
  */
 
 /**
- * NOVATERRA — ui/cheatconsole.ts — the cheat console (Phase 1, step 11).
+ * NOVATERRA — ui/cheatConsole.ts — the cheat console (Phase 1, step 11).
  *
  * Responsibilities:
  *  - `parseCheatCommand(input)`: pure, testable mapping from a typed line

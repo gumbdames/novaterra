@@ -194,12 +194,12 @@ import { trainPlacementToast } from './palettes';
 import { AudioEngine } from '../audio/engine';
 import { AudioEventTracker, snapshotForAudio, type AudioWorldSnapshot } from '../audio/events';
 import { MoodTracker } from '../audio/music';
-import { CheatConsole, cheatHelpText, type CheatAction } from './cheatconsole';
+import { CheatConsole, cheatHelpText, type CheatAction } from './cheatConsole';
 import { EndScreen } from './endscreen';
 import { SaveSlotsDialog } from './saveslots';
-import type { SaveFile, SaveSlotId } from '../net_save/savefile';
-import { AUTOSAVE_SLOT, createSaveFile } from '../net_save/savefile';
-import { createSaveStore, type SaveStore } from '../net_save/store';
+import type { SaveFile, SaveSlotId } from '../netSave/savefile';
+import { AUTOSAVE_SLOT, createSaveFile } from '../netSave/savefile';
+import { createSaveStore, type SaveStore } from '../netSave/store';
 import type { MissionDef, MissionPath } from '../campaign/missions';
 import {
   createMissionRun,
@@ -212,7 +212,7 @@ import {
 import { scoreMission, type CampaignProgress } from '../campaign/progress';
 import { MuseController, loadMuseFrequency } from '../muse/controller';
 import { MuseBox } from './musebox';
-import { MissionPanel, MissionDebrief } from './campaignui';
+import { MissionPanel, MissionDebrief } from './campaignUi';
 
 /** Result of a finished campaign mission, handed to the app for scoring. */
 export interface MissionEndResult {

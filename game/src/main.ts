@@ -46,8 +46,8 @@ import { MainMenu, loadSettings, type QualityLevel } from './ui/menus';
 import { AudioEngine } from './audio/engine';
 import { startGame } from './ui/game';
 import type { AIDifficulty } from './sim/ai';
-import { createSaveStore } from './net_save/store';
-import { validateSaveVersion, saveMapPreset } from './net_save/savefile';
+import { createSaveStore } from './netSave/store';
+import { validateSaveVersion, saveMapPreset } from './netSave/savefile';
 import { CorruptSaveError } from './sim/snapshot';
 import { SaveSlotsDialog } from './ui/saveslots';
 import { STRINGS } from './ui/strings';
@@ -58,7 +58,7 @@ import {
   type CampaignProgress,
   type CampaignStore,
 } from './campaign/progress';
-import { MissionSelect, MissionBriefing } from './ui/campaignui';
+import { MissionSelect, MissionBriefing } from './ui/campaignUi';
 import type { MissionEndResult } from './ui/game';
 // Workstream X — the living menu demo: a seeded sandbox world that plays
 // itself behind the menu through the real command queue. All three

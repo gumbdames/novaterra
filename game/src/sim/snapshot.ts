@@ -22,7 +22,7 @@
  *    `restoreSnapshot(data)` → a fresh, independent `World`.
  *  - Version mismatch is a hard error naming expected vs found — old saves
  *    never silently load as something else. (Migrations chain in
- *    net_save/ in a later step; this module is the versioned unit they
+ *    netSave/ in a later step; this module is the versioned unit they
  *    migrate.)
  *
  * Key invariants:

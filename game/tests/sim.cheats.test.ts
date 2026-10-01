@@ -34,7 +34,7 @@ import {
   cheatGrantResources,
   cheatInstantBuild,
 } from '../src/sim/cheats';
-import { parseCheatCommand } from '../src/ui/cheatconsole';
+import { parseCheatCommand } from '../src/ui/cheatConsole';
 import { CommandRejectedError } from '../src/sim/commands';
 import { getPlayer, type BuildingRecord } from '../src/sim/city';
 

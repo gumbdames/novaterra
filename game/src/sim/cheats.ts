@@ -27,10 +27,10 @@
  *  - `CHEAT_GRANT_AMOUNTS`: the fixed `prosperity now` package.
  *  - Cheat-use metadata (`cheated`) is NOT sim state: the UI session
  *    owns it (ui/session.ts) and records it in save metadata
- *    (net_save/savefile.ts). Digests and replays never see it.
+ *    (netSave/savefile.ts). Digests and replays never see it.
  *
  * Cheats that need no sim state (`reveal`, `win`, `lose`, `help`) are
- * handled entirely by the UI cheat console (ui/cheatconsole.ts) and
+ * handled entirely by the UI cheat console (ui/cheatConsole.ts) and
  * never reach this module.
  *
  * Pure module: no DOM, no three.js, no wall clock. Safe under Node/vitest.

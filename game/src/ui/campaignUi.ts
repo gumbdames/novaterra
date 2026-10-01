@@ -15,7 +15,7 @@
  */
 
 /**
- * NOVATERRA — ui/campaignui.ts — campaign screens (Phase 2).
+ * NOVATERRA — ui/campaignUi.ts — campaign screens (Phase 2).
  *
  * Responsibilities:
  *  - `MissionSelect`: the 8-mission list with locked/unlocked/completed

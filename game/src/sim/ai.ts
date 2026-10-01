@@ -523,7 +523,7 @@ export function addAIPlayer(
     seenSubmarine: false,
     // Phase 3 logistics (workstream 3): virtual depot stocks start empty.
     // Initialized here (not just in decode) so a fresh AI player deep-equals
-    // its own save/load round trip (net_saveload).
+    // its own save/load round trip (netSaveload).
     virtualAmmoStock: 0,
     virtualFuelStock: 0,
     personality,

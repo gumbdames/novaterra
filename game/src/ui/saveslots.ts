@@ -29,8 +29,8 @@
  * Pure DOM + pure formatting. Copy comes from ui/strings.ts.
  */
 
-import type { SaveMetadata, SaveSlotId } from '../net_save/savefile';
-import { SAVE_SLOT_IDS } from '../net_save/savefile';
+import type { SaveMetadata, SaveSlotId } from '../netSave/savefile';
+import { SAVE_SLOT_IDS } from '../netSave/savefile';
 import { STRINGS } from './strings';
 
 export type SaveSlotsMode = 'save' | 'load';

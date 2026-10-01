@@ -15,7 +15,7 @@
  */
 
 /**
- * NOVATERRA — net_save/savefile.ts — versioned save-file format.
+ * NOVATERRA — netSave/savefile.ts — versioned save-file format.
  *
  * Responsibilities:
  *  - `SaveFile`: `{ version, metadata, snapshot }` — the unit persisted

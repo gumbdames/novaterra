@@ -15,7 +15,7 @@
  */
 
 /**
- * NOVATERRA — net_save/store.ts — save-game persistence.
+ * NOVATERRA — netSave/store.ts — save-game persistence.
  *
  * Responsibilities:
  *  - `SaveStore`: async CRUD for SaveFiles keyed by slot id:

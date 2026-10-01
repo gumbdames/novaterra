@@ -16,7 +16,7 @@
 
 /**
  * Smoke coverage for the DOM screen modules (final-review R6/L8):
- * ui/campaignui, ui/endscreen, ui/menus, ui/musebox, ui/saveslots.
+ * ui/campaignUi, ui/endscreen, ui/menus, ui/musebox, ui/saveslots.
  *
  * These modules are plain DOM built at boot and never imported by
  * headless tests — until now nothing pinned that their show()/hide()
@@ -32,7 +32,7 @@ import {
   MissionSelect,
   MissionBriefing,
   MissionDebrief,
-} from '../src/ui/campaignui';
+} from '../src/ui/campaignUi';
 import { EndScreen } from '../src/ui/endscreen';
 import {
   MainMenu,
@@ -45,7 +45,7 @@ import { MuseBox, MuseSettingsPanel } from '../src/ui/musebox';
 import { SaveSlotsDialog, formatSaveSummary } from '../src/ui/saveslots';
 import { emptyProgress } from '../src/campaign/progress';
 import { missionsInOrder } from '../src/campaign/missions';
-import type { SaveMetadata } from '../src/net_save/savefile';
+import type { SaveMetadata } from '../src/netSave/savefile';
 
 // ---------------------------------------------------------------------------
 // Permissive fake DOM: every screen builds with createElement/append/
@@ -132,10 +132,10 @@ function root(): HTMLElement {
 }
 
 // ---------------------------------------------------------------------------
-// campaignui
+// campaignUi
 // ---------------------------------------------------------------------------
 
-describe('ui/campaignui', () => {
+describe('ui/campaignUi', () => {
   it('MissionSelect shows/hides without throwing', () => {
     const sel = new MissionSelect(root(), {
       onSelect: () => {},

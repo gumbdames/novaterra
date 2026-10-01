@@ -30,7 +30,7 @@ import {
   createSaveFile,
   saveMapPreset,
   type SaveFile,
-} from '../src/net_save/savefile';
+} from '../src/netSave/savefile';
 import { buildMoveOrder } from '../src/ui/orders';
 import { getMission } from '../src/campaign/missions';
 import { getMapPreset, isWater } from '../src/sim/terrain';

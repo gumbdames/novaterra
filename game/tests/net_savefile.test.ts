@@ -32,7 +32,7 @@ import {
   summarizeSave,
   validateSaveVersion,
   type SaveFile,
-} from '../src/net_save/savefile';
+} from '../src/netSave/savefile';
 
 const SAVED_AT = '2026-09-29T12:00:00.000Z';
 

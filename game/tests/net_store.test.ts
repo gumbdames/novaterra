@@ -24,8 +24,8 @@
  * stored file never aliases the caller's objects.
  */
 import { describe, expect, it } from 'vitest';
-import { createSaveStore } from '../src/net_save/store';
-import { createSaveFile, type SaveFile } from '../src/net_save/savefile';
+import { createSaveStore } from '../src/netSave/store';
+import { createSaveFile, type SaveFile } from '../src/netSave/savefile';
 import { createSession } from '../src/ui/session';
 
 const SAVED_AT = '2026-09-29T12:00:00.000Z';

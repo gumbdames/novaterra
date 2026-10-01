@@ -28,7 +28,7 @@
  *    unlocks when the previous one (by order) is complete.
  *  - `CampaignStore`: async load/save/reset of the progress, IndexedDB
  *    when available (`novaterra-campaign` database), in-memory Map
- *    fallback otherwise. Never throws — same contract as net_save/store.
+ *    fallback otherwise. Never throws — same contract as netSave/store.
  *  - No DOM, no sim — safe under Node/vitest.
  */
 
