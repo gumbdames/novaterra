@@ -264,6 +264,30 @@ export class EntityInstancer {
     this.entities.delete(id);
   }
 
+  /**
+   * Final-review R6 (L2, 2026-10-01): rewrite one entity's team colors
+   * in place (stripe + pennant instance slots). Used by the colorblind
+   * live-refresh path so EXISTING instanced views pick up the new team
+   * colors without being rebuilt. Unknown ids are ignored.
+   */
+  recolorEntity(id: number, color: THREE.ColorRepresentation): void {
+    const entity = this.entities.get(id);
+    if (entity === undefined) return;
+    _color.set(color);
+    if (entity.stripe !== null) {
+      entity.stripe.pool.mesh.setColorAt(entity.stripe.index, _color);
+      if (entity.stripe.pool.mesh.instanceColor !== null) {
+        entity.stripe.pool.mesh.instanceColor.needsUpdate = true;
+      }
+    }
+    if (entity.pennant !== null) {
+      entity.pennant.pool.mesh.setColorAt(entity.pennant.index, _color);
+      if (entity.pennant.pool.mesh.instanceColor !== null) {
+        entity.pennant.pool.mesh.instanceColor.needsUpdate = true;
+      }
+    }
+  }
+
   /** Live entity count (tests + bench). */
   get entityCount(): number {
     return this.entities.size;

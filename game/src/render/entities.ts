@@ -634,6 +634,13 @@ function teamColors(): readonly [string, string] {
   return ['#3aa0ff', '#ff5544'] as const; // blue vs red
 }
 
+/** Re-tint a per-view (legacy path) pennant material in place. */
+function tintPennantMesh(mesh: THREE.Mesh, team: string): void {
+  const mat = mesh.material as THREE.MeshStandardMaterial;
+  mat.color.set(team);
+  mat.emissive.set(team);
+}
+
 /** Hull colors per unit kind family (placeholder tint only). */
 function hullColorFor(kind: string): number {
   switch (kind) {
@@ -1048,6 +1055,12 @@ function buildingColorFor(zone: ZoneType | typeof UTILITY_ZONE): number {
 interface UnitView {
   group: THREE.Group;
   id: number;
+  /**
+   * Final-review R6 (L2, 2026-10-01): the owner's team color is baked
+   * into the view at creation; `recolorTeams()` needs the owner to
+   * re-derive it without a sim lookup.
+   */
+  owner: number;
   /** Legacy path only: null in instanced mode (meshes live in pools). */
   hull: THREE.Group | null;
   /** Legacy path only: null in instanced mode (bars are instanced). */
@@ -1091,6 +1104,13 @@ interface BuildingView {
   id: number;
   kind: BuildingKind;
   owner: number;
+  /**
+   * Final-review R6 (L2, 2026-10-01): the legacy-path team pennant mesh
+   * (per-view tinted material). Stored so `recolorTeams()` can re-tint
+   * it without traversing the group; rebuilt alongside the model in
+   * `rebuildLegacyBuildingModel`.
+   */
+  pennant: THREE.Mesh | null;
   /**
    * Phase 4 (transport): the sim's per-building visual variant (0..3)
    * and size tier (1..3), threaded from the BuildingRecord at creation.
@@ -1460,6 +1480,37 @@ export class EntityRenderer {
       ring.position.y = SELECTION_RING_OFFSET;
       this.fxGroup.add(ring);
       this.selectionRings.set(id, ring);
+    }
+  }
+
+  /**
+   * Final-review R6 (L2, 2026-10-01): re-apply team colors to every live
+   * view. `teamColors()` is read at view creation, so the colorblind
+   * toggle used to recolor only views created AFTER the toggle; the
+   * settings handler (`ui/game.ts` `setColorblind`) calls this so the
+   * whole live scene updates. Legacy stripes swap to the shared
+   * material for the new color (the `stripeMats` cache is keyed by
+   * color), legacy pennants are re-tinted in place, and instanced
+   * stripe/pennant slots are rewritten via the instancer. Render-side
+   * only — no sim state is touched.
+   */
+  recolorTeams(): void {
+    for (const view of this.units.values()) {
+      const team = teamColors()[view.owner] ?? '#aaaaaa';
+      if (view.instanced) {
+        this.instancer?.recolorEntity(view.id, team);
+      } else {
+        if (view.stripe !== null) view.stripe.material = this.stripeMatFor(team);
+        if (view.pennant !== null) tintPennantMesh(view.pennant, team);
+      }
+    }
+    for (const view of this.buildings.values()) {
+      const team = teamColors()[view.owner] ?? '#aaaaaa';
+      if (view.instanced) {
+        this.instancer?.recolorEntity(view.id, team);
+      } else if (view.pennant !== null) {
+        tintPennantMesh(view.pennant, team);
+      }
     }
   }
 
@@ -2413,6 +2464,7 @@ export class EntityRenderer {
       const view: UnitView = {
         group,
         id: u.id,
+        owner: u.owner,
         hull: null,
         barBg: null,
         barFg: null,
@@ -2477,7 +2529,7 @@ export class EntityRenderer {
     // bars stay group-relative, so they ride along for free.
     group.position.set(u.x, this.unitGroundY(u), u.z);
     return {
-      group, id: u.id, hull, barBg, barFg, baseY, modelTop, yaw: 0,
+      group, id: u.id, owner: u.owner, hull, barBg, barFg, baseY, modelTop, yaw: 0,
       instanced: false, stripe, pennant: pennant.mesh, degraded, owned,
     };
   }
@@ -2693,6 +2745,7 @@ export class EntityRenderer {
         id: b.id,
         kind,
         owner: b.owner,
+        pennant: null, // instanced path: the pennant lives in the pools
         variant,
         sizeTier,
         modelMeshes: [],
@@ -2744,6 +2797,7 @@ export class EntityRenderer {
       id: b.id,
       kind,
       owner: b.owner,
+      pennant: pennant.mesh,
       variant,
       sizeTier,
       modelMeshes,
@@ -2855,6 +2909,7 @@ export class EntityRenderer {
     pennant.mesh.position.y = view.modelTop + 0.6;
     view.group.add(pennant.mesh);
     view.owned.push(pennant.material);
+    view.pennant = pennant.mesh;
     // Force the construction fade to re-apply from the live progress.
     view.constructing = false;
     this.updateBuildingConstruction(view, b.progress);

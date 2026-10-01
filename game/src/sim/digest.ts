@@ -55,6 +55,19 @@ function canonicalNumber(n: number): string {
 }
 
 /**
+ * Sparse index list for 0/1 flag arrays (closed, waitMark): only the set
+ * indices join. Cheap when the build is young (few popped cells); bounded
+ * by the cell count in the worst case.
+ */
+function sparseIndexList(flags: number[]): string {
+  const idx: number[] = [];
+  for (let i = 0; i < flags.length; i++) {
+    if (flags[i] === 1) idx.push(i);
+  }
+  return idx.join('.');
+}
+
+/**
  * Canonical string encoding of the world. Field order is fixed by this
  * function (not by object key order); entity order is the array's spawn
  * order; RNG stream names are sorted. Two worlds with equal sim state
@@ -159,7 +172,12 @@ export function canonicalizeWorld(world: World): string {
   // Grand-expansion Phase 5 (S5, 2026-09-30): airline routes — route
   // income is behavior-affecting ⇒ digest-covered (PLAN §11).
   // Establishment order; legacy saves decode to [] (the empty string).
-  out += `|airline=${(world.city.airlineRoutes ?? []).map((r) => `${r.id}:${r.owner}:${r.from}>${r.to}@${r.establishedTick}`).join(',')};`;
+  out += `|airline=${(world.city.airlineRoutes ?? []).map((r) => `${r.id}:${r.owner}:${r.from}>${r.to}@${r.establishedTick}`).join(',')}`;
+  // Final-review R6 (L1, 2026-10-01): the route-id counter drives the
+  // NEXT route's id, so two worlds with identical routes but different
+  // counters diverge the moment a new route is established —
+  // behavior-affecting ⇒ digest-covered.
+  out += `,nextId=${world.city.nextAirlineRouteId ?? 1};`;
   // Units: spawn order; floats canonicalized. failReason is a plain string.
   out += `|units=${world.units.length}|`;
   for (const u of world.units) {
@@ -215,7 +233,16 @@ export function canonicalizeWorld(world: World): string {
   const ab = pf.activeBuild;
   if (ab) {
     out += `build=${ab.fieldId},${ab.destCell},${ab.unitIds.join('.')},${ab.waitingCount},${ab.nextTie},${ab.earlyExit ? 1 : 0},`;
-    out += `${ab.dist.map(canonicalNumber).join(',')};`;
+    out += `${ab.dist.map(canonicalNumber).join(',')},`;
+    // Final-review R6 (L1, 2026-10-01): the Dijkstra heap internals are
+    // behavior-affecting — the (cell, priority, tie) frontier entries
+    // plus the tie counter decide which cell pops next, so they change
+    // how many ticks the build takes and, via early-exit timing, the
+    // finished field's directions. closed/waitMark join as sparse index
+    // lists (dense joins of two more 65k arrays would triple the
+    // mid-flood digest cost).
+    out += `heap=${ab.heapCells.join('.')}:${ab.heapPris.map(canonicalNumber).join('.')}:${ab.heapTies.join('.')},`;
+    out += `closed=${sparseIndexList(ab.closed)},wait=${sparseIndexList(ab.waitMark)};`;
   } else {
     out += `build=-;`;
   }
@@ -279,7 +306,12 @@ export function canonicalizeWorld(world: World): string {
   // Delegation: mayors then generals, in assignment order.
   out += '|deleg=';
   for (const m of world.delegation.mayors) {
-    out += `m${m.owner}:${m.policy};`;
+    // buildPolicy is sim write-only today (only the HUD reads it), but it
+    // is plain state the snapshot covers — encoding it here keeps the
+    // "snapshotted ⇒ digested" invariant whole for a trivial cost.
+    // Behavior-affecting when the mayor system consumes it ⇒
+    // digest-covered (PLAN §11).
+    out += `m${m.owner}:${m.policy}:${m.buildPolicy};`;
   }
   for (const g of world.delegation.generals) {
     out += `g${g.owner}:${g.stance}:${g.unitIds.join('.')};`;

@@ -1341,6 +1341,10 @@ class GameController {
   /** Phase 3: apply colorblind-friendly team colors (CSS class on root). */
   setColorblind(v: boolean): void {
     document.documentElement.classList.toggle('colorblind', v);
+    // Final-review R6 (L2, 2026-10-01): recolor EXISTING units too —
+    // teamColors() is read at view creation, so without this the toggle
+    // only affected units created afterwards.
+    this.entities.recolorTeams();
   }
 
   /** Phase 3: apply UI scale (CSS variable on root). */

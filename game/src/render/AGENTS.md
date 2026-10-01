@@ -603,7 +603,10 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 - Team identity: models keep their authored colors; each view adds a
   thin emissive team stripe above the model and a tiny glowing team
   pennant. Team colors: blue vs red, blue vs orange in colorblind mode
-  (`teamColors()` reads the HTML class at view creation).
+  (`teamColors()` reads the HTML class at view creation; the colorblind
+  toggle ALSO recolors existing views via `EntityRenderer.recolorTeams()`
+  — final-review R6/L2 — so the whole live scene updates, legacy and
+  instanced alike).
 - Movement yaw: hulls face +z at rotation 0 (yaw baked at load);
   `updateUnitView` yaws toward the order destination. Health bars float
   above the model top; selection rings size from `hullSizeFor`.

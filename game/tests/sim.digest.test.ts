@@ -22,6 +22,14 @@ import { createTickDriver } from '../src/sim/tick';
 import type { TickDriver } from '../src/sim/tick';
 import { createWorld, rngBank } from '../src/sim/world';
 import type { World } from '../src/sim/world';
+import { generateTerrain, MERIDIAN_PLAINS, type TerrainData } from '../src/sim/terrain';
+import {
+  passabilityMask,
+  landComponents,
+  beginFieldBuild,
+  stepFieldBuild,
+} from '../src/sim/pathfinding';
+import type { MayorAssignment } from '../src/sim/delegation';
 
 /** A deterministic test system: entities drift using the sim RNG. */
 function driftSystem(world: World, dt: number): void {
@@ -107,5 +115,67 @@ describe('sim/digest', () => {
 
   it('empty worlds with different seeds have different digests', () => {
     expect(digestWorld(createWorld(1))).not.toBe(digestWorld(createWorld(2)));
+  });
+});
+
+describe('sim/digest — final-review R6/L1 digest-gap coverage', () => {
+  it('nextAirlineRouteId is digest-covered: a counter-only difference changes the digest', () => {
+    const a = createWorld(4242);
+    const b = createWorld(4242);
+    expect(digestWorld(a)).toBe(digestWorld(b));
+    // Identical routes, different counter: the next established route
+    // would get a different id, so the digest must already differ.
+    b.city.nextAirlineRouteId = a.city.nextAirlineRouteId + 1;
+    expect(digestWorld(b)).not.toBe(digestWorld(a));
+  });
+
+  it('mayor buildPolicy is digest-covered', () => {
+    const a = createWorld(4242);
+    const b = createWorld(4242);
+    const ma: MayorAssignment = { owner: 0, policy: 'growth', buildPolicy: 'housing' };
+    const mb: MayorAssignment = { owner: 0, policy: 'growth', buildPolicy: 'industry' };
+    a.delegation.mayors.push(ma);
+    b.delegation.mayors.push(mb);
+    expect(digestWorld(a)).not.toBe(digestWorld(b));
+    mb.buildPolicy = 'housing';
+    expect(digestWorld(b)).toBe(digestWorld(a));
+  });
+
+  /**
+   * Start an identical mid-flood Dijkstra build on two same-seed worlds,
+   * then diverge one heap tie-breaker: the digests must differ, because
+   * the heap internals decide which cell pops next (build duration and,
+   * via early-exit timing, the finished field's directions).
+   */
+  function midFloodWorld(seed: number, terrain: TerrainData, mutate: boolean): World {
+    const w = createWorld(seed);
+    const mask = passabilityMask(terrain);
+    const comps = landComponents(terrain);
+    // First passable cell: deterministic, works on any preset.
+    let destCell = -1;
+    for (let i = 0; i < mask.length; i++) {
+      if (mask[i] === 1) {
+        destCell = i;
+        break;
+      }
+    }
+    if (destCell < 0) throw new Error('test terrain has no passable cell');
+    const build = beginFieldBuild(
+      1, destCell, [101, 102], [], mask, [], comps, false,
+    );
+    stepFieldBuild(build, mask, [], 40); // a few dozen pops: heap non-trivial
+    if (build.heapTies.length === 0) throw new Error('expected a non-empty heap after 40 pops');
+    if (mutate) build.heapTies[0] = (build.heapTies[0] as number) + 1;
+    w.pathfinding.activeBuild = build;
+    return w;
+  }
+
+  it('activeBuild Dijkstra heap internals are digest-covered', () => {
+    const terrain = generateTerrain(MERIDIAN_PLAINS.seed);
+    const a = midFloodWorld(5150, terrain, false);
+    const b = midFloodWorld(5150, terrain, false);
+    expect(digestWorld(a)).toBe(digestWorld(b)); // identical builds: stable
+    const c = midFloodWorld(5150, terrain, true);
+    expect(digestWorld(c)).not.toBe(digestWorld(a)); // one tie changed: diverges
   });
 });

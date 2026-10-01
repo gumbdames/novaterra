@@ -138,7 +138,13 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   identically. Final-review R2 (2026-10-01): building lines carry
   `hp,maxHp` and unit lines carry `buildingTargetId` — both are
   behavior-affecting ⇒ digest-covered (PLAN §11); `?? def.hp` / `?? 0`
-  keep legacy-decoded worlds digesting stably.
+  keep legacy-decoded worlds digesting stably. Final-review R6/L1
+  (2026-10-01): digest-gap closure — `city.nextAirlineRouteId` (drives
+  the next route's id), the activeBuild Dijkstra heap internals
+  (`heapCells/heapPris/heapTies` + sparse `closed`/`waitMark` index
+  lists — they decide the next pop), and `delegation.mayors[].buildPolicy`
+  (sim write-only today, still snapshotted ⇒ digested) are all encoded;
+  pinned by the sensitivity tests in `tests/sim.digest.test.ts`.
 - `snapshot.ts` — versioned snapshots (v8: hangar slots on buildings
   + `hangarBuildingId`/`embarkedOn` on units; v7: road classes as
   `RoadCell[]` (v6 `number[]` migrates to `paved`), the rail layer,
