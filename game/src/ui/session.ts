@@ -50,6 +50,7 @@ import type { CommandQueue, NewCommand } from '../sim/commands';
 import {
   createCommandQueue,
   registerCoreCommands,
+  releaseUnitReservation,
 } from '../sim/commands';
 import type { TickDriver } from '../sim/tick';
 import { createTickDriver, TICK_MS } from '../sim/tick';
@@ -143,6 +144,21 @@ export interface GameSession {
   sessionId: string;
   seed: number;
   aiDifficulty: AIDifficulty;
+  /**
+   * Resolved map preset name (see MAP_PRESETS in sim/terrain.ts) that
+   * generated this session's terrain. Recorded on every session —
+   * including restored ones — so saves can name the exact map they
+   * were played on (R1-C/C4: the load path regenerates terrain from
+   * this name instead of falling back to 'Meridian Plains').
+   */
+  mapPreset: string;
+  /**
+   * Campaign mission id when this session was built from a campaign
+   * mission (`SessionOptions.campaignMission`), null for skirmish /
+   * sandbox / peaceful sessions. Recorded so a save knows which
+   * mission's map it came from (R1-C/C4).
+   */
+  campaignMissionId: string | null;
   /**
    * True when a Classic AI rival (owner 1) is playing. False for sandbox
    * skirmishes and campaign missions with no rival ('none') — those have
@@ -337,6 +353,28 @@ export function createSession(options: SessionOptions): GameSession {
   const terrain = generateTerrain(preset.seed, preset);
   // Restored games resume the exact saved world; fresh games start empty.
   const world = options.snapshot ? restoreSnapshot(options.snapshot) : createWorld(seed);
+  if (options.snapshot) {
+    // R1-C (M2) — command queue is session-owned, never snapshotted:
+    // the queue is DELIBERATELY dropped on save/load. Pending commands
+    // (player/AI orders due on a later tick, plus self-scheduled
+    // cleanups such as `resupplyTimeout`) do not survive a restore —
+    // the restored session always starts with an empty queue, and the
+    // AI re-issues its orders on its next think. The one thing that
+    // must not leak is the resupply reservation ledger: a vanished
+    // `resupplyTimeout` would leave the unit's `resupplyDepotId` set
+    // and the depot's `reservedAmmo`/`reservedFuel` claimed until the
+    // unit dies, refills, or the depot is demolished. So every restore
+    // releases all in-flight resupply reservations up front: depot
+    // stock returns to the available pool and the unit linkage clears.
+    // Units still en route keep traveling (movement state IS
+    // snapshotted); they are served from available stock on arrival,
+    // and the AI/player can re-issue `resupply` if a hold is wanted.
+    // Deterministic: world.units is id-ordered and releaseUnitReservation
+    // is idempotent per unit.
+    for (const unit of world.units) {
+      if ((unit.resupplyDepotId ?? 0) > 0) releaseUnitReservation(world, unit);
+    }
+  }
   // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): the flag is
   // set at tick 0 from the session options and never toggled mid-game.
   // Restored sessions carry whatever the snapshot saved (restoreSnapshot
@@ -443,6 +481,11 @@ export function createSession(options: SessionOptions): GameSession {
         : `novaterra-${seed >>> 0}-${aiDifficulty}`,
     seed,
     aiDifficulty,
+    // The resolved preset name (getMapPreset falls back to Meridian
+    // Plains for unknown names), so the save records the map that was
+    // ACTUALLY generated — never the raw option (R1-C/C4).
+    mapPreset: preset.name,
+    campaignMissionId: mission?.id ?? null,
     hasRival,
     terrain,
     world,

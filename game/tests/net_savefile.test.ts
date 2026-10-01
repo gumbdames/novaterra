@@ -24,9 +24,11 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createSession } from '../src/ui/session';
+import { getMission } from '../src/campaign/missions';
 import {
   createSaveFile,
   SAVEFILE_VERSION,
+  saveMapPreset,
   summarizeSave,
   validateSaveVersion,
   type SaveFile,
@@ -104,5 +106,66 @@ describe('savefile', () => {
     expect(msg as string).not.toMatch(/v4/);
     expect(msg as string).not.toMatch(/snapshot/i);
     expect(msg as string).not.toMatch(/mismatch/i);
+  });
+
+  it('validateSaveVersion accepts v5/v6/v7/v8 (R1-C/M1: matches restoreSnapshot)', () => {
+    for (const version of [5, 6, 7, 8]) {
+      const file = makeFile();
+      (file.snapshot as { version: number }).version = version;
+      expect(validateSaveVersion(file), `v${version} should load`).toBeNull();
+    }
+  });
+
+  it('validateSaveVersion rejects saves newer than this build', () => {
+    const file = makeFile();
+    (file.snapshot as { version: number }).version = 9;
+    expect(validateSaveVersion(file)).not.toBeNull();
+  });
+
+  it('stamps the resolved map preset name (R1-C/C4)', () => {
+    const session = createSession({ seed: 99, mapPreset: 'Ocean World' });
+    const file = createSaveFile(session, 'slot-1', 'Slot 1', SAVED_AT);
+    expect(file.metadata.mapPreset).toBe('Ocean World');
+  });
+
+  it('records the resolved name for an unknown preset (not the raw option)', () => {
+    const session = createSession({ seed: 99, mapPreset: 'No Such Map' });
+    const file = createSaveFile(session, 'slot-1', 'Slot 1', SAVED_AT);
+    expect(file.metadata.mapPreset).toBe('Meridian Plains');
+  });
+
+  it('stamps null campaignMissionId for skirmish saves (R1-C/C4)', () => {
+    const file = makeFile();
+    expect(file.metadata.campaignMissionId).toBeNull();
+  });
+
+  it('stamps the campaign mission id and its map preset (R1-C/C4)', () => {
+    const mission = getMission('crossing-the-water')!;
+    const session = createSession({ seed: 7, campaignMission: mission });
+    const file = createSaveFile(session, 'slot-1', 'Slot 1', SAVED_AT);
+    expect(file.metadata.campaignMissionId).toBe('crossing-the-water');
+    expect(file.metadata.mapPreset).toBe(mission.mapPreset);
+    expect(file.metadata.mapPreset).toBe('Archipelago');
+  });
+
+  describe('saveMapPreset', () => {
+    it("prefers the save's own mapPreset", () => {
+      const file = makeFile();
+      file.metadata.mapPreset = 'Inland Sea';
+      expect(saveMapPreset(file, 'Archipelago')).toBe('Inland Sea');
+    });
+
+    it('falls back to the mission def preset when the save predates the field', () => {
+      const file = makeFile();
+      delete file.metadata.mapPreset;
+      expect(saveMapPreset(file, 'Archipelago')).toBe('Archipelago');
+    });
+
+    it("defaults to Meridian Plains for pre-R1-C saves (the historic load behavior)", () => {
+      const file = makeFile();
+      delete file.metadata.mapPreset;
+      delete file.metadata.campaignMissionId;
+      expect(saveMapPreset(file)).toBe('Meridian Plains');
+    });
   });
 });

@@ -26,8 +26,17 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createSession, HUMAN_PLAYER_ID } from '../src/ui/session';
-import { createSaveFile, type SaveFile } from '../src/net_save/savefile';
+import {
+  createSaveFile,
+  saveMapPreset,
+  type SaveFile,
+} from '../src/net_save/savefile';
 import { buildMoveOrder } from '../src/ui/orders';
+import { getMission } from '../src/campaign/missions';
+import { getMapPreset, isWater } from '../src/sim/terrain';
+import { cellCenterWorld, cellIsWater } from '../src/sim/city';
+import { findUnit, spawnUnit } from '../src/sim/units';
+import { completeBuilding } from './sim.roster-fixtures';
 
 const SAVED_AT = '2026-09-29T12:00:00.000Z';
 
@@ -111,5 +120,117 @@ describe('save/load round trip', () => {
     expect(restored.cheated).toBe(false);
     restored.cheated = file.metadata.cheated;
     expect(restored.cheated).toBe(true);
+  });
+
+  it('restores the exact map for a non-default preset (R1-C/C4)', () => {
+    const original = createSession({
+      seed: 31337,
+      aiDifficulty: 'citizen',
+      mapPreset: 'Ocean World',
+    });
+    for (let i = 0; i < 60; i++) original.tick();
+    const file = saveAndRevive(original);
+    expect(file.metadata.mapPreset).toBe('Ocean World');
+    // The load path (main.ts) regenerates terrain from the saved name.
+    const restored = createSession({
+      seed: file.metadata.seed,
+      aiDifficulty: file.metadata.aiDifficulty,
+      mapPreset: saveMapPreset(file),
+      snapshot: file.snapshot,
+    });
+    const preset = getMapPreset('Ocean World');
+    expect(restored.mapPreset).toBe('Ocean World');
+    expect(restored.terrain.name).toBe('Ocean World');
+    expect(restored.terrain.seed).toBe(preset.seed >>> 0);
+    expect(restored.world.tick).toBe(original.world.tick);
+  });
+
+  it('restores the campaign mission map on load (R1-C/C4)', () => {
+    const mission = getMission('crossing-the-water')!;
+    const original = createSession({ seed: 4242, campaignMission: mission });
+    for (let i = 0; i < 60; i++) original.tick();
+    const file = saveAndRevive(original);
+    expect(file.metadata.campaignMissionId).toBe('crossing-the-water');
+    expect(file.metadata.mapPreset).toBe('Archipelago');
+    // The load path resolves the mission id for the map fallback, then
+    // restores through the saved preset name.
+    const savedMission = file.metadata.campaignMissionId
+      ? getMission(file.metadata.campaignMissionId)
+      : undefined;
+    const restored = createSession({
+      seed: file.metadata.seed,
+      aiDifficulty: file.metadata.aiDifficulty,
+      mapPreset: saveMapPreset(file, savedMission?.mapPreset),
+      snapshot: file.snapshot,
+    });
+    expect(restored.terrain.name).toBe('Archipelago');
+    expect(restored.terrain.seed).toBe(getMapPreset('Archipelago').seed >>> 0);
+    expect(restored.campaignMissionId).toBeNull();
+    expect(restored.world.tick).toBe(original.world.tick);
+  });
+
+  it('releases in-flight resupply reservations on load (R1-C/M2)', () => {
+    const session = createSession({ seed: 777, aiDifficulty: 'citizen' });
+    const t = session.terrain;
+    // A land cell for the depot (land unit => land depot).
+    let cx = 0;
+    let cz = 0;
+    outer: for (let r = 0; r < 80; r++) {
+      for (let dz = -r; dz <= r; dz++) {
+        for (let dx = -r; dx <= r; dx++) {
+          if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+          if (!cellIsWater(t, -90 + dx, 90 + dz)) {
+            cx = -90 + dx;
+            cz = 90 + dz;
+            break outer;
+          }
+        }
+      }
+    }
+    completeBuilding(session.world, 'ordnanceDepot', HUMAN_PLAYER_ID, cx, cz);
+    const depot =
+      session.world.city.buildings[session.world.city.buildings.length - 1]!;
+    depot.ammoStock = 100;
+    depot.fuelStock = 0;
+    // An ammo-dry MLRS parked well outside the depot's refill aura so the
+    // reservation is still in flight (not fulfilled) when we save.
+    let sx = cellCenterWorld(cx) + 80;
+    let sz = cellCenterWorld(cz);
+    if (isWater(t, sx, sz)) {
+      sx = cellCenterWorld(cx) - 80;
+    }
+    const u = spawnUnit(session.world, 'mlrs', HUMAN_PLAYER_ID, sx, sz);
+    u.ammo = 0;
+    session.queue.enqueue(session.world, {
+      kind: 'resupply',
+      issuer: 'player',
+      payload: { unitId: u.id, depotId: depot.id, owner: HUMAN_PLAYER_ID },
+    });
+    session.tick();
+    const liveUnit = findUnit(session.world, u.id)!;
+    expect(liveUnit.resupplyDepotId).toBe(depot.id);
+    expect(depot.reservedAmmo).toBeGreaterThan(0);
+    // The resupply apply self-scheduled its 60 s resupplyTimeout.
+    expect(session.queue.pendingCount()).toBeGreaterThan(0);
+
+    const file = saveAndRevive(session);
+    const restored = createSession({
+      seed: file.metadata.seed,
+      aiDifficulty: file.metadata.aiDifficulty,
+      mapPreset: saveMapPreset(file),
+      snapshot: file.snapshot,
+    });
+    const rUnit = findUnit(restored.world, u.id)!;
+    const rDepot = restored.world.city.buildings.find(
+      (b) => b.id === depot.id,
+    )!;
+    // The reservation is released — no leaked claim on the depot — and
+    // the pending queue (incl. the resupplyTimeout) is deliberately
+    // dropped: the restored session always starts with an empty queue.
+    expect(rUnit.resupplyDepotId).toBe(0);
+    expect(rUnit.resupplyReservedAmmo ?? 0).toBe(0);
+    expect(rDepot.reservedAmmo ?? 0).toBe(0);
+    expect(rDepot.reservedFuel ?? 0).toBe(0);
+    expect(restored.queue.pendingCount()).toBe(0);
   });
 });

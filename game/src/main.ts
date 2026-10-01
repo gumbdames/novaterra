@@ -46,10 +46,10 @@ import { MainMenu, loadSettings, type QualityLevel } from './ui/menus';
 import { startGame } from './ui/game';
 import type { AIDifficulty } from './sim/ai';
 import { createSaveStore } from './net_save/store';
-import { validateSaveVersion } from './net_save/savefile';
+import { validateSaveVersion, saveMapPreset } from './net_save/savefile';
 import { SaveSlotsDialog } from './ui/saveslots';
 import { STRINGS } from './ui/strings';
-import type { MissionDef } from './campaign/missions';
+import { getMission, type MissionDef } from './campaign/missions';
 import {
   createCampaignStore,
   recordCompletion,
@@ -439,9 +439,22 @@ async function showLoadGame(
         renderer.setAnimationLoop(null);
         canvas.style.display = 'none';
         hooks.onLeaveMenu();
+        // R1-C/C4: the save's map preset is authoritative for terrain —
+        // a save from any non-default map (or any campaign mission) must
+        // regenerate THAT terrain, not Meridian Plains. The mission def
+        // is only the fallback for saves that predate the metadata
+        // field (see saveMapPreset). Note: loading a campaign save
+        // restores the world and its map, but not the scripted mission
+        // director — that stays a fresh-session concern by design.
+        const savedMission =
+          file.metadata.campaignMissionId !== undefined &&
+          file.metadata.campaignMissionId !== null
+            ? getMission(file.metadata.campaignMissionId)
+            : undefined;
         startGame(app, {
           seed: file.metadata.seed,
           aiDifficulty: file.metadata.aiDifficulty,
+          mapPreset: saveMapPreset(file, savedMission?.mapPreset),
           quality: loadSettings().quality,
           saveData: file,
           onExitToMenu: () => {
