@@ -211,6 +211,33 @@ export function buildingWaterDiag(b: BuildingRecord): UtilityDiag {
 }
 
 /**
+ * Cheap numeric fingerprint of a building's utility diagnosis inputs
+ * (final-review R3 L7, 2026-10-01): the exact strings
+ * `buildingPowerDiag`/`buildingWaterDiag` would return, hashed without
+ * the per-call export overhead — for render-layer memo keys
+ * (`utilityIndicatorsFor`). Same inputs ⇒ same fingerprint; the
+ * fallback rule is replicated exactly, so a fingerprint match means
+ * the diagnosis pair is unchanged.
+ */
+export function buildingDiagFingerprint(b: BuildingRecord): number {
+  const f = simFields(b);
+  const pd = asDiag(f.powerDiag) ?? (b.powered ? 'ok' : 'disconnected');
+  const wd = asDiag(f.waterDiag) ?? (b.watered ? 'ok' : 'disconnected');
+  let h = 0x811c9dc5;
+  for (let i = 0; i < pd.length; i++) {
+    h ^= pd.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  h ^= 0xff;
+  h = Math.imul(h, 0x01000193);
+  for (let i = 0; i < wd.length; i++) {
+    h ^= wd.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+/**
  * True when the sim flags this building's water source as fouled.
  *
  * VERIFIED 2026-09-30 against sim/utilityNetworks.ts: the sim computes

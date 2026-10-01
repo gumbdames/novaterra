@@ -89,6 +89,15 @@ Per-key download sizes measured from `game/public/models/` (2026-09-30).
 | Deferred to first use (30 keys) | ≈ 2.02 MiB |
 | Projected ~80 new keys (~80 KiB avg, plan §10) | ≈ 6.4 MiB — does NOT fit at boot |
 
+> **R3 re-measurement (2026-10-01):** the table above is raw bytes with
+> no gzip credit (and predates the 33-key boot set). Byte-measured on a
+> fresh build, the boot payload transfers **4.11 MiB (51.3% of the
+> 8 MiB gate)** — 0.46 MiB gzipped text (HTML/JS/CSS/GLTFLoader) +
+> 3.65 MiB raw binary (2.80 MiB boot GLBs, 0.79 MiB tree textures,
+> 0.06 MiB external colormaps); 5.30 MiB raw-everything. Pinned by
+> `game/tests/render.boot-budget.test.ts`; methodology in
+> `docs/research/perf-r3.md`.
+
 The distribution is heavy-tailed: the 10 largest keys are ~45% of the
 bytes. New keys skew smaller than the current average (AD12:
 procedural-first infrastructure, art-shared variants, spares-pool
@@ -274,3 +283,8 @@ nondeterministically across runs).
   61 keys / 58 unique files / 4.56 MiB measured. `bootModelKeys()`
   derives from foundation-age kinds, so this needed only the pinned
   test update.
+- **R3 (2026-10-01):** the boot set is now 33 keys / 32 unique files /
+  2.80 MiB, and the boot payload is byte-measured in transferred bytes:
+  **4.11 MiB (51.3% of the 8 MiB gate)**, pinned by
+  `game/tests/render.boot-budget.test.ts`. The 4.56 MiB above was the
+  full mapped set in raw bytes, not the boot payload.

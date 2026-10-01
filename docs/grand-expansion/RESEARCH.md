@@ -276,6 +276,9 @@ punishments; civilian worker XP micro with no decisions.
    the mechanism before adding keys: per-tab/per-age lazy loading,
    gltf-transform optimize (meshopt), or a raised budget — and use
    the vendored spares pool + procedural-first infrastructure +
+   *(R3, 2026-10-01: the 5.45 MiB was raw bytes; byte-measured boot
+   payload transfers 4.11 MiB — 51.3% of the gate — and the lazy-loading
+   mitigation already landed. See `docs/research/perf-r3.md`.)*
    art-sharing for tech-level variants (Mk II/III sharing one GLB).
 4. **The utility cutover vs. the AI.** A hard connectivity requirement
    silently starves the AI (its virtual buildings bypass placement).

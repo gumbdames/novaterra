@@ -44,8 +44,13 @@
 import type { World } from './world';
 import type { Age } from './ages';
 import { isUnitAvailableForAge } from './ages';
-import type { BuildingKind, BuildingDef } from './city';
-import { getPlayer, BUILDING_DEFS, hasProductionBuilding } from './city';
+import type { BuildingKind, BuildingDef, BuildingRecord } from './city';
+import {
+  getPlayer,
+  BUILDING_DEFS,
+  hasProductionBuilding,
+  sightBonusCacheVersionOf,
+} from './city';
 import type { CommandQueue } from './commands';
 import type { UnitDef } from './units';
 
@@ -315,12 +320,60 @@ export const SIGNALS_INTEL_SIGHT_BONUS = 4;
  * keeps working.
  */
 export function intelSightBonus(world: World, owner: number): number {
+  return (
+    intelBuildingSightBonus(world, owner) +
+    (hasUpgrade(world, owner, 'signalsIntel') ? SIGNALS_INTEL_SIGHT_BONUS : 0)
+  );
+}
+
+/**
+ * The building term of `intelSightBonus`, cached per (city, owner)
+ * (final-review R3 L7, 2026-10-01). The uncached sum is O(buildings) and
+ * the callers are per-sight-query — the AI recon loop calls
+ * `effectiveSight` per (enemy, own unit) pair, i.e. O(buildings×units)
+ * per tick in a big battle. The sum only changes when the completed
+ * building set changes, so the cache is validated by the buildings
+ * array identity + length + last element (placements, demolitions,
+ * direct fixture pushes, snapshot restore) and by the explicit
+ * `bumpSightBonusCache` version (construction completions in
+ * economy.ts, which mutate `progress` in place). The signalsIntel
+ * upgrade term stays uncached — `hasUpgrade` scans a tiny per-owner
+ * list. The cache is never iterated for sim logic (pure per-owner
+ * lookup), so it has no determinism footprint.
+ */
+interface IntelBuildingSightCache {
+  buildings: BuildingRecord[];
+  n: number;
+  last: BuildingRecord | undefined;
+  version: number;
+  perOwner: Map<number, number>;
+}
+const intelBuildingSightCache = new WeakMap<World, IntelBuildingSightCache>();
+
+function intelBuildingSightBonus(world: World, owner: number): number {
+  const city = world.city;
+  const buildings = city.buildings;
+  const version = sightBonusCacheVersionOf(city);
+  const last = buildings[buildings.length - 1];
+  let e = intelBuildingSightCache.get(world);
+  if (
+    e === undefined ||
+    e.buildings !== buildings ||
+    e.n !== buildings.length ||
+    e.last !== last ||
+    e.version !== version
+  ) {
+    e = { buildings, n: buildings.length, last, version, perOwner: new Map() };
+    intelBuildingSightCache.set(world, e);
+  }
+  const hit = e.perOwner.get(owner);
+  if (hit !== undefined) return hit;
   let bonus = 0;
-  for (const b of world.city.buildings) {
+  for (const b of buildings) {
     if (b.owner !== owner || b.progress < 1) continue;
     bonus += BUILDING_DEFS[b.kind]?.sightBonus ?? 0;
   }
-  if (hasUpgrade(world, owner, 'signalsIntel')) bonus += SIGNALS_INTEL_SIGHT_BONUS;
+  e.perOwner.set(owner, bonus);
   return bonus;
 }
 

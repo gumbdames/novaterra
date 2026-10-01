@@ -40,6 +40,9 @@
 - Lazy pipeline: `render/lazyModels.ts` — new keys are lazy by default;
   the 8 MiB boot gate (currently ~4.56 MiB GLB + ~0.83 MiB tree
   textures) must not move. No new key goes in `bootModelKeys()`.
+  *(R3, 2026-10-01: those figures were raw bytes; byte-measured boot
+  payload transfers 4.11 MiB — 51.3% of the gate. See
+  `docs/research/perf-r3.md`.)*
 
 ## Audit: §3.5/3.6/3.7 keys vs. the vendored library
 

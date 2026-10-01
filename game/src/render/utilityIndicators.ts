@@ -26,7 +26,7 @@ import * as THREE from 'three';
 
 import { cellCenterWorld } from '../sim/city';
 import type { BuildingRecord } from '../sim/city';
-import { buildingPowerDiag, buildingWaterDiag } from '../ui/utilities';
+import { buildingDiagFingerprint, buildingPowerDiag, buildingWaterDiag } from '../ui/utilities';
 
 /** Indicator kinds in stable order (one instanced mesh each). */
 export const UTILITY_INDICATOR_KINDS = ['noPower', 'noWater'] as const;
@@ -155,8 +155,66 @@ export interface UtilityIndicator {
  * diagnosis is anything but ok (same readers the selection panel
  * uses). Sorted by (kind, building id) — same input ⇒ byte-identical
  * output.
+ *
+ * Final-review R3 L7 (2026-10-01): single-entry memoized. `sync()`
+ * runs every render frame, and the unmemoized path copied + sorted the
+ * whole building array (O(n log n)) just to discover nothing changed.
+ * The memo key is a one-pass FNV-1a fingerprint over the array
+ * identity plus every per-building input the list depends on (id,
+ * cell, kind, power/water diagnosis) — O(n) cheap reads, no
+ * allocation, no sort. The returned array is cached: callers must not
+ * mutate it. Render-layer only — never consulted by the sim.
  */
 export function utilityIndicatorsFor(
+  buildings: readonly BuildingRecord[],
+): UtilityIndicator[] {
+  const fp = indicatorsFingerprint(buildings);
+  if (indicatorsMemo.buildings === buildings && indicatorsMemo.fingerprint === fp) {
+    return indicatorsMemo.result;
+  }
+  const result = computeUtilityIndicators(buildings);
+  indicatorsMemo.buildings = buildings;
+  indicatorsMemo.fingerprint = fp;
+  indicatorsMemo.result = result;
+  return result;
+}
+
+interface IndicatorsMemo {
+  buildings: readonly BuildingRecord[] | null;
+  fingerprint: number;
+  result: UtilityIndicator[];
+}
+const indicatorsMemo: IndicatorsMemo = { buildings: null, fingerprint: 0, result: [] };
+
+/** One-pass fingerprint over every input `computeUtilityIndicators` reads. */
+function indicatorsFingerprint(buildings: readonly BuildingRecord[]): number {
+  let h = 0x811c9dc5;
+  for (const b of buildings) {
+    h ^= b.id;
+    h = Math.imul(h, 0x01000193);
+    h ^= b.cx;
+    h = Math.imul(h, 0x01000193);
+    h ^= b.cz;
+    h = Math.imul(h, 0x01000193);
+    h = mixString(h, b.kind);
+    // The diagnosis pair, via the cheap raw-field fingerprint — no
+    // per-building export call overhead on the steady-state path.
+    h ^= buildingDiagFingerprint(b);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+function mixString(h: number, s: string): number {
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h;
+}
+
+/** The unmemoized indicator computation (see `utilityIndicatorsFor`). */
+function computeUtilityIndicators(
   buildings: readonly BuildingRecord[],
 ): UtilityIndicator[] {
   const out: UtilityIndicator[] = [];

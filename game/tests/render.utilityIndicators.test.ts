@@ -103,6 +103,45 @@ describe('utilityIndicatorsFor', () => {
   });
 });
 
+/**
+ * Final-review R3 L7: the single-entry memo must never serve a stale
+ * list. Each case below mutates one input the fingerprint covers and
+ * requires the result to follow it.
+ */
+describe('utilityIndicatorsFor memo', () => {
+  it('returns identical content on repeat calls (memo hit)', () => {
+    const buildings = [
+      fakeBuilding({ id: 1, powerDiag: 'disconnected' } as never),
+      fakeBuilding({ id: 2, waterDiag: 'shortage' } as never),
+    ];
+    const first = utilityIndicatorsFor(buildings);
+    expect(utilityIndicatorsFor(buildings)).toEqual(first);
+    expect(utilityIndicatorsFor(buildings)).toEqual(first);
+  });
+
+  it('follows a diagnosis change on the same array (no staleness)', () => {
+    const b = fakeBuilding({ id: 7, powerDiag: 'ok', waterDiag: 'ok' } as never);
+    const buildings = [b];
+    expect(utilityIndicatorsFor(buildings)).toEqual([]);
+    (b as unknown as { powerDiag: string }).powerDiag = 'shortage';
+    expect(utilityIndicatorsFor(buildings).map((m) => m.kind)).toEqual(['noPower']);
+  });
+
+  it('follows a removed building on the same array', () => {
+    const buildings = [fakeBuilding({ id: 8, powerDiag: 'disconnected' } as never)];
+    expect(utilityIndicatorsFor(buildings)).toHaveLength(1);
+    buildings.pop();
+    expect(utilityIndicatorsFor(buildings)).toEqual([]);
+  });
+
+  it('recomputes for a replaced buildings array', () => {
+    const a = [fakeBuilding({ id: 9, waterDiag: 'disconnected' } as never)];
+    expect(utilityIndicatorsFor(a).map((m) => m.kind)).toEqual(['noWater']);
+    const b = [fakeBuilding({ id: 9, waterDiag: 'ok' } as never)];
+    expect(utilityIndicatorsFor(b)).toEqual([]);
+  });
+});
+
 describe('utilityIndicatorPixels', () => {
   for (const kind of UTILITY_INDICATOR_KINDS) {
     it(`${kind}: rasterizes an opaque filled shape`, () => {

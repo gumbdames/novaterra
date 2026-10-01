@@ -2787,6 +2787,34 @@ export function bumpUtilityEpoch(city: CityState): void {
   city.utilityEpoch += 1;
 }
 
+/**
+ * Intel building-sight cache version (final-review R3 L7, 2026-10-01).
+ * `intelSightBonus` (upgrades.ts) sums `sightBonus` over completed
+ * buildings per owner — O(buildings) per call, and it is called per
+ * sight query (O(buildings×units)/tick in the AI recon loop). The sum
+ * is cached per (city, owner) and validated by:
+ *  - the buildings array identity + length + last element (catches
+ *    placements, demolitions, direct fixture pushes, and wholesale
+ *    replacement — snapshot restore builds a fresh CityState, so the
+ *    WeakMap starts empty), and
+ *  - this version counter, bumped by `bumpSightBonusCache` at the one
+ *    mutation the array check cannot see: a building's `progress`
+ *    crossing to 1 (construction completion in economy.ts).
+ * Direct `b.progress` writes in test fixtures bypass the bump — such
+ * fixtures must call `bumpSightBonusCache` themselves.
+ */
+const sightBonusCacheVersion = new WeakMap<CityState, number>();
+
+/** Invalidate the cached intel building-sight term for this city. */
+export function bumpSightBonusCache(city: CityState): void {
+  sightBonusCacheVersion.set(city, (sightBonusCacheVersion.get(city) ?? 0) + 1);
+}
+
+/** Current cache version for `intelBuildingSightBonus` (upgrades.ts). */
+export function sightBonusCacheVersionOf(city: CityState): number {
+  return sightBonusCacheVersion.get(city) ?? 0;
+}
+
 /** Player record or undefined for a bad id. */
 export function getPlayer(city: CityState, id: number): PlayerState | undefined {
   return city.players[id];
@@ -3051,6 +3079,11 @@ export function demolishBuilding(city: CityState, id: number): boolean {
   if (index === -1) return false;
   city.buildings.splice(index, 1);
   bumpUtilityEpoch(city);
+  // Final-review R3 L7: removing a (possibly completed, sight-granting)
+  // building changes the intel building-sight sum — invalidate its cache.
+  // This is the single removal path: destroyBuilding (combat kills, the
+  // storm strike) and the demolish command both funnel through here.
+  bumpSightBonusCache(city);
   return true;
 }
 

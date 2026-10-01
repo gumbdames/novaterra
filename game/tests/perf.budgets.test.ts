@@ -155,6 +155,73 @@ describe('sim tick performance budgets', () => {
   });
 });
 
+describe('worst-case combined sim load (R3 M12)', () => {
+  it('marshal AI + economy + 1000-unit combat + pathing burst: stress p95 is recorded and bounded', () => {
+    // Marshal is the heaviest AI personality (full think pass); the two
+    // armies engage so weapons fire every tick; the move orders land a
+    // pathfinding burst on top. Economy ticks (1 Hz) and AI think passes
+    // are inside the measured 60 ticks. The armies start separated (a
+    // realistic worst case — not a degenerate melee blender) and close
+    // under AI orders.
+    const session = createSession({ seed: 7, aiDifficulty: 'marshal' });
+    for (const p of session.world.city.players) {
+      p.manpower = 100000;
+      p.funds = 100000000;
+      p.materials = 100000000;
+    }
+    let spawned = 0;
+    let i = 0;
+    const landSpots: Array<{ x: number; z: number }> = [];
+    while (spawned < 1100 && i < 22000) {
+      const half = spawned % 2 === 0 ? 0 : 1;
+      const x = (half === 0 ? -70 : 30) + (i % 40) * 2;
+      const z = -40 + Math.floor(i / 40) * 2;
+      i++;
+      if (isWater(session.terrain, x, z)) continue;
+      try {
+        session.queue.enqueue(session.world, {
+          kind: 'spawnUnit',
+          issuer: 'perf',
+          payload: { kind: 'rifles', owner: half, x, z },
+        });
+        spawned++;
+        landSpots.push({ x, z });
+      } catch {
+        // Occupied or otherwise invalid — try the next spot.
+      }
+    }
+    session.tick(); // apply all spawns
+    expect(spawned).toBeGreaterThan(900);
+    // Pathing burst: a full control group of our units ordered at the
+    // enemy's side (they fight their way through). Destinations reuse
+    // water-validated spawn spots, so no order is rejected for water.
+    const ours = session.world.units.filter((u) => u.owner === 0).slice(0, 40);
+    expect(ours.length).toBe(40);
+    ours.forEach((u, j) => {
+      const spot = landSpots[(j * 5 + 1) % landSpots.length]!;
+      session.queue.enqueue(session.world, {
+        kind: 'moveUnit',
+        issuer: 'perf',
+        payload: { unitId: u.id, owner: 0, x: spot.x, z: spot.z },
+      });
+    });
+    session.tick(); // apply orders
+    const p95 = tickP95(session, 60);
+    console.log(`[worst-case] p95 tick ${p95.toFixed(2)}ms over 60 ticks (marshal + combat + pathing)`);
+    // STRESS budget, not the 30Hz frame budget: this scenario runs
+    // ~1100 units — about 20x the marshal army cap (AI_MAX_UNITS = 48)
+    // — and its p95 does NOT fit the 33.3ms tick on this host
+    // (measured 89–136ms, Node, 2026-10-01). The sim absorbs over-budget
+    // ticks via the tick driver's drop accounting (sim/tick.ts), so the
+    // game slows down instead of breaking; the 33.3ms frame budget is
+    // covered by the realistic-scale tests above. This assertion pins
+    // the stress result so a pathological 10x regression fails loudly.
+    // Per-system breakdown and follow-ups: docs/research/perf-r3.md.
+    // Honest scope: Node-measured on CI hardware, not a browser frame.
+    expect(p95).toBeLessThan(750);
+  });
+});
+
 describe('render budget constants are not silently inflated', () => {
   it('draw call / triangle / frame budgets match the validated benchmark', () => {
     // These are the budgets the Step 2 benchmark validated on real hardware

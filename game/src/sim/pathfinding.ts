@@ -1087,10 +1087,31 @@ function finishFieldRequest(world: World, t: TerrainData, build: FieldBuild): vo
   }
 }
 
-/** Drop flow fields no living unit references anymore. */
+/**
+ * Drop flow fields no living unit references anymore.
+ *
+ * Final-review R3 L7 (2026-10-01): was O(fields×units) per tick — a
+ * nested `units.some(...)` per field. Now one O(units) pass collects
+ * the referenced field ids into a Set, then one O(fields) filter
+ * consults it: O(units + fields) total. A fully incremental refcount
+ * was considered and rejected: `fieldId` is assigned/cleared at six
+ * sites across movement.ts, pathfinding.ts and units.ts (plus killUnit),
+ * and a missed hook would leak or prematurely drop fields — the
+ * per-tick Set rebuild is cheap, total, and cannot drift.
+ */
 function pruneFields(world: World): void {
   const pf = world.pathfinding;
-  pf.fields = pf.fields.filter((f) => world.units.some((u) => u.fieldId === f.id));
+  if (pf.fields.length === 0) return;
+  const referenced = new Set<number>();
+  for (const u of world.units) {
+    const id = u.fieldId ?? 0;
+    if (id !== 0) referenced.add(id);
+  }
+  if (referenced.size === 0) {
+    pf.fields.length = 0;
+    return;
+  }
+  pf.fields = pf.fields.filter((f) => referenced.has(f.id));
 }
 
 /**

@@ -541,6 +541,18 @@ In priority order, if the game ever needs WASM:
 2. **Desirability/migration** (`sim/desirability.ts`, `sim/city.ts`) — the map-wide per-building scans on big cities could move off the main thread into a WASM worker.
 3. **AI think** (`sim/ai/`) — the rival AI's decision pass is the heaviest per-tick CPU cost.
 
+> **R3 profiling note (2026-10-01, dev VM, Node-measured):** the worst-case
+> stress test (`tests/perf.budgets.test.ts`, "worst-case combined sim load")
+> empirically characterized candidates 1 and 3 at ~1100 units (~20x the
+> marshal army cap of 48): a 200-pathfind burst spiked the pathfinding
+> system to 162 ms in one tick, and marshal think passes measured
+> 98–275 ms. Per-system breakdown and follow-ups in
+> `docs/research/perf-r3.md`. The decision stands — TS unless a real
+> gameplay scenario (not a 20x-over-cap stress) proves otherwise — but the
+> numbers above are now the baseline to beat, and `getVisibleEnemies`'s
+> O(enemies × own) `effectiveSight` inner loop is the first thing to hoist
+> if the think ever needs it.
+
 ---
 
 ## 8. Web Workers for sim work

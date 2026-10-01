@@ -90,11 +90,15 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   assemble several keys at per-piece offsets (`warFactory`,
   `airfield`, `navalYard`, `oilRefinery`, `solarFarm`, `desalination`
   share the `industrialStack` / `industrialTank` pieces across kinds —
-  one key each, loaded once). 4.56 MiB of GLB downloads at startup
-  (61 keys, 58 unique files; rifleman.glb is keyed 3×, building-e.glb
-  2× — per-key normalization, same as the pre-expansion mapping), plus
-  ~0.83 MiB of CC0 tree textures for the procedural nature trees (see
-  the Nature scatter section below). The 4 civilian-pedestrian keys add
+  one key each, loaded once). 2.80 MiB of GLB downloads at startup
+  (33 keys, 32 unique files; rifleman.glb is keyed 3× — per-key
+  normalization), plus ~0.79 MiB of CC0 tree textures for the
+  procedural nature trees (see the Nature scatter section below), plus
+  ~0.06 MiB of external colormap textures the boot GLBs reference.
+  With gzipped JS+CSS+HTML+GLTFLoader (~0.46 MiB) the boot payload
+  transfers 4.11 MiB total — byte-measured 2026-10-01 (final-review
+  R3), 51.3% of the 8 MiB gate, pinned by
+  `tests/render.boot-budget.test.ts`. The 4 civilian-pedestrian keys add
   ~1.05 MiB but load lazily on first population, never at startup.
 - `loadModels(paths, { timeoutMs })` fetches the GLBs CONCURRENTLY via a
   dynamically imported `GLTFLoader` (separate chunk — only downloaded when

@@ -87,6 +87,7 @@ import {
   FOOD_PER_POP_PER_SEC,
   UTILITY_ZONE,
   ZoneType,
+  bumpSightBonusCache,
   cellCenterWorld,
   getPlayer,
   isOnTransportNetwork,
@@ -1283,6 +1284,11 @@ function runConstruction(city: CityState): void {
     if (b.progress < 1) {
       const def = BUILDING_DEFS[b.kind];
       b.progress = Math.min(1, b.progress + 1 / def.buildSeconds);
+      // Final-review R3 L7: a completion crossing can change the intel
+      // building-sight sum (satelliteUplink) — invalidate its cache.
+      // Completions are rare, so the bump costs one O(buildings)
+      // recompute on the next sight query, not per query.
+      if (b.progress >= 1) bumpSightBonusCache(city);
     }
   }
 }

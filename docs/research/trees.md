@@ -140,6 +140,13 @@ instanced exactly like today.
   In-scene: ~300 nature props worst case × ~0.3k tris ≈ 90k tris, one
   InstancedMesh per (species × part) — 6 species × 3 parts = 18 draw calls,
   all static. 60 fps holds (see §Perf below).
+- **R3 re-measurement (2026-10-01):** the 5.45 MB above was raw bytes
+  with no gzip credit. Byte-measured on a fresh build, the boot payload
+  transfers **4.11 MiB (51.3% of the 8 MiB gate)** — 0.46 MiB gzipped
+  text + 2.80 MiB boot GLBs (33 keys) + 0.79 MiB tree textures + 0.06 MiB
+  external colormaps; 5.30 MiB raw-everything. Pinned by
+  `game/tests/render.boot-budget.test.ts`; methodology in
+  `docs/research/perf-r3.md`.
 
 ## Perf reasoning (why 60 fps holds)
 

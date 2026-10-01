@@ -196,6 +196,9 @@
 //   gate (docs/research/trees.md:139). Time budget: ~20 s overall
 //   (`MODEL_LOAD_ALL_TIMEOUT_MS` in ui/game.ts); all 58 loads run
 //   concurrently, each with its own 15 s deadline — boot never hangs.
+//   R3 (2026-10-01): the 5.45 MiB was raw bytes with no gzip credit;
+//   byte-measured boot payload transfers 4.11 MiB (51.3% of the gate),
+//   pinned by game/tests/render.boot-budget.test.ts.
 //   Per-key average: 4.62 MiB / 58 ≈ 80 KiB/key (the packs are low-poly:
 //   hundreds–low-thousands of triangles per model, max 11.4k in the
 //   library; 350,308 tris across all 942 vendored files, but only the 55
@@ -387,6 +390,9 @@
 // RISK 2 — Startup download budget (SEVERITY: high).
 //   8 MiB gate; 5.45 MiB already spent (4.62 MiB GLB + 0.83 MiB tree
 //   textures). ~30 more average-size keys fit; the expansion wants 60+.
+//   R3 (2026-10-01): the 5.45 MiB was raw bytes; byte-measured boot
+//   payload transfers 4.11 MiB (51.3% of the gate) — the lazy-loading
+//   mitigation this risk called for already landed and holds.
 //   `loadModels(MODEL_PATHS)` is all-at-boot today. Mitigation: per-tab /
 //   per-age lazy loading, gltf-transform optimize with meshopt + WebP
 //   (already the documented direction in tech-stack.md §4), procedural-first
