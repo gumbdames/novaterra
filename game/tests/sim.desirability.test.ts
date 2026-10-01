@@ -307,10 +307,22 @@ describe('desirability model caching', () => {
     expect(getDesirabilityModel(ctx.terrain, ctx.world, 0)).not.toBe(before);
   });
 
-  it('rebuilds when a construction completes (completed-id set changes)', () => {
+  it('does NOT rebuild when a plain house completes (A4 narrow invalidation)', () => {
     const ctx = setup();
     const { cx, cz } = findLandRect(ctx.terrain, 4, 4);
     const b = placeBuilding(ctx.world.city, { kind: 'house', owner: 0, cx, cz, facing: 0 });
+    const before = getDesirabilityModel(ctx.terrain, ctx.world, 0);
+    b.progress = 1;
+    // A4 (2026-10-01): houses change none of the model's inputs —
+    // cache hit, not a 22ms rebuild.
+    expect(getDesirabilityModel(ctx.terrain, ctx.world, 0)).toBe(before);
+  });
+
+  it('rebuilds when an amenity completes (A4)', () => {
+    const ctx = setup();
+    const { cx, cz } = findLandRect(ctx.terrain, 4, 4);
+    // A park is an amenity source — completing one changes the model.
+    const b = placeBuilding(ctx.world.city, { kind: 'park', owner: 0, cx, cz, facing: 0 });
     const before = getDesirabilityModel(ctx.terrain, ctx.world, 0);
     b.progress = 1;
     expect(getDesirabilityModel(ctx.terrain, ctx.world, 0)).not.toBe(before);
@@ -324,12 +336,10 @@ describe('desirability model caching', () => {
     demolishBuilding(ctx.world.city, b.id);
     const afterDemolish = getDesirabilityModel(ctx.terrain, ctx.world, 0);
     expect(afterDemolish).not.toBe(before);
-    // Zone paint: the paintZone command bumps the epoch, so the new
-    // cells get scored on the next build. (paintResidential bypasses the
-    // command — no bump, no rebuild — then we bump like the command.)
+    // Zone paint: A4 (2026-10-01) keys the zone cells directly, so the
+    // model rebuilds when zones change — even via the bypass that
+    // doesn't bump the epoch. (The old key relied on the epoch alone.)
     paintResidential(ctx.world.city, cx, cz, cx + 3, cz + 3);
-    expect(getDesirabilityModel(ctx.terrain, ctx.world, 0)).toBe(afterDemolish);
-    bumpUtilityEpoch(ctx.world.city);
     const afterPaint = getDesirabilityModel(ctx.terrain, ctx.world, 0);
     expect(afterPaint).not.toBe(afterDemolish);
     expect(afterPaint.values.size).toBe(16);

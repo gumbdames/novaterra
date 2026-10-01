@@ -140,9 +140,10 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `economy.ts` `runTaxes`; `migrationPullFor` (peaks ×1.594 at d=0.72,
   fades through prime; ×1.15 under the Transit Subsidy, capped 2)
   scales the residential growth roll in `city.ts` `tryAutoDevelop`.
-  `getDesirabilityModel` caches on (utilityEpoch, completed-building
-  ids, owner, funded policies) — rebuilt on structural change only,
-  never per tick. DERIVED DATA ONLY — never snapshotted, never in
+  `getDesirabilityModel` caches on (utilityEpoch, residential zone cells,
+  amenity/pollution/nightlife source cells, owner, funded policies) —
+  A4 (2026-10-01): narrow invalidation, so plain house completions are
+  cache hits, not 22ms rebuilds. DERIVED DATA ONLY — never snapshotted, never in
   the digest. NOTE the intentional value-import cycle city.ts ⇄
   desirability.ts: desirability reads `BUILDING_DEFS`/`footprintCells`
   from city (runtime use only, never at module-eval time), mirroring the

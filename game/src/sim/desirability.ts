@@ -476,13 +476,21 @@ let modelCache = new Map<string, { city: CityState; model: DesirabilityModel }>(
  * the model is per-owner — a policy funding change rebuilds the map.
  */
 function desirabilityKey(city: CityState, world: World, owner: number): string {
-  const completedIds: number[] = [];
-  for (const b of city.buildings) {
-    if (b.progress >= 1) completedIds.push(b.id);
+  // A4 (2026-10-01): narrow invalidation — plain houses/shops change
+  // none of the model's inputs. Key on the residential zone cells +
+  // amenity/pollution/nightlife source cells (sorted) instead of all
+  // completed building IDs, so a house completion is a cache hit,
+  // not a 22ms rebuild. Zone paints still invalidate (cells change).
+  const zoneCells = residentialCells(city); // already sorted
+  const sourceCells: number[] = [];
+  for (const row of AMENITY_TABLE) {
+    sourceCells.push(...amenitySources(city, row));
   }
-  // buildings are in placement (id) order, so the list is already sorted.
+  sourceCells.push(...pollutionSources(city));
+  sourceCells.push(...nightlifeSources(city));
+  sourceCells.sort((a, b) => a - b);
   const funded = POLICY_IDS.filter((id) => policyFunded(world, owner, id)).join('.');
-  return `e${city.utilityEpoch ?? 0};c${completedIds.join(',')};o${owner};f${funded}`;
+  return `e${city.utilityEpoch ?? 0};z${zoneCells.join(',')};s${sourceCells.join(',')};o${owner};f${funded}`;
 }
 
 /** Residential-zone cells, sorted ascending. */
