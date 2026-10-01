@@ -87,10 +87,22 @@ plain information, not as progress toward a goal.
 
 ## Training and building
 
-The bottom-left panel has two tabs: **Train** (units) and **Build**
-(buildings and zones). Train is split into **Infantry, Armor, Air,
-Navy**; Build into **Housing, Civic, Commerce, Industry, Utilities,
-Power, Water, Naval & Air, Special**.
+The bottom-left **command menu** has three tabs on its icon rail:
+**Civilian** (tools and buildings), **Military** (units and
+superweapons), and **Management** (taxes, city focus, cabinet,
+ordinances, intelligence, trade, research). Each tab has **sub-tabs**
+along the top — Civilian: **Tools / Build / Airlines**; Military:
+**Train / Build / Superweapons**; Management: **Taxes / City focus /
+Cabinet / Ordinances / Intelligence / Trade / Research**.
+
+Civilian → **Tools** holds the road tool (with a dirt → highway class
+picker), the power-line / water-pipe / rail network tools, the zone
+painters (Homes, Shops, Industry, Airports), and Demolish. Civilian →
+**Build** holds the building tabs: **Housing, Civic, Commerce,
+Industry, Utilities, Power, Water, Transport, Airports**. Military →
+**Train** holds the unit tabs (**Infantry, Armor, Air, Navy**) plus
+the orders help; Military → **Build** holds **Logistics, Naval-Air,
+Special, Intel**.
 
 Every unit button shows its cost in **funds + materials + manpower**;
 every building shows **funds + materials**. Items you can't use yet
@@ -105,10 +117,15 @@ cell must touch water). Pick a unit, then click open ground (or water
 for ships) to train it.
 
 **Research:** build a **Research Lab** (Commerce tab), then select it
-to open the research panel — 21 upgrades in **Military**,
-**Economy**, **Infrastructure**, **Logistics**, and **Intel** groups,
-each with its cost and effect shown. Research one at a time;
-researched upgrades are marked ✓.
+— or open Management → **Research** — to open the research panel: 21
+upgrades in **Military**, **Economy**, **Infrastructure**,
+**Logistics**, and **Intel** groups, each with its cost and effect
+shown. Research one at a time; researched upgrades are marked ✓.
+
+Clicking a unit or building selects it and shows a **detail view**:
+its icon and name, its stats (HP, fuel/ammo, veterancy, cargo,
+occupancy…), and its action buttons. **Esc**, clicking empty ground,
+or the **Back** button returns to the command menu.
 
 ## Power and water
 
@@ -317,29 +334,34 @@ same mode start a route — buses, trams, and ferries then run it on
 their own, pausing at each stop. No routes to draw, no schedules to
 set, nothing to manage.
 
-## Phase 3 controls
+## The command menu
 
-The bottom-left menu has three tabs:
+The bottom-left command menu has three tabs on its icon rail, each
+with sub-tabs along the top:
 
-- **Civilian** — road / rail / power-line / water-pipe / zoning /
-  demolish tools plus the Housing, Civic, Commerce, Industry,
-  Utilities, Power and Water build tabs (all peaceful city building
-  lives here).
-- **Military** — unit **orders** (right-click to attack/move, **S** to
-  stop), the **train** palette, the Logistics / Naval-Air / Special
-  build tabs, and the **superweapons**: fire **Aegis**, enter **Storm
+- **Civilian** — **Tools**: the road tool (with a dirt → highway class
+  picker), the power-line / water-pipe / rail network tools, the zone
+  painters (Homes, Shops, Industry, Airports), and Demolish; **Build**:
+  the Housing, Civic, Commerce, Industry, Utilities, Power, Water,
+  Transport, Airports build tabs (all peaceful city building lives
+  here); **Airlines**: your civilian airline routes.
+- **Military** — **Train**: unit **orders** help (right-click to
+  attack/move, **S** to stop) plus the **train** palette (Infantry,
+  Armor, Air, Navy); **Build**: the Logistics / Naval-Air / Special /
+  Intel build tabs; **Superweapons**: fire **Aegis**, enter **Storm
   targeting** (then click — or drag and release — on the map; a drag
   fires at the release point).
-- **Management** — set **tax rates** per zone (0–100%; disabled while a
-  mayor holds office — the mayor resets them each month), set the
-  **city focus** (specialization), appoint/dismiss your **Mayor** (tax
-  policy + housing/industry/balanced auto-construction) and **General**
-  (select units first, then pick a stance), and **research** upgrades
-  once you own a completed lab.
-
-Trade routes: the sim commands exist but 0.1 Alpha has no menu surface
-for them yet — routes cannot be established from the menu in this
-version.
+- **Management** — **Taxes**: set **tax rates** per zone (0–100%;
+  disabled while a mayor holds office — the mayor resets them each
+  month); **City focus**: set the **city focus** (specialization);
+  **Cabinet**: appoint/dismiss your **Mayor** (tax policy +
+  housing/industry/balanced auto-construction) and **General**
+  (select units first, then pick a stance); **Ordinances**: city-wide
+  policy toggles; **Intelligence**: assets, spies and covert
+  operations; **Trade**: establish and cancel **trade routes** with
+  the rival nation (a setup cost, then steady income while both sides
+  keep trading); **Research**: research upgrades once you own a
+  completed lab.
 
 ## Keyboard shortcuts
 

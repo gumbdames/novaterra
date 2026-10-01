@@ -96,8 +96,10 @@ game/src/
                   # sim, never direct mutation
     game.ts       # game controller: renderer, camera, input, fixed-step loop
     session.ts    # canonical skirmish/campaign/sandbox/peaceful assembly
-    hud.ts        # top bar, 3-tab menu (Civilian/Military/Management),
-                  # train/build palettes, research panel, toasts
+    hud.ts        # top bar, command menu (icon rail:
+                  # Civilian/Military/Management + sub-tabs), selection
+                  # detail view, train/build palettes, research panel,
+                  # toasts
     menus.ts      # main menu, pause, settings (no API-key flow — see §8)
     palettes.ts   # headless-safe palette data + availability logic
     airports.ts / hangars.ts / intel.ts / logistics.ts / utilities.ts /
@@ -250,16 +252,22 @@ state.
 
 ## 7. UI structure
 
-- **3-tab menu** (bottom-left): Civilian (tools + Housing/Civic/Commerce/
-  Industry/Utilities/Power/Water tabs), Military (TRAIN 6 tabs incl. intel,
-  Logistics/Naval-Air/Special build tabs, superweapons), Management (tax
-  steppers, city focus, cabinet, ordinances, research, peaceful status).
+- **Command menu** (bottom-left, rebuilt 2026-10-01): a slim icon rail
+  with three tabs, each with sub-tabs — Civilian (**Tools**: road +
+  class picker, power-line/water-pipe/rail networks, zone painters,
+  demolish; **Build**: Housing/Civic/Commerce/Industry/Utilities/Power/
+  Water/Transport/Airports tabs; **Airlines**: routes), Military
+  (**Train**: orders help + TRAIN 6 tabs; **Build**: Logistics/
+  Naval-Air/Special/Intel tabs; **Superweapons**: Aegis/Storm cards),
+  Management (**Taxes / City focus / Cabinet / Ordinances /
+  Intelligence / Trade / Research**). Selecting a unit/building shows
+  a detail view (Back button, header, stat blocks, action rows).
 - Game speed via top-bar pause/1×/2×/4× buttons (no keyboard shortcut).
 - Camera: left-drag pan, middle-drag orbit, WASD/arrows, edge pan.
   Right-click orders (gated by the same `canTarget` rules the AI uses).
 - **HUD digest registry** (`ui/paletteDigest.ts`): every panel branch
   declares its digest segments; the selection panel rebuilds only on
-  digest change (clicks need stable DOM nodes). 26/26 branches covered.
+  digest change (clicks need stable DOM nodes). 15/15 branches covered.
 - Saves: IndexedDB slots + autosave every 5 game-minutes; **snapshot v8**
   (v5/v6/v7 still load); saves record the map preset + campaign mission
   so loads regenerate the right terrain (R1). Rejected old saves get a

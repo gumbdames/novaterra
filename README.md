@@ -79,6 +79,13 @@ land, sea and air — or play a fully peaceful game with war disabled.
 - City building with visible zoning, terrain-following roads, and
   power/water utility networks you drag-paint across the map
 - 99 buildings and 96 units across land, sea, and air, with tech ages
+- Command menu (rebuilt 2026-10-01): a slim icon rail with three tabs
+  — **Civilian** (Tools / Build / Airlines), **Military** (Train /
+  Build / Superweapons), **Management** (Taxes / City focus / Cabinet /
+  Ordinances / Intelligence / Trade / Research) — each with sub-tabs;
+  selecting a unit or building shows a detail view with its stats and
+  action buttons; trade routes are established from Management →
+  Trade
 - City ordinances (Phase 8): five city-wide policies on the Management
   tab — Green Initiative, Transit Subsidy, Business Incentives,
   Nightlife Ordinance, Education Grants — each with real per-second

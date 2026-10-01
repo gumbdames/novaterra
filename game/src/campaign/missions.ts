@@ -203,6 +203,19 @@ export const MISSIONS: readonly MissionDef[] = [
           'them. Left-drag pans the map — it never selects.',
       },
       {
+        id: 'm1-menu',
+        trigger: { kind: 'atTick', tick: 600 },
+        message:
+          // Command-menu rebuild (2026-10-01): teach the new menu —
+          // the icon rail's three tabs and their sub-tabs.
+          'Everything is built from the command menu, bottom-left. The ' +
+          'Civilian tab holds the tools and buildings, the Military tab ' +
+          'trains units, and the Management tab runs taxes and research — ' +
+          'each tab has sub-tabs along the top. Clicking a unit or ' +
+          'building shows its details; Esc or the Back button returns ' +
+          'to the menu.',
+      },
+      {
         id: 'm1-build',
         trigger: { kind: 'onFirstBuilding', building: 'house' },
         message:
