@@ -568,6 +568,17 @@ export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
   // Veterancy (Phase 1) multiplies the unit's own sight — the Signals
   // Grid bonus is a network effect and stays flat.
   const sightBonus = getSightBonus(world);
+  // Final-review R3 (2026-10-01): hoist the per-own-unit sight radius out
+  // of the enemy loop — effectiveSight depends only on (world, owner,
+  // kind) and vetSightMult only on the own unit, so the radius is
+  // constant across enemies. Behavior-identical; turns the inner loop
+  // from O(enemies x own) effectiveSight calls into O(own) + compares.
+  const ownRadii: { x: number; z: number; r2: number }[] = own.map((o) => {
+    const def = UNIT_DEFS[o.kind as UnitKind];
+    // (?? 0: hand-built records without the field count as Recruit.)
+    const sight = effectiveSight(world, owner, def) * vetSightMult(o.vetLevel ?? 0) + sightBonus;
+    return { x: o.x, z: o.z, r2: sight * sight };
+  });
   for (const e of world.units) {
     if (e.owner === owner || e.hp <= 0) continue;
     // Grand-expansion Phase 7 (S6 intel): stealthed units (spies) are
@@ -576,14 +587,11 @@ export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
     // intel.ts). No omniscience, no cheating.
     if (!isDetected(e, owner, world)) continue;
     let visible = false;
-    for (const o of own) {
-      const def = UNIT_DEFS[o.kind as UnitKind];
-      // (?? 0: hand-built records without the field count as Recruit.)
-      const sight = effectiveSight(world, owner, def) * vetSightMult(o.vetLevel ?? 0) + sightBonus;
-      const dx = e.x - o.x;
-      const dz = e.z - o.z;
+    for (const r of ownRadii) {
+      const dx = e.x - r.x;
+      const dz = e.z - r.z;
       // Compare squared distances; sight is in world units.
-      if (dx * dx + dz * dz <= sight * sight) {
+      if (dx * dx + dz * dz <= r.r2) {
         visible = true;
         break;
       }
