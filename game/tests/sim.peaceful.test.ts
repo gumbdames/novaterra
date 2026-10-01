@@ -61,6 +61,7 @@ import {
   cellCenterWorld,
   cellIndex,
   CITY_GRID_CELLS,
+  type BuildingRecord,
 } from '../src/sim/city';
 import { registerCityCommands } from '../src/sim/city';
 import { registerUpgradeCommands, UPGRADE_DEFS } from '../src/sim/upgrades';
@@ -68,7 +69,7 @@ import { registerIntelCommands } from '../src/sim/intel';
 import { registerSuperweaponCommands } from '../src/sim/superweapons';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
 import { digestWorld } from '../src/sim/digest';
-import { peacefulStatus } from '../src/sim/peaceful';
+import { peacefulStatus, peacefulScore, milestonesReached, PEACEFUL_MILESTONES } from '../src/sim/peaceful';
 import { TICK_MS } from '../src/sim/tick';
 import {
   generateTerrain,
@@ -614,5 +615,144 @@ describe('peaceful determinism', () => {
     const peaceful = createSession({ seed: 99, peaceful: true }).world;
     const war = createSession({ seed: 99 }).world;
     expect(digestWorld(peaceful)).not.toBe(digestWorld(war));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Roadmap B1 (2026-10-02): peaceful city score
+// ---------------------------------------------------------------------------
+
+/**
+ * A minimal building record for score tests — the sim's pure score
+ * reads only kind/owner/progress/operational/workers, so the literal
+ * stays small (optional fields omitted).
+ */
+function scoreBuilding(
+  id: number,
+  kind: 'house' | 'factory' | 'busStop',
+  owner: number,
+  opts: { workers?: number; operational?: boolean; progress?: number } = {},
+): BuildingRecord {
+  return {
+    id,
+    kind,
+    owner,
+    cx: id * 10,
+    cz: 5,
+    facing: 0,
+    progress: opts.progress ?? 1,
+    level: 1,
+    operational: opts.operational ?? true,
+    powered: true,
+    watered: true,
+    workers: opts.workers ?? 0,
+  };
+}
+
+describe('peacefulScore (roadmap B1)', () => {
+  it('is population alone when every prosperity component is zero', () => {
+    const ctx = peacefulSetup();
+    const player = getPlayer(ctx.world.city, 0)!;
+    player.population = 500;
+    player.funds = 0;
+    const s = peacefulScore(ctx.world, 0);
+    expect(s.population).toBe(500);
+    expect(s.score).toBe(500);
+    expect(s.treasury).toBe(0);
+    expect(s.employmentRate).toBe(0);
+    expect(s.desirabilityRate).toBe(0);
+    expect(s.ridershipRate).toBe(0);
+  });
+
+  it('scales employment off filled job capacity (completed buildings only)', () => {
+    const ctx = peacefulSetup();
+    const player = getPlayer(ctx.world.city, 0)!;
+    player.population = 1000;
+    player.funds = 0;
+    // factory has 25 jobs; 10 filled => employment 0.4.
+    ctx.world.city.buildings.push(
+      scoreBuilding(1, 'factory', 0, { workers: 10 }),
+    );
+    // An incomplete factory contributes nothing.
+    ctx.world.city.buildings.push(
+      scoreBuilding(2, 'factory', 0, { workers: 25, progress: 0.5 }),
+    );
+    const s = peacefulScore(ctx.world, 0);
+    expect(s.employmentRate).toBeCloseTo(0.4, 10);
+    expect(s.score).toBe(1400); // 1000 × (1 + 0 + 0.4 + 0 + 0)
+  });
+
+  it('caps employment at full jobs and counts only the owner', () => {
+    const ctx = peacefulSetup();
+    const player = getPlayer(ctx.world.city, 0)!;
+    player.population = 1000;
+    player.funds = 0;
+    ctx.world.city.buildings.push(
+      scoreBuilding(1, 'factory', 0, { workers: 25 }),
+      // Rival buildings never count toward the owner's score.
+      scoreBuilding(2, 'factory', 1, { workers: 25 }),
+    );
+    const s = peacefulScore(ctx.world, 0);
+    expect(s.employmentRate).toBe(1);
+    expect(s.score).toBe(2000);
+  });
+
+  it('scales the treasury off log10 funds and zeroes it when negative', () => {
+    const ctx = peacefulSetup();
+    const player = getPlayer(ctx.world.city, 0)!;
+    player.population = 1000;
+    player.funds = 999_000; // log10(1 + 999) / 3 = 1
+    const rich = peacefulScore(ctx.world, 0);
+    expect(rich.treasury).toBeCloseTo(1, 10);
+    expect(rich.score).toBe(2000);
+    player.funds = -50;
+    const broke = peacefulScore(ctx.world, 0);
+    expect(broke.treasury).toBe(0);
+    expect(broke.score).toBe(1000);
+  });
+
+  it('folds desirability (0..100) and ridership income into the score', () => {
+    const ctx = peacefulSetup();
+    const player = getPlayer(ctx.world.city, 0)!;
+    player.population = 1000;
+    player.funds = 0;
+    // busStop has ridershipIncome 0.08; 25 of them => 2.0 => rate 1.
+    for (let i = 0; i < 25; i++) {
+      ctx.world.city.buildings.push(scoreBuilding(100 + i, 'busStop', 0));
+    }
+    const s = peacefulScore(ctx.world, 0, 60);
+    expect(s.ridershipRate).toBe(1);
+    expect(s.desirabilityRate).toBe(0.6);
+    expect(s.score).toBe(2600); // 1000 × (1 + 0 + 0 + 0.6 + 1)
+  });
+
+  it('clamps out-of-range desirability and never throws on a missing player', () => {
+    const ctx = peacefulSetup();
+    const s = peacefulScore(ctx.world, 0, 140);
+    expect(s.desirabilityRate).toBe(1);
+    const missing = peacefulScore(ctx.world, 99, -10);
+    expect(missing.score).toBe(0);
+    expect(missing.desirabilityRate).toBe(0);
+  });
+});
+
+describe('milestonesReached (roadmap B1)', () => {
+  it('counts thresholds at or below the score', () => {
+    expect(milestonesReached(0)).toBe(0);
+    expect(milestonesReached(999)).toBe(0);
+    expect(milestonesReached(1_000)).toBe(1);
+    expect(milestonesReached(9_999)).toBe(1);
+    expect(milestonesReached(10_000)).toBe(2);
+    expect(milestonesReached(50_000)).toBe(3);
+    expect(milestonesReached(250_000)).toBe(4);
+    expect(milestonesReached(1_000_000)).toBe(5);
+    expect(milestonesReached(9_999_999)).toBe(5);
+  });
+
+  it('the milestone list has five entries matching the UI names', () => {
+    expect(PEACEFUL_MILESTONES).toHaveLength(5);
+    expect(PEACEFUL_MILESTONES.map((m) => m.threshold)).toEqual([
+      1_000, 10_000, 50_000, 250_000, 1_000_000,
+    ]);
   });
 });

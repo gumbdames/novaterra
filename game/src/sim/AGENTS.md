@@ -13,14 +13,21 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   workstream A, 2026-09-30): `World.peaceful: boolean` — tick-0,
   never toggled mid-game, defaults false; snapshotted and digested.
 - `peaceful.ts` — (grand-expansion Phase 8, workstream A, 2026-09-30;
-  endless revision, final-review 2026-10-01) the peaceful-mode status
-  as a sim-side pure check: `peacefulStatus(world, owner)` (housed
-  population + treasury health). Peaceful mode is ENDLESS — there is
-  no victory condition (the old 8,000-resident builder's-race victory
-  was removed); the UI shows the status as information, never as
-  progress toward a goal, and no end screen ever fires. Pure module:
-  no DOM, no three.js, no wall clock, no RNG; value-imports only
-  city.ts (`getPlayer`). A peaceful game can only be played, never
+  endless revision, final-review 2026-10-01; roadmap B1 score,
+  2026-10-02) the peaceful-mode status as a sim-side pure check:
+  `peacefulStatus(world, owner)` (housed population + treasury health).
+  Peaceful mode is ENDLESS — there is no victory condition (the old
+  8,000-resident builder's-race victory was removed); the UI shows the
+  status as information, never as progress toward a goal, and no end
+  screen ever fires. B1 adds the derived city score
+  `peacefulScore(world, owner, avgDesirability)` — population × (1 +
+  treasury + employment + desirability + ridership) — plus
+  `PEACEFUL_MILESTONES` / `milestonesReached`. Score and milestones are
+  pure derivations; milestone toasts and the localStorage high score
+  are UI-side (ui/peaceful.ts), so the sim stays stateless and
+  replay/save compatible. Pure module: no DOM, no three.js, no wall
+  clock, no RNG; value-imports only city.ts (`getPlayer`,
+  `BUILDING_DEFS`). A peaceful game can only be played, never
   won or lost — conquest is unreachable when every military def is
   locked out (the conquest checks are bypassed in ui/session.ts).
 - `tick.ts` — 30 Hz accumulator driver, fixed system registration order.

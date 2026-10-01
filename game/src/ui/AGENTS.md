@@ -381,13 +381,20 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `tests/ui.peaceful.test.ts`).** The UI-side mirror of the sim's
   peaceful system (`sim/peaceful.ts`, grand-expansion Phase 8,
   workstream B, 2026-09-30; endless revision, final-review
-  2026-10-01): `menuTabsForWorld(peaceful)` (the Military tab list —
-  hud.ts renders from this), `formatCount` (deterministic thousands
-  separators, no `toLocaleString`), and `peacefulStatusLines` (the
-  Management tab's status section: housed population and treasury
-  health — no target, no rival line, no end-screen outcome; peaceful
-  mode is endless and never declares a winner). Reads sim state
-  defensively, never writes it.
+  2026-10-01; roadmap B1 score, 2026-10-02): `menuTabsForWorld(peaceful)`
+  (the Military tab list — hud.ts renders from this), `formatCount`
+  (deterministic thousands separators, no `toLocaleString`),
+  `peacefulStatusLines` (the Management tab's status section: housed
+  population and treasury health — no target, no rival line, no
+  end-screen outcome; peaceful mode is endless and never declares a
+  winner), plus the B1 score UI: `avgDesirabilityOf` (from the cached
+  desirability model, 0 without terrain), `peacefulScoreLines` (the
+  score line + the localStorage best line), `newlyCrossedMilestones` /
+  `milestoneToastLine` (pure milestone diffing; names in
+  STRINGS.peaceful.milestoneNames), and `loadPeacefulBest` /
+  `savePeacefulBest` (injectable, never-throwing localStorage high
+  score). The game.ts ~1 Hz poll toasts milestones and records the
+  best. Reads sim state defensively, never writes it.
 - `utilities.ts` — **Phase 2 utility contract module (pure, tested,
   `tests/ui.utilities.test.ts`).** The UI/render boundary for the sim's
   utility networks: the 13-building roster (`UTILITY_BUILDING_KINDS`),

@@ -1091,6 +1091,28 @@ export const STRINGS = {
     covertOpsDisabled: {
       en: 'Covert operations are not available in peaceful mode.',
     },
+    /**
+     * Roadmap B1 (2026-10-02): peaceful city score. The score is
+     * information only — endless mode has no victory condition.
+     */
+    /** Status panel: the derived city score. */
+    scoreLine: { en: 'City score: {score}' },
+    /** Status panel: the localStorage best score. */
+    bestLine: { en: 'Best score: {score}' },
+    /** Status panel: shown when no best score is recorded yet. */
+    bestNone: { en: 'Best score: —' },
+    /**
+     * Milestone names, indexed to match sim/peaceful.ts
+     * PEACEFUL_MILESTONES (1,000 / 10,000 / 50,000 / 250,000 /
+     * 1,000,000). Pinned equal-length by test.
+     */
+    milestoneNames: {
+      en: ['Town', 'City', 'Metropolis', 'Megalopolis', 'Utopia'],
+    },
+    /** Milestone toast: "Milestone: Metropolis — city score 52,310!" */
+    milestoneToast: { en: 'Milestone: {name} — city score {score}!' },
+    /** Milestone toast when the score also sets a new best. */
+    newBestToast: { en: 'New best city score: {score}!' },
   },
   /**
    * Grand-expansion Phase 8 (civilian ordinances, workstream E,

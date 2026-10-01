@@ -157,7 +157,7 @@ import {
 } from './entityPortraits';
 // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
 // the peaceful UI contract (tab visibility, objectives lines).
-import { menuTabsForWorld, peacefulStatusLines } from './peaceful';
+import { menuTabsForWorld, peacefulStatusLines, peacefulScoreLines, loadPeacefulBest } from './peaceful';
 import { getMayor, getGeneral } from '../sim/delegation';
 import { selectionDigest as paletteDigest } from './paletteDigest';
 import {
@@ -1235,10 +1235,10 @@ export class HUD {
    * peaceful games head the tab with the peaceful-objectives section —
    * the victory condition is the tab's most important content.
    */
-  private appendManagementPanel(panel: HTMLElement, world: World): void {
+  private appendManagementPanel(panel: HTMLElement, world: World, terrain?: TerrainData): void {
     const m = STRINGS.menuTabs;
     if (world.peaceful === true) {
-      panel.append(this.peacefulObjectivesEl(world));
+      panel.append(this.peacefulObjectivesEl(world, terrain));
     }
     const subs = [
       { id: 'taxes', label: loc(m.subTaxes) },
@@ -1474,11 +1474,17 @@ export class HUD {
    *
    * Named *El (not append/build/update-prefixed) per the ui/AGENTS.md
    * AD11 rule — it is covered by the management-panel digest branch
-   * (po: segment), not a branch of its own. All DOM classes are the
+   * (po: + ps: segments), not a branch of its own. All DOM classes are the
    * shared panel classes that branch already claims.
    */
-  private peacefulObjectivesEl(world: World): HTMLElement {
+  private peacefulObjectivesEl(world: World, terrain?: TerrainData): HTMLElement {
     const lines = peacefulStatusLines(world, HUMAN_PLAYER_ID);
+    const scoreLines = peacefulScoreLines(
+      world,
+      HUMAN_PLAYER_ID,
+      terrain,
+      loadPeacefulBest(),
+    );
     const sec = this.makeSection(loc(STRINGS.peaceful.statusTitle));
     {
       const row = el('div', 'panel-row');
@@ -1488,6 +1494,16 @@ export class HUD {
     {
       const row = el('div', 'panel-row');
       row.append(el('span', 'panel-label', lines.treasuryLine));
+      sec.append(row);
+    }
+    {
+      const row = el('div', 'panel-row');
+      row.append(el('span', 'panel-label', scoreLines.scoreLine));
+      sec.append(row);
+    }
+    {
+      const row = el('div', 'panel-row');
+      row.append(el('span', 'panel-label', scoreLines.bestLine));
       sec.append(row);
     }
     return sec;
@@ -2124,7 +2140,7 @@ export class HUD {
       } else if (menuTab === 'military') {
         this.appendMilitaryPanel(content, world);
       } else {
-        this.appendManagementPanel(content, world);
+        this.appendManagementPanel(content, world, terrain);
       }
       // Entity portraits (2026-10-01): patch atlas overlays into the
       // freshly built card thumbnails (no-op until the lazy load

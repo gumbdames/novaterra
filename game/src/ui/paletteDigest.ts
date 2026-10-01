@@ -125,7 +125,8 @@ import {
 // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
 // the peaceful-objectives section (po:) reads the sim's pure progress
 // helper — no DOM, safe in the digest.
-import { peacefulStatus } from '../sim/peaceful';
+import { peacefulStatus, peacefulScore } from '../sim/peaceful';
+import { avgDesirabilityOf } from './peaceful';
 
 /**
  * Digest of the selection panel's dynamic content. Stable when nothing
@@ -446,8 +447,20 @@ export function selectionDigest(
       if (world.peaceful === true) {
         const status = peacefulStatus(world, HUMAN_PLAYER_ID);
         parts.push(`po:${status.population}:${status.treasuryOk ? 1 : 0}`);
+        // Roadmap B1 (2026-10-02): the peaceful city score renders in
+        // the same section, so it gets its own additive segment (ps:)
+        // rather than changing po:'s meaning. The desirability input
+        // needs terrain — absent (headless) it reads 0, matching the
+        // panel, which receives the same optional terrain.
+        const score = peacefulScore(
+          world,
+          HUMAN_PLAYER_ID,
+          avgDesirabilityOf(terrain, world, HUMAN_PLAYER_ID),
+        );
+        parts.push(`ps:${score.score}`);
       } else {
         parts.push('po:x');
+        parts.push('ps:x');
       }
       // Grand-expansion Phase 8 (civilian ordinances, workstream E,
       // 2026-09-30): the City ordinances section renders on the
@@ -879,6 +892,9 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // po: the peaceful-objectives section (Phase 8 peaceful, workstream
     // B — player population, treasury flag, rival population; 'po:x'
     // when the section does not render, i.e. non-peaceful worlds).
+    // ps: the peaceful city score (roadmap B1, 2026-10-02 — the derived
+    // score the section renders next to the status lines; 'ps:x' when
+    // the section does not render).
     // oc: the City ordinances section (Phase 8 civilian, workstream E —
     // per-policy on/off + funded/unfunded, in POLICY_IDS order).
     // tr: the Trade sub-tab's route list (command-menu rebuild,
@@ -887,7 +903,7 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // st: the sea-trade section's route list (Half A: id.from.to.policy
     // each); sa: the sea-route tool's armed state ('off' / 'pick.pick' /
     // first id / first+second ids).
-    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:', 'po:', 'oc:', 'tr:', 'st:', 'sa:'],
+    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:', 'po:', 'ps:', 'oc:', 'tr:', 'st:', 'sa:'],
   },
   {
     id: 'research-panel',

@@ -200,7 +200,15 @@ import {
   resolveNetworkToolClick,
 } from './linearNetworkDrag';
 import { PauseMenu, loadSettings, type QualityLevel } from './menus';
-import { STRINGS, loc } from './strings';
+import { STRINGS, loc, fillLoc } from './strings';
+import { peacefulScore } from '../sim/peaceful';
+import {
+  avgDesirabilityOf,
+  formatCount,
+  newlyCrossedMilestones,
+  milestoneToastLine,
+  savePeacefulBest,
+} from './peaceful';
 import { trainPlacementToast } from './palettes';
 import { AudioEngine } from '../audio/engine';
 import { AudioEventTracker, snapshotForAudio, type AudioWorldSnapshot } from '../audio/events';
@@ -778,6 +786,15 @@ class GameController {
   private lastMissionPoll = 0;
   private lastMusePoll = 0;
   private lastObjectivePanelRefresh = 0;
+  /**
+   * Roadmap B1 (2026-10-02): peaceful score milestone tracking.
+   * Per-session set of crossed milestone indexes (into
+   * PEACEFUL_MILESTONES) the player was already toasted for — new
+   * games get a fresh controller, so a fresh set. The high score
+   * itself lives in localStorage (ui/peaceful.ts).
+   */
+  private lastPeacefulPoll = 0;
+  private peacefulMilestonesSeen = new Set<number>();
   /** Set once the mission's victory/defeat has been reported. */
   private missionEnded = false;
   /**
@@ -1320,12 +1337,48 @@ class GameController {
   }
 
   /**
+   * Roadmap B1 (2026-10-02): peaceful-mode score milestone poll.
+   * ~1×/sec in peaceful worlds: toasts newly crossed score milestones
+   * (one toast per milestone per session) and records the localStorage
+   * best score. Read-only toward the sim — milestone "state" lives in
+   * this controller and localStorage, never in the snapshot, so
+   * replays and saves are unaffected.
+   */
+  private pollPeacefulScore(world: World, nowMs: number): void {
+    if (world.peaceful !== true) return;
+    if (nowMs - this.lastPeacefulPoll < 1000) return;
+    this.lastPeacefulPoll = nowMs;
+    const score = peacefulScore(
+      world,
+      HUMAN_PLAYER_ID,
+      avgDesirabilityOf(this.session.terrain, world, HUMAN_PLAYER_ID),
+    ).score;
+    const crossed = newlyCrossedMilestones(score, this.peacefulMilestonesSeen);
+    for (const index of crossed) {
+      this.peacefulMilestonesSeen.add(index);
+      this.hud.toast(milestoneToastLine(index, score));
+    }
+    if (savePeacefulBest(score) && crossed.length === 0) {
+      // A new best that did not already arrive with a milestone toast
+      // gets its own quiet note. (Milestone toasts already name the
+      // score, so no double toast there.)
+      this.hud.toast(
+        fillLoc(STRINGS.peaceful.newBestToast, { score: formatCount(score) }),
+      );
+    }
+  }
+
+  /**
    * Phase 2: campaign director + Muse persona polling (UI-layer only).
    * The mission director ticks ~2×/sec; Muse polls ~1×/sec. Neither
    * ever mutates sim state directly — the director issues commands
    * through the queue, Muse only reads.
    */
   private pollCampaign(world: World, nowMs: number): void {
+    // Roadmap B1 (2026-10-02): peaceful score milestones — ~1×/sec,
+    // UI-only, never touches sim state. Only in peaceful worlds.
+    this.pollPeacefulScore(world, nowMs);
+
     const campaignOpts = this.opts.campaign;
     const run = this.missionRun;
 

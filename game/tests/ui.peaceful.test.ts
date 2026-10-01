@@ -265,3 +265,159 @@ describe('peaceful digest segment (po:)', () => {
     expect(managementDigest(session)).not.toBe(before);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Roadmap B1 (2026-10-02): peaceful city score + milestones + best score
+// ---------------------------------------------------------------------------
+
+import { peacefulScore, PEACEFUL_MILESTONES } from '../src/sim/peaceful';
+import {
+  avgDesirabilityOf,
+  peacefulScoreLines,
+  newlyCrossedMilestones,
+  milestoneToastLine,
+  loadPeacefulBest,
+  savePeacefulBest,
+} from '../src/ui/peaceful';
+
+describe('peaceful digest segment (ps:)', () => {
+  function managementDigest(
+    session: ReturnType<typeof createSession>,
+  ): string {
+    return selectionDigest(
+      session.world,
+      NO_SEL,
+      'infantry',
+      'housing',
+      undefined,
+      'management',
+    );
+  }
+
+  it('carries the derived score in peaceful worlds', () => {
+    const session = createSession({ seed: 23, peaceful: true });
+    setPeacefulInputs(session, HUMAN_PLAYER_ID, 7999);
+    const digest = managementDigest(session);
+    // funds default to 100: treasury = log10(1.1)/3 ≈ 0.0138, so the
+    // score is round(7999 × 1.0138) = 8109 (terrain is absent in this
+    // helper, so desirability reads 0 — same as the panel's fallback).
+    expect(digest).toContain('ps:8109');
+  });
+
+  it('emits ps:x on the Management tab in non-peaceful worlds', () => {
+    const session = createSession({ seed: 23 });
+    expect(managementDigest(session)).toContain('ps:x');
+  });
+
+  it('moves when the peaceful population moves', () => {
+    const session = createSession({ seed: 23, peaceful: true });
+    setPeacefulInputs(session, HUMAN_PLAYER_ID, 100);
+    const before = managementDigest(session);
+    setPeacefulInputs(session, HUMAN_PLAYER_ID, 1100);
+    expect(managementDigest(session)).not.toBe(before);
+  });
+});
+
+describe('peacefulScoreLines', () => {
+  it('renders the score and the em-dash best when none is recorded', () => {
+    const session = createSession({ seed: 31, peaceful: true });
+    setPeacefulInputs(session, HUMAN_PLAYER_ID, 7999);
+    const lines = peacefulScoreLines(session.world, HUMAN_PLAYER_ID, undefined, null);
+    expect(lines.scoreLine).toBe('City score: 8,109');
+    expect(lines.bestLine).toBe('Best score: —');
+  });
+
+  it('renders a recorded best score', () => {
+    const session = createSession({ seed: 31, peaceful: true });
+    const lines = peacefulScoreLines(session.world, HUMAN_PLAYER_ID, undefined, 48200);
+    expect(lines.bestLine).toBe('Best score: 48,200');
+  });
+});
+
+describe('avgDesirabilityOf', () => {
+  it('reads 0 without terrain', () => {
+    const session = createSession({ seed: 31, peaceful: true });
+    expect(avgDesirabilityOf(undefined, session.world, HUMAN_PLAYER_ID)).toBe(0);
+    expect(avgDesirabilityOf(null, session.world, HUMAN_PLAYER_ID)).toBe(0);
+  });
+
+  it('reads within 0..100 with the session terrain', () => {
+    const session = createSession({ seed: 31, peaceful: true });
+    const avg = avgDesirabilityOf(session.terrain, session.world, HUMAN_PLAYER_ID);
+    expect(avg).toBeGreaterThanOrEqual(0);
+    expect(avg).toBeLessThanOrEqual(100);
+    // The panel and the digest see the same number for the same inputs.
+    expect(avgDesirabilityOf(session.terrain, session.world, HUMAN_PLAYER_ID)).toBe(avg);
+  });
+});
+
+describe('newlyCrossedMilestones', () => {
+  it('reports indexes crossed but not yet seen', () => {
+    expect(newlyCrossedMilestones(999, new Set())).toEqual([]);
+    expect(newlyCrossedMilestones(1_000, new Set())).toEqual([0]);
+    expect(newlyCrossedMilestones(60_000, new Set([0, 1]))).toEqual([2]);
+    expect(newlyCrossedMilestones(60_000, new Set([0, 1, 2]))).toEqual([]);
+    expect(newlyCrossedMilestones(2_000_000, new Set())).toEqual([0, 1, 2, 3, 4]);
+  });
+});
+
+describe('milestoneToastLine', () => {
+  it('names the milestone and the score in English', () => {
+    expect(milestoneToastLine(0, 1_234)).toBe('Milestone: Town — city score 1,234!');
+    expect(milestoneToastLine(2, 52_310)).toBe('Milestone: Metropolis — city score 52,310!');
+    expect(milestoneToastLine(4, 1_000_000)).toBe('Milestone: Utopia — city score 1,000,000!');
+  });
+
+  it('pins five milestone names against the five sim thresholds', () => {
+    expect(STRINGS.peaceful.milestoneNames.en).toEqual([
+      'Town', 'City', 'Metropolis', 'Megalopolis', 'Utopia',
+    ]);
+    expect(PEACEFUL_MILESTONES).toHaveLength(
+      STRINGS.peaceful.milestoneNames.en.length,
+    );
+  });
+});
+
+describe('peaceful best score storage', () => {
+  function fakeStorage(): {
+    getItem(k: string): string | null;
+    setItem(k: string, v: string): void;
+    store: Map<string, string>;
+  } {
+    const store = new Map<string, string>();
+    return {
+      store,
+      getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
+      setItem: (k: string, v: string) => {
+        store.set(k, v);
+      },
+    };
+  }
+
+  it('round-trips a best score and rejects lower ones', () => {
+    const s = fakeStorage();
+    expect(loadPeacefulBest(s)).toBeNull();
+    expect(savePeacefulBest(1234, s)).toBe(true);
+    expect(loadPeacefulBest(s)).toBe(1234);
+    expect(savePeacefulBest(1000, s)).toBe(false);
+    expect(loadPeacefulBest(s)).toBe(1234);
+    expect(savePeacefulBest(2000, s)).toBe(true);
+    expect(loadPeacefulBest(s)).toBe(2000);
+  });
+
+  it('never throws on corrupt or hostile storage', () => {
+    const s = fakeStorage();
+    s.setItem('novaterra.peacefulBestScore', 'not json{');
+    expect(loadPeacefulBest(s)).toBeNull();
+    s.setItem('novaterra.peacefulBestScore', '{"score":"lots"}');
+    expect(loadPeacefulBest(s)).toBeNull();
+    const hostile = {
+      getItem: () => null,
+      setItem: () => {
+        throw new Error('QuotaExceededError');
+      },
+    };
+    expect(savePeacefulBest(5, hostile)).toBe(false);
+    expect(loadPeacefulBest(null)).toBeNull();
+  });
+});

@@ -759,6 +759,15 @@ your housed population and treasury health as plain information. Grow a
 genuinely great city — roughly 270 apartment blocks' worth of people on
 under 4% of the map — because building it is the whole game.
 
+For endless builders, the Management tab also shows a derived **city
+score**: your population multiplied by prosperity — a healthy treasury,
+employment (filled jobs), average residential desirability, and transit
+ridership each lift the score. It is information, not a victory
+condition: it can never end the game. Crossing a score milestone (Town
+at 1,000, City at 10,000, Metropolis at 50,000, Megalopolis at 250,000,
+Utopia at 1,000,000) shows a one-time toast, and the game remembers your
+best score across sessions.
+
 ## The campaign: "The First Term"
 
 From the main menu, **Missions** starts the 8-mission story campaign.
