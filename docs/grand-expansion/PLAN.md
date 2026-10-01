@@ -1093,7 +1093,7 @@ integration gate is green (full suite 2100/2100, tsc clean).
 - **AI work:** peaceful-play behavior — DONE (workstream C, 2026-09-30:
   `thinkPeaceful`; zero military orders formed, let alone rejected).
 
-### Phase 9 — Soak, balance, polish (ongoing)
+### Phase 9 — Soak, balance, polish
 - **Status: COMPLETE (2026-09-30, 0.1 Alpha).** Dedicated final pass.
   Long AI-vs-AI soaks to game conclusion (marshal/commander/general,
   standard + peaceful, multiple seeds) with headline-usage metrics
@@ -1117,15 +1117,6 @@ integration gate is green (full suite 2100/2100, tsc clean).
 on plant ladder and supply costs; visual review per asset batch;
 player-docs (HOW_TO_PLAY, GAME_MECHANICS) updated per phase as
 mechanics land — a doc that lags reality is a bug.
-
-**Status: IN PROGRESS (2026-09-30, 0.1 Alpha).** Workstream B (balance
-pass + pathology fixes from workstream A's soak metrics): fixed the
-`advanceAge` apply-time race (duplicate commands fizzle, no double
-charge), the forward-base-in-water pathology (nearest-land nudge),
-and the peaceful-AI death spiral (treasury floor 30s + paced fuel
-build + fouling avoidance — funds stay positive, pop 12→60 over
-1000s). Marshal builds mediaCenter (unlocks industry age). Commander
-mix gains reconTeam + hq. 2117/2117 tests green.
 
 ## 10. Budget accounting
 

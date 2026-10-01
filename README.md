@@ -130,6 +130,27 @@ land, sea and air — or play a fully peaceful game with war disabled.
   Aegis shield holds damage off yours. Conquest victory needs every
   enemy unit AND every enemy building destroyed
 
+## Building from source
+
+Prerequisites: **Node.js ≥ 22** (see `.nvmrc`; `nvm use` picks it up).
+
+```sh
+cd game
+npm install     # installs vite, vitest, typescript, three
+npm run dev     # local dev server with hot reload
+npm test        # full test suite (vitest, headless)
+npm run typecheck  # tsc --noEmit
+npm run build   # production build into game/dist/ (+ license stamp)
+```
+
+`npm run build` emits plain static assets. The live site
+(https://gumbdames.github.io/novaterra/) is deployed from `main` to
+GitHub Pages by pushing the `dist` output to the `gh-pages` branch.
+
+New contributors: read [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
+repo [`AGENTS.md`](AGENTS.md) first — docs freshness and the step gate
+are part of every change.
+
 ## Documentation map
 
 | Doc | What it is |
@@ -139,6 +160,8 @@ land, sea and air — or play a fully peaceful game with war disabled.
 | [`docs/GAME_MECHANICS.md`](docs/GAME_MECHANICS.md) | How the game works (player-facing, kept current) |
 | [`docs/HOW_TO_PLAY.md`](docs/HOW_TO_PLAY.md) | Controls and getting started |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Locked architecture |
+| [`docs/REVERSALS.md`](docs/REVERSALS.md) | Decisions reversed or deliberately not taken |
+| [`docs/TESTING.md`](docs/TESTING.md) | Test layout, commands, conventions |
 | [`docs/I18N.md`](docs/I18N.md) | English-only today, structured for later languages |
 | [`docs/PLAN.md`](docs/PLAN.md) | Original pre-expansion plan (superseded by the grand-expansion plan) |
 | [`docs/research/`](docs/research/) | Research notes from each workstream |
@@ -153,7 +176,7 @@ land, sea and air — or play a fully peaceful game with war disabled.
 | `game/src/render/` | Rendering layer (scene, instancing, effects) |
 | `game/src/ui/` | HUD, menus, dialogs |
 | `game/src/audio/` | Adaptive music + SFX |
-| `game/assets/` | Art/audio assets and the asset manifest |
+| `game/public/` | Static assets served as-is: `models/` (989 CC0 GLBs + textures), `audio/` |
 | `game/tests/` | Automated tests (unit + headless sim) |
 | `docs/` | Plans, architecture, design docs, player docs |
 | `tools/` | Build, map and asset tooling |

@@ -2,298 +2,286 @@
 
 Living document. Locked decisions are dated; when a decision changes, the old
 one moves to the Decision Log with its superseded date — history is never
-rewritten. Last updated: 2026-09-28 (v1, post-Phase-0-research).
+rewritten. Last updated: 2026-10-01 (final-review R4: full rewrite to match
+the shipped 0.1 Alpha).
 
-## 1. Principles
+> The reversals that shaped this architecture — the 2026-09-29 Live Muse
+> API-key rip-out, roads-optional, no-WASM, the commercial-title purge —
+> are recorded in [`docs/REVERSALS.md`](REVERSALS.md).
+
+## 1. What the game is
+
+NOVATERRA (0.1 Alpha) is a 3D browser strategy game mixing city-building,
+real-time strategy, and empire management, set in the modern world of 2026.
+You are the President of a country: found cities, zone land, drag-paint
+power/water utility networks, run a multi-resource economy, research through
+technology ages, and command armies on land, sea, and air — or play a fully
+peaceful no-military mode that never ends.
+
+**Shipped roster (verified in code): 96 units / 99 buildings / 21 upgrades.**
+Units: 31 land, 30 air, 35 sea (including 28 Mk II/III tech variants across
+14 lines). Buildings span housing, civic, commerce, industry, utilities
+(13 power/water plants), logistics (fuel/ammo chain), transport stops,
+airports (14 buildings), ports, and intel (4 buildings).
+
+## 2. Principles
 
 1. **The sim is deterministic and decoupled from rendering.** Fixed 30 Hz
-   timestep, accumulator pattern (Gaffer-on-Games), render interpolates
-   between the last two ticks. No gameplay logic in `render/`; no rendering
-   assumptions in `sim/`.
-2. **Same-machine determinism** (single-player): identical inputs ⇒ identical
-   sim. Buys us replays (command log), save/load integrity (state hash),
-   reproducible bugs, testable AI. No cross-machine lockstep needed — IEEE-754
-   doubles are fine; fixed-point parked behind a `sim/math.ts` seam.
+   timestep, accumulator pattern, render interpolates between ticks. No
+   gameplay logic in `render/`; no rendering assumptions in `sim/`.
+2. **Same-machine determinism** (single-player): identical seed + identical
+   commands ⇒ identical sim. Buys replays, save/load integrity (state hash),
+   reproducible bugs, testable AI. No cross-machine lockstep needed.
 3. **Plain-data sim state.** Everything the sim owns is serializable plain
-   data (no class instances with behavior in hot state) — required for
-   snapshots, save/load, and any future worker transport.
-4. **Boring technology by default.** Exotic tech only on profiling evidence
-   (recorded in `docs/research/`).
-5. **Perf budgets are tests.** CI fails when a perf scenario exceeds budget.
-
-## 2. Locked stack (2026-09-28)
-
-| Layer | Choice | Why (one line) |
-|---|---|---|
-| Rendering | three.js pinned exact (`three@0.186.1`), `three/webgpu` import: **WebGPURenderer primary + automatic WebGL2 fallback**, custom shaders in pure TSL only | One codebase, one scene graph; 15–25% of users get WebGL2 free; mobile tier forces WebGL2 via runtime flag |
-| Language | TypeScript 7 strict (`no-explicit-any`, `no-non-null-assertion`) | Deterministic sim needs the strictness; tsgo is fast |
-| Build/test | Vite 8 + Vitest 3 | One pipeline; `vite build` emits static assets for GitHub Pages (`/novaterra/` base) |
-| Audio | Raw Web Audio, own `audio/` module, no runtime library | Adaptive stem engine needs bespoke lookahead scheduling; Howler/Tone.js rejected (see `docs/research/audio.md`) |
-| Music source | Kevin MacLeod "Meditation Impromptu 01" (peace) + "Volatile Reaction" (war), CC BY 4.0, ~5.4 MB shipped | Incompetech direct downloads verified 2026-09-29; attribution in `THIRD_PARTY_NOTICES.md` + `docs/HOW_TO_PLAY.md`; research-stage Tallbeard/Pixabay plan superseded |
-| Save storage | IndexedDB (one record per save, single tx; 0.1 Alpha stores the SaveFile object directly, no compression) + in-memory fallback when IndexedDB is unavailable | Large late-game saves; `navigator.storage.persist()`; compression + export/import file fallback are Phase 2+ |
-| WASM | **None** — entire game is TypeScript; no WASM anywhere | Evidence: wasm-bindgen slower than JS on our workload shape; no WASM threads on Pages (no COOP/COEP). First candidate if ever needed: `sim/pathfinding.ts` (compiled A* at scale); then map-wide desirability scans. See `docs/research/sim-architecture.md` §7 |
-| Threads | Sim single-threaded on main thread (Phase 1); workers only for periphery (audio decode, save serialize, asset load, seeded mapgen before tick 0) | Worker completion order is nondeterministic; clone tax; debugging tax (see Decision Log D3) |
+   data — required for snapshots, save/load, and digest hashing.
+4. **Boring technology by default.** No WASM anywhere (see REVERSALS.md);
+   exotic tech only on profiling evidence recorded in `docs/research/`.
+5. **Perf budgets are tests.** `game/tests/perf.budgets.test.ts` fails the
+   suite when a perf scenario exceeds budget.
+6. **Rejections are loud.** Invalid commands throw `CommandRejectedError`
+   with a plain-language reason; nothing fails silently.
 
 ## 3. Module map (`game/src/`)
 
 ```
 game/src/
-  sim/            # deterministic simulation — no DOM, no three.js, no Audio
-    tick.ts       # fixed-timestep driver (accumulator, catch-up cap, slow-mo)
-    rng.ts        # sim-owned mulberry32; state is part of every snapshot
-    math.ts       # seam: float today, fixed-point if ever needed
-    world.ts      # entity store: hand-rolled SoA for hot entities
-                  # (units/citizens/projectiles), OOP for strategic layer
-                  # (cities, mayors, cabinets) — prototype vs apecs first
-    commands.ts   # all player/AI input as tick-aligned command structs
-    systems/      # movement, combat, economy, growth, diplomacy, ai/ ...
-    pathing/      # domain grids + hierarchical A*/JPS + flow fields +
-                  # local steering; time-sliced request queue (≤2 ms/tick)
-    spatial.ts    # uniform spatial hash grid (rebuilt per tick)
-    terrain.ts    # deterministic seeded mapgen: Meridian Plains heightfield,
-                  # biomes, water level, spawn placement (regen from seed;
-                  # not part of World — see §5)
-    digest.ts     # per-tick state hash (save integrity, desync detect, tests)
-    serialize.ts  # snapshot <-> SaveFile (versioned, migrated)
-  render/         # read-only view of last two sim ticks + alpha; three.js only
-    scene.ts renderer.ts instancing.ts terrain.ts effects.ts lod.ts ...
-  ui/             # HUD, menus, dialogs, camera, selection, orders, advisor,
-                  # session assembly — commands go to sim, never direct mutation
-                  # campaignui.ts: mission select/briefing/debrief/objectives
-                  # musebox.ts: Muse widget + threat meter (DOM only)
-  audio/          # adaptive music engine (peace/war crossfade between two
-                  # looping tracks), procedural SFX pool (Web Audio synth)
-  campaign/       # Phase 2: mission data (missions.ts), pure objective
-                  # checking (objectives.ts), mission director — tracks kills,
-                  # fires scripted events, spawns raids via ordinary commands
-                  # (director.ts), progress/scoring/endings + persistence
-                  # (progress.ts). Reads sim state, never mutates it directly.
-  muse/           # Phase 2: deterministic persona lines (persona.ts), threat
-                  # meter + trick narration from visible state only (director.ts),
-                  # event detection + chattiness throttle (controller.ts), live
-                  # Muse advisory protocol scaffold (live.ts). Advisory only:
-                  # never drives ticks or mutates sim state.
-  net_save/       # IndexedDB driver, export/import, save slots UI data
-  main.ts         # boot, menu backdrop + menus, wiring (game loop lives in ui/game.ts)
-game/tests/
-  unit/           # sim logic tests (Vitest, headless)
-  sim/            # scripted gameplay scenarios (replays via command log)
-  perf/           # perf scenarios; budgets enforced in CI
-game/assets/     # art/audio + manifests (LICENSES.yml for audio)
-tools/           # map tooling, asset pipeline, balance spreadsheets
+  sim/            # deterministic simulation — no DOM, no three.js, no Audio,
+                  # no wall clock, no Math.random (rng.ts named streams only)
+    tick.ts       # 30 Hz fixed-timestep driver (accumulator, catch-up cap)
+    rng.ts        # mulberry32 + named streams; stream state in every snapshot
+    world.ts      # the World store; owns city: CityState
+    city.ts       # city grid, roads, zones, buildings, players, placement
+    units.ts      # unit defs (96) + UnitRecord store, spawnUnit
+                  # BUILDING_DEFS (99) lives in city.ts
+    upgrades.ts   # 21 researchable upgrades + effect hooks
+    ages.ts       # 5 technology ages + National Program choices
+    variants.ts   # 28 Mk II/III tech-level variants (lazy getter, no new art)
+    economy.ts    # 1 Hz economy: construction, upkeep, utilities, taxes, growth
+    combat.ts     # deterministic combat; attackBuilding siege orders (R2)
+    movement.ts   # path following, formations, separation
+    pathfinding.ts# deterministic 8-dir A* + chunked Dijkstra flow fields,
+                  # time-sliced coordinator (3 A* + 600 flood pops per tick)
+    spatial.ts    # uniform spatial hash grid (rebuilt per tick; R1: combat grid)
+    terrain.ts    # seeded mapgen, 8 map presets (regen from seed, not stored)
+    utilityNetworks.ts # derived power/water topology (integer-BFS flood fill)
+    desirability.ts    # derived 0–100 residential desirability + land value
+    intel.ts      # intel asset economy, stealth/detection, covert ops
+    veterancy.ts  # Recruit → Regular → Veteran → Elite XP system
+    superweapons.ts    # Storm Engine strike + Aegis shield
+    ai.ts         # Classic AI: 5 difficulties, seeded personalities, siege
+                  # doctrine, intel play, peaceful dispatch
+    peaceful.ts   # peaceful-mode status (endless — no victory condition)
+    delegation.ts # mayors/generals/cabinet (appointed bureaucrats)
+    market.ts     # fixed-rate market price list (leaf module)
+    commands.ts   # tick-aligned command queue, { validate, apply } specs
+    digest.ts     # FNV-1a canonical state hash (save integrity, tests)
+    snapshot.ts   # versioned snapshots (v8; v5/v6/v7 still load)
+    cheats.ts     # cheat command specs (issuer: 'cheat')
+  render/         # read-only view of the sim; three.js only, never mutates
+    renderer.ts   # WebGPURenderer primary + automatic WebGL2 fallback
+    entities.ts   # EntityRenderer: syncs world → three.js views
+    entityInstancing.ts # per-kind InstancedMesh pools (draw calls scale
+                  # with distinct kinds, never entity count)
+    models.ts / lazyModels.ts  # 101 CC0 GLB keys; 33-key boot set, rest lazy
+    proceduralModels.ts # 37 hand-built gap models + surface treatments
+    surfaceTextures.ts / surfaceMaterials.ts # 16 seeded procedural surfaces
+    terrain.ts / nature.ts / birds.ts # terrain mesh, nature scatter, wildlife
+    roads.ts / rails.ts / networks.ts # road ribbons, rail tracks (R1: wired),
+                  # power-line / water-pipe overlays
+    utilityOverlay.ts / logisticsOverlay.ts / airportOverlay.ts /
+    desirabilityOverlay.ts # toggle-able diagnosis layers
+    chevrons.ts   # veterancy chevron billboards (per-instance quaternion)
+    cityLife.ts   # ambient pedestrians/cars (render-only, never sim state)
+  ui/             # HUD, menus, camera, selection, orders — commands go to
+                  # sim, never direct mutation
+    game.ts       # game controller: renderer, camera, input, fixed-step loop
+    session.ts    # canonical skirmish/campaign/sandbox/peaceful assembly
+    hud.ts        # top bar, 3-tab menu (Civilian/Military/Management),
+                  # train/build palettes, research panel, toasts
+    menus.ts      # main menu, pause, settings (no API-key flow — see §8)
+    palettes.ts   # headless-safe palette data + availability logic
+    airports.ts / hangars.ts / intel.ts / logistics.ts / utilities.ts /
+    desirability.ts / peaceful.ts # per-system UI contract modules (pure)
+    musebox.ts    # Muse widget + threat meter (DOM only, offline persona)
+    strings.ts    # all UI copy, English-only (LocalizedString indirection)
+    icons.ts      # hand-drawn inline SVG set (icon AND text on buttons)
+  audio/          # adaptive music engine (peace/war crossfade) + procedural
+                  # SFX synth on raw Web Audio; observes sim, never mutates
+  campaign/       # 8-mission "The First Term": mission data, objectives,
+                  # director, progress/scoring/endings
+  muse/           # offline Muse persona (deterministic lines, threat meter);
+                  # live.ts = honest offline "hopefully coming" placeholder
+  net_save/       # IndexedDB driver, save slots, version validation
+  main.ts         # boot, menu wiring, save-load entry
+game/tests/       # 137 files, ~2100 tests — see docs/TESTING.md
+game/public/      # static assets: models/ (989 CC0 files), audio/
 ```
 
 **Data flow:** `ui` → `commands.ts` (tick-aligned queue) → `sim/tick.ts` →
 systems mutate plain-data world → `digest.ts` → snapshot → `render/`
-interpolates prev/current with alpha. `audio/` and `ui/` observe sim events;
-they never mutate sim state.
+interpolates. `audio/` and `ui/` observe sim events; they never mutate sim
+state.
 
 ## 4. Tick design
 
-- 30 Hz fixed step; accumulator with **catch-up clamped** (max 5 steps, then
-  slow-motion + log — never spiral-of-death).
+- 30 Hz fixed step; accumulator with catch-up clamped (max 5 steps, then
+  slow-motion + log — never spiral-of-death). Accumulator epsilon (1e-9 ms)
+  guards float-subtraction dust.
 - Inputs (player orders, AI decisions) enter a **tick-aligned command queue**;
-  sim consumes whole commands only at tick boundaries.
+  every command validates at enqueue AND at apply; stale commands throw
+  deterministically.
 - Render interpolates entity transforms between tick N−1 and N with alpha;
   UI/HUD reads the latest snapshot.
-- Tab hidden ⇒ auto-pause (freeze accumulator; rendering/UI stay alive).
 - Pause = freeze accumulator. Save = snapshot at a tick boundary (includes
-  RNG state, AI brains, music bar position). Load = verify state hash, then
-  resume ticking.
+  RNG state, AI brains). Load = verify state hash, resume ticking.
+- Tab hidden ⇒ the accumulator drops whole ticks by design
+  (determinism-safe; a long-hidden tab fast-forwards game time).
 
-## 5. Key subsystem decisions
+## 5. Key subsystem designs
 
-- **Pathfinding + movement (step 6, implemented 2026-09-28):** the
-  research's layered sketch became concrete code in
-  `sim/pathfinding.ts` / `sim/movement.ts` / `sim/units.ts`.
-  Deterministic 8-direction A* (octile heuristic, ties by cell index,
-  corner-cut prevention — no diagonal may clip a blocked orthogonal
-  pair; water blocks, roads cost ×0.5) for single-unit orders; Dijkstra
-  flow fields (reverse flood from the destination, chunked at 600 pops/
-  tick, early exit once every waiting unit's cell — plus a one-cell
-  margin — is reached) for group orders. No JPS: measured A* on the dev
-  VM is 0.1–0.7 ms for typical orders and ~2.9 ms at the 1000-expansion
-  cap (which falls back to a field instead of blowing the budget); the
-  full-grid flood the research assumed was "sub-millisecond" actually
-  measures ~58 ms, which is exactly why it is time-sliced. All path
-  requests go through a time-sliced FIFO coordinator — 3 A* + 600 flood
-  pops per tick, ≤2 ms/tick — so order-spam can never break the frame
-  budget; cross-component requests fail instantly (0 expansions) via the
-  memoized land-component map. Movement: A* waypoint following with
-  per-waypoint arrival cut (2.0), flow-field following that steers by
-  derived direction (argmin of forward step cost + neighbor dist — never
-  raw dist, which misguides on roads/diagonals), slowdown within 12 of
-  the slot, terrain-following height, map clamp, water guard. Group
-  orders land units on formation slots (concentric square rings, 2.5
-  apart, one unit per slot) so armies arrive as formations, never
-  stacked. Separation (radius 6, spatial-hash neighbors, id-ordered push)
-  is designed not to fight arrival: only moving units participate, and
-  units inside the slowdown radius ignore pushes — separation radius >
-  slot spacing would otherwise deadlock docking. Systems run pathfinding
-  then movement each tick; snapshot v3 + digest cover units, queues,
-  fields and partial field builds. `moveUnit` / `moveGroup` / `stopUnit`
-  commands validate at enqueue and at apply; unreachable destinations
-  fail loudly with the unit unmoved.
-- **Spatial queries:** uniform spatial hash grid (cell 16 world units,
-  insert/remove/move, radius + rect queries, results always sorted by entity
-  id for determinism). Serves combat, economy, steering, obstacles, render
-  culling.
-- **Terrain/mapgen (`sim/terrain.ts`):** Meridian Plains is *generated from a
-  seed*, not stored — the 256×256 uint16 heightfield (512 world units, 2
-  units/vertex) is regenerated identically on every boot and is therefore not
-  part of `World` snapshots. Pipeline: 3-octave value noise (named RNG stream
-  `terrain`, mulberry32) → carve one N–S river + one lake → set the water
-  level at the 5th height percentile (≈5% water, tested 4–6%) → place 2
-  spawns on land (nominal (−128,−128)/(128,128), nudged to dry land,
-  flattened, ≥300 units apart, tested). Biome per vertex (water bed, shore,
-  3 grasses, highland) is a pure function of height + moisture.
-  Rendering (`render/terrain.ts`): 4×4 chunk grid, one indexed vertex-colored
-  mesh per chunk + one translucent water plane = 17 draw calls, 131,074
-  triangles total; chunk meshes share one material. Greedy meshing and
-  worker-built terrain remain future optimizations — current totals sit well
-  inside the §6 budgets.
-- **City + economy (`sim/city.ts`, `sim/economy.ts`):** city grid = terrain
-  grid (256×256 cells, 2 world units/cell). Roads: 5 Funds + 2 Materials
-  per cell, paved cells kept sorted, 4-way connectivity BFS. Zones
-  (residential/commercial/industrial) painted as rects at 1 Fund/cell;
-  buildings validate zone match + land-only + no overlap at enqueue AND
-  at apply (roads are optional since 2026-09-30 — user directive: no
-  building or service may require one); demolition refunds nothing and
-  frees the footprint. 8-building roster (Phase 1): House (2×2, 120₣/40⛏, 10 s,
-  0.15₣/s upkeep, 6 pop), Apartment (3×3, 450₣/160⛏, 30 s, 0.7₣/s, 30
-  pop), Shop (2×2, 220₣/70⛏, 15 s, 0.4₣/s, +1.2₣/s income), Research Lab
-  (2×2, 650₣/220⛏, 45 s, 1.2₣/s, +0.4🔬/s), Factory (3×3, 550₣/220⛏,
-  40 s, 1.6₣/s, 0.4⛽→2.5⛏/s), Farm (3×3, 300₣/80⛏, 15 s, 0.6₣/s,
-  +3.0🌾/s), Power Plant (3×3, 900₣/350⛏, 60 s, 0.8₣/s, 25 power, burns
-  1⛽/s, needs 2 water), Water Pump (2×2, 350₣/120⛏, 20 s, 0.4₣/s,
-  25 water, needs 2 power) — all figures Phase 1 engineering choices, not
-  locked design. Economy runs once per sim-second inside the tick, fixed
-  order per player: construction → upkeep funding (newest-first shutdown
-  on shortfall) → power/water capacity pools allocated in building-id
-  order (every completed plant/pump contributes supply; unpowered ×0.25
-  unwatered ×0.25) → production/consumption (starved inputs = idle) →
-  food (0.02/pop/s; shortage stalls growth) → taxes every 60 s
-  (rate × taxBase × 60 s, utilities exempt) → building levels 1→3
-  (×1.25/level for thriving buildings) → organic growth pulses every
-  10 s (desirability 0.55 × tax factor, ×0.25 per missing utility
-  headroom; stalled by food shortage). Taxes: per-zone 0–100% rates, the
-  player's lever against growth. Market: fixed rates (Materials 2, Fuel 3,
-  Food 1, Research 12 Funds) with ±20% spread — a buy-then-sell round trip
-  returns 2/3 of funds, so the market is a lever, not free money
-  (dynamic pricing deferred). Balance target: a sensible powered city runs
-  net-positive on Materials/Food/Research and viable on Funds at moderate
-  taxes, while upkeep punishes reckless sprawl (reference city verified in
-  tests). Snapshots v2 include full city state; digest covers roads, zones,
-  buildings (id order), players, stockpiles, tax rates, population.
-- **AI:** Classic AI = decision-quality ladder across 5 levels (Cadet→Legend;
-  disclosed handicaps only at extremes). **Mode 2 "Muse persona"** =
-  personality-driven adaptive AI director (strategic memory, visible threat
-  meter, ~150 event taunts) — a pure function of sim state with serializable
-  brain (an LLM in the tick would break determinism, offline play and budget).
-  Mode 2 ships in Phase 2; data model reserves the slot in Phase 1.
-- **Live Muse (hopefully coming, offline in 0.1 Alpha):** the optional
-  live-language-model advisory link is NOT wired in 0.1 Alpha and has
-  NO API-key flow — the key settings were removed entirely per the
-  2026-09-29 user directive (no key storage, no endpoint, no
-  networking; zero third-party AI API surface). The settings panel and
-  Muse box mark Live Muse "hopefully coming"; when it ships it will be
-  a **strategic advisor only**: it never blocks the tick and never
-  mutates sim state directly — local systems execute tactically. The
-  offline persona director is the only advisor that ships in 0.1
-  Alpha. Offline-first is unconditional.
-- **Ages/tech:** 5 near-future ages; age-ups are costly commitments with
-  landmark-style National Program choices (positive framing: bonuses, never
-  lockouts). MVP: 2 ages.
-- **Chain of command:** mayors/generals/cabinet are appointed bureaucrats
-  with competence stats; all delegation opt-in per function, seize-back
-  anytime, intent narrated before irreversible AI acts. Phase 3 UI; Phase 1
-  data model reserves the slots.
-- **Cheat:** `prosperity now` — typed in the cheat console, single-player
-  only, flags the session (disables achievements), documented as the official
-  easy mode.
+- **Determinism contract:** no wall clock, no `Math.random` in sim — time
+  enters only through `tick.step`, randomness only through named RNG streams
+  (`rngBank(world).next('economy')` never shifts `'combat'`); stream state
+  lives in `world.rng`, part of every snapshot and digest. Fixed system
+  registration order; deterministic iteration (spawn order or sorted).
+  IEEE-754 doubles are fine on one machine.
+- **Pathfinding + movement:** deterministic 8-direction A* (octile heuristic,
+  ties by cell index, corner-cut prevention; water blocks, roads cost ×0.5)
+  for single-unit orders; chunked Dijkstra flow fields with early exit for
+  groups. Time-sliced coordinator: 3 A* + 600 flood pops per tick (≤2 ms).
+  Groups arrive on formation slots (concentric square rings); separation
+  never fights arrival (only moving units participate; slowdown radius
+  exempts pushes).
+- **City + economy:** 256×256 city grid (2 world units/cell). Zones painted
+  as rects; buildings validate zone + land + no-overlap at enqueue AND
+  apply. **Roads are optional** (2026-09-30 user directive — see
+  REVERSALS.md): no building or service may require one. Economy runs once
+  per sim-second in fixed order: construction → upkeep → utility allocation
+  (per-player, per-network flood fill; stranded plants feed an id-ordered
+  pool fallback) → production/consumption → food → taxes (0–100% per zone,
+  every 60 s) → building levels → organic growth pulses. Fixed-rate market
+  (buy-then-sell returns 2/3 — a lever, not free money).
+- **Utilities (Phase 2):** integer-BFS flood fill over conductors (roads
+  conduct automatically, drag-painted power lines/pipes, substation/pump
+  footprints). 13-plant ladder (coal → fusion); substations, pumps,
+  batteries; zone hookup; map-edge export; disconnected-vs-shortage
+  diagnosis overlay.
+- **Logistics (Phase 3):** fuel burn by class, ammo per shot; oil wells/rigs,
+  munitions/missile plants, depots; supply trucks with resupply orders;
+  logistics overlay (reload-point coverage discs + low-supply rings).
+  Meltdowns are attack-triggered only (user correction 2026-09-30).
+- **Transport (Phase 4):** 4 road classes (dirt/country/paved/highway,
+  in-place upgrade), drag-painted rail (3 track classes), buses/trams/
+  ferries pausing at stops, 7 tiered stops, 5 hubs (marinas raise land
+  value), per-building occupancy, grid view (G), underground/x-ray view.
+- **Airports + airlines (Phase 5):** airports as paintable zones
+  (civil/military/mixed); 14 airport buildings (runways S/M/L gating
+  aircraft class, hangars S/M/L, terminals, control tower, fuel farm);
+  civilian airlines with paying routes + route arcs. **Hangars:** carriers
+  train EMPTY; only 4 carrier-capable kinds may embark (enforced in sim +
+  UI); sheltered units skip movement/combat.
+- **Navy (Phase 6):** 25 sea kinds incl. nuclear missileSub (fuel-exempt
+  per user rule), 4 ports, deployable naval mines, ambient airliners +
+  cargo ships.
+- **Intel (Phase 7):** intel asset economy (surveillance/operational/
+  counter-intel), spies (infiltrate/sabotage/steal-tech), recon teams,
+  listening posts/satellite uplink/signals stations, counter-intel defense,
+  mixed-airport discovery (suspected → 60 s warning → revealed).
+- **Civilian + peaceful (Phase 8):** richer civilian side, 5 city ordinances
+  with real upkeep, desirability 0–100 + land-value tiers + migration,
+  ambient city life (auto-paved zones, population-scaled pedestrians/cars).
+  **Peaceful mode is endless** (2026-10-01): all military defs locked at
+  the command layer, the AI rival plays peacefully, no victory or defeat
+  screens ever fire — build for as long as you like.
+- **Siege + endgame (final-review R2, 2026-10-01):** every building has
+  structural HP (fragile houses ~200, military plants ~1000); explicit
+  `attackBuilding` siege orders (never auto-fire); sieging units path to a
+  passable stand cell beside the footprint. The AI escalates from
+  whack-a-mole to base sieges (difficulty-scaled home guard, sticky
+  targets), so elimination — and conquest victory/defeat — is reachable.
+- **Ages + upgrades:** 5 technology ages with forked National Program
+  choices (Fiber Grid ×1.25 tax stacks with Prosperity ×1.5 — wired in
+  `runTaxes` per R1); 21 upgrades in 5 groups (Military 8, Economy 4,
+  Infrastructure 6, Logistics 1, Intel 2); 28 Mk II/III variants gated by
+  age + production building (AI trains the best tier unlocked).
+- **Veterancy (Phase 1):** XP on kills → Recruit/Regular/Veteran/Elite
+  (+10% damage/sight per level, Elite regen); Military Academy graduates
+  armed units to Regular; death erases everything.
+- **AI:** Classic AI, 5 difficulties (cadet→marshal) with disclosed
+  handicaps at extremes. Seeded per-match personalities (aggression,
+  expansion eagerness, ±30% mix jitter) from the `ai-<owner>` RNG stream —
+  same seed ⇒ identical play. Fair by construction: perceives only via
+  `getVisibleEnemies()` (sight + intel coverage), issues ordinary
+  commands through the queue, owns no physical buildings (virtual
+  construction with real costs + build times; funds via harvest credit +
+  virtual tax stipend — R1). Think cadence 240/120/60/45/30 ticks.
+- **Campaign:** 8-mission "The First Term" — briefings, objectives, scripted
+  events, two endings (Peacemaker/Commander), every mission peacefully
+  completable.
+- **Muse:** the offline persona watches and comments (deterministic lines,
+  threat meter, chattiness setting). **Live Muse is "hopefully coming" and
+  offline-only in 0.1 Alpha** — no API-key flow, no endpoint, no
+  networking, zero third-party AI surface (see REVERSALS.md).
 
-## 6. Rendering strategy (summary)
+## 6. Rendering strategy
 
-One `InstancedMesh` per unit/building type per map chunk (chunking = culling
-granularity); KTX2/Basis texture atlases; merged static geometry per city
-block; greedy-meshed chunked heightmap terrain (built in workers);
-**global zoom-tier LOD** (not per-object); 2048² directional shadow map +
-instanced blob shadows + baked vertex AO (CSM high-tier only); ACES tone
-mapping + bloom (no SSAO/volumetrics); day/night via sun/sky/fog; weather via
-fog + GPU rain points. Touch input designed in from day one (tap/command-wheel,
-no drag-select); mobile 30fps tier with adaptive quality governor — ships only
-if playtests show it's fun (brief's own condition).
+- **Per-kind instancing** (Phase 0): one `THREE.InstancedMesh` per model
+  pool key — draw calls scale with distinct kinds on screen, never entity
+  count. Lazy per-key model loading + Cache-API offline; **33-key pinned
+  boot set** (~4.6 MiB GLB) vs the 8 MiB gate; the 101-key CC0 set
+  (Kenney + Quaternius + styloo) streams in by tab/age.
+- **Art pipeline:** 989 CC0 files in `game/public/models/`
+  (see THIRD_PARTY_NOTICES.md); GLB → procedural gap model → placeholder
+  resolution per entity; 16 seeded procedural surface textures
+  (deterministic DataTextures, zero third-party IP); procedural equirect
+  env map so metals shade correctly. Base models are low-poly by
+  authorship — textures make materials read, not silhouettes.
+- **Overlays** (all digest-keyed, rebuilt only on change): roads, rail
+  tracks, power lines/pipes, utility diagnosis, logistics, airports +
+  airline arcs, desirability/land-value, zone tints, x-ray, terrain grid.
+- **Living world:** ambient pedestrians/cars (population-scaled,
+  render-only), 10 bird variants, swaying trees, flowing water — all pure
+  functions of (seed, tick), never sim state.
+- **Terrain:** 4×4 chunk grid, vertex-colored, 8 seeded map presets
+  (5%–60% water); terrain regenerates from the map seed, never stored in
+  snapshots.
+- three.js r186 pinned exact; WebGPURenderer primary + automatic
+  WebGL2 fallback (time-bounded, never hangs boot).
 
-Perf budgets (initial; replaced by measured numbers before content scale-up):
-draw calls ≤100–200 desktop / ≤60 mobile; tris ≤300k–750k / ≤400k; VRAM
-≤256 MB / ≤96 MB; sim tick p95 ≤ 8 ms @30 Hz; pathfinding ≤ 2 ms/tick;
-save with no visible hitch; load ≤ 3 s.
+## 7. UI structure
 
-### 6a. Entity art pipeline (0.1 Alpha)
+- **3-tab menu** (bottom-left): Civilian (tools + Housing/Civic/Commerce/
+  Industry/Utilities/Power/Water tabs), Military (TRAIN 6 tabs incl. intel,
+  Logistics/Naval-Air/Special build tabs, superweapons), Management (tax
+  steppers, city focus, cabinet, ordinances, research, peaceful status).
+- Game speed via top-bar pause/1×/2×/4× buttons (no keyboard shortcut).
+- Camera: left-drag pan, middle-drag orbit, WASD/arrows, edge pan.
+  Right-click orders (gated by the same `canTarget` rules the AI uses).
+- **HUD digest registry** (`ui/paletteDigest.ts`): every panel branch
+  declares its digest segments; the selection panel rebuilds only on
+  digest change (clicks need stable DOM nodes). 26/26 branches covered.
+- Saves: IndexedDB slots + autosave every 5 game-minutes; **snapshot v8**
+  (v5/v6/v7 still load); saves record the map preset + campaign mission
+  so loads regenerate the right terrain (R1). Rejected old saves get a
+  plain-language toast, never a raw error.
+- English-only, icon+text buttons (user directives).
 
-Units and buildings render from real CC0 models, with two deterministic
-fallbacks so the game is never blank:
+## 8. Decision log
 
-- **GLB loading** (`game/src/render/models.ts`): 32 CC0 GLBs
-  (Kenney + Quaternius, see THIRD_PARTY_NOTICES.md) load concurrently at
-  game start with a ~20 s overall budget; per-model failures (404,
-  timeout, parse error) are recorded and skipped, never thrown. Each
-  model is normalized once at load (yaw baked to game-forward +z,
-  horizontal centering, base at y=0, footprint fit) and its geometry is
-  merged per material with world transforms baked in.
-- **Procedural gap models** (`game/src/render/proceduralModels.ts`): 8
-  entity kinds with no CC0 source (artillery, aa, fighter, transport,
-  drone, destroyer, mediaCenter, stormArray) get detailed hand-built
-  procedural models, cached once per kind. Composite buildings (farm,
-  powerPlant, shipyard, aegisControl) assemble several GLB pieces;
-  infantry get gear props (rifle / hard-hat), HQ a command antenna.
-- **Resolution order** per entity (`game/src/render/entities.ts`):
-  GLB → procedural → the old smooth placeholder silhouettes. An empty
-  model map (every GLB failed) is fully playable.
-- **Sharing & disposal**: geometry AND materials are shared across all
-  views of a kind; per-view objects own only health-bar sprites, the
-  team pennant tint, and (while constructing) cloned fade materials.
-  Construction swaps per-view transparent clones back to the shared
-  materials on completion — no cross-talk. Shared assets are disposed
-  once (`disposeModels` / renderer `dispose`), never per view.
-- **Identity overlays**: team stripe + glowing team pennant per entity
-  (models keep their authored colors); movement yaw, health bars,
-  selection rings, and superweapon FX are unchanged.
-- **Roads** (`game/src/render/roads.ts`): connected asphalt ribbon
-  (one quad per road cell, two draw calls total with center dashes);
-  dashes only on straight-through cells.
-- **Nature scatter** (`game/src/render/nature.ts`): deterministic
-  render-only decoration (trees/rocks/bushes as InstancedMesh) from the
-  map seed; rejects water, shoreline, buildings, roads, and starting
-  units. Trees render from procedural textured models
-  (`game/src/render/natureTrees.ts`: lathe trunks, alpha-cut leaf-card
-  canopies, needle-frond conifers; Quaternius CC0 textures, ~0.83 MiB)
-  overlaid onto the `propTree*` keys at game start — the Kenney tree
-  GLBs stay mapped as a silent fallback. Pure decoration — never
-  affects the sim.
+| ID | Date | Decision | Rationale |
+|---|---|---|---|
+| D1 | 2026-09-28 | three.js (pinned) WebGPU-primary/WebGL2-fallback | One codebase, zero-cost fallback |
+| D2 | 2026-09-28 | No WASM anywhere | Measured slower on our workload; no threads on Pages. See REVERSALS.md |
+| D3 | 2026-09-28 | Sim single-threaded on main thread | Workers hurt determinism/debugging; snapshot boundary makes a future move a transport change |
+| D4 | 2026-09-28 | Raw Web Audio, no runtime audio lib | Bespoke lookahead scheduling |
+| D5 | 2026-09-28 | Same-machine determinism; doubles OK | Single-player; fixed-point seam kept |
+| D6 | 2026-09-30 | Per-kind instancing + lazy per-key loading, 33-key boot set | Draw calls scale with kinds; 8 MiB startup gate |
+| D7 | 2026-09-29 | Live Muse API-key flow ripped out entirely | User directive ("rip it out entirely"). See REVERSALS.md |
+| D8 | 2026-09-30 | Roads optional | User directive: no building or service may require a road. See REVERSALS.md |
+| D9 | 2026-09-30 | English-only shipped game, localization indirection kept | User directive; enforced by test |
+| D10 | 2026-10-01 | Buildings destructible; AI siege doctrine | Final-review R2: conquest must be reachable |
+| D11 | 2026-10-01 | Peaceful mode endless (8000-pop victory removed) | Final-review R2: a race with no racer; build-for-its-own-sake |
 
-## 7. Decision log
-
-| ID | Date | Decision | Rationale | Supersedes |
-|---|---|---|---|---|
-| D1 | 2026-09-28 | three.js (pinned) WebGPU-primary/WebGL2-fallback | Only option with zero-cost fallback from one codebase; 4–5× community; smallest bundle | — |
-| D2 | 2026-09-28 | No WASM in Phase 1 | Measured slower on our workload shape; no threads on Pages; revisit only on ≥3× profiling evidence behind a coarse typed-array API | — |
-| D3 | 2026-09-28 | Sim single-threaded on **main thread** for Phase 1 (not in a worker) | Resolves the research tension: sim-arch proved workers hurt determinism/debugging; tech-stack's worker proposal assumed render-jank protection we get cheaper via time-sliced ticks (≤8 ms p95). The sim↔render boundary is already snapshot-based, so moving the sim to a dedicated worker later is a transport change, not an architecture change. Revisit if profiling shows tick overruns. | tech-stack §7 worker split (deferred, not rejected) |
-| D4 | 2026-09-28 | Raw Web Audio, no runtime audio lib | Bespoke lookahead scheduling needed; Howler stale (2023), Tone.js fights our scheduler | — |
-| D5 | 2026-09-28 | Same-machine determinism; doubles OK | Single-player: no lockstep; fixed-point seam kept in `sim/math.ts` | — |
-| D6 | 2026-09-28 | Hand-rolled SoA hot store + OOP strategic layer (prototype vs apecs before committing) | Must own system iteration order for the determinism contract | — |
-| D7 | 2026-09-28 | Mode 2 = "Muse persona" adaptive AI director (offline default) | Persona is a pure function of sim state (serializable brain); a model in the tick would break determinism/offline/budget | — |
-| D8 | 2026-09-28, reversed 2026-09-29 | "Live Muse link" was: user's own API key, digest↔directive protocol, strategic-commander only, silent fallback to persona — REVERSED per user directive ("rip it out entirely", 2026-09-29): key UI removed, key storage deleted, no endpoint, no networking; Live Muse ships as an honest offline "hopefully coming" placeholder | User request 2026-09-28, then user rip-out 2026-09-29; offline-first unconditional | — |
-| D9 | 2026-09-28 | Tick accumulator epsilon (1e-9 ms); named RNG streams | Float subtraction of TICK_MS accumulates ~1e-13 dust per tick — without the epsilon an accumulator holding exactly N ticks' worth of time compares just below TICK_MS and loses a tick (100 ms fed only 2 ticks instead of 3). Named streams (seed = FNV-1a(master, name)) keep subsystems from shifting each other's draws; all stream states live in `world.rng`, so saves capture them | — |
-| D10 | 2026-09-28 | Meridian Plains terrain: regen-from-seed, not stored in World | 256×256 uint16 heightfield regenerates identically from the map seed (5th-percentile water level ⇒ ~5% water; 2 spawns on land, ≥300 apart), so snapshots stay small and saves never store terrain. Water level is derived from the generated heights (percentile), not a tuned constant, so reseeds keep the 5% character automatically | — |
-
-## 8. Open questions (carried into Phase 1)
-
-1. Tick rate 30 Hz is proposed, not proven — the perf harness decides.
-2. Hand-rolled ECS vs apecs: one afternoon of measurement before committing.
-3. WebGPU-vs-WebGL2 default backend: benchmark our real scenes on both, early.
-4. Tallbeard loops vs "modern 2026 cinematic" bar: listening test in Phase 1.
-5. Mobile tier numbers: verify on physical devices before the tier ships.
-6. ~~Game name and Mode-2 confirmation~~ — RESOLVED 2026-09-28: name **NOVATERRA**
-   confirmed; backstory draft adopted; Mode 2 = persona director (offline
-   default) + optional Live Muse link (online, user's own key).
+Superseded decisions (the Phase-1-era module map, per-chunk instancing,
+the 8-building roster, the Live Muse key architecture) were removed in
+this rewrite — their history lives in git and in REVERSALS.md.

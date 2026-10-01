@@ -71,14 +71,6 @@ export const AIRPORT_BUILDING_KINDS: readonly BuildingKind[] = (
   Object.keys(BUILDING_DEFS) as BuildingKind[]
 ).filter((k) => BUILDING_DEFS[k].zone === ZoneType.AIRPORT);
 
-/**
- * The three site anchors (defs with an `airportType`) — the big
- * placeable airports. Terminals/tower/hangars/runways are build-out
- * pieces, not anchors.
- */
-export const AIRPORT_ANCHOR_KINDS: readonly BuildingKind[] =
-  AIRPORT_BUILDING_KINDS.filter((k) => BUILDING_DEFS[k].airportType !== undefined);
-
 /** True when the building is one of the three airport anchors. */
 export function isAirportAnchor(b: BuildingRecord): boolean {
   return BUILDING_DEFS[b.kind]?.airportType !== undefined;
@@ -142,11 +134,6 @@ export function servedAircraftClasses(runwayClass: AircraftClass): AircraftClass
   return idx < 0 ? [] : AIRCRAFT_CLASS_ORDER.slice(0, idx + 1);
 }
 
-/** The aircraft class a unit kind parks as (undefined = unclassified). */
-export function aircraftClassOf(kind: UnitKind): AircraftClass | undefined {
-  return UNIT_DEFS[kind]?.hangarClass ?? undefined;
-}
-
 // ---------------------------------------------------------------------------
 // Airline routes
 // ---------------------------------------------------------------------------
@@ -177,11 +164,6 @@ export function airlineRouteIncomeOf(
   route: { id: number; owner: number; from: number; to: number; establishedTick: number },
 ): number {
   return airlineRouteIncome(world, route);
-}
-
-/** World position of a building's anchor cell (for route polylines). */
-export function buildingAnchorXZ(b: BuildingRecord): { x: number; z: number } {
-  return { x: cellCenterWorld(b.cx), z: cellCenterWorld(b.cz) };
 }
 
 // ---------------------------------------------------------------------------

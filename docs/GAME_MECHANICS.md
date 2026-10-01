@@ -2,7 +2,7 @@
 
 > Player-facing mechanics reference. Written alongside implementation in
 > Phase 1 — kept **clear, short and simple** per the design brief.
-> Last updated: 2026-09-29 (Phase 3: delegation, superweapons, advanced economy, accessibility).
+> Last updated: 2026-10-01 (final-review R4: docs refresh).
 
 ## Building your city
 
@@ -305,8 +305,8 @@ destroyers beat tanks at range, AA beats anything that flies**.
   airfield).
 - **Maritime Patrol** — long-endurance patrol aircraft; hunts
   submarines over open water (needs an airfield).
-- **Recon UAV** — tiny unarmed spotter; even cheaper than a drone,
-  sees almost as far (carrier-capable).
+- **Recon UAV** — tiny unarmed spotter; pricier than a drone but sees
+  more than twice as far (carrier-capable).
 - **Armed UAV** — small hunter-killer drone with a light missile
   rack; cheap precision strikes (carrier-capable).
 - **Recon Plane** — fast manned spotter with long legs (needs an

@@ -290,20 +290,6 @@ export function railSortedInsert(rails: RailCell[], rec: RailCell): void {
   if ((rails[lo] as RailCell | undefined)?.cell !== rec.cell) rails.splice(lo, 0, rec);
 }
 
-/** The track class at a cell, or undefined when the cell has no rail. */
-export function railClassAt(rails: RailCell[], cell: number): TrackClass | undefined {
-  let lo = 0;
-  let hi = rails.length - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const r = rails[mid] as RailCell;
-    if (r.cell === cell) return r.cls;
-    if (r.cell < cell) lo = mid + 1;
-    else hi = mid - 1;
-  }
-  return undefined;
-}
-
 /**
  * v6→v7 snapshot migration for roads (PLAN §4 S7, AD9).
  *

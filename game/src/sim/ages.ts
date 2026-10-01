@@ -140,8 +140,6 @@ export const INFORMATION_COST = {
 
 /** Cyber Command: spectre damage multiplier (+50%). */
 export const CYBER_COMMAND_SPECTRE_MULT = 1.5;
-/** Cyber Command: military sight bonus (+4). */
-export const CYBER_COMMAND_SIGHT_BONUS = 4;
 
 /** Global Media: influence generation multiplier (+100%). */
 export const GLOBAL_MEDIA_INFLUENCE_MULT = 2.0;
@@ -218,17 +216,6 @@ export function getSpectreDamageMult(world: World): number {
 }
 
 /**
- * Military sight bonus. Returns 4 with Cyber Command, 0 otherwise.
- * Stacks with Signals Grid.
- */
-export function getMilitarySightBonus(world: World): number {
-  if (getProgramForAge(world, 'information') === 'cyberCommand') {
-    return CYBER_COMMAND_SIGHT_BONUS;
-  }
-  return 0;
-}
-
-/**
  * Manpower cost multiplier. Returns 0.7 with Arsenal Program, 1.0 otherwise.
  */
 export function getManpowerCostMult(world: World): number {
@@ -280,11 +267,6 @@ export function isUnitAvailableForAge(world: World, minAge: Age): boolean {
   const have = AGE_ORDER.indexOf(world.ages.age);
   const need = AGE_ORDER.indexOf(minAge);
   return have >= need;
-}
-
-/** Check if a building kind is available in the world's current age. */
-export function isBuildingAvailableForAge(world: World, minAge: Age): boolean {
-  return isUnitAvailableForAge(world, minAge);
 }
 
 /** Register the `advanceAge` command. */

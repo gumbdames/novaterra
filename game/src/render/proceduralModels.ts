@@ -2876,8 +2876,6 @@ export const PROCEDURAL_KINDS = [
   'passengerHeli',
 ] as const;
 
-export type ProceduralKind = (typeof PROCEDURAL_KINDS)[number];
-
 /**
  * Build the procedural model for a gap kind. Returns undefined for any
  * other kind — callers fall through to the placeholder builders.
