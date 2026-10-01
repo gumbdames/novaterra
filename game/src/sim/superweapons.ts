@@ -52,7 +52,7 @@ import { rngBank } from './world';
 import type { CommandQueue, CommandSpec } from './commands';
 import type { SimSystem } from './tick';
 import { BUILDING_DEFS, getPlayer, buildingCenterWorld, cellCenterWorld } from './city';
-import { killUnit, damageBuilding } from './combat';
+import { killUnit, damageBuilding, flushDeadTargetRefs } from './combat';
 
 /** Aegis shield duration: 60 seconds at 30 Hz. */
 export const AEGIS_DURATION_TICKS = 1800;
@@ -464,6 +464,10 @@ export function createSuperweaponSystem(): SimSystem {
         sw.fx.push({ kind: 'storm', x: sx, z: sz, untilTick: world.tick + STORM_FX_TICKS });
       }
       sw.strikes = sw.strikes.filter((s) => s.atTick > world.tick);
+      // R3 perf (2026-10-01): one batched target-ref sweep for every
+      // kill this strike batch caused — killUnit defers its per-kill
+      // O(units) attacker scan (see combat.ts).
+      flushDeadTargetRefs(world);
     }
     if (sw.fx.length > 0) {
       sw.fx = sw.fx.filter((f) => f.untilTick > world.tick);

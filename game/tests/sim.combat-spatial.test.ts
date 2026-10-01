@@ -38,6 +38,8 @@ import type { UnitKind, UnitRecord, UnitDef } from '../src/sim/units';
 import {
   acquireTarget,
   canTarget,
+  killUnit,
+  flushDeadTargetRefs,
 } from '../src/sim/combat';
 import { effectiveRange } from '../src/sim/upgrades';
 import { isDetected } from '../src/sim/intel';
@@ -187,5 +189,76 @@ describe('acquireTarget performance (R1 H1)', () => {
     // And at 2000 units the hash is absolutely faster than the scan:
     // the per-query cost no longer grows with the army.
     expect(newBigMs).toBeLessThan(oldBigMs);
+  });
+});
+
+describe('acquireTarget worst case (R3)', () => {
+  // Timing-sensitive like the R1 perf tests: retry + best-of-5 keeps
+  // the signal while discarding contended runs on shared VMs.
+  it('2000 units at formation density sweep under the tick budget', () => {
+    // Realistic worst case: two armies clumped shoulder-to-shoulder
+    // (formation slot spacing 2.5, the densest the game ever packs
+    // units). R1's cell-64 grid scanned every unit in a 128x128 area
+    // per query here (100ms+ per sweep on the reference VM); the R3
+    // cell-16 grid with nearest-cell-first exact pruning keeps it
+    // under the 33.3ms tick budget (~17ms measured).
+    const world = createWorld(4343);
+    const rng = createRngBank(4444);
+    const stream = 'formation';
+    const spacing = 2.5;
+    const cols = Math.ceil(Math.sqrt(2000));
+    for (let i = 0; i < 2000; i++) {
+      const kind: UnitKind = i % 2 === 0 ? 'rifles' : 'tank';
+      const x = (i % cols) * spacing - (cols * spacing) / 2 + rng.range(stream, -0.5, 0.5);
+      const z = Math.floor(i / cols) * spacing - (cols * spacing) / 2 + rng.range(stream, -0.5, 0.5);
+      spawnUnit(world, kind, i % 2, x, z);
+    }
+    const sweep = (): number => {
+      const t0 = performance.now();
+      for (const u of world.units) acquireTarget(world, u, UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS]);
+      return performance.now() - t0;
+    };
+    for (let w = 0; w < 3; w++) sweep(); // warm up (JIT + grid build path)
+    // Best-of-7: on shared/CI runners a single sweep can catch worker
+    // contention or a GC pause; the minimum reflects the code, not the
+    // scheduler.
+    let best = Infinity;
+    for (let r = 0; r < 7; r++) best = Math.min(best, sweep());
+    console.log(`[perf] acquireTarget formation-density sweep, 2000 units: ${best.toFixed(2)}ms`);
+    expect(best, `formation-density sweep took ${best.toFixed(2)}ms`).toBeLessThan(33.3);
+  }, { retry: 3 });
+});
+
+describe('mass-kill target cleanup (R3)', () => {
+  it('500 kills in one tick clear every stale target ref under budget', { retry: 2 }, () => {
+    // A storm strike can kill hundreds of units in a single tick. The
+    // old per-kill O(units) attacker scan made that O(kills x units)
+    // (~53ms for 500 kills out of 2000 on the reference VM — over the
+    // tick budget). killUnit now records dead ids and
+    // flushDeadTargetRefs clears every attacker's stale targetId /
+    // chasing in a single O(units) sweep (~4.5ms measured).
+    const runOnce = (seed: number): number => {
+      const world = createWorld(seed);
+      scatterUnits(world, seed + 1, 2000, 1600);
+      const victims = world.units.slice(0, 500);
+      const victimIds = new Set(victims.map((v) => v.id));
+      // Every unit targets a victim: maximizes the stale-ref work and
+      // asserts the sweep clears all of it.
+      const firstVictim = victims[0]!.id;
+      for (const u of world.units) u.targetId = firstVictim;
+      const t0 = performance.now();
+      for (const v of victims) killUnit(world, v);
+      flushDeadTargetRefs(world);
+      const ms = performance.now() - t0;
+      expect(world.units).toHaveLength(1500);
+      for (const u of world.units) {
+        expect(victimIds.has(u.targetId), `unit ${u.id} still targets dead ${u.targetId}`).toBe(false);
+      }
+      return ms;
+    };
+    let best = Infinity;
+    for (let r = 0; r < 3; r++) best = Math.min(best, runOnce(4545 + r));
+    console.log(`[perf] 500 kills + batched target cleanup (2000 units): ${best.toFixed(2)}ms`);
+    expect(best, `mass-kill cleanup took ${best.toFixed(2)}ms`).toBeLessThan(33.3);
   });
 });

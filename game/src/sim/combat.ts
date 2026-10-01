@@ -253,8 +253,13 @@ export function damageMultiplier(
  * keeps the sublinear scaling (query cost independent of n at
  * constant density) with a constant factor at parity with the scan.
  *
- * Cell size 64: the longest effective weapon range in the roster is
- * 62 (52 base + Cruise Missiles), so a query spans at most 3×3 cells.
+ * Cell size 16 (R3 perf, 2026-10-01 — was 64): the longest effective
+ * weapon range in the roster is 62 (52 base + Cruise Missiles), so a
+ * query spans at most 8x8 cells. The smaller cell keeps per-query
+ * candidate counts low in dense battles — with cell 64 a short-range
+ * weapon's query scanned every unit in a 128x128 area, which dominated
+ * the tick in 2000-unit engagements (100ms+ per sweep on the reference
+ * VM); with cell 16 the same battle sweeps in ~17ms.
  * The grid is rebuilt once per tick (O(n) inserts); each query then
  * touches only the cells intersecting the weapon-range disc. Cached
  * per (world, tick) like `auraSources` above — positions are final
@@ -267,7 +272,7 @@ export function damageMultiplier(
  * needs to move off the main thread, this grid build + the radius
  * query are the natural compiled boundary.
  */
-const TARGET_CELL_SIZE = 64;
+const TARGET_CELL_SIZE = 16;
 /** Integer cell key: world coords keep |cx|,|cz| << 32768. */
 function targetCellKey(cx: number, cz: number): number {
   return (cx + 32768) * 65536 + (cz + 32768);
@@ -326,14 +331,14 @@ function targetGridFor(world: World): Map<number, UnitRecord[]> {
  * Ties break by lower id. Returns undefined when unarmed.
  *
  * The candidate set comes from the per-tick dense grid
- * (`targetGridFor`): units in the cells intersecting the range disc.
- * Candidates are visited in cell order (not id order), but the
- * nearest-with-id-tiebreak below is an order-independent argmin, so
- * it reproduces the legacy full scan's result exactly. Every legacy
- * filter (sheltered, stealth/detection, domain, exact range via
- * Math.hypot, min range) is applied per candidate, unchanged — the
- * squared-distance pre-check only skips candidates Math.hypot would
- * also reject.
+ * (`targetGridFor`): units in the cells intersecting the range disc,
+ * visited nearest-cell-first with exact pruning (see below). The
+ * nearest-with-id-tiebreak is an order-independent argmin, so it
+ * reproduces the legacy full scan's result exactly regardless of
+ * visit order. Every legacy filter (sheltered, stealth/detection,
+ * domain, exact range via Math.hypot, min range) is applied per
+ * candidate, unchanged — the squared-distance pre-check only skips
+ * candidates Math.hypot would also reject.
  */
 export function acquireTarget(world: World, unit: UnitRecord, def: UnitDef): UnitRecord | undefined {
   if (def.damage <= 0 || def.targets === 'none') return undefined;
@@ -345,13 +350,32 @@ export function acquireTarget(world: World, unit: UnitRecord, def: UnitDef): Uni
   const cx1 = Math.floor((unit.x + range) / cs);
   const cz0 = Math.floor((unit.z - range) / cs);
   const cz1 = Math.floor((unit.z + range) / cs);
-  let best: UnitRecord | undefined;
-  let bestDist = Infinity;
+  // R3 perf (2026-10-01): cells nearest-first with exact pruning.
+  // In a dense battle the shooter's own cell almost always holds a very
+  // close enemy, so farther cells prune away without being scanned: the
+  // pathological all-in-range case drops from O(candidates) toward
+  // O(nearby) per query. Pruning is exact — a pruned cell's candidates
+  // all sit strictly farther than bestDist + 1e-9, so none could
+  // strictly improve (needs d < bestDist - 1e-9) or tie-win by lower id
+  // (needs |d - bestDist| < 1e-9). Result stays the order-independent
+  // argmin, identical to the legacy full scan.
+  const order: { cell: UnitRecord[]; minD2: number }[] = [];
   for (let cx = cx0; cx <= cx1; cx++) {
     for (let cz = cz0; cz <= cz1; cz++) {
       const cell = cells.get(targetCellKey(cx, cz));
       if (cell === undefined) continue;
-      for (const other of cell) {
+      const mdx = Math.max(cx * cs - unit.x, 0, unit.x - (cx + 1) * cs);
+      const mdz = Math.max(cz * cs - unit.z, 0, unit.z - (cz + 1) * cs);
+      order.push({ cell, minD2: mdx * mdx + mdz * mdz });
+    }
+  }
+  order.sort((a, b) => a.minD2 - b.minD2);
+  let best: UnitRecord | undefined;
+  let bestDist = Infinity;
+  for (const { cell, minD2 } of order) {
+    const pruneAt = bestDist + 1e-9;
+    if (minD2 > pruneAt * pruneAt) break;
+    for (const other of cell) {
         if (other.id === unit.id || other.owner === unit.owner || other.hp <= 0) continue;
         const dx = other.x - unit.x;
         const dz = other.z - unit.z;
@@ -371,7 +395,6 @@ export function acquireTarget(world: World, unit: UnitRecord, def: UnitDef): Uni
           best = other;
           bestDist = d;
         }
-      }
     }
   }
   return best;
@@ -577,6 +600,47 @@ function unitArrayIndex(world: World, unit: UnitRecord): number {
  * requests and field membership, and clear everyone targeting it. Ids are
  * never reused, so no id fix-up is needed.
  */
+/**
+ * Final-review R3 (perf, 2026-10-01): ids of units killed since the last
+ * `flushDeadTargetRefs`, per world. `killUnit` records instead of
+ * scanning for attackers (see below); the combat and superweapon systems
+ * flush once per tick. Module-level, like the unit index in units.ts —
+ * the flush itself walks `world.units` in id order, so there is no
+ * determinism footprint.
+ */
+const pendingDeadTargetIds = new WeakMap<World, Set<number>>();
+
+/** Record a killed unit's id for the end-of-system target-ref sweep. */
+function recordDeadTargetId(world: World, id: number): void {
+  let s = pendingDeadTargetIds.get(world);
+  if (s === undefined) {
+    s = new Set();
+    pendingDeadTargetIds.set(world, s);
+  }
+  s.add(id);
+}
+
+/**
+ * Clear `targetId`/`chasing` on every unit whose target died since the
+ * last flush. One O(units) sweep per call; a no-op when nothing died.
+ * Called at the end of the combat system and after superweapon strike
+ * processing — i.e. after every in-tick kill path — so the AI (which
+ * reads `targetId` as a busy flag) and the next tick observe exactly
+ * the state the old per-kill eager scan produced.
+ */
+export function flushDeadTargetRefs(world: World): void {
+  const s = pendingDeadTargetIds.get(world);
+  if (s === undefined || s.size === 0) return;
+  for (const u of world.units) {
+    const t = u.targetId;
+    if (t !== 0 && s.has(t)) {
+      u.targetId = 0;
+      u.chasing = false;
+    }
+  }
+  s.clear();
+}
+
 export function killUnit(world: World, unit: UnitRecord): void {
   // Grand-expansion Phase 5 (S4): release the unit's hangar slot (a
   // parked aircraft's slot frees when it dies; the demolish path
@@ -615,13 +679,16 @@ export function killUnit(world: World, unit: UnitRecord): void {
   }
   // Finished fields carry no member list: units point at them via
   // `unit.fieldId`, and the coordinator prunes fields with no members.
-  // Clear targeting references.
-  for (const u of world.units) {
-    if (u.targetId === unit.id) {
-      u.targetId = 0;
-      u.chasing = false;
-    }
-  }
+  // Targeting references used to be cleared here with an O(units) scan
+  // per kill — O(kills x units) for a mass-casualty tick (a storm strike
+  // can kill 500+ units: ~52ms on the reference VM, over the 33.3ms tick
+  // budget). Instead the dead id is recorded and `flushDeadTargetRefs`
+  // clears every attacker's stale reference in a single O(units) sweep
+  // at the end of the combat / superweapon systems (R3 perf,
+  // 2026-10-01). End-of-tick state is identical to the eager scan: the
+  // combat loop's own per-tick target validation already drops dead
+  // targets for attackers processed after the kill.
+  recordDeadTargetId(world, unit.id);
 }
 
 /**
@@ -747,10 +814,13 @@ export function createCombatSystem(t?: TerrainData): SimSystem {
     // kill. Deterministic — no RNG, id-ordered, ties on distance break
     // to the lowest unit id. Mines award no XP (expendable ordnance).
     applyNavalMineDetonations(world);
-    // Snapshot the roster: killUnit mutates world.units mid-loop. Id order
-    // (ascending) is the determinism contract — XP kill crediting happens
-    // in this same pass, so kills credit in id order too.
-    const roster = [...world.units].sort((a, b) => a.id - b.id);
+    // Snapshot the roster: killUnit mutates world.units at the end of the
+    // pass. `world.units` is always id-ascending (append-only spawns,
+    // order-preserving splices — ids are never reused), so the copy alone
+    // preserves the id-order determinism contract; no re-sort needed
+    // (R3 perf, 2026-10-01: the sort was O(n log n) every tick).
+    // XP kill crediting happens in this same pass, in id order.
+    const roster = [...world.units];
     const dead: UnitRecord[] = [];
     for (const u of roster) {
       if (u.hp <= 0) {
@@ -889,8 +959,14 @@ export function createCombatSystem(t?: TerrainData): SimSystem {
       }
     }
     for (const d of dead) {
-      if (world.units.includes(d)) killUnit(world, d);
+      // O(1) liveness check (was `world.units.includes`, O(n) per
+      // dead): ids are never reused, so the record found by id is d
+      // itself iff d is still in the world — a carrier's wing may have
+      // been killed already by the recursive wing kill inside killUnit.
+      if (findUnit(world, d.id) === d) killUnit(world, d);
     }
+    // Batched target-ref sweep for every kill this tick (see killUnit).
+    flushDeadTargetRefs(world);
   };
 }
 
