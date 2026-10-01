@@ -70,7 +70,13 @@ land, sea and air — or play a fully peaceful game with war disabled.
   firing at the drag-release point, the Marshal AI aiming its Storm at
   the largest visible enemy cluster, and **Emergency refuel** for
   stranded fossil-fuel aircraft (+30% tank for 150 funds, airdropped —
-  Resupply can't reach an aircraft that can't fly to a depot).
+  Resupply can't reach an aircraft that can't fly to a depot). The
+  sea-logistics military half (2026-10-01, `sea-military` branch) wired
+  the naval supply chain the docs had promised: the fuel tanker (400
+  fuel + 200 materials) and ammo ship (80 shells + 100 materials) load
+  at naval bases and serve friendly ships at sea, the naval base pulls
+  fuel and caches materials forward, Load/Unload orders move cargo by
+  hand, and the marshal AI trains and loads its own supply tail.
   See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 

@@ -171,6 +171,13 @@ state.
 - **Logistics (Phase 3):** fuel burn by class, ammo per shot; oil wells/rigs,
   munitions/missile plants, depots; supply trucks with resupply orders;
   logistics overlay (reload-point coverage discs + low-supply rings).
+  Sea half (2026-10-01): the cargo-load leg is def-driven — any supply
+  unit (sea fuelTanker/ammoShip with materials holds, land trucks) loads
+  at a depot; `runMobileSupply` discharges same-domain (sea ships serve
+  sea units, honoring refuel/rearm toggles, nuclear exempt); navalBase
+  pulls fuel and caches materials; `loadCargo`/`unloadCargo` commands
+  (validate≡apply, peaceful-mode rejection); marshal AI trains the
+  naval tail via `thinkNavalSupply`.
   Meltdowns are attack-triggered only (user correction 2026-09-30).
 - **Transport (Phase 4):** 4 road classes (dirt/country/paved/highway,
   in-place upgrade), drag-painted rail (3 track classes), buses/trams/

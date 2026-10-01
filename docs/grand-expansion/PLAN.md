@@ -779,6 +779,16 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   queue, the Storm tool firing at the drag-release point, and the
   Marshal AI firing its Storm at the largest visible enemy cluster
   instead of the all-visible centroid.
+  Sea-logistics Half B — military naval logistics (2026-10-01,
+  0.1 Alpha, `sea-military` branch): the naval supply chain the docs
+  had promised — def-driven cargo loading (fuelTanker 400+200 and
+  ammoShip 80+100 materials holds; land trucks through the same leg),
+  `runMobileSupply` same-domain discharge honoring refuel/rearm
+  toggles with the nuclear exemption, navalBase forward fuel pull +
+  200-materials cache, `loadCargo`/`unloadCargo` (AD6 validate≡apply,
+  peaceful-mode rejection), marshal `thinkNavalSupply` (1 fuelTanker /
+  6 sea combat units, virtual-stock loading, fleet rally), 32 new
+  tests; snapshot stays v8 (AD9 additive fields).
   W (desirability/land value/migration, library + park) LANDED
   2026-09-30 (0.1 Alpha): derived per-residential-cell 0–100 model
   (elevation/water/pollution/amenities), land-value tax tiers
