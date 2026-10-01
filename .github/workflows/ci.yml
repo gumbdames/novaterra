@@ -16,6 +16,8 @@ on:
 jobs:
   build-test:
     runs-on: ubuntu-latest
+    # A hung suite must never burn the full 6 h runner allowance.
+    timeout-minutes: 60
     defaults:
       run:
         working-directory: game
@@ -54,11 +56,19 @@ jobs:
       # failures ("Failed Tests" in the output) fails fast — flakes must
       # never mask a genuine regression.
       #
+      # Count floor (roadmap A5, 2026-10-01): the accepted "Tests N
+      # passed" count is pinned — a mid-suite worker death printing
+      # "Tests 1400 passed" with no failures must NOT pass as green.
+      # VITEST_COUNT_FLOOR is the suite size of the last green run;
+      # bump it in the same commit whenever tests are added.
+      #
       # --maxWorkers=2: GitHub's ubuntu-latest runners have 2-4 vCPUs;
       # more workers than that increases worker starvation (the flake's
       # trigger) without speeding the suite up.
       - name: Tests (vitest, flake-aware retry)
+        timeout-minutes: 45
         run: |
+          VITEST_COUNT_FLOOR=2449
           for attempt in 1 2 3; do
             echo "=== vitest attempt $attempt/3 ==="
             set +e
@@ -66,14 +76,26 @@ jobs:
             status=$?
             set -e
             echo "$output"
+            # Strip ANSI color codes, then read the "Tests N passed" count
+            # off the summary line (not the "Test Files" line).
+            passed=$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g' \
+              | grep -E '^[[:space:]]*Tests[[:space:]]' \
+              | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' | tail -1)
+            if [ -z "$passed" ]; then
+              echo "could not read a test count from the output — failing"
+              exit 1
+            fi
+            if [ "$passed" -lt "$VITEST_COUNT_FLOOR" ]; then
+              echo "only $passed tests passed, below the floor of $VITEST_COUNT_FLOOR — failing"
+              exit 1
+            fi
             if [ "$status" -eq 0 ]; then
-              echo "vitest passed on attempt $attempt"
+              echo "vitest passed on attempt $attempt ($passed tests)"
               exit 0
             fi
             if echo "$output" | grep -q 'Timeout calling "onTaskUpdate"' \
-              && ! echo "$output" | grep -q 'Failed Tests' \
-              && echo "$output" | grep -qE 'Tests.*[0-9]+ passed'; then
-              echo "all tests passed; only the known reporter flake fired — accepting as green"
+              && ! echo "$output" | grep -q 'Failed Tests'; then
+              echo "all $passed tests passed; only the known reporter flake fired — accepting as green"
               exit 0
             fi
             if echo "$output" | grep -q 'Failed Tests'; then
