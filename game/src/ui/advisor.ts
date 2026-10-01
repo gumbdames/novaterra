@@ -100,6 +100,34 @@ export function evaluateAdvisor(world: World, playerId: number): AdvisorItem[] {
     });
   }
 
+  // Power: completed buildings without power work at reduced strength.
+  // (Tutorial A3, 2026-10-01: M1 promises "watch the advisor for
+  // shortages" — the advisor must actually cover utilities.)
+  const unpowered = world.city.buildings.filter((b) => {
+    if (b.owner !== playerId || !b.operational) return false;
+    return b.powerDiag === 'shortage' || b.powerDiag === 'disconnected';
+  }).length;
+  if (unpowered > 0) {
+    items.push({
+      severity: 'warning',
+      title: s.powerShortage,
+      detail: `${unpowered} buildings — ${s.powerShortageDetail}`,
+    });
+  }
+
+  // Water: completed buildings without water work at reduced strength.
+  const unwatered = world.city.buildings.filter((b) => {
+    if (b.owner !== playerId || !b.operational) return false;
+    return b.waterDiag === 'shortage' || b.waterDiag === 'disconnected';
+  }).length;
+  if (unwatered > 0) {
+    items.push({
+      severity: 'warning',
+      title: s.waterShortage,
+      detail: `${unwatered} buildings — ${s.waterShortageDetail}`,
+    });
+  }
+
   // Damaged units: the player is under attack or fought recently.
   const damaged = world.units.filter((u) => {
     if (u.owner !== playerId || u.hp <= 0) return false;

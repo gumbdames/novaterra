@@ -23,7 +23,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createWorld, type World } from '../src/sim/world';
-import { getPlayer } from '../src/sim/city';
+import { getPlayer, placeBuilding } from '../src/sim/city';
 import { spawnUnit } from '../src/sim/units';
 import {
   ADVISOR_DAMAGED_FRACTION,
@@ -136,5 +136,41 @@ describe('advisor', () => {
 
   it('returns nothing for an unknown player', () => {
     expect(evaluateAdvisor(setup(), 999)).toEqual([]);
+  });
+
+  it('flags unpowered buildings as a warning (tutorial A3)', () => {
+    const world = setup();
+    const b = placeBuilding(world.city, { kind: 'house', owner: 0, cx: 5, cz: 5, facing: 0 });
+    b.operational = true;
+    b.powerDiag = 'disconnected';
+    b.waterDiag = 'ok';
+    const items = evaluateAdvisor(world, 0);
+    const warn = items.find((i) => i.title.toLowerCase().includes('power'));
+    expect(warn).toBeDefined();
+    expect(warn?.severity).toBe('warning');
+    expect(warn?.detail).toContain('1');
+  });
+
+  it('flags unwatered buildings as a warning (tutorial A3)', () => {
+    const world = setup();
+    const b = placeBuilding(world.city, { kind: 'house', owner: 0, cx: 5, cz: 5, facing: 0 });
+    b.operational = true;
+    b.powerDiag = 'ok';
+    b.waterDiag = 'shortage';
+    const items = evaluateAdvisor(world, 0);
+    const warn = items.find((i) => i.title.toLowerCase().includes('water'));
+    expect(warn).toBeDefined();
+    expect(warn?.severity).toBe('warning');
+  });
+
+  it('does not flag buildings under construction for utilities', () => {
+    const world = setup();
+    const b = placeBuilding(world.city, { kind: 'house', owner: 0, cx: 5, cz: 5, facing: 0 });
+    // Still under construction: not operational, diags at bootstrap defaults.
+    b.powerDiag = 'disconnected';
+    b.waterDiag = 'disconnected';
+    const items = evaluateAdvisor(world, 0);
+    expect(items.some((i) => i.title.toLowerCase().includes('power'))).toBe(false);
+    expect(items.some((i) => i.title.toLowerCase().includes('water'))).toBe(false);
   });
 });

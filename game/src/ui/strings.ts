@@ -223,6 +223,10 @@ export const STRINGS = {
     noEngineersDetail: 'Train engineers to build roads and buildings.',
     ageAffordable: 'Age advance affordable',
     ageAffordableDetail: 'Pick a National Program to reach Connectivity.',
+    powerShortage: 'Power shortage',
+    powerShortageDetail: 'Drag power lines from a plant to your buildings (Civilian → Tools).',
+    waterShortage: 'Water shortage',
+    waterShortageDetail: 'Drag water pipes from a pump to your buildings (Civilian → Tools).',
     allClear: 'All clear. Expand or advance.',
   },
   pause: {

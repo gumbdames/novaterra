@@ -203,6 +203,29 @@ export const MISSIONS: readonly MissionDef[] = [
           'them. Left-drag pans the map — it never selects.',
       },
       {
+        id: 'm1-how-to-build',
+        trigger: { kind: 'atTick', tick: 200 },
+        message:
+          // Tutorial repair (A3, 2026-10-01): M1 never taught the
+          // placement chain — the highest-friction moment of the first
+          // session. Teach it explicitly, matching the real menu.
+          'To build: open the command menu (bottom-left), go to the ' +
+          'Civilian tab → Build → Housing, pick House, then click on ' +
+          'the map where you want it. Esc cancels.',
+      },
+      {
+        id: 'm1-zones',
+        trigger: { kind: 'atTick', tick: 400 },
+        message:
+          // Tutorial repair (A3, 2026-10-01): M1's 60-pop objective
+          // requires zones (2 houses = 12/60) but never mentioned them.
+          // Teach zone painting before the player builds.
+          'Houses alone will not reach 60 citizens. Paint a Residential ' +
+          'zone first: Civilian tab → Tools → Residential Zone, then ' +
+          'drag a rectangle on empty land. Houses built inside zones ' +
+          'fill up fast — citizens flock to zoned neighborhoods.',
+      },
+      {
         id: 'm1-menu',
         trigger: { kind: 'atTick', tick: 600 },
         message:
@@ -226,8 +249,13 @@ export const MISSIONS: readonly MissionDef[] = [
         id: 'm1-power',
         trigger: { kind: 'onFirstBuilding', building: 'powerPlant' },
         message:
-          'The lights are on. Buildings need power and water to work at ' +
-          'full strength — watch the advisor for shortages.',
+          // Tutorial repair (A3, 2026-10-01): the old message promised
+          // "watch the advisor for shortages" but never taught HOW to
+          // fix them. Teach the power-line/water-pipe drag tools.
+          'The lights are on. But buildings need power LINES and water ' +
+          'PIPES to actually receive it: Civilian tab → Tools → Power ' +
+          'Line (or Water Pipe), then drag from the plant to your ' +
+          'buildings. The advisor warns you about shortages.',
       },
     ],
     mapPreset: 'Meridian Plains',
@@ -275,9 +303,13 @@ export const MISSIONS: readonly MissionDef[] = [
         id: 'm2-hungry',
         trigger: { kind: 'onLowFunds' },
         message:
-          'The treasury is thin, President. Raise taxes carefully — or ' +
-          'sell surplus on the market. (Press ` for the console if you ' +
-          'must… I saw nothing.)',
+          // Tutorial repair (A3, 2026-10-01): the old message taught
+          // "sell surplus on the market" but marketTrade has no UI at
+          // all. Teach the real taxes UI instead.
+          'The treasury is thin, President. Open the Management tab → ' +
+          'Taxes: raising taxes fills the treasury but slows growth. ' +
+          'Commercial zones pay the most — zone for shops if you ' +
+          'have not.',
       },
     ],
     mapPreset: 'Riverlands',
@@ -318,6 +350,18 @@ export const MISSIONS: readonly MissionDef[] = [
         message:
           'Border sensors are quiet… too quiet. The generals advise ' +
           'training rifles now, before the storm.',
+      },
+      {
+        id: 'm3-how-to-train',
+        trigger: { kind: 'atTick', tick: 240 },
+        message:
+          // Tutorial repair (A3, 2026-10-01): M3 said "train rifles
+          // now" but never taught the military pipeline. Teach it
+          // explicitly, matching the real menu.
+          'To train rifles: open the command menu → Military tab → ' +
+          'Build → Barracks, place it on the map. Then LEFT-CLICK the ' +
+          'finished Barracks, go to the Train tab, and queue Rifles. ' +
+          'They will muster beside the barracks.',
       },
       {
         id: 'm3-raid1',
