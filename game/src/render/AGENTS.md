@@ -302,6 +302,22 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 - `EntityRenderer` owns one `ChevronOverlay`: constructed in the
   constructor, synced at the end of `sync()`, disposed in `dispose()`.
 
+## Combat VFX (`render/combatVfx.ts`, 0.1 Alpha)
+
+- Roadmap B16 (2026-10-01): battles used to read as units silently
+  disappearing — the biggest feel gap. The sim now emits a `CombatEvent`
+  stream (`world.combatEvents`: muzzle/impact/explosion, see
+  `sim/combat.ts`); this module consumes it render-side.
+- Pooled sprites: 96 pre-allocated `THREE.Sprite`s (zero per-frame
+  alloc); textures are `THREE.DataTexture` radial gradients (Node-safe,
+  no canvas). Muzzle flash (0.12s) + tracer at the midpoint, impact
+  flash (0.15s), explosion flash (0.5s, large for buildings) + rising
+  smoke (2s, non-additive). Pool exhaustion drops (never allocates).
+- `EntityRenderer` owns one `CombatVfx`: constructed in the
+  constructor, `update(world.combatEvents, 1/60)` at the end of `sync()`,
+  disposed in `dispose()`. Tested in `tests/sim.combat-vfx.test.ts`
+  (sim emission); render pooling is tsc-verified.
+
 ## Zone overlay (`render/zoneOverlay.ts`, 0.1 Alpha)
 
 - Zone readability (grand-expansion Workstream Z): zoning was

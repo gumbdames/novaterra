@@ -18,6 +18,16 @@
  * NOVATERRA — sim/combat.ts — combat resolution and the attack order.
  *
  * Responsibilities:
+ * - Opportunistic fire (units engage enemies in range each tick).
+ * - The attack order (explicit player/AI targeting).
+ * - Siege (units attack buildings).
+ * - Death and cleanup (killUnit).
+ * - Combat VFX events (B16, 2026-10-01): the `CombatEvent` stream —
+ *   `world.combatEvents` accumulates visual cues (muzzle, impact,
+ *   explosion) during the tick for the render layer to consume. The
+ *   render layer drains it each frame; the sim clears it at the start
+ *   of each tick. Not snapshotted, not digested (pure view).
+ *
  *  - The combat system (`createCombatSystem`), registered AFTER movement
  *    every tick: positions are final for the tick before weapons fire.
  *  - Target acquisition: units with weapons automatically engage the
@@ -114,6 +124,21 @@ import {
   MELTDOWN_OFFLINE_SECONDS,
 } from './utilityNetworks';
 import { runShipyardRepair } from './shipyardRepair';
+
+/**
+ * A visual combat cue for the render layer (B16, 2026-10-01).
+ * The sim emits these; `render/combatVfx.ts` consumes them.
+ * - `muzzle`: a weapon fired (attacker → target). Render: muzzle flash
+ *   at (x,z) + tracer to (targetX,targetZ).
+ * - `impact`: a shot hit without destroying the target. Render: small
+ *   hit flash / spark at (x,z).
+ * - `explosion`: a unit or building was destroyed. Render: explosion
+ *   flash + smoke at (x,z); `large` for buildings / heavy units.
+ */
+export type CombatEvent =
+  | { kind: 'muzzle'; x: number; z: number; targetX: number; targetZ: number }
+  | { kind: 'impact'; x: number; z: number }
+  | { kind: 'explosion'; x: number; z: number; large: boolean };
 
 /** Can this weapon be aimed at that target's domain? */
 export function canTarget(def: UnitDef, target: UnitRecord): boolean {
@@ -434,7 +459,22 @@ function fireWeapon(world: World, attacker: UnitRecord, def: UnitDef, target: Un
     attacker.ammo = (attacker.ammo ?? 0) - perShot;
   }
   attacker.cooldownLeft = cooldown;
-  return target.hp <= 0;
+  // B16 (2026-10-01): emit the visual cue. Muzzle always; impact if the
+  // target survived, explosion if it died.
+  const died = target.hp <= 0;
+  world.combatEvents.push({
+    kind: 'muzzle',
+    x: attacker.x,
+    z: attacker.z,
+    targetX: target.x,
+    targetZ: target.z,
+  });
+  world.combatEvents.push(
+    died
+      ? { kind: 'explosion', x: target.x, z: target.z, large: false }
+      : { kind: 'impact', x: target.x, z: target.z },
+  );
+  return died;
 }
 
 /**
@@ -567,6 +607,21 @@ function fireWeaponAtBuilding(
     attacker.ammo = (attacker.ammo ?? 0) - perShot;
   }
   attacker.cooldownLeft = cooldown;
+  // B16 (2026-10-01): visual cue. Buildings get the large explosion
+  // when destroyed.
+  const c = buildingCenterWorld(b);
+  world.combatEvents.push({
+    kind: 'muzzle',
+    x: attacker.x,
+    z: attacker.z,
+    targetX: c.x,
+    targetZ: c.z,
+  });
+  world.combatEvents.push(
+    destroyed
+      ? { kind: 'explosion', x: c.x, z: c.z, large: true }
+      : { kind: 'impact', x: c.x, z: c.z },
+  );
   return destroyed;
 }
 
@@ -791,6 +846,9 @@ function applyHealAuras(world: World): void {
  */
 export function createCombatSystem(t?: TerrainData): SimSystem {
   return (world: World) => {
+    // B16 (2026-10-01): clear last tick's VFX events — the render layer
+    // drains them each frame; anything left at tick start is stale.
+    world.combatEvents.length = 0;
     for (const u of world.units) {
       if (u.cooldownLeft > 0) u.cooldownLeft -= 1;
       // Elite (VET_MAX_LEVEL) regen (Phase 1): living Elite units regrow

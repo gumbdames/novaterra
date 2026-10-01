@@ -110,6 +110,7 @@ import { surfaceRoughnessTexture } from './surfaceTextures';
 import { ChevronOverlay } from './chevrons';
 import { ZoneOverlay } from './zoneOverlay';
 import { AmbientCrowd, PavingOverlay } from './cityLife';
+import { CombatVfx } from './combatVfx';
 import { XrayView } from './xrayView';
 import { BirdFlocks } from './birds';
 import { ambientSecondsForTick, setAmbientTimeSeconds } from './ambientTime';
@@ -1246,6 +1247,8 @@ export class EntityRenderer {
    * render path (legacy or Phase 0 instanced).
    */
   private readonly chevrons: ChevronOverlay;
+  // B16 (2026-10-01): combat VFX (muzzle/tracer/impact/explosion).
+  private readonly combatVfx: CombatVfx;
   // Workstream Z: zone-tint ground decals (visible by default).
   private readonly zoneOverlay: ZoneOverlay;
   // Workstream P (ambient city life): auto-paved zone decals +
@@ -1399,6 +1402,7 @@ export class EntityRenderer {
     ctx.fillRect(0, 0, 1, 1);
     this.barTexture = new THREE.CanvasTexture(c);
     this.chevrons = new ChevronOverlay(scene);
+    this.combatVfx = new CombatVfx(scene);
     this.zoneOverlay = new ZoneOverlay(scene);
     // Workstream P (ambient city life): paving is a sibling of the zone
     // decals (same digest cadence); the crowd reads zones/roads/seed.
@@ -1464,6 +1468,10 @@ export class EntityRenderer {
     this.syncAirportOverlay(world);
     this.syncSuperweaponFx(world);
     this.syncChevrons(world);
+    // B16 (2026-10-01): combat VFX — drain the sim's event stream.
+    // Fixed 1/60 dt: VFX timing doesn't need frame-perfect deltas.
+    // (?? []: hand-built test worlds without the field.)
+    this.combatVfx.update(world.combatEvents ?? [], 1 / 60);
     // Final-review R5 visual lift: blob shadows for every unit +
     // building (1 instanced draw call).
     this.blobShadows.sync(world);
@@ -1957,6 +1965,7 @@ export class EntityRenderer {
     this.ringMat.dispose();
     this.barTexture.dispose();
     this.chevrons.dispose();
+    this.combatVfx.dispose();
     this.zoneOverlay.dispose();
     // Workstream P (ambient city life).
     this.pavingOverlay.dispose();

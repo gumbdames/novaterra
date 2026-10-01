@@ -114,6 +114,13 @@ export interface World {
    * neutral-default precedent).
    */
   peaceful: boolean;
+  /**
+   * Combat VFX event stream (B16, 2026-10-01): visual cues the sim
+   * emits during the tick for the render layer. Drained by the render
+   * each frame, cleared by the sim at tick start. NOT snapshotted,
+   * NOT digested — pure view, derived from deterministic state.
+   */
+  combatEvents: import('./combat').CombatEvent[];
 }
 
 /** First assignable entity id (0 stays reserved as the "no entity" sentinel). */
@@ -139,6 +146,8 @@ export function createWorld(seed: number): World {
     // Peaceful defaults to false; the session sets it from
     // SessionOptions.peaceful for fresh worlds, restoreSnapshot for saves.
     peaceful: false,
+    // Combat VFX stream starts empty (B16).
+    combatEvents: [],
   };
 }
 
