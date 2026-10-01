@@ -20,6 +20,31 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 - `withTimeout` / `webgpuAdapterReachable` are exported for tests; both are
   unit-tested in `tests/render.renderer.test.ts`. The module stays
   import-safe under Node: the only `three/webgpu` import is type-only.
+- Final-review R5 visual lift (2026-10-01): `createRenderer` sets
+  `renderer.toneMapping = THREE.ACESFilmicToneMapping` on BOTH init
+  paths (primary + WebGL2 fallback) — rolls off sun-lit highlights,
+  no per-material work. `tests/render.renderer.test.ts` pins it.
+
+## Blob shadows (`render/blobShadows.ts`, 0.1 Alpha)
+
+- No shadow maps (a directional cascade over a 2 km map costs more
+  than it buys): one `THREE.InstancedMesh` of soft radial-gradient
+  quads, one instance per living unit + building, laid flat at
+  `groundYAt + BLOB_SHADOW_LIFT` (aircraft shadow the ground beneath
+  them). Exactly **1 draw call**; O(entities) matrix writes per frame.
+- `collectBlobShadows(world, heightAt, max)` is pure (no three.js) and
+  unit-tested in `tests/render.blobShadows.test.ts`; the class only
+  owns the mesh. `EntityRenderer` constructs/syncs/disposes the
+  system; unit hulls come from `hullSizeFor` (variants share the base
+  hull), building diameters from `BUILDING_DEFS` footprints.
+- Perf estimate (2026-10-01): +1 draw call total (instancer-pools +
+  chevron pins in `render.entityInstancing.test.ts` updated for it).
+  CPU/frame: up to 4096 matrix writes (16 floats each; typical
+  late-game ~500 entities ≈ 32 KB — dwarfed by the instancer's own
+  per-frame writes). Memory: 256 KB instance buffer + 16 KB texture.
+  GPU: one 64x64 alpha sample per shadow pixel; overdraw ≈ hull
+  footprint, mostly hidden under the unit itself. ACES is a single
+  output-node op — unmeasurable on any real GPU.
 
 ## Terrain meshing conventions (`render/terrain.ts`)
 

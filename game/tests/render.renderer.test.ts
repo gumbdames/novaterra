@@ -125,3 +125,27 @@ describe('renderer timeout constants', () => {
     expect(RENDERER_INIT_TIMEOUT_MS).toBeLessThanOrEqual(60000);
   });
 });
+
+vi.mock('three/webgpu', () => {
+  class FakeWebGPURenderer {
+    toneMapping: number | null = null;
+    constructor(public readonly opts: unknown) {}
+    async init(): Promise<void> {
+      /* mock GPU init: resolves immediately */
+    }
+  }
+  return { WebGPURenderer: FakeWebGPURenderer };
+});
+
+describe('createRenderer tone mapping (final-review R5 visual lift)', () => {
+  it('sets ACESFilmicToneMapping on the created renderer', async () => {
+    const { createRenderer } = await import('../src/render/renderer');
+    const THREE = await import('three');
+    const renderer = await createRenderer({} as HTMLCanvasElement, {
+      forceWebGL: true,
+    });
+    expect(
+      (renderer as unknown as { toneMapping: number }).toneMapping,
+    ).toBe(THREE.ACESFilmicToneMapping);
+  });
+});

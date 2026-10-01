@@ -381,8 +381,9 @@ describe('EntityRenderer instanced mode', () => {
     const { meshes, instanced, sprites } = countObjects(scene);
     expect(sprites).toBe(0);
     // 3 instancer pools + 3 chevron level meshes (always in the scene,
-    // hidden while no veteran is alive — zero draw calls when empty).
-    expect(instanced).toBe(6);
+    // hidden while no veteran is alive — zero draw calls when empty)
+    // + 1 blob-shadow InstancedMesh (final-review R5 visual lift).
+    expect(instanced).toBe(7);
     expect(meshes).toBe(0);
     renderer.dispose();
   });
@@ -395,9 +396,10 @@ describe('EntityRenderer instanced mode', () => {
     renderer.sync(fakeWorld(units, []));
     expect(renderer.debugInstancer).toBeNull();
     const { instanced, sprites } = countObjects(scene);
-    // 3 chevron level meshes (hidden, no veterans); legacy bodies are
+    // 3 chevron level meshes (hidden, no veterans) + 1 blob-shadow
+    // InstancedMesh (final-review R5 visual lift); legacy bodies are
     // per-view meshes, never instanced.
-    expect(instanced).toBe(3);
+    expect(instanced).toBe(4);
     // Per-view meshes exist (hull + stripe + pennant each); no sprites
     // (all undamaged, bars hidden — visibility, not absence).
     expect(sprites).toBe(24); // bg+fg sprites exist per view, hidden
@@ -441,16 +443,17 @@ describe('EntityRenderer instanced mode', () => {
     expect(inst.entityCount).toBe(0);
     let counts = countObjects(scene);
     expect(counts.meshes).toBeGreaterThan(0);
-    // Only the 3 hidden chevron level meshes are instanced while the
-    // building is still legacy.
-    expect(counts.instanced).toBe(3);
+    // Only the 3 hidden chevron level meshes + the 1 blob-shadow
+    // InstancedMesh are instanced while the building is still legacy.
+    expect(counts.instanced).toBe(4);
     // Completing construction converts the view into the pools.
     building.progress = 1;
     renderer.sync(fakeWorld([], [building]));
     expect(inst.entityCount).toBe(1);
     counts = countObjects(scene);
-    // house model pool + pennant (no stripe) + 3 hidden chevron meshes.
-    expect(counts.instanced).toBe(5);
+    // house model pool + pennant (no stripe) + 3 hidden chevron meshes
+    // + 1 blob-shadow InstancedMesh (final-review R5 visual lift).
+    expect(counts.instanced).toBe(6);
     expect(counts.meshes).toBe(0);
     expect(inst.drawCallCount()).toBe(2);
     renderer.dispose();
@@ -466,8 +469,9 @@ describe('EntityRenderer instanced mode', () => {
     const inst = renderer.debugInstancer!;
     expect(inst.entityCount).toBe(0);
     const { instanced, meshes } = countObjects(scene);
-    // Only the 3 hidden chevron level meshes; bodies fall back to legacy.
-    expect(instanced).toBe(3);
+    // Only the 3 hidden chevron level meshes + the 1 blob-shadow
+    // InstancedMesh; bodies fall back to legacy.
+    expect(instanced).toBe(4);
     expect(meshes).toBeGreaterThan(0);
     renderer.dispose();
   });

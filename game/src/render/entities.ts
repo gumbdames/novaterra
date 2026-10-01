@@ -138,6 +138,7 @@ import { LogisticsOverlay } from './logisticsOverlay';
 import { logisticsOverlayData } from '../ui/logistics';
 // Grand-expansion Phase 5 (S5+S8): the airport overlay.
 import { AirportOverlay } from './airportOverlay';
+import { BlobShadowSystem } from './blobShadows';
 import { airportOverlayData } from '../ui/airports';
 import { HUMAN_PLAYER_ID } from '../ui/session';
 import {
@@ -1267,6 +1268,8 @@ export class EntityRenderer {
   private logisticsOverlayVisible = false;
   // Grand-expansion Phase 5 (S5+S8): airport-site rings + airline-route arcs.
   private readonly airportOverlay: AirportOverlay;
+  /** Final-review R5 visual lift (2026-10-01): one-draw-call blob shadows. */
+  private readonly blobShadows: BlobShadowSystem;
   private airportOverlayVisible = false;
   /** Workstream W: the toggleable residential-desirability overlay. */
   private readonly desirabilityOverlay: DesirabilityOverlay;
@@ -1406,6 +1409,9 @@ export class EntityRenderer {
     this.desirabilityOverlay = new DesirabilityOverlay(scene);
     // Grand-expansion Phase 5 (S5+S8).
     this.airportOverlay = new AirportOverlay(scene);
+    // Final-review R5 visual lift (2026-10-01): one instanced draw
+    // call of blob shadows for every unit + building.
+    this.blobShadows = new BlobShadowSystem(scene, this.terrain, this.waterLevel);
   }
 
   /** Create/update/remove meshes to match the world. Render-side only. */
@@ -1430,6 +1436,9 @@ export class EntityRenderer {
     this.syncAirportOverlay(world);
     this.syncSuperweaponFx(world);
     this.syncChevrons(world);
+    // Final-review R5 visual lift: blob shadows for every unit +
+    // building (1 instanced draw call).
+    this.blobShadows.sync(world);
     this.instancer?.endFrame(this.camera ?? undefined);
   }
 
@@ -1935,6 +1944,8 @@ export class EntityRenderer {
     // Grand-expansion Phase 5 (S5+S8).
     this.airportOverlay.dispose();
     this.gridView.dispose();
+    // Final-review R5 visual lift.
+    this.blobShadows.dispose();
     // Shared per-kind assets (never per-view): release once here.
     for (const m of this.proceduralCache.values()) {
       for (const g of m.geometries) g.dispose();

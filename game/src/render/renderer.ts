@@ -150,6 +150,12 @@ export async function createRenderer(
       RENDERER_INIT_TIMEOUT_MS,
       'renderer.init()',
     );
+    // Final-review R5 visual lift (2026-10-01): ACES filmic tone
+    // mapping — the cheapest remaining image-quality lift. It rolls
+    // off the sun-lit highlights (which otherwise clip to white on
+    // the bright desert/concrete palette) and gives the whole frame
+    // a more filmic response. Applied on both init paths below.
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
     return renderer;
   } catch (error) {
     // Layer 2: the probe passed but init() still hung (e.g. requestDevice()
@@ -167,6 +173,7 @@ export async function createRenderer(
         RENDERER_INIT_TIMEOUT_MS,
         'renderer.init() (WebGL2 fallback)',
       );
+      fallback.toneMapping = THREE.ACESFilmicToneMapping;
       return fallback;
     }
     throw error;
