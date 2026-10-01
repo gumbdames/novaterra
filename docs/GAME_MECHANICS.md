@@ -338,6 +338,11 @@ and a half of flight before it must refuel — and most carry a
 limited ammo load, so they must rearm and refuel at a friendly
 airfield. Nuclear-powered submarines and carriers never burn fuel.
 
+A fossil-fuel aircraft that runs its tank dry is **stranded**: it cannot
+move, so it cannot reach a depot. Selecting it offers **Emergency
+refuel** — an airdropped fuel bladder costing 150 funds that restores
+30% of its tank, enough to fly to a depot and resupply normally.
+
 ## Attacking buildings (siege)
 
 Every building is destructible — it has **structural HP** you can read
@@ -772,7 +777,10 @@ shield holds. The Marshal AI builds and uses it fairly.
 **Storm Engine** — 8 lightning strikes over ~8 seconds at your target
 point (±3 scatter, 120 damage, radius 10). Storm clouds gather, lightning
 flashes, and each strike kicks up a fireball. 10-minute cooldown. Aegis
-shields block storm damage too.
+shields block storm damage too. Enter Storm targeting, then click — or
+drag and release — on the map; a drag fires at the release point. The
+Marshal AI aims its Storm at the largest cluster of your visible units,
+not their midpoint.
 
 ## Phase 3: Advanced economy
 

@@ -43,6 +43,7 @@ import {
   availableFuel,
   cargoLine,
   depotStockLine,
+  emergencyRefuelBlockReason,
   fuelFracOf,
   isDepotBuilding,
   isLowSupply,
@@ -145,6 +146,7 @@ function fakeUnit(kind: UnitKind, opts: Partial<UnitRecord> = {}): UnitRecord {
   return {
     id: nextId++,
     kind,
+    domain: def.domain,
     owner: 1,
     x: 0,
     z: 0,
@@ -459,5 +461,47 @@ describe('selection digest logistics segments (AD11)', () => {
     const world = fakeWorld([b], []);
     const digest = selectionDigest(world, { ...sel, buildingId: 777 }, 'armor', 'logistics');
     expect(digest).toContain('bq:42:0');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Emergency refuel (final-review R5): the stranded-aircraft button
+// ---------------------------------------------------------------------------
+
+describe('emergencyRefuelBlockReason', () => {
+  /** A world whose player 1 holds `funds`. */
+  function richWorld(
+    buildings: BuildingRecord[] = [],
+    units: UnitRecord[] = [],
+    funds = 1000,
+  ): World {
+    return {
+      city: { buildings, players: { 1: { funds } } },
+      units,
+    } as unknown as World;
+  }
+
+  it('returns null for a stranded fossil-fuel aircraft the player can afford', () => {
+    const stranded = fakeUnit('fighter', { fuel: 0 });
+    const world = richWorld([], [stranded]);
+    expect(emergencyRefuelBlockReason(world, stranded)).toBeNull();
+  });
+
+  it('names the blocker: tank not empty, not an aircraft', () => {
+    const flying = fakeUnit('fighter', { fuel: 10 });
+    expect(emergencyRefuelBlockReason(richWorld([], [flying]), flying)).toBe(
+      'tank is not empty',
+    );
+    const truck = fakeUnit('fuelTruck', { fuel: 0 });
+    expect(emergencyRefuelBlockReason(richWorld([], [truck]), truck)).toBe('not an aircraft');
+  });
+
+  it('names the funds blocker when the player is short of the bladder fee', () => {
+    const stranded = fakeUnit('fighter', { fuel: 0 });
+    expect(emergencyRefuelBlockReason(richWorld([], [stranded], 149), stranded)).toBe(
+      'needs 150 funds',
+    );
+    // Exactly the fee is enough.
+    expect(emergencyRefuelBlockReason(richWorld([], [stranded], 150), stranded)).toBeNull();
   });
 });

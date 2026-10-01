@@ -1256,7 +1256,7 @@ function buildFireStation(): LoadedModel {
   const engine = smat('paintedMetal', { color: 0xc8332a });
   const ladder = smat('gunmetal', { color: 0x9aa0a8 });
   const tire = smat('tireRubber', { color: 0x1a1a1c });
-  const bayDark = pmat(0x14161a, { roughness: 0.95, metalness: 0 });
+  const bayDark = smat('concrete', { color: 0x14161a }); // dark bay interior
   // Engine house: brick hall + parapet roof.
   b.add(new THREE.BoxGeometry(3.6, 2.2, 3.0), brick, tr(0, 1.1, -0.3));
   b.add(new THREE.BoxGeometry(3.8, 0.25, 3.2), trim, tr(0, 2.32, -0.3));

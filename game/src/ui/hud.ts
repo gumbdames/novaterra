@@ -119,6 +119,7 @@ import {
   policyUpkeepLine,
 } from './policies';
 import { HUMAN_PLAYER_ID } from './session';
+import { ToastQueue } from './toastQueue';
 // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
 // the peaceful UI contract (tab visibility, objectives lines).
 import { menuTabsForWorld, peacefulStatusLines } from './peaceful';
@@ -142,6 +143,7 @@ import {
   ammoFracOf,
   cargoLine,
   depotStockLine,
+  emergencyRefuelBlockReason,
   fuelFracOf,
   isLowSupply,
   isSupplyUnit,
@@ -240,6 +242,12 @@ export interface HUDActions {
   onToggleGrid(): void;
   /** Phase 3 (logistics): order a unit to resupply at a depot. */
   onResupplyUnit(unitId: number, depotId: number): void;
+  /**
+   * Final-review R5 (2026-10-01): emergency-refuel a stranded
+   * fossil-fuel aircraft (empty tank). The sim validates and rejects
+   * loudly when the aircraft isn't stranded or funds are short.
+   */
+  onEmergencyRefuel(unitId: number): void;
   /**
    * Phase 5 (hangar/carrier shelter): embark a carrier-capable
    * aircraft onto a carrier's wing. The sim validates (owner,
@@ -388,7 +396,10 @@ export class HUD {
   private readonly advisorList: HTMLElement;
   private readonly selectionPanel: HTMLElement;
   private readonly toastEl: HTMLElement;
-  private toastTimer = 0;
+  /** Final-review R5 (2026-10-01): sequential toast queue — a burst of
+   * feedback shows each message in turn instead of overwriting. */
+  private readonly toastQueue = new ToastQueue();
+  private lastToastShown: string | null = null;
   private lastText = new Map<string, string>();
   private lastAdvisorKey = '';
   /**
@@ -1306,6 +1317,9 @@ export class HUD {
     // headless), and the digest carries the constant 'bv:x' segment.
     terrain?: TerrainData,
   ): void {
+    // Toasts pump first — feedback like "Game paused" must show even
+    // while the sim is paused.
+    this.pumpToasts();
     const player = getPlayer(world.city, HUMAN_PLAYER_ID);
     if (player) {
       this.setText('funds', fmt(player.funds), this.resEls.get('funds'));
@@ -1576,6 +1590,26 @@ export class HUD {
           panel.append(supplyBar(`${loc(lg.ammoLabel)} ${Math.round(ammoFracOf(def, u) * 100)}%`, ammoFracOf(def, u)));
           if (isLowSupply(def, u)) {
             panel.append(el('div', 'sel-unit', `⚠ ${loc(lg.lowSupplyWarning)}`));
+          }
+          // Final-review R5 (2026-10-01): Emergency refuel — the
+          // stranded-aircraft affordance. A fossil-fuel aircraft with an
+          // empty tank can't fly to a depot, so this button airdrops a
+          // fuel bladder (+30% fuel, costs funds) through the sim's
+          // `emergencyRefuel` command. Disabled with the named blocker
+          // — never a dead button. The er: digest segment rebuilds the
+          // panel when availability changes (see paletteDigest.ts).
+          if (u.owner === HUMAN_PLAYER_ID && u.domain === 'air' && def.fuelType === 'fossil') {
+            const erBlock = emergencyRefuelBlockReason(world, u);
+            const er = document.createElement('button');
+            er.className = 'sel-action';
+            er.textContent = loc(lg.emergencyRefuelVerb);
+            if (erBlock === null) {
+              er.addEventListener('click', () => this.actions.onEmergencyRefuel(u.id));
+            } else {
+              er.disabled = true;
+              er.title = erBlock;
+            }
+            panel.append(er);
           }
         }
         if (def !== undefined && isSupplyUnit(def) && u.owner === HUMAN_PLAYER_ID) {
@@ -1935,12 +1969,22 @@ export class HUD {
     return bar;
   }
 
-  /** One-line transient feedback. */
+  /** One-line transient feedback — queued, shown in turn. */
   toast(message: string): void {
-    this.toastEl.textContent = message;
-    this.toastEl.classList.add('show');
-    window.clearTimeout(this.toastTimer);
-    this.toastTimer = window.setTimeout(() => this.toastEl.classList.remove('show'), 2200);
+    this.toastQueue.push(message);
+  }
+
+  /** Pump the toast queue (called from update(), every frame). */
+  private pumpToasts(): void {
+    const msg = this.toastQueue.poll();
+    if (msg === this.lastToastShown) return;
+    this.lastToastShown = msg;
+    if (msg === null) {
+      this.toastEl.classList.remove('show');
+    } else {
+      this.toastEl.textContent = msg;
+      this.toastEl.classList.add('show');
+    }
   }
 
   private setText(key: string, text: string, target: HTMLElement | undefined): void {
@@ -1950,7 +1994,6 @@ export class HUD {
   }
 
   dispose(): void {
-    window.clearTimeout(this.toastTimer);
     document.getElementById('hud')?.remove();
   }
 }

@@ -49,6 +49,7 @@ import {
   hasStormFacility,
   AEGIS_DURATION_TICKS,
   SUPERWEAPON_COOLDOWN_TICKS,
+  STORM_RADIUS,
   STORM_STRIKE_COUNT,
   STORM_STRIKE_INTERVAL_TICKS,
   STORM_DAMAGE,
@@ -382,6 +383,31 @@ describe('sim/superweapons — Marshal AI', () => {
       ctx.world.superweapons.fx.some((f) => f.kind === 'storm') ||
       (ctx.world.superweapons.players.find((p) => p.owner === 1)?.storm.cooldownUntil ?? 0) > 0;
     expect(fired).toBe(true);
+  });
+
+  it('fires the Storm at the largest visible cluster, not the centroid', () => {
+    // Final-review R5 (2026-10-01): largest-cluster targeting. Two
+    // far-apart enemy groups — 5 rifles at x≈-60, 3 at x≈+60. The old
+    // all-visible centroid would land near x≈-14 (empty ground); the
+    // new targeting fires at a member of the 5-unit cluster.
+    const ctx = setup(911);
+    ctx.world.ages.age = 'ascendance';
+    addAIPlayer(ctx.world, 1, 'marshal', 0, 0);
+    const ai = ctx.world.ai.players.find((p) => p.owner === 1);
+    if (!ai) throw new Error('AI player missing');
+    ai.superweapons.stormReadyTick = 1; // built, off cooldown
+    for (let i = 0; i < 5; i++) spawnUnit(ctx.world, 'rifles', 0, -62 + i * 2, 0);
+    for (let i = 0; i < 3; i++) spawnUnit(ctx.world, 'rifles', 0, 58 + i * 2, 0);
+    spawnUnit(ctx.world, 'rifles', 1, -60, 6); // AI eyes on both groups
+    spawnUnit(ctx.world, 'rifles', 1, 60, 6);
+    ctx.world.tick = 1;
+    ai.nextThinkTick = 1;
+    createAISystem(ctx.queue)(ctx.world, 1);
+    const applied = ctx.queue.applyDue(ctx.world, 1);
+    const fire = applied.find((a) => a.command.kind === 'fireStorm');
+    expect(fire, 'marshal fired the storm').toBeDefined();
+    const x = fire!.command.payload['x'] as number;
+    expect(Math.abs(x - -60)).toBeLessThanOrEqual(STORM_RADIUS);
   });
 
   it('non-marshal AI cannot use the construction command', () => {

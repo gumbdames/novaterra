@@ -715,6 +715,8 @@ export const STRINGS = {
     rearmToggle: { en: 'Rearm' },
     refuelToggle: { en: 'Refuel' },
     resupplyVerb: { en: 'Resupply' },
+    /** Final-review R5 (2026-10-01): stranded-aircraft affordance. */
+    emergencyRefuelVerb: { en: 'Emergency refuel' },
     lowSupplyWarning: { en: 'Low supply — resupply soon' },
     resupplyingTo: { en: 'Resupplying at depot' },
     noDepotReason: { en: 'No depot with available stock in range' },

@@ -46,6 +46,8 @@ import {
   createCommandQueue,
   registerCoreCommands,
   registerLogisticsCommands,
+  EMERGENCY_REFUEL_COST_FUNDS,
+  EMERGENCY_REFUEL_FRAC,
   RESUPPLY_TIMEOUT_TICKS,
   type CommandQueue,
   type NewCommand,
@@ -74,8 +76,10 @@ import {
   cellCenterWorld,
   cellCoords,
   cellIsWater,
+  getPlayer,
   type BuildingKind,
   type BuildingRecord,
+  type PlayerState,
 } from '../src/sim/city';
 import { worldToCell } from '../src/sim/pathfinding';
 import { digestWorld } from '../src/sim/digest';
@@ -477,5 +481,90 @@ describe('resupply — save/load', () => {
     expect(r.resupplyDepotId ?? 0).toBe(0);
     expect(r.resupplyReservedAmmo ?? 0).toBe(0);
     expect(r.resupplyReservedFuel ?? 0).toBe(0);
+  });
+});
+
+describe('emergencyRefuel — stranded fossil aircraft (final-review R5)', () => {
+  /** A fossil-fuel fighter with an empty tank (stranded, failed LOUDLY). */
+  function makeStrandedFighter(ctx: Ctx, owner: number): ReturnType<typeof spawnUnit> {
+    const p = findLandNear(ctx.terrain, -60, -60);
+    const u = spawnUnit(ctx.world, 'fighter', owner, p.x, p.z);
+    u.fuel = 0;
+    u.state = 'failed';
+    u.failReason = 'out of fuel';
+    return u;
+  }
+
+  function emergencyRefuel(ctx: Ctx, unitId: number, owner: number): void {
+    enqueue(ctx, { kind: 'emergencyRefuel', payload: { unitId, owner } });
+  }
+
+  function fundsOf(ctx: Ctx, owner: number): number {
+    return (getPlayer(ctx.world.city, owner) as PlayerState).funds;
+  }
+
+  it('refuels the stranded fighter, deducts the bladder fee, and clears the failure', () => {
+    const ctx = setup();
+    const f = makeStrandedFighter(ctx, 0);
+    const before = fundsOf(ctx, 0);
+    emergencyRefuel(ctx, f.id, 0);
+    runTicks(ctx, 1);
+    // Fighter fuelCapacity 45 → ceil(45 * 0.3) = 14.
+    expect(f.fuel).toBe(Math.ceil(45 * EMERGENCY_REFUEL_FRAC));
+    expect(fundsOf(ctx, 0)).toBe(before - EMERGENCY_REFUEL_COST_FUNDS);
+    expect(f.state).toBe('idle');
+    expect(f.failReason).toBeNull();
+  });
+
+  it('leaves a non-fuel failure alone (still refuels)', () => {
+    const ctx = setup();
+    const f = makeStrandedFighter(ctx, 0);
+    f.failReason = 'no path';
+    emergencyRefuel(ctx, f.id, 0);
+    runTicks(ctx, 1);
+    expect(f.fuel).toBeGreaterThan(0);
+    expect(f.failReason).toBe('no path');
+  });
+
+  it('rejects a non-aircraft', () => {
+    const ctx = setup();
+    const p = findLandNear(ctx.terrain, -60, -60);
+    const tank = spawnUnit(ctx.world, 'tank', 0, p.x, p.z);
+    tank.fuel = 0;
+    expect(() => emergencyRefuel(ctx, tank.id, 0)).toThrowError(/not an aircraft/);
+  });
+
+  it('rejects when the tank is not empty', () => {
+    const ctx = setup();
+    const f = makeStrandedFighter(ctx, 0);
+    f.fuel = 1;
+    f.state = 'idle';
+    f.failReason = null;
+    expect(() => emergencyRefuel(ctx, f.id, 0)).toThrowError(/not stranded/);
+  });
+
+  it('rejects a foreign-owned aircraft', () => {
+    const ctx = setup();
+    const f = makeStrandedFighter(ctx, 1);
+    expect(() => emergencyRefuel(ctx, f.id, 0)).toThrowError(/not owned by player/);
+  });
+
+  it('rejects a destroyed aircraft', () => {
+    const ctx = setup();
+    const f = makeStrandedFighter(ctx, 0);
+    f.hp = 0;
+    expect(() => emergencyRefuel(ctx, f.id, 0)).toThrowError(/destroyed/);
+  });
+
+  it('rejects when funds are short of the bladder fee', () => {
+    const ctx = setup();
+    const f = makeStrandedFighter(ctx, 0);
+    (getPlayer(ctx.world.city, 0) as PlayerState).funds = EMERGENCY_REFUEL_COST_FUNDS - 1;
+    expect(() => emergencyRefuel(ctx, f.id, 0)).toThrowError(/needs .* funds/);
+  });
+
+  it('rejects an unknown unit id', () => {
+    const ctx = setup();
+    expect(() => emergencyRefuel(ctx, 99999, 0)).toThrowError(/no unit with id/);
   });
 });

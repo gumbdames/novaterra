@@ -85,6 +85,7 @@ import {
   cargoFuelOf,
   cargoAmmoOf,
   serviceTogglesOf,
+  emergencyRefuelBlockReason,
 } from './logistics';
 // Grand-expansion Phase 5 (hangar/carrier shelter): the parked-aircraft
 // manifest on building selections reads through the ui/hangars contract.
@@ -182,6 +183,15 @@ export function selectionDigest(
         parts.push(`uf:${id}:x`);
         parts.push(`us:${id}:x`);
       }
+      // Final-review R5 (2026-10-01): the Emergency refuel button's
+      // enabled state. er: = 1 exactly when the panel renders an
+      // enabled button (the sim would accept the order), 0 when it
+      // renders disabled with the block reason. Always emitted — it
+      // covers the stranded exactness the 5%-quantized uf: fuel level
+      // can't (fuel 1 vs 0) and player funds, which no segment tracks.
+      parts.push(
+        `er:${id}:${u !== undefined && emergencyRefuelBlockReason(world, u) === null ? 1 : 0}`,
+      );
       // Grand-expansion Phase 5 (hangar/carrier shelter): the panel
       // renders the shelter line + Embark/Park/Launch buttons per
       // aircraft, and the carrier wing manifest. ue: carries the
@@ -523,7 +533,10 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // b<secs> = burned, i<target>:<secs> = infiltrating,
     // e<target> = embedded, d<n> = inside rival coverage, h = hidden;
     // x when the panel renders no intel line).
-    digestLabels: ['u:', 'uh:', 'uv:', 'um:', 'uf:', 'us:', 'ue:', 'ew:', 'iu:'],
+    // er: the Emergency refuel button's enabled state (final-review
+    // R5: 1 = the sim would accept the order, 0 = disabled with the
+    // named block reason; always emitted).
+    digestLabels: ['u:', 'uh:', 'uv:', 'um:', 'uf:', 'us:', 'ue:', 'ew:', 'iu:', 'er:'],
   },
   {
     id: 'selection-building',

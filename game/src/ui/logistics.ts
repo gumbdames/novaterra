@@ -45,8 +45,9 @@
  *   (flat booleans) — which field services a cargo-carrying unit offers.
  */
 
-import { BUILDING_DEFS, cellCenterWorld } from '../sim/city';
+import { BUILDING_DEFS, cellCenterWorld, getPlayer } from '../sim/city';
 import type { BuildingKind, BuildingRecord } from '../sim/city';
+import { EMERGENCY_REFUEL_COST_FUNDS } from '../sim/commands';
 import { LOGISTICS_RADIUS } from '../sim/economy';
 import { UNIT_DEFS, supplyLevel, supplyServicesOf } from '../sim/units';
 import type { UnitDef, UnitKind, UnitRecord } from '../sim/units';
@@ -335,6 +336,24 @@ export function resupplyBlockReason(
   if (fuelNeed <= 0 && ammoNeed <= 0) return 'tanks and magazines full';
   const own = world.city.buildings.some((b) => b.owner === unit.owner && isDepotBuilding(b));
   return own ? 'no depot has available stock' : 'no depot built yet';
+}
+
+/**
+ * Final-review R5 UI feel (2026-10-01): the Emergency refuel button's
+ * disabled reason — null when the sim would accept the order. Mirrors
+ * the `emergencyRefuel` validate order (aircraft / fossil / stranded /
+ * affordable); the sim remains the authority and rejects loudly.
+ */
+export function emergencyRefuelBlockReason(world: World, u: UnitRecord): string | null {
+  const def = UNIT_DEFS[u.kind as UnitKind];
+  if (u.domain !== 'air') return 'not an aircraft';
+  if (def?.fuelType !== 'fossil') return 'does not burn fossil fuel';
+  if ((u.fuel ?? 0) > 0) return 'tank is not empty';
+  const player = getPlayer(world.city, u.owner);
+  if (!player || player.funds < EMERGENCY_REFUEL_COST_FUNDS) {
+    return `needs ${EMERGENCY_REFUEL_COST_FUNDS} funds`;
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------

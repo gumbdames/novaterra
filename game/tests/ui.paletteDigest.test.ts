@@ -567,3 +567,27 @@ describe('selectionDigest (Phase 4: occupancy + road class)', () => {
     expect(digest).not.toContain('bo:');
   });
 });
+describe('selectionDigest (final-review R5: emergency refuel)', () => {
+  it('er: tracks the Emergency refuel button availability (stranded + funds)', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const f = spawnUnit(world, 'fighter', HUMAN_PLAYER_ID, 0, 0);
+    const player = getPlayer(world.city, HUMAN_PLAYER_ID) as { funds: number };
+    player.funds = 1000;
+    const sel = selectUnits([f.id]);
+    const digest = (): string => selectionDigest(world, sel, 'infantry', 'housing');
+    // Flying with fuel in the tank: the button renders disabled.
+    f.fuel = 10;
+    expect(digest()).toContain(`er:${f.id}:0`);
+    // Stranded with money: enabled — the digest must move so the panel
+    // rebuilds (the 5%-quantized uf: level cannot see fuel 1 vs 0).
+    f.fuel = 0;
+    const stranded = digest();
+    expect(stranded).toContain(`er:${f.id}:1`);
+    // Stranded but broke: disabled again.
+    player.funds = 10;
+    const broke = digest();
+    expect(broke).not.toBe(stranded);
+    expect(broke).toContain(`er:${f.id}:0`);
+  });
+});

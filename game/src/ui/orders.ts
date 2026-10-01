@@ -479,6 +479,20 @@ export function buildResupplyOrder(
 }
 
 /**
+ * Final-review R5 UI feel (2026-10-01): emergency-refuel a stranded
+ * fossil-fuel aircraft (empty tank — it cannot move to a depot, so the
+ * normal resupply flow can't reach it). The sim (`emergencyRefuel` in
+ * registerLogisticsCommands) validates aircraft/fossil/empty-tank/
+ * funds and rejects loudly otherwise.
+ */
+export function buildEmergencyRefuelOrder(unitId: number, owner: number): OrderIntent {
+  return {
+    kind: 'emergencyRefuel',
+    payload: { unitId, owner },
+  };
+}
+
+/**
  * Phase 3 (logistics): set which field services a supply unit offers
  * (repair / rearm / refuel). Flat booleans — the exact payload shape
  * `setSupplyToggles` validates. Only cargo-carrying units (supplyTruck /

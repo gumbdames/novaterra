@@ -396,7 +396,12 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   exists (2 escorts), trains carrier-capable aircraft into the wing,
   and converges idle carrier-capable aircraft onto the carrier via
   `embarkAircraft`/`moveTo`; `isEmptyWingCarrier` is enforced in BOTH
-  attack loops so an empty-wing carrier never chases. Wing composition
+  attack loops so an empty-wing carrier never chases. The attack loops
+  also skip sheltered aircraft and idle carrier-capable aircraft that
+  are converging on a carrier (`isConvergingOnCarrier`) — 2b embarks
+  them in the same think and the embark applies first, so a same-think
+  `attackUnit` for the same aircraft would go stale at apply and throw
+  (final-review R5, 2026-10-01). Wing composition
   (final-review R5 H3, 2026-10-01): `pickWingAircraftKind` picks the
   next wing slot armed-first (damage > 0 kinds before unarmed) with at
   most ONE recon spotter per wing (embarked + converging aircraft

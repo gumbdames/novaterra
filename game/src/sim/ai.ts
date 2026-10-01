@@ -142,7 +142,7 @@
 import type { World } from './world';
 import type { CommandQueue } from './commands';
 import type { SimSystem } from './tick';
-import { findUnit, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
+import { findUnit, isSheltered, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
 import { chooseVariant } from './variants';
 import { rngBank } from './world';
 import type { RngBank } from './rng';
@@ -194,7 +194,7 @@ import {
 } from './city';
 import type { TerrainData } from './terrain';
 import { isWater } from './terrain';
-import { isAegisReady, isStormReady } from './superweapons';
+import { STORM_RADIUS, isAegisReady, isStormReady } from './superweapons';
 import { CommandRejectedError } from './commands';
 // R1 final-review C2 (2026-10-01): the AI's virtual economy converts
 // part of its tax stipend into materials at the fixed market rate —
@@ -2968,6 +2968,14 @@ function thinkCitizen(
       // Skip units whose weapons can't engage this target's domain
       // (e.g. tanks can't target air) — the attackUnit command would reject.
       if (!canTarget(def, nearest)) continue;
+      // Wing-managed aircraft stay out of the generic attack loop:
+      // thinkCarrierWings 2b embarks idle carrier-capable aircraft in
+      // the same think and the embark applies first — a same-think
+      // attackUnit for the same aircraft would go stale at apply and
+      // throw (loud-rejection contract). Sheltered aircraft can't
+      // attack at all.
+      if (isSheltered(u)) continue;
+      if (def.carrierCapable === true && isConvergingOnCarrier(u)) continue;
       // Phase 6: carriers with unfilled wings never sail into combat
       // (their wings are filled by thinkCarrierWings first). Pre-B this
       // is always false — the loop is byte-identical to before.
@@ -3198,6 +3206,11 @@ function thinkCommander(
       // Dry magazines don't get new attack orders — they fall back in
       // thinkAmmoRetreats instead (they can't shoot anyway).
       if ((def.ammoCapacity ?? 0) > 0 && u.ammo <= 0) continue;
+      // Wing-managed aircraft stay out of the generic attack loop (see
+      // the citizen loop above): a same-think embark would go stale at
+      // apply and throw.
+      if (isSheltered(u)) continue;
+      if (def.carrierCapable === true && isConvergingOnCarrier(u)) continue;
       if (u.targetId === nearest.id && u.chasing) continue;
       // Fighters prefer air targets; others take the nearest.
       const targetIsAir = UNIT_DEFS[nearest.kind as UnitKind].domain === 'air';
@@ -3367,20 +3380,31 @@ function thinkSuperweapons(
     reserveSuperweaponFacility(world, queue, ai, 'aegis');
   }
   // Fire the Storm at the largest visible enemy cluster.
+  // Final-review R5 (2026-10-01): largest-cluster targeting replaces the
+  // old all-visible centroid — the centroid of two far-apart skirmishes
+  // lands on empty ground between them. For each visible enemy, count
+  // neighbors within STORM_RADIUS; fire at the enemy with the most
+  // (ties break by lowest unit id — deterministic).
   if (isStormReady(world, ai.owner)) {
     const visible = getVisibleEnemies(world, ai.owner);
     if (visible.length >= 3) {
-      let x = 0;
-      let z = 0;
+      let best: (typeof visible)[number] | null = null;
+      let bestCount = -1;
       for (const e of visible) {
-        x += e.x;
-        z += e.z;
+        let count = 0;
+        for (const o of visible) {
+          const dx = o.x - e.x;
+          const dz = o.z - e.z;
+          if (dx * dx + dz * dz <= STORM_RADIUS * STORM_RADIUS) count++;
+        }
+        if (count > bestCount || (count === bestCount && best !== null && e.id < best.id)) {
+          best = e;
+          bestCount = count;
+        }
       }
-      enqueue('fireStorm', {
-        owner: ai.owner,
-        x: x / visible.length,
-        z: z / visible.length,
-      });
+      if (best !== null) {
+        enqueue('fireStorm', { owner: ai.owner, x: best.x, z: best.z });
+      }
     }
   }
   // Raise the Aegis when the army is hurting.

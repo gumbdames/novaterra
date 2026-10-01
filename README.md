@@ -61,7 +61,15 @@ land, sea and air — or play a fully peaceful game with war disabled.
   `docs/research/phase9-soak-metrics.md`) fixed an `advanceAge` race
   crash, water-sited forward bases, and the peaceful-AI death spiral,
   and tuned AI mixes (dead roster 82 → 73 kinds); polish fixed
-  oversized airport terminals and undersized runway strips.
+  oversized airport terminals and undersized runway strips. The
+  final-review feel pass (2026-10-01) is in too: Mk II/III variants are
+  tactical tradeoffs (not stat ladders), blob shadows + ACES tone mapping,
+  three procedural civilian models (sports stadium, botanical garden,
+  fire station), duplicate-coalescing toast notifications, the Storm tool
+  firing at the drag-release point, the Marshal AI aiming its Storm at
+  the largest visible enemy cluster, and **Emergency refuel** for
+  stranded fossil-fuel aircraft (+30% tank for 150 funds, airdropped —
+  Resupply can't reach an aircraft that can't fly to a depot).
   See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
@@ -94,7 +102,8 @@ land, sea and air — or play a fully peaceful game with war disabled.
   marinas that raise nearby land value, and the occupancy line
   (residents/workers) in the selection panel
 - Missile/fuel logistics: fuel burn, ammo magazines, depots, supply trucks,
-  resupply orders, reload-point aura
+  resupply orders, reload-point aura, and **Emergency refuel** for
+  stranded fossil-fuel aircraft (150 funds, +30% tank, airdropped)
 - Intel (Phase 7): 4 intel buildings generating surveillance /
   operational / counter-intel assets, the stealthy **Spy** (from the
   Intelligence Headquarters) and the overt **Recon Team**, two lab

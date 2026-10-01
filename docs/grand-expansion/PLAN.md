@@ -772,7 +772,13 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   steppers (new UI over the existing setTaxRate order) + city focus +
   cabinet status + research; every pre-existing control kept a home
   (pinned by game/tests/ui.menuTabs.test.ts), digest gained mt:/tx:/ms:/
-  mg: segments, full suite green, tsc/build clean.
+  mg: segments, full suite green, tsc/build clean. Final-review R5 feel
+  (2026-10-01, 0.1 Alpha): `emergencyRefuel` command + selection-panel
+  button for stranded fossil-fuel aircraft (150 funds, +30% tank,
+  AD6 validate≡apply, `er:` digest segment), duplicate-coalescing toast
+  queue, the Storm tool firing at the drag-release point, and the
+  Marshal AI firing its Storm at the largest visible enemy cluster
+  instead of the all-visible centroid.
   W (desirability/land value/migration, library + park) LANDED
   2026-09-30 (0.1 Alpha): derived per-residential-cell 0–100 model
   (elevation/water/pollution/amenities), land-value tax tiers
@@ -1100,8 +1106,13 @@ integration gate is green (full suite 2100/2100, tsc clean).
   unlock); commander mix gains reconTeam/hq. Polish: oversized
   airport terminals scaled to footprints, runway strips filled to
   plots, stale comments and a peaceful-mode intel-panel contradiction
-  fixed. Save/load digests stay stable. Budgets: startup ≈3.5 MiB
-  (1.63 MiB JS+CSS+HTML + pinned 33-key boot GLB set) vs 8 MiB gate.
+  fixed. Save/load digests stay stable. Budgets: startup 4.11 MiB
+  transferred (byte-measured 2026-10-01, final-review R3: 0.46 MiB
+  gzipped JS+CSS+HTML+GLTFLoader + 2.80 MiB pinned 33-key boot GLB set
+  + 0.79 MiB tree textures + 0.06 MiB external colormaps; 5.30 MiB raw)
+  vs the 8 MiB gate — 51.3% spent. The boot-budget test
+  (`game/tests/render.boot-budget.test.ts`) pins this in bytes and
+  fails the suite if it ever exceeds 8 MiB.
   AI-vs-AI headline-system usage metrics per phase (§6); balance pass
 on plant ladder and supply costs; visual review per asset batch;
 player-docs (HOW_TO_PLAY, GAME_MECHANICS) updated per phase as
@@ -1127,6 +1138,15 @@ loading and/or meshopt optimize) must be implemented no later than
 Phase 4, before the airport/naval waves land. Procedural-first
 infrastructure and art-shared variants are already assumed in the
 counts above.
+
+> **Final-review R3 (2026-10-01):** the "Today ~5.45 MiB" above was raw
+> bytes with no gzip credit. Byte-measured on a fresh build, the boot
+> payload transfers **4.11 MiB (51.3% of the 8 MiB gate)** — 0.46 MiB
+> gzipped text (HTML/JS/CSS/GLTFLoader) + 3.65 MiB raw binary (2.80 MiB
+> boot GLBs, 0.79 MiB tree textures, 0.06 MiB external colormaps);
+> 5.30 MiB raw-everything (66.2%). Pinned by
+> `game/tests/render.boot-budget.test.ts`; full methodology in
+> `docs/research/perf-r3.md`.
 
 **Draw calls (≤100–200 at 60 fps).** ~2–8 per entity view today; no
 entity instancing path. Phase 0 decides the mechanism; entity-count

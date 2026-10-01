@@ -147,6 +147,12 @@ to set its field services (**Repair / Rearm / Refuel** toggles), and hit
 The **Advanced Logistics** upgrade (Infrastructure group) expands depot
 storage and ammo production ×1.5.
 
+**Stranded aircraft:** a fossil-fuel aircraft whose tank hits empty cannot
+move — and it cannot fly to a depot either, so Resupply can't reach it.
+Select it and hit **Emergency refuel**: a fuel bladder is airdropped for
+150 funds, restoring 30% of its tank — enough to fly home and resupply
+properly. (Nuclear-powered aircraft never run dry.)
+
 Watch the top bar: Funds, Materials, Food, Fuel, Goods, Influence,
 Manpower, Population, and your age. Your advisor (left side) warns you
 before things go wrong — listen to it.
@@ -319,7 +325,8 @@ The bottom-left menu has three tabs:
 - **Military** — unit **orders** (right-click to attack/move, **S** to
   stop), the **train** palette, the Logistics / Naval-Air / Special
   build tabs, and the **superweapons**: fire **Aegis**, enter **Storm
-  targeting** (then click the map).
+  targeting** (then click — or drag and release — on the map; a drag
+  fires at the release point).
 - **Management** — set **tax rates** per zone (0–50%; disabled while a
   mayor holds office — the mayor resets them each month), set the
   **city focus** (specialization), appoint/dismiss your **Mayor** (tax

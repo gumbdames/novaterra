@@ -44,7 +44,7 @@ import type { TerrainData } from './terrain';
 import { isWater } from './terrain';
 import { findUnit, UNIT_DEFS } from './units';
 import type { UnitKind, UnitRecord } from './units';
-import { BUILDING_DEFS, cellCenterWorld } from './city';
+import { BUILDING_DEFS, cellCenterWorld, getPlayer } from './city';
 import type { BuildingRecord } from './city';
 import { orderMoveTo } from './movement';
 
@@ -269,6 +269,64 @@ export function registerCoreCommands(queue: CommandQueue): void {
 /** Reservation hold: 60 s at 30 Hz before an unfulfilled resupply releases. */
 export const RESUPPLY_TIMEOUT_TICKS = 1800;
 
+/**
+ * Final-review R5 UI feel (2026-10-01): `emergencyRefuel` pricing.
+ * A flat funds fee for the airdropped fuel bladder, granting 30% of
+ * the aircraft's tank — enough to reach a depot in most cases, never
+ * a full free refill. Exported: the UI names the cost in the
+ * selection-panel button's disabled reason.
+ */
+export const EMERGENCY_REFUEL_COST_FUNDS = 150;
+export const EMERGENCY_REFUEL_FRAC = 0.3;
+
+/** The validated outcome of an `emergencyRefuel` order. */
+interface EmergencyRefuelPlan {
+  unit: UnitRecord;
+  def: (typeof UNIT_DEFS)[UnitKind];
+  player: { funds: number };
+}
+
+/**
+ * Shared validate for `emergencyRefuel` (AD6 validate≡apply): the
+ * aircraft must be a living, player-owned, fossil-fuel aircraft with
+ * an empty tank, and the owner must afford the bladder. Returns the
+ * plan or the human-readable rejection.
+ */
+function checkEmergencyRefuel(
+  world: World,
+  unitId: unknown,
+  owner: unknown,
+): EmergencyRefuelPlan | string {
+  if (typeof unitId !== 'number' || !Number.isInteger(unitId) || unitId <= 0) {
+    return 'emergencyRefuel: payload.unitId must be a positive integer';
+  }
+  if (typeof owner !== 'number' || !Number.isInteger(owner)) {
+    return 'emergencyRefuel: payload.owner must be an integer';
+  }
+  const unit = findUnit(world, unitId);
+  if (!unit) return `emergencyRefuel: no unit with id ${unitId}`;
+  if (unit.owner !== owner) {
+    return `emergencyRefuel: unit ${unitId} is not owned by player ${owner}`;
+  }
+  if (unit.hp <= 0) return `emergencyRefuel: unit ${unitId} is destroyed`;
+  const def = UNIT_DEFS[unit.kind as UnitKind];
+  if (unit.domain !== 'air') {
+    return `emergencyRefuel: unit ${unitId} (${unit.kind}) is not an aircraft`;
+  }
+  if (def?.fuelType !== 'fossil') {
+    return `emergencyRefuel: unit ${unitId} (${unit.kind}) does not burn fossil fuel`;
+  }
+  if ((unit.fuel ?? 0) > 0) {
+    return `emergencyRefuel: unit ${unitId} is not stranded (its tank is not empty)`;
+  }
+  const player = getPlayer(world.city, owner);
+  if (!player) return `emergencyRefuel: no player ${owner}`;
+  if (player.funds < EMERGENCY_REFUEL_COST_FUNDS) {
+    return `emergencyRefuel: needs ${EMERGENCY_REFUEL_COST_FUNDS} funds`;
+  }
+  return { unit, def, player };
+}
+
 function findDepotBuilding(world: World, depotId: number): BuildingRecord | undefined {
   return world.city.buildings.find((b) => b.id === depotId);
 }
@@ -456,6 +514,37 @@ export function registerLogisticsCommands(queue: CommandQueue, t: TerrainData): 
         });
       }
       return { unit: unit.id, depot: depot.id, ammo: ammoReserve, fuel: fuelReserve };
+    },
+  });
+
+  // Final-review R5 UI feel (2026-10-01): `emergencyRefuel` — the
+  // stranded-aircraft affordance. A fossil-fuel aircraft with an empty
+  // tank cannot move (movement.ts `fuelGateOk` fails its orders LOUDLY),
+  // and the normal `resupply` flow can't help — it requires the unit to
+  // FLY to a depot. This command airdrops a fuel bladder: flat funds
+  // cost, +30% tank, and the 'out of fuel' failure is cleared so the
+  // aircraft accepts orders again. Nuclear-fuel aircraft never strand
+  // (exempt from the fuel gate), so they are rejected here.
+  queue.register('emergencyRefuel', {
+    validate(cmd, world): string | null {
+      const r = checkEmergencyRefuel(world, cmd.payload['unitId'], cmd.payload['owner']);
+      return typeof r === 'string' ? r : null;
+    },
+    apply(cmd, world): unknown {
+      const r = checkEmergencyRefuel(world, cmd.payload['unitId'], cmd.payload['owner']);
+      if (typeof r === 'string') throw new CommandRejectedError(r);
+      const { unit, def, player } = r;
+      player.funds -= EMERGENCY_REFUEL_COST_FUNDS;
+      unit.fuel = Math.max(
+        1,
+        Math.ceil((def.fuelCapacity ?? 0) * EMERGENCY_REFUEL_FRAC),
+      );
+      // Un-strand: a failed 'out of fuel' order becomes idle again.
+      if (unit.state === 'failed' && unit.failReason === 'out of fuel') {
+        unit.state = 'idle';
+        unit.failReason = null;
+      }
+      return unit.id;
     },
   });
 

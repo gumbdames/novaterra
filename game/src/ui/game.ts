@@ -162,6 +162,7 @@ import {
   buildStopOrders,
   buildZoneOrder,
   buildResearchUpgradeOrder,
+  buildEmergencyRefuelOrder,
   buildResupplyOrder,
   buildSupplyTogglesOrder,
   buildUpgradeRoadOrder,
@@ -894,6 +895,10 @@ class GameController {
       // silent no-op.
       onResupplyUnit: (unitId, depotId) =>
         this.enqueue(buildResupplyOrder(unitId, depotId, HUMAN_PLAYER_ID)),
+      // Final-review R5 (2026-10-01): emergency-refuel a stranded
+      // fossil-fuel aircraft. Same loud-rejection path as resupply.
+      onEmergencyRefuel: (unitId) =>
+        this.enqueue(buildEmergencyRefuelOrder(unitId, HUMAN_PLAYER_ID)),
       onSetSupplyToggles: (unitId, services) =>
         this.enqueue(buildSupplyTogglesOrder(unitId, HUMAN_PLAYER_ID, services)),
       // Grand-expansion Phase 5 (hangar/carrier shelter, workstream B):
@@ -1778,10 +1783,7 @@ class GameController {
       return;
     }
     if (this.placement?.kind === 'storm') {
-      this.enqueue(buildFireStormOrder(HUMAN_PLAYER_ID, point.x, point.z));
-      this.audio.playSfx('place');
-      this.placement = null;
-      this.hud.toast('Storm Engine firing.');
+      this.fireStormAt(point.x, point.z);
       return;
     }
 
@@ -1910,6 +1912,19 @@ class GameController {
       this.dragRect = null;
     }
     this.hud.toast('Cancelled.');
+  }
+
+  /**
+   * Fire the armed Storm Engine at a map point — shared by the click
+   * path (handleLeftClick) and the drag-release path (pointerup).
+   * Final-review R5 UI feel (2026-10-01): a storm-tool drag fires at
+   * the release point instead of box-selecting.
+   */
+  private fireStormAt(x: number, z: number): void {
+    this.enqueue(buildFireStormOrder(HUMAN_PLAYER_ID, x, z));
+    this.audio.playSfx('place');
+    this.placement = null;
+    this.hud.toast('Storm Engine firing.');
   }
 
   /**
@@ -2101,7 +2116,16 @@ class GameController {
           const dy = e.clientY - this.dragStart.y;
           // No selection rectangle while linear-network drag-painting: the
           // gesture belongs to the network tool, not to box-select.
-          if (Math.hypot(dx, dy) > 6 && !this.dragRect && !this.networkDrag) {
+          // Final-review R5 (2026-10-01): the rect is only created while
+          // a placement tool is armed — a mid-drag cancellation
+          // (right-click/Escape) must not leave a rect that box-selects
+          // on release with no tool armed.
+          if (
+            Math.hypot(dx, dy) > 6 &&
+            !this.dragRect &&
+            !this.networkDrag &&
+            this.placement !== null
+          ) {
             this.dragRect = document.createElement('div');
             this.dragRect.className = 'select-rect';
             this.container.appendChild(this.dragRect);
@@ -2259,12 +2283,29 @@ class GameController {
         }
         return;
       }
+      // Storm tool: a drag fires at the release point — it never
+      // box-selects (final-review R5 UI feel). A plain click falls
+      // through to handleLeftClick below, which fires the same way.
+      // The placement is read live: a mid-drag cancellation already
+      // disarmed the tool, so a cancelled storm can never fire here.
+      if (this.placement?.kind === 'storm' && gesture === 'drag') {
+        this.dragRect?.remove();
+        this.dragRect = null;
+        const ndc = this.toNDC(e);
+        const p = this.groundPoint(ndc.x, ndc.y);
+        if (p) this.fireStormAt(p.x, p.z);
+        return;
+      }
       if (this.dragRect) {
-        // Box select (or zone drag) from the screen rect.
+        // Box select (or zone drag) from the screen rect. The rect only
+        // exists while a rect-tool is armed (creation is gated on
+        // placement !== null below); a mid-drag cancellation removes it
+        // in cancelPlacement, so reaching here with no placement means
+        // the tool was consumed another way — swallow the rect.
         const rect = this.dragRect.getBoundingClientRect();
         this.dragRect.remove();
         this.dragRect = null;
-        if (start) this.handleDragRect(rect, e.shiftKey);
+        if (start && this.placement !== null) this.handleDragRect(rect, e.shiftKey);
         return;
       }
       if (gesture === 'click') {
