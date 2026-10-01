@@ -437,9 +437,9 @@ describe('peaceful command lockout', () => {
 // ---------------------------------------------------------------------------
 
 describe('military def classification (roster pinning)', () => {
-  it('classifies every one of the 96 unit defs', () => {
+  it('classifies every one of the 97 unit defs', () => {
     const kinds = Object.keys(UNIT_DEFS);
-    expect(kinds).toHaveLength(96);
+    expect(kinds).toHaveLength(97);
     const military = kinds.filter((k) => UNIT_DEFS[k as keyof typeof UNIT_DEFS].military === true);
     expect(military).toHaveLength(71);
     expect(new Set(military)).toEqual(MILITARY_UNITS);
@@ -450,12 +450,14 @@ describe('military def classification (roster pinning)', () => {
     }
   });
 
-  it('classifies every one of the 99 building defs', () => {
+  it('classifies every one of the 100 building defs', () => {
     const kinds = Object.keys(BUILDING_DEFS);
     // Grand-expansion Phase 8 (civilian, workstream E, 2026-09-30): 89 +
     // the 10 new civilian kinds — all military: false, so the military
     // count stays 21.
-    expect(kinds).toHaveLength(99);
+    // Civilian sea trade (Half A, 2026-10-01): + the commercialHarbor —
+    // civilian too, so the military count still stays 21.
+    expect(kinds).toHaveLength(100);
     const military = kinds.filter(
       (k) => BUILDING_DEFS[k as keyof typeof BUILDING_DEFS].military === true,
     );

@@ -73,6 +73,8 @@ game/src/
     peaceful.ts   # peaceful-mode status (endless — no victory condition)
     delegation.ts # mayors/generals/cabinet (appointed bureaucrats)
     market.ts     # fixed-rate market price list (leaf module)
+    seaTrade.ts   # civilian sea-trade routes: policies, port calls,
+                  # voyage income (leaf module; Half A)
     commands.ts   # tick-aligned command queue, { validate, apply } specs
     digest.ts     # FNV-1a canonical state hash (save integrity, tests)
     snapshot.ts   # versioned snapshots (v8; v5/v6/v7 still load)

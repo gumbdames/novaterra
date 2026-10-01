@@ -178,6 +178,13 @@ export function canonicalizeWorld(world: World): string {
   // counters diverge the moment a new route is established —
   // behavior-affecting ⇒ digest-covered.
   out += `,nextId=${world.city.nextAirlineRouteId ?? 1};`;
+  // Civilian sea trade (Half A, 2026-10-01): sea routes — per-voyage
+  // income is behavior-affecting ⇒ digest-covered (PLAN §11).
+  // Establishment order; legacy saves decode to [] (the empty string).
+  // The id counter drives the NEXT route's id ⇒ covered (the R6
+  // nextAirlineRouteId precedent).
+  out += `|sea=${(world.city.seaRoutes ?? []).map((r) => `${r.id}:${r.owner}:${r.from}>${r.to}:${r.policy}@${r.establishedTick}`).join(',')}`;
+  out += `,nextSeaId=${world.city.nextSeaRouteId ?? 1};`;
   // Units: spawn order; floats canonicalized. failReason is a plain string.
   out += `|units=${world.units.length}|`;
   for (const u of world.units) {
@@ -204,6 +211,11 @@ export function canonicalizeWorld(world: World): string {
     // Phase 3 cargo holds (floats via canonicalNumber; legacy decode 0).
     // Behavior-affecting ⇒ digest-covered (PLAN §11).
     out += `${canonicalNumber(u.cargoFuel ?? 0)},${canonicalNumber(u.cargoAmmo ?? 0)},`;
+    // Civilian sea trade (Half A, 2026-10-01): the materials hold
+    // (legacy decode 0) + the sea-route assignment (0 = unassigned,
+    // leg absent = no route). Behavior-affecting ⇒ digest-covered.
+    out += `${canonicalNumber(u.cargoMaterials ?? 0)},`;
+    out += `${u.seaRouteId ?? 0},${u.seaRouteLeg ?? '-'},`;
     // Phase 4 (S7): the ferry's shipping lane (endpoints via
     // canonicalNumber, leg as a/b; absent = no route). Behavior-
     // affecting ⇒ digest-covered.

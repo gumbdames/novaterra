@@ -168,6 +168,10 @@ import {
   buildUpgradeRoadOrder,
   // Grand-expansion Phase 5 (S5): the airline orders.
   buildCancelAirlineRouteOrder,
+  // Civilian sea trade (Half A, 2026-10-01): the sea-route orders.
+  buildAssignSeaRouteOrder,
+  buildCancelSeaRouteOrder,
+  buildEstablishSeaRouteOrder,
   partitionRoadCells,
   type OrderIntent,
 } from './orders';
@@ -178,8 +182,12 @@ import {
   resolveTrainClick,
   // Grand-expansion Phase 5 (S5): the airline two-click gesture.
   resolveAirlineClick,
+  // Civilian sea trade (Half A, 2026-10-01): the sea-route two-click
+  // gesture.
+  resolveSeaTradeClick,
   type PlacementResolution,
   type AirlineClickResolution,
+  type SeaTradeClickResolution,
 } from './placement';
 import { classifyPointerUp } from './pointer';
 import { networkToolHint } from './utilities';
@@ -968,6 +976,14 @@ class GameController {
       onAirlineNewRoute: () => this.armAirlineTool(),
       onCancelAirlineRoute: (id) =>
         this.enqueue(buildCancelAirlineRouteOrder(HUMAN_PLAYER_ID, id)),
+      // Civilian sea trade (Half A, 2026-10-01): the sea-route two-click
+      // gesture + ship assignment.
+      onSeaTradeNewRoute: () => this.armSeaTradeTool(),
+      onCancelSeaRoute: (id) =>
+        this.enqueue(buildCancelSeaRouteOrder(HUMAN_PLAYER_ID, id)),
+      onSeaTradePolicy: (policy) => this.issueSeaTradePolicy(policy),
+      onAssignSeaRoute: (unitId, routeId) =>
+        this.enqueue(buildAssignSeaRouteOrder(HUMAN_PLAYER_ID, unitId, routeId)),
     });
     this.pauseMenu = new PauseMenu(container, {
       onStartSkirmish: () => undefined,
@@ -1757,7 +1773,10 @@ class GameController {
     const placing =
       this.placement?.kind === 'train' ||
       this.placement?.kind === 'build' ||
-      this.hud.airlineArmed;
+      this.hud.airlineArmed ||
+      // Civilian sea trade (Half A, 2026-10-01): the sea-route gesture
+      // is a placement mode too (the click meant to pick a harbor).
+      this.hud.seaTradeArmed;
     if (!point) {
       // Clicking the sky selects nothing (silent), but in a placement mode
       // the click meant to place something — say so instead of swallowing it.
@@ -1782,6 +1801,13 @@ class GameController {
     // a palette placement mode — it consumes the click while armed.
     if (this.hud.airlineArmed) {
       this.handleAirlineClick(point.x, point.z);
+      return;
+    }
+    // Civilian sea trade (Half A, 2026-10-01): the sea-route two-click
+    // gesture — not a palette placement mode either, consumes the click
+    // while armed.
+    if (this.hud.seaTradeArmed) {
+      this.handleSeaTradeClick(point.x, point.z);
       return;
     }
     if (this.placement?.kind === 'build') {
@@ -1851,6 +1877,9 @@ class GameController {
   private armAirlineTool(): void {
     this.placement = null;
     this.networkDrag = null;
+    // Civilian sea trade (Half A, 2026-10-01): the two route tools are
+    // mutually exclusive — arming one disarms the other.
+    this.disarmSeaTradeTool();
     this.hud.airlineArmed = true;
     this.hud.airlineFromId = null;
     this.hud.toast(loc(STRINGS.menuTabs.airlinePickFirst));
@@ -1861,6 +1890,90 @@ class GameController {
   private disarmAirlineTool(): void {
     this.hud.airlineArmed = false;
     this.hud.airlineFromId = null;
+  }
+
+  /**
+   * Civilian sea trade (Half A, 2026-10-01): arm the sea-route tool.
+   * The gesture is two clicks on the player's completed civilian ports
+   * (see resolveSeaTradeClick in ui/placement.ts); the second click
+   * arms the pair — the Trade panel's policy picker then emits the
+   * establishSeaRoute order. Arming cancels any palette placement tool
+   * and the airline tool; the armed state lives on the HUD (public
+   * fields, digest-covered sa:) so the panel's status line repaints.
+   */
+  private armSeaTradeTool(): void {
+    this.placement = null;
+    this.networkDrag = null;
+    this.disarmAirlineTool();
+    this.hud.seaTradeArmed = true;
+    this.hud.seaTradeFromId = null;
+    this.hud.seaTradeToId = null;
+    this.hud.toast(loc(STRINGS.menuTabs.seaTradePickFirst));
+    this.audio.playSfx('select');
+  }
+
+  /** Civilian sea trade (Half A, 2026-10-01): disarm the sea-route tool. */
+  private disarmSeaTradeTool(): void {
+    this.hud.seaTradeArmed = false;
+    this.hud.seaTradeFromId = null;
+    this.hud.seaTradeToId = null;
+  }
+
+  /**
+   * Civilian sea trade (Half A, 2026-10-01): one click of the sea-route
+   * two-click gesture. The resolver arms the first harbor, arms the
+   * pair on the second valid click (the panel then shows the
+   * cargo-policy picker), or toasts a hint — the click never fails
+   * silently.
+   */
+  private handleSeaTradeClick(x: number, z: number): void {
+    const picked = this.buildingAt(x, z);
+    const target =
+      picked === null
+        ? null
+        : (this.session.world.city.buildings.find((b) => b.id === picked.id) ?? null);
+    const res: SeaTradeClickResolution = resolveSeaTradeClick(
+      HUMAN_PLAYER_ID,
+      this.hud.seaTradeFromId,
+      target,
+    );
+    if (res.kind === 'armFirst') {
+      this.hud.seaTradeFromId = res.id;
+      this.hud.seaTradeToId = null;
+      this.hud.toast(loc(STRINGS.menuTabs.seaTradeRouteArmed));
+      this.audio.playSfx('select');
+    } else if (res.kind === 'armSecond') {
+      this.hud.seaTradeFromId = res.from;
+      this.hud.seaTradeToId = res.to;
+      this.hud.toast(loc(STRINGS.menuTabs.seaTradePickPolicy));
+      this.audio.playSfx('select');
+    } else if (res.kind === 'disarm') {
+      this.disarmSeaTradeTool();
+      this.hud.toast('Sea route cancelled.');
+    } else {
+      this.hud.toast(res.message);
+      this.audio.playSfx('error');
+    }
+  }
+
+  /**
+   * Civilian sea trade (Half A, 2026-10-01): the Trade panel's policy
+   * picker for the armed harbor pair — emits the establishSeaRoute
+   * order and disarms. The picker only renders when both endpoints are
+   * armed, so a null here means the gesture was disarmed under the
+   * panel (a click on empty ground while armed just toasts).
+   */
+  private issueSeaTradePolicy(policy: string): void {
+    const from = this.hud.seaTradeFromId;
+    const to = this.hud.seaTradeToId;
+    if (from === null || to === null) {
+      this.hud.toast(loc(STRINGS.menuTabs.seaTradePickFirst));
+      this.audio.playSfx('error');
+      return;
+    }
+    this.enqueue(buildEstablishSeaRouteOrder(HUMAN_PLAYER_ID, from, to, policy));
+    this.audio.playSfx('place');
+    this.disarmSeaTradeTool();
   }
 
   /**
@@ -1910,6 +2023,9 @@ class GameController {
     // Grand-expansion Phase 5 (S5): cancelling a tool also disarms the
     // airline gesture — a stale armed endpoint can never emit an order.
     this.disarmAirlineTool();
+    // Civilian sea trade (Half A, 2026-10-01): the sea-route gesture is
+    // disarmed the same way.
+    this.disarmSeaTradeTool();
     // Phase 4 RENDER workstream A (item 1): the pipe tool's
     // auto-enabled x-ray turns back off (never a manual toggle).
     this.clearXrayAuto();

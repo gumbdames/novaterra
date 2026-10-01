@@ -150,6 +150,12 @@ export const UNIT_KINDS = [
   'heavyDestroyer',
   'cargoFreighter',
   'fuelTanker',
+  /**
+   * Civilian sea trade (Half A, 2026-10-01): the civilian fuel barge —
+   * a cheap unarmed fuel hauler for `fuel`-policy sea routes. Gated at
+   * the commercialHarbor like the freighter.
+   */
+  'fuelBarge',
   'ammoShip',
   'repairShip',
   'minelayer',
@@ -309,6 +315,14 @@ export interface UnitDef {
    */
   cargoFuelCapacity?: number;
   cargoAmmoCapacity?: number;
+  /**
+   * Civilian sea trade (Half A, 2026-10-01): the materials hold — how
+   * much of the owner's materials stock the unit can carry (loaded at
+   * the route origin, sold at the destination on `materials`-policy
+   * routes). Undefined = no hold. Live level on the record
+   * (`cargoMaterials`, optional — AD9, `?? 0` everywhere).
+   */
+  cargoMaterialsCapacity?: number;
   /**
    * Grand-expansion Phase 5 (tanker, S2/S4 — 2026-09-30). When set, this
    * aircraft is a flying fuel station: on the economy tick it transfers
@@ -1049,9 +1063,15 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     kind: 'cargoFreighter', name: 'Cargo Freighter', domain: 'sea', hp: 300, speed: 8, armor: 'medium',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'industry',
+    // Civilian sea trade (Half A, 2026-10-01): gated at the civilian
+    // commercialHarbor (was trainable anywhere — the def-level gate is
+    // what changed; saves/snapshots are unaffected because
+    // requiredBuilding lives on the def, not the record).
+    requiredBuilding: 'commercialHarbor',
     manpowerCost: 2, trainFunds: 500, trainMaterials: 150,
     fuelCapacity: 120, fuelPerSecond: 0.2, fuelType: 'fossil', // 600 s
     harvest: { funds: 0.5 }, // civilian sea income
+    cargoMaterialsCapacity: 200, // bulk goods hold for materials-policy routes
   },
   fuelTanker: {
     kind: 'fuelTanker', name: 'Fuel Tanker', domain: 'sea', hp: 320, speed: 8, armor: 'medium',
@@ -1061,6 +1081,24 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     fuelCapacity: 140, fuelPerSecond: 0.2, fuelType: 'fossil', // 700 s
     cargoFuelCapacity: 400, // naval supply ship (Phase 3 logistics on water)
     military: true,
+  },
+  // ------------------------------------------------------------------
+  // Civilian sea trade (Half A, 2026-10-01): the fuel barge — a cheap
+  // civilian fuel hauler for `fuel`-policy sea routes. The sea
+  // counterpart to the land fuelTruck (220 hold): a touch more hold
+  // (250) for the "bulk" identity, but no refuel aura (the air
+  // tanker's fleet-support role stays unique) and NO ammo hold —
+  // civilian hulls never carry ammo (the military ammoShip keeps that
+  // role; this is also what keeps the barge peaceful-mode legal).
+  // ------------------------------------------------------------------
+  fuelBarge: {
+    kind: 'fuelBarge', name: 'Fuel Barge', domain: 'sea', hp: 260, speed: 9, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 18, minAge: 'industry',
+    requiredBuilding: 'commercialHarbor',
+    manpowerCost: 2, trainFunds: 350, trainMaterials: 120,
+    fuelCapacity: 100, fuelPerSecond: 0.2, fuelType: 'fossil', // 500 s
+    cargoFuelCapacity: 250, // fuel hauler, no ammo
   },
   ammoShip: {
     kind: 'ammoShip', name: 'Ammo Ship', domain: 'sea', hp: 280, speed: 8, armor: 'medium',
@@ -1609,6 +1647,20 @@ export interface UnitRecord {  /** Stable id from `world.nextId`. Never reused. 
    */
   route?: FerryRoute;
   /**
+   * Civilian sea trade (Half A, 2026-10-01): the sea route
+   * (`CityState.seaRoutes` id) this cargo vessel is assigned to, set by
+   * `assignSeaRoute` (0/undefined = unassigned). `seaRouteLeg` is the
+   * endpoint the ship is currently heading TO: 'to' = sailing to the
+   * route's `to` harbor, 'from' = sailing back to `from`. On arrival
+   * the ship runs the route policy's port action (load/unload/income)
+   * and flips the leg — the ferry `route.leg` precedent, but the route
+   * itself lives on the city (many ships share one route). Optional;
+   * reads use `?? 0` (AD9). Snapshotted (preserve-absence) and
+   * digest-covered.
+   */
+  seaRouteId?: number;
+  seaRouteLeg?: 'to' | 'from';
+  /**
    * Veterancy (grand-expansion Phase 1): cumulative combat experience,
    * earned by landing killing blows (`awardKillXp` in `veterancy.ts`).
    * `vetLevel` derives from XP thresholds (200/500/1000 → Regular /
@@ -1659,6 +1711,14 @@ export interface UnitRecord {  /** Stable id from `world.nextId`. Never reused. 
    */
   cargoFuel: number;
   cargoAmmo: number;
+  /**
+   * Civilian sea trade (Half A, 2026-10-01): live materials-hold level
+   * (see `cargoMaterialsCapacity` on the def). Spawn EMPTY — materials
+   * are loaded at the route origin, never conjured. Optional; reads
+   * use `?? 0` (AD9 — the cargoFuel precedent, no version bump);
+   * snapshotted and digest-covered.
+   */
+  cargoMaterials?: number;
   /**
    * Grand-expansion Phase 5/6, S4 (hangars + carriers): the building
    * id whose hangar slot this aircraft is parked in (0 = not parked).
@@ -1736,6 +1796,9 @@ export function spawnUnit(world: World, kind: string, owner: number, x: number, 
     // for others and must be loaded at a depot — never conjured.
     cargoFuel: 0,
     cargoAmmo: 0,
+    // Civilian sea trade (Half A, 2026-10-01): the materials hold
+    // spawns EMPTY too — loaded at the route origin, never conjured.
+    cargoMaterials: 0,
     // Phase 3 resupply linkage: no reservation on spawn (the ledger
     // starts at zero, like the cargo holds above).
     resupplyDepotId: 0,

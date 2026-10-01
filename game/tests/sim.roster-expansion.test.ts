@@ -273,8 +273,8 @@ function findCoastalFootprint(
 }
 
 describe('roster definitions (§2)', () => {
-  it('has exactly the 96 unit kinds (35 + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel + 28 Phase 8 tech-level variants)', () => {
-    expect(UNIT_KINDS).toHaveLength(96);
+  it('has exactly the 97 unit kinds (35 + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel + 28 Phase 8 tech-level variants + 1 Half-A sea-trade)', () => {
+    expect(UNIT_KINDS).toHaveLength(97);
     const expected = [
       'engineer', 'rifles', 'spectre', 'sniperTeam', 'combatMedic',
       'tank', 'apc', 'tankDestroyer', 'artillery', 'mlrs', 'aa',
@@ -296,6 +296,8 @@ describe('roster definitions (§2)', () => {
       'heavyDestroyer', 'cargoFreighter', 'fuelTanker', 'ammoShip',
       'repairShip', 'minelayer', 'navalMine', 'coastGuardCutter',
       'cruiseLiner', 'yacht',
+      // Civilian sea trade (Half A, 2026-10-01): the civilian fuel barge.
+      'fuelBarge',
       // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
       // the two land intel units.
       'spy', 'reconTeam',
@@ -468,7 +470,8 @@ describe('building definitions (§3 + Phase 1 + Workstream Z)', () => {
     // 2026-09-30): +10 civilian buildings (museum, theater,
     // sportsStadium, botanicalGarden, grandMarket, bank, officeTower,
     // clinic, medicalCenter, fireStation) → 99.
-    expect(Object.keys(BUILDING_DEFS)).toHaveLength(99);
+    // Civilian sea trade (Half A, 2026-10-01): +1 (commercialHarbor) → 100.
+    expect(Object.keys(BUILDING_DEFS)).toHaveLength(100);
     expect(BUILDING_DEFS.barracks).toMatchObject({
       costFunds: 700, costMaterials: 250, buildSeconds: 40, minAge: 'foundation',
     });

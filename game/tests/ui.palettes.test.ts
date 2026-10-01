@@ -180,6 +180,9 @@ describe('train tabs', () => {
       'heavyDestroyer',
       'cargoFreighter',
       'fuelTanker',
+      // Civilian sea trade (Half A, 2026-10-01): the civilian fuel
+      // barge trains at the commercialHarbor, alongside the freighter.
+      'fuelBarge',
       'ammoShip',
       'repairShip',
       'minelayer',

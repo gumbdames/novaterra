@@ -170,6 +170,7 @@ import {
   getPlayer,
   hasProductionBuilding,
   isBuildingAgeMet,
+  cellCenterWorld,
   defaultHangarSlots,
   BUILDING_DEFS,
   MAP_HALF_SIZE,
@@ -194,6 +195,11 @@ import {
 } from './city';
 import type { TerrainData } from './terrain';
 import { isWater } from './terrain';
+// From the seaTrade LEAF, not economy.ts: an ai→economy value import
+// completes the ai→economy→city→world→ai evaluation cycle that breaks
+// module init (the market.ts precedent — economy reads city at module
+// scope via SPEC_ZONE/ZoneType).
+import { SEA_ROUTE_SETUP_COST } from './seaTrade';
 import { STORM_RADIUS, isAegisReady, isStormReady } from './superweapons';
 import { CommandRejectedError } from './commands';
 // R1 final-review C2 (2026-10-01): the AI's virtual economy converts
@@ -3987,6 +3993,10 @@ function thinkPeacefulConstruction(
   queue: CommandQueue,
   ai: AIPlayerState,
   terrain: TerrainData,
+  // Civilian sea trade (Half A, 2026-10-01): the sea-trade harbor phase
+  // shares this map (see thinkPeaceful). Optional so existing
+  // callers/tests keep compiling.
+  claimed: Map<number, BuildingKind> = new Map<number, BuildingKind>(),
 ): void {
   const counts = new Map<BuildingKind, number>();
   for (const b of world.city.buildings) {
@@ -4000,7 +4010,8 @@ function thinkPeacefulConstruction(
     (counts.get(kind) ?? 0) < max;
   const player = getPlayer(world.city, ai.owner);
   const rich = player !== undefined && player.funds >= PEACEFUL_HOUSING_FUNDS;
-  const claimed = new Map<number, BuildingKind>();
+  // `claimed` is the thinkPeaceful-shared claim map (Half A) — no local
+  // redeclaration.
   for (let slot = 0; slot < PEACEFUL_PLACEMENTS_PER_THINK; slot++) {
     const candidates: BuildingKind[] = [...peacefulNeedKinds(world, ai, counts)];
     // Phase gating: utilities → engine → everything else. The phases
@@ -4060,6 +4071,154 @@ function thinkPeacefulConstruction(
     if (!placed) break;
   }
 }
+/**
+ * Civilian sea trade (Half A, 2026-10-01): the peaceful AI's sea-trade
+ * program. Three phases, in fixed order:
+ *
+ *  1. Harbors: build up to 2 commercialHarbors at coastal sites in a
+ *     base-centered sweep (the coastal rule is enforced by
+ *     validatePlacement, so the site search only accepts shoreline
+ *     footprints). Rich-treasury gated — a harbor is 1000 funds + 400
+ *     materials, a civic-scale spend.
+ *  2. Route: once 2 harbors are completed, establish one 'funds' route
+ *     between them (the 500 setup is ledger-reserved like any spend).
+ *  3. Ships: spawn up to 2 cargoFreighters at the first harbor's water
+ *     cell and assign every unassigned AI freighter to the route.
+ *
+ * No new AI state (everything is derived from the world), no RNG (the
+ * site scan is row-major, the phases are fixed) — same seed, same game.
+ * Runs inside thinkPeaceful's terrain branch, after construction, and
+ * shares its claim map so a harbor can never overlap a same-think
+ * construction placement.
+ */
+const PEACEFUL_SEA_HARBOR_MAX = 2;
+const PEACEFUL_SEA_FREIGHTERS_PER_ROUTE = 2;
+/** Base-centered coastal site search radius, in cells. */
+const PEACEFUL_SEA_SITE_RADIUS = 30;
+
+/**
+ * The water cell a harbor's ships spawn at: the lowest-index water
+ * cell in the footprint ring. Mirrors movement.harborWaterCell's
+ * deterministic pick, reimplemented here on cellIsWater (already
+ * imported) so ai.ts needs no new module edge.
+ */
+function peacefulHarborWaterCell(
+  t: TerrainData,
+  b: { cx: number; cz: number },
+): { x: number; z: number } | null {
+  const def = BUILDING_DEFS['commercialHarbor'];
+  let best = -1;
+  for (let dx = -1; dx <= def.footprintW; dx++) {
+    for (let dz = -1; dz <= def.footprintH; dz++) {
+      // Ring only: skip the footprint interior.
+      if (dx >= 0 && dx < def.footprintW && dz >= 0 && dz < def.footprintH) continue;
+      const cx = b.cx + dx;
+      const cz = b.cz + dz;
+      if (cx < 0 || cz < 0 || cx >= CITY_GRID_CELLS || cz >= CITY_GRID_CELLS) continue;
+      const cell = cz * CITY_GRID_CELLS + cx;
+      if (cellIsWater(t, cx, cz) && (best < 0 || cell < best)) best = cell;
+    }
+  }
+  if (best < 0) return null;
+  return {
+    x: cellCenterWorld(best % CITY_GRID_CELLS),
+    z: cellCenterWorld(Math.floor(best / CITY_GRID_CELLS)),
+  };
+}
+
+function thinkPeacefulSeaTrade(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  terrain: TerrainData,
+  claimed: Map<number, BuildingKind>,
+): void {
+  const player = getPlayer(world.city, ai.owner);
+  if (!player) return;
+  const rich = player.funds >= PEACEFUL_HOUSING_FUNDS;
+  // Phase 1: the harbors. `wanted` counts buildings already placed plus
+  // this think's placement (records don't exist until the command
+  // applies, like thinkPeacefulConstruction's counts).
+  let harbors = world.city.buildings.filter(
+    (b) => b.owner === ai.owner && b.kind === 'commercialHarbor',
+  ).length;
+  if (
+    harbors < PEACEFUL_SEA_HARBOR_MAX &&
+    rich &&
+    peacefulKindAvailable(world, ai, 'commercialHarbor')
+  ) {
+    const bcx = worldToCell(ai.baseX);
+    const bcz = worldToCell(ai.baseZ);
+    const r = PEACEFUL_SEA_SITE_RADIUS;
+    // Base-centered sweep (row-major, deterministic): the first coastal
+    // site wins. findPeacefulSite validates through validatePlacement,
+    // so the portType coastal rule is enforced — inland sweeps simply
+    // find nothing and the AI stays landlocked.
+    const rect = { x0: bcx - r, z0: bcz - r, x1: bcx + r, z1: bcz + r };
+    if (placePeaceful(world, queue, ai, 'commercialHarbor', rect, claimed, terrain)) {
+      harbors++;
+    }
+  }
+  // Phase 2: the route. Completed harbors only (the sim's
+  // establishSeaRoute validation is authoritative — issue() swallows
+  // the rejection if a harbor was demolished between think and apply).
+  const completed = world.city.buildings.filter(
+    (b) => b.owner === ai.owner && b.kind === 'commercialHarbor' && b.progress >= 1,
+  );
+  const route = (world.city.seaRoutes ?? []).find((x) => x.owner === ai.owner) ?? null;
+  if (route === null && completed.length >= 2 && rich) {
+    const a = completed[0]!;
+    const c = completed[1]!;
+    const l = thinkLedger(ai);
+    // Ledger-reserve the 500 setup (the Phase 7 rule: a think's batch
+    // can never go stale at apply) without dropping below the peaceful
+    // treasury floor — placePeaceful's guard, applied to the route.
+    if (player.funds - l.funds - SEA_ROUTE_SETUP_COST >= peacefulTreasuryFloor(world, ai.owner)) {
+      if (
+        issue(world, queue, 'establishSeaRoute', {
+          owner: ai.owner,
+          from: a.id,
+          to: c.id,
+          policy: 'funds',
+        })
+      ) {
+        l.funds += SEA_ROUTE_SETUP_COST;
+      }
+    }
+  }
+  // Phase 3: the ships. Spawn idle freighters at the first completed
+  // harbor's water cell (spawn() ledger-guards manpower/funds/
+  // materials; the spawnUnit validator enforces the commercialHarbor
+  // gate and the water spawn loudly), then assign every unassigned AI
+  // freighter to the route.
+  if (route !== null && completed.length >= 1) {
+    const assigned = world.units.filter(
+      (u) => u.owner === ai.owner && (u.seaRouteId ?? 0) === route.id,
+    ).length;
+    let want = PEACEFUL_SEA_FREIGHTERS_PER_ROUTE - assigned;
+    if (want > 0) {
+      const anchor = completed[0]!;
+      const water = peacefulHarborWaterCell(terrain, anchor);
+      if (water !== null) {
+        while (want > 0) {
+          if (!spawn(world, queue, ai, 'cargoFreighter', water.x, water.z)) break;
+          want--;
+        }
+      }
+    }
+    for (const u of world.units) {
+      if (u.owner !== ai.owner) continue;
+      if (u.kind !== 'cargoFreighter') continue;
+      if ((u.seaRouteId ?? 0) !== 0) continue;
+      issue(world, queue, 'assignSeaRoute', {
+        owner: ai.owner,
+        unitId: u.id,
+        routeId: route.id,
+      });
+    }
+  }
+}
+
 /**
  * The civilian research line, in fixed priority order (workstream A's
  * classification: these 10 upgrades are all non-military). Needs a
@@ -4135,7 +4294,12 @@ function thinkPeaceful(
 ): void {
   if (terrain) {
     thinkPeacefulZoning(world, queue, ai, terrain);
-    thinkPeacefulConstruction(world, queue, ai, terrain);
+    // Civilian sea trade (Half A, 2026-10-01): construction and the
+    // sea-trade harbor phase share one claim map so a harbor can never
+    // overlap a same-think construction placement.
+    const claimed = new Map<number, BuildingKind>();
+    thinkPeacefulConstruction(world, queue, ai, terrain, claimed);
+    thinkPeacefulSeaTrade(world, queue, ai, terrain, claimed);
   }
   thinkPeacefulResearch(world, queue, ai);
   thinkPeacefulAges(world, queue, ai);

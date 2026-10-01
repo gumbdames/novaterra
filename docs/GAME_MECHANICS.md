@@ -475,7 +475,7 @@ And a support fleet that keeps the war machine — and the economy —
 moving:
 
 - **Cargo Freighter** — earns funds on the sea lanes (civilian sea
-  income); trains without a production building.
+  income); trains at the **Commercial Harbor** (Industry age).
 - **Fuel Tanker** — a floating fuel depot for the Phase 3 naval
   logistics chain.
 - **Ammo Ship** — a floating munitions store (needs a shipyard).
@@ -524,6 +524,35 @@ simulation.
 Ships can only be placed on water and can only fight on water — they
 can't attack land targets, and tanks can't shoot back at them. On
 water-heavy maps, the navy decides the game.
+
+## Sea trade
+
+**Commercial Harbors** are the civilian sea-trade hub. Build them on
+the coast (Industry age, 4×3, 1000 funds + 400 materials): they work
+in peaceful mode, they reload ships, and they store 300 fuel. The
+harbor trains two civilian ships:
+
+- **Cargo Freighter** — sails sea-trade routes for funds (see below).
+- **Fuel Barge** — a small uncrewed tanker that hauls fuel between
+  harbors on a route.
+
+**Sea-trade routes** work like the airline system. Open the **Trade**
+panel (Management tab), press **New route…**, and click two of your
+completed commercial harbors: the route costs 500 funds to establish.
+Then assign cargo freighters (or fuel barges) to the route — they
+sail between the harbors automatically:
+
+- **Funds policy** — each voyage pays `40 + 0.25 × distance` funds
+  (about 1.8 funds/sec per ship at 200 cells).
+- **Materials policy** — the origin harbor loads materials, the
+  destination sells them at 2.0 funds each (25% better than the
+  1.6 instant-sell price).
+- **Fuel policy** — fuel barges haul fuel from the origin's storage
+  to the destination.
+
+Demolish an endpoint and the route closes; assigned ships go idle.
+The peaceful AI builds harbors, establishes a funds route, and
+assigns freighters on its own.
 
 ## Veterancy
 

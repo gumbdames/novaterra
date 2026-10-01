@@ -97,6 +97,8 @@ const NAVAL_KINDS: UnitKind[] = [
   'coastGuardCutter',
   'cruiseLiner',
   'yacht',
+  // Civilian sea trade (Half A, 2026-10-01): the civilian fuel barge.
+  'fuelBarge',
 ];
 
 const PORT_KINDS: BuildingKind[] = [
@@ -303,11 +305,11 @@ function findBigSeaLane(t: TerrainData): { a: { x: number; z: number }; b: { x: 
 }
 
 describe('naval roster', () => {
-  it('has 35 sea kinds: the 9 originals + ferry + the 15 new + 10 Phase 8 tech-level variants', () => {
+  it('has 36 sea kinds: the 9 originals + ferry + the 15 new + 10 Phase 8 tech-level variants + Half A fuelBarge', () => {
     const sea = Object.keys(UNIT_DEFS).filter(
       (k) => UNIT_DEFS[k as UnitKind].domain === 'sea',
     );
-    expect(sea).toHaveLength(35);
+    expect(sea).toHaveLength(36);
     for (const kind of NAVAL_KINDS) {
       expect(UNIT_DEFS[kind as UnitKind].domain, kind).toBe('sea');
     }

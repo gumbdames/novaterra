@@ -100,6 +100,14 @@ import { parkedAircraft } from './hangars';
 // them (al: / aa:).
 import { airlineRoutesOf } from './airports';
 import { airlineRouteIncome } from '../sim/economy';
+// Civilian sea trade (Half A, 2026-10-01): the sea-trade UI contract
+// module — the st:/sa:/sr:/sh: digest segments for the Trade section,
+// the ship detail assignment, and the harbor detail section.
+import {
+  isSeaTradeHarbor,
+  isSeaTradeShip,
+  seaRoutesOf,
+} from './seatrade';
 // Grand-expansion Phase 7 (intel): the intel panel's counters, spy
 // states, warnings, and rival airports (ia: / ir: / is: / iw: / ig:),
 // plus the selected-spy mission line (iu:).
@@ -154,6 +162,12 @@ export function selectionDigest(
   // bar highlights it, so the digest must move on a sub-tab switch.
   // Optional so existing callers/tests keep compiling.
   subTab: string = 'tools',
+  // Civilian sea trade (Half A, 2026-10-01): the sea-route tool's armed
+  // state — the airline tool's mirror (aa:). undefined = not armed;
+  // null endpoints = still picking that harbor; a number = the picked
+  // harbor's building id. Optional so existing callers/tests keep
+  // compiling.
+  seaTradeArmed: { from: number | null; to: number | null } | undefined = undefined,
 ): string {
   const parts: string[] = [
     `u:${selection.unitIds.join(',')}`,
@@ -237,6 +251,21 @@ export function selectionDigest(
       // iu: carries the displayed state code (x when the panel renders
       // no intel line), always emitted like ue:/ew:.
       parts.push(spyUnitDigest(world, id, u, HUMAN_PLAYER_ID));
+      // Civilian sea trade (Half A, 2026-10-01): the ship detail panel
+      // renders the route assignment, the cargo hold line, and
+      // per-route Assign buttons. sr: carries the assigned route id +
+      // floored cargo holds (chunky by nature — the display shows
+      // integers, so the digest moves exactly when a rendered number
+      // would); the player's route set (the Assign button list) is
+      // covered by st: in the same digest string. Always emitted
+      // ('sr:<id>:x' for non-trade ships, which render no sea line).
+      if (u !== undefined && isSeaTradeShip(u.kind)) {
+        parts.push(
+          `sr:${id}:${u.seaRouteId ?? 0}:${Math.floor(u.cargoFuel)}:${Math.floor(u.cargoMaterials ?? 0)}`,
+        );
+      } else {
+        parts.push(`sr:${id}:x`);
+      }
     }
     if (selection.unitIds.length > 6) parts.push(`um:${selection.unitIds.length}`);
     return parts.join('|');
@@ -313,6 +342,23 @@ export function selectionDigest(
       parts.push(`bh:${parkedIds.join(',')}`);
     } else {
       parts.push('bh:x');
+    }
+    // Civilian sea trade (Half A, 2026-10-01): the harbor detail panel
+    // renders the routes calling here (each with a Cancel button) and
+    // the two ship-training buttons with the Train-palette availability
+    // semantics. sh: carries the calling route ids + the two kinds'
+    // availability bits ('sh:x' for non-harbors and non-owned harbors,
+    // which render no sea section). Always emitted.
+    if (isSeaTradeHarbor(b) && b.owner === HUMAN_PLAYER_ID) {
+      const calling = seaRoutesOf(world, HUMAN_PLAYER_ID)
+        .filter((r) => r.from === b.id || r.to === b.id)
+        .map((r) => r.id)
+        .sort((a, b2) => a - b2);
+      const freighter = unitAvailability(world, HUMAN_PLAYER_ID, 'cargoFreighter').ok ? 1 : 0;
+      const barge = unitAvailability(world, HUMAN_PLAYER_ID, 'fuelBarge').ok ? 1 : 0;
+      parts.push(`sh:${calling.join(',')}:${freighter}${barge}`);
+    } else {
+      parts.push('sh:x');
     }
   } else {
     // No selection: the train/build palettes render the active tab's
@@ -410,6 +456,19 @@ export function selectionDigest(
           .map((r) => r.partner)
           .sort((a, b) => a - b)
           .join(',')}`,
+      );
+      // Civilian sea trade (Half A, 2026-10-01): the Trade sub-tab's
+      // sea-trade section lists the player's sea routes (id.from.to.
+      // policy each — the panel renders the endpoints + income line);
+      // sa: carries the two-click gesture's armed state ('off' / pick
+      // first / first id / first+second ids). Both always emitted under
+      // Management so the representative state covers the labels.
+      const seaRoutes = seaRoutesOf(world, HUMAN_PLAYER_ID);
+      parts.push(
+        `st:${seaRoutes.map((r) => `${r.id}.${r.from}.${r.to}.${r.policy}`).join(',')}`,
+      );
+      parts.push(
+        `sa:${seaTradeArmed === undefined ? 'off' : `${seaTradeArmed.from ?? 'pick'}.${seaTradeArmed.to ?? 'pick'}`}`,
       );
     }
   }
@@ -586,7 +645,9 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // er: the Emergency refuel button's enabled state (final-review
     // R5: 1 = the sim would accept the order, 0 = disabled with the
     // named block reason; always emitted).
-    digestLabels: ['u:', 'uh:', 'uv:', 'um:', 'uf:', 'us:', 'ue:', 'ew:', 'iu:', 'er:'],
+    // sr: the civilian sea-trade assignment (Half A: route id + floored
+    // cargo holds per selected unit; 'sr:<id>:x' for non-trade ships).
+    digestLabels: ['u:', 'uh:', 'uv:', 'um:', 'uf:', 'us:', 'ue:', 'ew:', 'iu:', 'er:', 'sr:'],
   },
   {
     id: 'selection-building',
@@ -623,7 +684,10 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // hangar/carrier shelter; 'bh:x' when the building has no hangars).
     // bw: structural HP percent (final-review R2; the panel renders
     // "HP 73%" for every selected building — always emitted).
-    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:', 'bv:', 'bo:', 'bh:', 'bw:'],
+    // sh: the civilian sea-trade harbor section (Half A: calling route
+    // ids + the two ship-training availability bits; 'sh:x' when the
+    // section does not render).
+    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:', 'bv:', 'bo:', 'bh:', 'bw:', 'sh:'],
   },
   {
     id: 'train-palette',
@@ -808,7 +872,10 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // tr: the Trade sub-tab's route list (command-menu rebuild,
     // 2026-10-01 — the player's trade-route partners; 'tr:' empty when
     // there are no routes).
-    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:', 'po:', 'oc:', 'tr:'],
+    // st: the sea-trade section's route list (Half A: id.from.to.policy
+    // each); sa: the sea-route tool's armed state ('off' / 'pick.pick' /
+    // first id / first+second ids).
+    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:', 'po:', 'oc:', 'tr:', 'st:', 'sa:'],
   },
   {
     id: 'research-panel',

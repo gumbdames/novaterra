@@ -155,7 +155,7 @@ function advanceToConnectivity(ctx: Ctx, owner = 0): void {
 }
 
 describe('roster', () => {
-  it('has exactly the 96 kinds (31 land + 30 air + 35 sea: Phase 4 added 4 land + 1 sea transports, Phase 6 adds 15 sea, the aircraft workstream adds 16 air, the intel roster workstream adds 2 land, the Phase 8 tech-level workstream adds 28 Mk II/III variants)', () => {
+  it('has exactly the 97 kinds (31 land + 30 air + 36 sea: Phase 4 added 4 land + 1 sea transports, Phase 6 adds 15 sea, the aircraft workstream adds 16 air, the intel roster workstream adds 2 land, the Phase 8 tech-level workstream adds 28 Mk II/III variants, Half A adds the civilian fuel barge)', () => {
     const kinds = Object.keys(UNIT_DEFS).sort();
     expect(kinds).toEqual(
       [
@@ -177,6 +177,8 @@ describe('roster', () => {
         'heavyDestroyer', 'cargoFreighter', 'fuelTanker', 'ammoShip',
         'repairShip', 'minelayer', 'navalMine', 'coastGuardCutter',
         'cruiseLiner', 'yacht',
+        // Civilian sea trade (Half A, 2026-10-01): the civilian fuel barge.
+        'fuelBarge',
         // Grand-expansion Phase 5 — aircraft expansion (workstream B,
         // 2026-09-30): the 16 new air kinds.
         'strategicBomber', 'maritimePatrol', 'reconUAV', 'armedUAV',
@@ -202,7 +204,7 @@ describe('roster', () => {
     const sea = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'sea');
     expect(land).toHaveLength(31);
     expect(air).toHaveLength(30);
-    expect(sea).toHaveLength(35);
+    expect(sea).toHaveLength(36); // Half A adds the fuelBarge
   });
 
   it('spawns with full hp, zero cooldown, no target', () => {

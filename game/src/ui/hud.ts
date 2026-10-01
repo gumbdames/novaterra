@@ -62,6 +62,7 @@ import {
   ROAD_CLASS_STATS,
   BUILDING_DEFS,
   buildingOccupancy,
+  type BuildingRecord,
   type RoadClass,
 } from '../sim/city';
 import { UNIT_DEFS, type UnitKind } from '../sim/units';
@@ -86,6 +87,19 @@ import {
   airlineRoutesOf,
   isAirlineEndpoint,
 } from './airports';
+// Civilian sea trade (Half A, 2026-10-01): the sea-trade UI contract
+// module.
+import {
+  SEA_ROUTE_SETUP_COST,
+  SEA_ROUTE_POLICIES,
+  isSeaTradeHarbor,
+  isSeaTradeShip,
+  seaRouteIncomeOf,
+  seaRouteOfUnit,
+  seaRoutesOf,
+  seaTradeCargoLine,
+  seaTradeShipKinds,
+} from './seatrade';
 import {
   TRAIN_TABS,
   UPGRADE_GROUPS,
@@ -343,6 +357,20 @@ export interface HUDActions {
   onAirlineNewRoute(): void;
   /** Airlines (Phase 5, S5): cancel an airline route by its route id. */
   onCancelAirlineRoute(id: number): void;
+  /** Civilian sea trade (Half A): arm the two-click sea-route gesture. */
+  onSeaTradeNewRoute(): void;
+  /** Civilian sea trade (Half A): cancel a sea route by its route id. */
+  onCancelSeaRoute(id: number): void;
+  /**
+   * Civilian sea trade (Half A): establish the armed harbor pair with
+   * the picked cargo policy.
+   */
+  onSeaTradePolicy(policy: string): void;
+  /**
+   * Civilian sea trade (Half A): assign a ship to a sea route
+   * (routeId 0 = unassign).
+   */
+  onAssignSeaRoute(unitId: number, routeId: number): void;
   /** Roster expansion: research an upgrade (from the research panel). */
   onResearchUpgrade(upgradeId: UpgradeId): void;
 }
@@ -480,6 +508,19 @@ export class HUD {
    */
   airlineArmed = false;
   airlineFromId: number | null = null;
+  /**
+   * Civilian sea trade (Half A, 2026-10-01): the sea-route tool state,
+   * controller-owned (the airline tool's mirror). `seaTradeArmed` = the
+   * "New sea route…" two-click gesture is live; `seaTradeFromId` = the
+   * armed first harbor (null = still picking the first); `seaTradeToId`
+   * = the armed second harbor (null until the second click — the panel
+   * then shows the cargo-policy picker). Digest-covered (sa:) so the
+   * armed status line repaints on change. The HUD never mutates these
+   * — game.ts does.
+   */
+  seaTradeArmed = false;
+  seaTradeFromId: number | null = null;
+  seaTradeToId: number | null = null;
   /**
    * Set by tab switches / research clicks so the selection panel rebuilds
    * even when the sim tick hasn't advanced (e.g. while paused).
@@ -1218,6 +1259,10 @@ export class HUD {
         break;
       case 'trade':
         panel.append(this.tradeSectionEl(world));
+        // Civilian sea trade (Half A, 2026-10-01): the harbor-to-harbor
+        // sea-route section sits under the partner-route section in the
+        // same Trade sub-tab.
+        panel.append(this.seaTradeSectionEl(world));
         break;
       case 'research':
         if (playerHasCompletedLab(world, HUMAN_PLAYER_ID)) {
@@ -1294,6 +1339,113 @@ export class HUD {
     const p = world.city.players.find((x) => x.id === partnerId);
     if (p === undefined) return `Player ${partnerId}`;
     return p.id === 1 ? loc(STRINGS.menuTabs.tradePartnerRival) : p.name;
+  }
+
+  /**
+   * Management → Trade: the civilian sea-trade section (Half A,
+   * 2026-10-01) — the player's harbor-to-harbor sea routes with their
+   * cargo policies, the "New sea route…" two-click gesture, and the
+   * policy picker that appears once both harbors are picked. Named
+   * *El (not append/build/update-prefixed) per the ui/AGENTS.md AD11
+   * rule — it is covered by the management-panel digest branch (st:/
+   * sa: segments), not a branch of its own. All DOM classes are the
+   * shared panel classes that branch already claims.
+   */
+  private seaTradeSectionEl(world: World): HTMLElement {
+    const m = STRINGS.menuTabs;
+    const sec = this.makeSection(loc(m.seaTradeTitle));
+    const routes = seaRoutesOf(world, HUMAN_PLAYER_ID);
+    if (routes.length === 0 && !this.seaTradeArmed) {
+      sec.append(el('div', 'panel-status', loc(m.seaTradeEmpty)));
+    }
+    for (const r of routes) {
+      const row = el('div', 'panel-row');
+      row.append(
+        el(
+          'span',
+          'panel-label',
+          `${this.seaHarborName(world, r.from)} ↔ ${this.seaHarborName(world, r.to)} · ${seaRouteIncomeOf(world, r)}`,
+        ),
+      );
+      row.append(
+        this.makePanelButton(loc(m.seaTradeCancel), loc(m.seaTradeCancel), () =>
+          this.actions.onCancelSeaRoute(r.id),
+        ),
+      );
+      sec.append(row);
+    }
+    // The armed two-click gesture: still picking harbors, or picking the
+    // cargo policy for a completed pair.
+    if (this.seaTradeArmed) {
+      if (this.seaTradeFromId === null) {
+        sec.append(el('div', 'panel-status', loc(m.seaTradePickFirst)));
+      } else if (this.seaTradeToId === null) {
+        sec.append(
+          el('div', 'panel-status', `${this.seaHarborName(world, this.seaTradeFromId)} — ${loc(m.seaTradeRouteArmed)}`),
+        );
+      } else {
+        sec.append(
+          el(
+            'div',
+            'panel-status',
+            `${this.seaHarborName(world, this.seaTradeFromId)} ↔ ${this.seaHarborName(world, this.seaTradeToId)} — ${loc(m.seaTradePickPolicy)}`,
+          ),
+        );
+        for (const p of SEA_ROUTE_POLICIES) {
+          const desc =
+            p === 'funds'
+              ? loc(m.seaTradePolicyFundsDesc)
+              : p === 'fuel'
+                ? loc(m.seaTradePolicyFuelDesc)
+                : loc(m.seaTradePolicyMaterialsDesc);
+          sec.append(
+            this.makePanelButton(
+              p === 'funds'
+                ? loc(m.seaTradePolicyFunds)
+                : p === 'fuel'
+                  ? loc(m.seaTradePolicyFuel)
+                  : loc(m.seaTradePolicyMaterials),
+              desc,
+              () => this.actions.onSeaTradePolicy(p),
+            ),
+          );
+        }
+      }
+    } else {
+      const harbors = this.seaHarborEndpoints(world);
+      sec.append(
+        this.makePanelButton(
+          loc(m.seaTradeNewRoute),
+          loc(m.seaTradeNeedsTwo),
+          () => this.actions.onSeaTradeNewRoute(),
+          { disabled: harbors.length < 2 },
+        ),
+      );
+    }
+    return sec;
+  }
+
+  /** Display name for a sea-trade harbor: kind name + building id. */
+  private seaHarborName(world: World, id: number): string {
+    const b = world.city.buildings.find((x) => x.id === id);
+    if (b === undefined) return `Harbor ${id}`;
+    return `${buildingName(b.kind)} ${id}`;
+  }
+
+  /**
+   * The player's sea-trade endpoints: completed, owned civilian ports.
+   * Mirrors the sim's establishSeaRoute validation (progress >= 1, own
+   * building, civilian portType) — the "New sea route…" button disables
+   * below two so the armed gesture can never click into a rejected
+   * order.
+   */
+  private seaHarborEndpoints(world: World): BuildingRecord[] {
+    return world.city.buildings.filter(
+      (b) =>
+        b.owner === HUMAN_PLAYER_ID &&
+        b.progress >= 1 &&
+        isSeaTradeHarbor(b),
+    );
   }
 
   /**
@@ -1895,6 +2047,12 @@ export class HUD {
       // Command-menu rebuild (2026-10-01): the active sub-tab of the
       // active main tab — the pill row highlights it (sb: segment).
       this.activeSubTab,
+      // Civilian sea trade (Half A, 2026-10-01): the sea-route tool's
+      // armed state — undefined when disarmed (the sa: segment reads
+      // 'off' then).
+      this.seaTradeArmed
+        ? { from: this.seaTradeFromId, to: this.seaTradeToId }
+        : undefined,
     );
   }
 
@@ -2065,6 +2223,53 @@ export class HUD {
             rs.title = block ?? loc(lg.noDepotReason);
           }
           actions.append(rs);
+        }
+        // Civilian sea trade (Half A, 2026-10-01): the sea-route
+        // assignment for civilian cargo vessels — the route line (or
+        // the unassigned prompt), the cargo hold line, and per-route
+        // Assign / Unassign buttons. The sim validates every assignment
+        // loudly, so the buttons always act. Uses the shared stat-row /
+        // sel-action classes; digest-covered by the sr: segment (AD11).
+        if (u.owner === HUMAN_PLAYER_ID && def !== undefined && isSeaTradeShip(u.kind)) {
+          const stm = STRINGS.menuTabs;
+          stats.append(el('div', 'stat-row', seaTradeCargoLine(u)));
+          const route = seaRouteOfUnit(world, u);
+          if (route !== undefined) {
+            stats.append(
+              el(
+                'div',
+                'stat-row',
+                fillLoc(stm.seaTradeShipRoute, {
+                  from: this.seaHarborName(world, route.from),
+                  to: this.seaHarborName(world, route.to),
+                  policy: route.policy,
+                }),
+              ),
+            );
+            const ub = document.createElement('button');
+            ub.className = 'sel-action';
+            ub.textContent = loc(stm.seaTradeUnassign);
+            ub.addEventListener('click', () =>
+              this.actions.onAssignSeaRoute(u.id, 0),
+            );
+            actions.append(ub);
+          } else {
+            const unassignedRoutes = seaRoutesOf(world, HUMAN_PLAYER_ID);
+            if (unassignedRoutes.length === 0) {
+              stats.append(el('div', 'stat-row', loc(stm.seaTradeNoRoutesForShip)));
+            } else {
+              stats.append(el('div', 'stat-row', loc(stm.seaTradeShipNoRoute)));
+              for (const r of unassignedRoutes) {
+                const ab = document.createElement('button');
+                ab.className = 'sel-action';
+                ab.textContent = `${loc(stm.seaTradeAssign)}: ${this.seaHarborName(world, r.from)} ↔ ${this.seaHarborName(world, r.to)} (${r.policy})`;
+                ab.addEventListener('click', () =>
+                  this.actions.onAssignSeaRoute(u.id, r.id),
+                );
+                actions.append(ab);
+              }
+            }
+          }
         }
         // Grand-expansion Phase 5 (hangar/carrier shelter): the shelter
         // line + Embark / Park / Launch buttons for aircraft, and the
@@ -2257,6 +2462,58 @@ export class HUD {
           actions.append(pl);
         }
         panel.append(hangarBlock);
+      }
+      // Civilian sea trade (Half A, 2026-10-01): sea-trade harbors show
+      // the routes calling here (per-route cancel) plus the
+      // ship-training buttons — the peaceful-mode training path, since
+      // the Military tab (and its Train palette) is hidden in peaceful
+      // worlds. Owned harbors only (the actions spend the player's
+      // funds). Uses the shared stat-row / detail-actions / sel-action
+      // classes; digest-covered by the sh: segment (AD11).
+      if (isSeaTradeHarbor(b) && b.owner === HUMAN_PLAYER_ID) {
+        const stm = STRINGS.menuTabs;
+        const seaBlock = el('div', 'stat-block');
+        seaBlock.append(el('div', 'stat-row', loc(stm.seaTradeHarborRoutes)));
+        const calling = seaRoutesOf(world, HUMAN_PLAYER_ID).filter(
+          (r) => r.from === b.id || r.to === b.id,
+        );
+        if (calling.length === 0) {
+          seaBlock.append(el('div', 'stat-row', loc(stm.seaTradeNoHarborRoutes)));
+        }
+        for (const r of calling) {
+          const rrow = el('div', 'detail-actions');
+          rrow.append(
+            el(
+              'span',
+              'stat-row',
+              `${this.seaHarborName(world, r.from)} ↔ ${this.seaHarborName(world, r.to)} · ${seaRouteIncomeOf(world, r)}`,
+            ),
+          );
+          const cb = document.createElement('button');
+          cb.className = 'sel-action';
+          cb.textContent = loc(stm.seaTradeCancel);
+          cb.title = loc(stm.seaTradeCancel);
+          cb.addEventListener('click', () => this.actions.onCancelSeaRoute(r.id));
+          rrow.append(cb);
+          seaBlock.append(rrow);
+        }
+        seaBlock.append(el('div', 'stat-row', loc(stm.seaTradeTrainShips)));
+        const seaActions = el('div', 'detail-actions');
+        // Cargo freighter first, fuel barge second (the
+        // seaTradeShipKinds order); each button names the availability
+        // blocker when locked, like the Train palette.
+        for (const kind of seaTradeShipKinds()) {
+          const av = unitAvailability(world, HUMAN_PLAYER_ID, kind);
+          const tb = document.createElement('button');
+          tb.className = 'sel-action';
+          tb.textContent = `${unitName(kind)} · ${formatTrainCost(kind)}`;
+          tb.title = trainTooltip(world, HUMAN_PLAYER_ID, kind);
+          tb.disabled = !av.ok;
+          tb.addEventListener('click', () => this.actions.onTrainUnit(kind));
+          seaActions.append(tb);
+        }
+        seaBlock.append(seaActions);
+        panel.append(seaBlock);
       }
       // Command-menu rebuild (2026-10-01): the Demolish button arms the
       // demolish tool for the selected building (the existing
