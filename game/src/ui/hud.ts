@@ -568,6 +568,16 @@ export class HUD {
   seaTradeFromId: number | null = null;
   seaTradeToId: number | null = null;
   /**
+   * Roadmap B11 (2026-10-02): the armed palette build tool,
+   * controller-owned (`'building:<kind>'`, `'road'`, `'powerLine'`,
+   * `'waterPipe'`, `'rail'`, `'zoneR' | 'zoneC' | 'zoneI' | 'zoneA'`,
+   * `'demolish'`; null = none armed). The HUD never mutates it —
+   * game.ts sets it in onBuildTool and clears it on cancel/disarm.
+   * Digest-covered (ar:) so the armed card highlight + status line
+   * repaint on arm/disarm.
+   */
+  buildToolArmed: BuildTool | null = null;
+  /**
    * Set by tab switches / research clicks so the selection panel rebuilds
    * even when the sim tick hasn't advanced (e.g. while paused).
    */
@@ -993,13 +1003,24 @@ export class HUD {
   private civilianToolsEl(world: World): HTMLElement {
     const p = STRINGS.palettes;
     const toolsRow = el('div', 'palette-tools');
+    // Roadmap B11 (2026-10-02): the armed tool's persistent status line
+    // (the airline/sea-trade armed-line pattern) — the building tools'
+    // line lives in appendBuildPanel; this one covers road, networks,
+    // zones, and demolish.
+    if (this.buildToolArmed !== null && !this.buildToolArmed.startsWith('building:')) {
+      const line = this.armedBuildToolLine();
+      if (line !== null) toolsRow.append(el('div', 'panel-status', line));
+    }
     const makeToolButton = (
       tool: BuildTool,
       label: string,
       icon: PaletteToolIcon,
     ): HTMLButtonElement => {
       const b = document.createElement('button');
-      b.className = 'build-btn';
+      // Roadmap B11 (2026-10-02): the armed tool button stays
+      // highlighted while its gesture is live (same 'armed' class as
+      // the build cards; digest-covered ar:).
+      b.className = `build-btn${this.buildToolArmed === tool ? ' armed' : ''}`;
       b.prepend(iconSpan(toolIcon(icon)));
       b.append(el('span', 'palette-label', label));
       b.addEventListener('click', () => this.actions.onBuildTool(tool));
@@ -2302,6 +2323,9 @@ export class HUD {
       this.seaTradeArmed
         ? { from: this.seaTradeFromId, to: this.seaTradeToId }
         : undefined,
+      // Roadmap B11 (2026-10-02): the armed palette build tool —
+      // undefined when disarmed (the ar: segment reads 'off' then).
+      this.buildToolArmed ?? undefined,
     );
   }
 
@@ -2877,6 +2901,39 @@ export class HUD {
   }
 
   /**
+   * Roadmap B11 (2026-10-02): the armed palette tool's status line —
+   * the build-tool mirror of the airline/sea-trade armed lines. null
+   * when no palette tool is armed. Digest-covered (ar:) so it appears
+   * and clears with the arm/disarm.
+   */
+  private armedBuildToolLine(): string | null {
+    const tool = this.buildToolArmed;
+    if (tool === null) return null;
+    const p = STRINGS.palettes;
+    if (tool.startsWith('building:')) {
+      const kind = tool.slice('building:'.length);
+      const name = isUtilityBuildingKind(kind)
+        ? utilityBuildingName(kind)
+        : buildingName(kind as BuildingKind);
+      return fillLoc(p.placingLine, { name });
+    }
+    const labelFor: Partial<Record<BuildTool, LocalizedString>> = {
+      road: p.toolRoad,
+      powerLine: p.toolPowerLine,
+      waterPipe: p.toolWaterPipe,
+      rail: p.toolRail,
+      zoneR: p.toolZoneR,
+      zoneC: p.toolZoneC,
+      zoneI: p.toolZoneI,
+      zoneA: p.toolZoneA,
+      demolish: p.toolDemolish,
+    };
+    const ls = labelFor[tool];
+    if (ls === undefined) return null;
+    return fillLoc(p.toolArmedLine, { name: loc(ls) });
+  }
+
+  /**
    * Build palette: the tab bar + grid for the given build tabs (the
    * caller picks the Civilian or Military subset — workstream Y), plus
    * the Cancel-placement button. The tools row lives in
@@ -2896,6 +2953,12 @@ export class HUD {
     wrap.append(this.buildTabBar(tabs, STRINGS.buildingTabs, this.buildTab, (id) => {
       this.buildTab = id as BuildTabId | UtilityBuildTabId;
     }));
+    // Roadmap B11 (2026-10-02): the armed building tool's persistent
+    // status line (the tools-row tools' line lives in civilianToolsEl).
+    if (this.buildToolArmed !== null && this.buildToolArmed.startsWith('building:')) {
+      const line = this.armedBuildToolLine();
+      if (line !== null) wrap.append(el('div', 'panel-status', line));
+    }
     const grid = el('div', 'palette-grid');
     const tab = tabs.find((t) => t.id === this.buildTab) ?? tabs[0]!;
     for (const kind of tab.kinds) {
@@ -2907,7 +2970,10 @@ export class HUD {
         ? utilityBuildingAvailability(world, HUMAN_PLAYER_ID, kind)
         : buildingAvailability(world, HUMAN_PLAYER_ID, kind as BuildingKind);
       const b = document.createElement('button');
-      b.className = `build-btn${avail.ok ? '' : ' locked'}`;
+      // Roadmap B11 (2026-10-02): the armed palette tool's card stays
+      // highlighted while armed (the airline/sea-trade indicator
+      // pattern) — the digest's ar: segment repaints it on arm/disarm.
+      b.className = `build-btn${avail.ok ? '' : ' locked'}${this.buildToolArmed === `building:${kind}` ? ' armed' : ''}`;
       b.disabled = !avail.ok;
       b.prepend(this.portraitThumbEl(kind, buildingIcon(kind as BuildingKind), CARD_PORTRAIT_BOX_PX));
       b.append(el('div', 'palette-name', isUtility ? utilityBuildingName(kind) : buildingName(kind as BuildingKind)));

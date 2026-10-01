@@ -339,6 +339,18 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   in `sync()` with the terrain's `heightAt` sampler, and disposes it
   in `dispose()`. Tested in `tests/render.zoneOverlay.test.ts`
   (13 tests).
+- `PlacementGhost` (roadmap B11, 2026-10-02,
+  `render/placementGhost.ts`): the build-tool footprint ghost — one
+  translucent box + edge lines (2 draw calls, visible only while a
+  `building:<kind>` palette tool is armed). Green = the sim's
+  `validatePlacement` would accept the hovered cell; red = it would
+  reject. Owned by the game controller (`ui/game.ts`), which feeds it
+  the hovered cell + validity every frame via the `updatePlacementGhost`
+  frame dep (a required `GameFrameDeps` entry, like
+  `syncTransitProviders`); hidden for every other tool and when the
+  pointer leaves the canvas. Layout math (`ghostCenterWorld`,
+  `ghostSizeWorld`) is pure and headless-tested
+  (`tests/render.placementGhost.test.ts`).
 
 ## Ambient city life (`render/cityLife.ts`, 0.1 Alpha)
 

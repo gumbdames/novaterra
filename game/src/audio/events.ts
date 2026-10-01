@@ -50,6 +50,13 @@ export interface AudioBuildingState {
   /** Sim owner id. */
   owner: number;
   hp: number;
+  /**
+   * Roadmap B11 (2026-10-02): construction progress 0..1 — the differ
+   * watches the 0..1 → 1 transition to fire the buildComplete cue.
+   * Optional so older snapshots keep compiling; missing = 1 (already
+   * standing — a pre-B11 snapshot never fires a false completion).
+   */
+  progress?: number;
 }
 
 /** One poll's audio-relevant world snapshot. */
@@ -78,6 +85,12 @@ export interface AudioPollEvents {
   deaths: AudioDeathEvent[];
   /** Buildings destroyed (positions from the last poll). */
   destroyed: AudioDeathEvent[];
+  /**
+   * Buildings whose construction completed since the last poll —
+   * roadmap B11 (2026-10-02): `prev.progress < 1 → now.progress >= 1`
+   * transitions on standing buildings (positions from the last poll).
+   */
+  buildsComplete: AudioDeathEvent[];
   /** Human-player units that appeared (trained). */
   trained: number;
   /** True when the human player finished researching an upgrade. */
@@ -110,6 +123,7 @@ export class AudioEventTracker {
   observe(snap: AudioWorldSnapshot): AudioPollEvents {
     const deaths: AudioDeathEvent[] = [];
     const destroyed: AudioDeathEvent[] = [];
+    const buildsComplete: AudioDeathEvent[] = [];
     let damageEvents = 0;
     let combatUnits = 0;
     let trained = 0;
@@ -122,7 +136,7 @@ export class AudioEventTracker {
       this.prevBuildings = snap.buildings;
       this.prevResearched = snap.researchedCount;
       this.prevEmbedded = snap.embeddedSpies;
-      return { deaths, destroyed, trained, researchDone, damageEvents, combatUnits, intelOpComplete };
+      return { deaths, destroyed, buildsComplete, trained, researchDone, damageEvents, combatUnits, intelOpComplete };
     }
 
     for (const [id, st] of this.prevUnits) {
@@ -137,8 +151,19 @@ export class AudioEventTracker {
       const now = snap.buildings.get(id);
       if (now === undefined) {
         destroyed.push({ x: st.x, z: st.z, friendly: st.owner === this.playerId });
-      } else if (st.owner === this.playerId && now.hp < st.hp) {
-        damageEvents++;
+      } else {
+        // Roadmap B11 (2026-10-02): a construction-completion event is
+        // a standing building crossing progress 1. A building that
+        // already stood at 1 (the pre-B11 world where progress was not
+        // tracked) never fires: prevProgress defaults to 1 in that
+        // case, so only 0..1 → 1 transitions register.
+        const prevProgress = st.progress ?? 1;
+        const nowProgress = now.progress ?? 1;
+        if (prevProgress < 1 && nowProgress >= 1) {
+          buildsComplete.push({ x: st.x, z: st.z, friendly: st.owner === this.playerId });
+        } else if (st.owner === this.playerId && now.hp < st.hp) {
+          damageEvents++;
+        }
       }
     }
     for (const [id, st] of snap.units) {
@@ -158,7 +183,7 @@ export class AudioEventTracker {
     this.prevBuildings = snap.buildings;
     this.prevResearched = snap.researchedCount;
     this.prevEmbedded = snap.embeddedSpies;
-    return { deaths, destroyed, trained, researchDone, damageEvents, combatUnits, intelOpComplete };
+    return { deaths, destroyed, buildsComplete, trained, researchDone, damageEvents, combatUnits, intelOpComplete };
   }
 }
 
@@ -173,7 +198,7 @@ export class AudioEventTracker {
  */
 export function snapshotForAudio(world: {
   units: Array<{ id: number; owner: number; hp: number; x: number; z: number; targetId: number; embeddedIn?: number }>;
-  city: { buildings: Array<{ id: number; owner: number; hp?: number; cx: number; cz: number }> };
+  city: { buildings: Array<{ id: number; owner: number; hp?: number; cx: number; cz: number; progress?: number }> };
   upgrades: Record<number, string[]>;
 }, playerId: number, cellToWorld: (c: number) => number): AudioWorldSnapshot {
   const units = new Map<number, AudioUnitState>();
@@ -200,6 +225,9 @@ export function snapshotForAudio(world: {
         z: cellToWorld(b.cz),
         owner: b.owner,
         hp,
+        // Roadmap B11 (2026-10-02): progress feeds the buildComplete
+        // transition detector. Missing = 1 = already standing.
+        progress: b.progress ?? 1,
       });
     }
   }

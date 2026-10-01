@@ -57,6 +57,10 @@ import {
   type BuildingKind,
   type RoadClass,
   type TransitMode,
+  // Roadmap B11 (2026-10-02): the placement ghost previews placement
+  // validity — validated with the same pure function the command
+  // queue runs, so the ghost color matches the real click verdict.
+  validatePlacement,
 } from '../sim/city';
 import type { AIDifficulty } from '../sim/ai';
 import { CommandRejectedError } from '../sim/commands';
@@ -97,6 +101,10 @@ import {
 } from '../render/cargoShipProviders';
 import { createRenderer, applyEnvironmentLighting } from '../render/renderer';
 import { buildNatureView, type NatureView } from '../render/nature';
+// Roadmap B11 (2026-10-02): the placement footprint ghost (pure math +
+// a thin three.js shell; the controller owns one instance).
+import { PlacementGhost, ghostCenterWorld } from '../render/placementGhost';
+import { groundYAt } from '../render/terrainHeight';
 import { loadNatureTreeModels } from '../render/natureTrees';
 import {
   disposeModels,
@@ -356,6 +364,12 @@ export interface GameFrameDeps {
    * current providers.
    */
   syncTransitProviders(world: World): void;
+  /**
+   * Roadmap B11 (2026-10-02): reposition the placement ghost under the
+   * pointer while a building tool is armed (hidden otherwise). Runs
+   * every frame — the player aims while paused too.
+   */
+  updatePlacementGhost(world: World): void;
   setSelectedEntities(unitIds: number[]): void;
   updateEntitySelectionRings(world: World): void;
   updateHud(
@@ -402,6 +416,9 @@ export function runGameFrame(deps: GameFrameDeps, nowMs: number, frameMs: number
   deps.syncEntities(world);
   deps.setSelectedEntities(deps.selection.unitIds);
   deps.updateEntitySelectionRings(world);
+  // Roadmap B11 (2026-10-02): the placement ghost follows the pointer
+  // while a building tool is armed (paused or not — pure render data).
+  deps.updatePlacementGhost(world);
   deps.updateHud(world, deps.selection, deps.advisorItems, deps.paused, deps.speed, deps.session.terrain);
   // Audio events are paused-gated: no SFX pile-up while the pause menu
   // is open (final-review R5 L5 — plus the engine itself drops while its
@@ -712,6 +729,19 @@ class GameController {
   private lastGoodCameraState: CameraState = createCameraState();
   private selection: Selection = clearSelection();
   private placement: PlacementMode = null;
+  /**
+   * Roadmap B11 (2026-10-02): the building-footprint ghost, owned by
+   * the controller and repositioned every frame while a building tool
+   * is armed (hidden otherwise). One instance, +2 draw calls max, only
+   * while visible — the render layer owns nothing sim here.
+   */
+  private placementGhost = new PlacementGhost();
+  /**
+   * Roadmap B11 (2026-10-02): the last pointer NDC over the canvas —
+   * where the ghost sits. null once the pointer leaves the canvas so
+   * a stale ghost never lingers off-map.
+   */
+  private lastPointerNdc: { x: number; y: number } | null = null;
   private paused = false;
   private speed = 1;
   /** Phase 2 (utilities): utility-network overlay visibility. */
@@ -850,6 +880,9 @@ class GameController {
     this.canvas = canvas;
     this.renderer = renderer;
     this.scene = scene;
+    // Roadmap B11 (2026-10-02): the placement ghost lives in the scene
+    // from boot (hidden until a building tool is armed).
+    this.scene.add(this.placementGhost.group);
     this.camera = camera;
     this.entities = entities;
     this.session = session;
@@ -883,6 +916,9 @@ class GameController {
         // Grand-expansion Phase 5 (S5): arming a palette tool disarms
         // the airline gesture (one armed gesture at a time).
         this.disarmAirlineTool();
+        // Roadmap B11 (2026-10-02): the train placement is not a build
+        // tool — clear the armed-tool indicator.
+        this.hud.buildToolArmed = null;
         this.hud.toast(trainPlacementToast(kind));
       },
       onBuildTool: (tool) => {
@@ -890,6 +926,11 @@ class GameController {
         // Grand-expansion Phase 5 (S5): arming a palette tool disarms
         // the airline gesture (one armed gesture at a time).
         this.disarmAirlineTool();
+        // Roadmap B11 (2026-10-02): the armed palette tool gets a
+        // persistent indicator — the highlighted card/button plus the
+        // status line (the airline/sea-trade pattern). It clears with
+        // cancelPlacement / when another gesture takes over.
+        this.hud.buildToolArmed = tool;
         // Phase 2 (utilities): network tools say what they paint.
         this.hud.toast(
           tool === 'powerLine' || tool === 'waterPipe'
@@ -1181,6 +1222,8 @@ class GameController {
       pruneSelection: () => this.pruneSelection(),
       syncEntities: (world) => this.entities.sync(world),
       syncTransitProviders: (world) => this.syncTransitProviders(world),
+      // Roadmap B11 (2026-10-02): the placement ghost overlay.
+      updatePlacementGhost: (world) => this.updatePlacementGhost(world),
       setSelectedEntities: (unitIds) => this.entities.setSelected(unitIds),
       updateEntitySelectionRings: (world) =>
         this.entities.updateSelectionRings(EntityRenderer.unitMap(world)),
@@ -1337,6 +1380,14 @@ class GameController {
       if (events.trained > 0) this.audio.playSfx('unitTrained');
       if (events.researchDone) this.audio.playSfx('researchComplete');
       if (events.intelOpComplete) this.audio.playSfx('intelOp');
+      // Roadmap B11 (2026-10-02): construction-complete cues — the
+      // 'buildComplete' synth finally has a caller. Friendly completions
+      // play positionally (the player hears WHERE the building landed);
+      // foe completions stay silent (the completion event carries no
+      // intel the player should hear — a foeDown-free zone).
+      for (const d of cap(events.buildsComplete)) {
+        if (d.friendly) this.audio.playSfx('buildComplete', { x: d.x, z: d.z });
+      }
       // Under attack: throttled (30s), non-positional — the player's own
       // units/buildings are the target and the selection ping carries the
       // location.
@@ -1539,6 +1590,11 @@ class GameController {
     this.unbindUiClicks = null;
     this.audio.dispose();
     this.entities.dispose();
+    // Roadmap B11 (2026-10-02): release the placement ghost's geometry
+    // and material (provider-owned, disposed once per session like the
+    // transit providers below).
+    this.scene.remove(this.placementGhost.group);
+    this.placementGhost.dispose();
     // Phase 4 (transport): release the ambient transit providers (their
     // geometry/material are provider-owned — the crowd never disposes
     // them — so the game does it here, once per session).
@@ -2013,6 +2069,9 @@ class GameController {
     // Civilian sea trade (Half A, 2026-10-01): the two route tools are
     // mutually exclusive — arming one disarms the other.
     this.disarmSeaTradeTool();
+    // Roadmap B11 (2026-10-02): arming a route gesture clears the
+    // palette tool's armed indicator (one armed gesture at a time).
+    this.hud.buildToolArmed = null;
     this.hud.airlineArmed = true;
     this.hud.airlineFromId = null;
     this.hud.toast(loc(STRINGS.menuTabs.airlinePickFirst));
@@ -2038,6 +2097,9 @@ class GameController {
     this.placement = null;
     this.networkDrag = null;
     this.disarmAirlineTool();
+    // Roadmap B11 (2026-10-02): arming a route gesture clears the
+    // palette tool's armed indicator (one armed gesture at a time).
+    this.hud.buildToolArmed = null;
     this.hud.seaTradeArmed = true;
     this.hud.seaTradeFromId = null;
     this.hud.seaTradeToId = null;
@@ -2166,7 +2228,73 @@ class GameController {
       this.dragRect.remove();
       this.dragRect = null;
     }
+    // Roadmap B11 (2026-10-02): cancelling also clears the armed-tool
+    // indicator (the ghost hides itself next frame).
+    this.hud.buildToolArmed = null;
     this.hud.toast('Cancelled.');
+  }
+
+  /**
+   * Roadmap B11 (2026-10-02): keep the placement ghost on the hovered
+   * cell while a building tool is armed — green where the building is
+   * legal, red where it is not. Every other placement mode (train,
+   * demolish, networks, zones, storm) has no ghost: the footprint is a
+   * building preview only. Runs every frame, paused or not — the player
+   * aims while the sim is paused, and the ghost is pure render data
+   * (never read by the sim).
+   */
+  private updatePlacementGhost(world: World): void {
+    const ghost = this.placementGhost;
+    const placement = this.placement;
+    if (
+      placement?.kind !== 'build' ||
+      !placement.tool.startsWith('building:') ||
+      this.lastPointerNdc === null
+    ) {
+      ghost.hide();
+      return;
+    }
+    const kind = placement.tool.slice('building:'.length) as BuildingKind;
+    const def = BUILDING_DEFS[kind];
+    if (def === undefined) {
+      ghost.hide();
+      return;
+    }
+    const ndc = this.lastPointerNdc;
+    const ground = this.groundPoint(ndc.x, ndc.y);
+    if (ground === null) {
+      ghost.hide();
+      return;
+    }
+    const cell = this.worldToCell(ground.x, ground.z);
+    if (cell === null) {
+      ghost.hide();
+      return;
+    }
+    const cx = ghostCenterWorld(cell.cx, def.footprintW);
+    const cz = ghostCenterWorld(cell.cz, def.footprintH);
+    const y = groundYAt(
+      this.session.terrain,
+      this.session.terrain.waterLevel,
+      'land',
+      cx,
+      cz,
+    );
+    // Validity mirrors the click path: the same pure validatePlacement
+    // the command queue runs, so the ghost's color always matches the
+    // real click verdict (green = the click will work).
+    const legal =
+      validatePlacement(this.session.terrain, world.city, {
+        kind,
+        owner: HUMAN_PLAYER_ID,
+        cx: cell.cx,
+        cz: cell.cz,
+        facing: 0,
+      }) === null;
+    // The anchor is the footprint's min-corner cell — the same anchor
+    // the click path passes to the sim, so the ghost shows exactly
+    // where the building will land.
+    ghost.show(cell.cx, cell.cz, def.footprintW, def.footprintH, legal, y);
   }
 
   /**
@@ -2338,6 +2466,9 @@ class GameController {
       if (e.button === 1) e.preventDefault();
     });
     on(this.canvas, 'pointermove', (e) => {
+      // Roadmap B11 (2026-10-02): the placement ghost follows the
+      // pointer — track NDC for every move over the canvas.
+      this.lastPointerNdc = this.toNDC(e);
       // Middle-drag orbit: horizontal travel yaws, vertical travel pitches.
       if (this.orbitLast && e.buttons & 4) {
         const dx = e.clientX - this.orbitLast.x;
@@ -2403,6 +2534,11 @@ class GameController {
         const cell = p ? this.worldToCell(p.x, p.z) : null;
         if (cell) this.networkDrag.addCell(cell);
       }
+    });
+    // Roadmap B11 (2026-10-02): the ghost must not linger where the
+    // pointer no longer is — leaving the canvas hides it next frame.
+    on(this.canvas, 'pointerleave', () => {
+      this.lastPointerNdc = null;
     });
     // Edge pan needs the pointer even over HUD panels: the canvas never
     // sees pointermove while the pointer is above the top bar / selection

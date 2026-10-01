@@ -278,6 +278,44 @@ describe('selectionDigest', () => {
   });
 });
 
+describe('selectionDigest (roadmap B11: armed build-tool indicator)', () => {
+  it("emits ar:off when no palette tool is armed", () => {
+    const session = createSession({ seed: 4242 });
+    expect(selectionDigest(session.world, NO_SEL, 'infantry', 'housing')).toContain('ar:off');
+  });
+
+  it('moves the digest on arm and disarm (the aa:/sa: pattern)', () => {
+    const session = createSession({ seed: 4242 });
+    const world = session.world;
+    const base = selectionDigest(world, NO_SEL, 'infantry', 'housing');
+    // Positional args: world, selection, trainTab, buildTab, terrain,
+    // menuTab, roadClass, airlineArmedFrom, subTab, seaTradeArmed,
+    // buildToolArmed.
+    const armed = selectionDigest(
+      world, NO_SEL, 'infantry', 'housing',
+      undefined, 'civilian', 'paved', undefined, 'tools', undefined,
+      'building:farm',
+    );
+    expect(armed).not.toBe(base);
+    expect(armed).toContain('ar:building:farm');
+    const roadArmed = selectionDigest(
+      world, NO_SEL, 'infantry', 'housing',
+      undefined, 'civilian', 'paved', undefined, 'tools', undefined,
+      'road',
+    );
+    expect(roadArmed).not.toBe(base);
+    expect(roadArmed).toContain('ar:road');
+    expect(roadArmed).not.toBe(armed);
+    // Disarming returns to the base digest.
+    const disarmed = selectionDigest(
+      world, NO_SEL, 'infantry', 'housing',
+      undefined, 'civilian', 'paved', undefined, 'tools', undefined,
+      undefined,
+    );
+    expect(disarmed).toBe(base);
+  });
+});
+
 describe('selectionDigest (Phase 7: intel panel)', () => {
   it('the Management tab digests the intel counters, spies, warnings, and airports', () => {
     const session = createSession({ seed: 4242 });

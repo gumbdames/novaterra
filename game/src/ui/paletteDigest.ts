@@ -173,6 +173,12 @@ export function selectionDigest(
   // harbor's building id. Optional so existing callers/tests keep
   // compiling.
   seaTradeArmed: { from: number | null; to: number | null } | undefined = undefined,
+  // Roadmap B11 (2026-10-02): the armed palette build tool ('building:<kind>',
+  // 'road', 'powerLine', 'waterPipe', 'rail', 'zone*', 'demolish'; undefined =
+  // none armed). The build cards' armed highlight + status line are rendered
+  // content, so the digest must move on arm/disarm (the aa:/sa: pattern).
+  // Optional so existing callers/tests keep compiling.
+  buildToolArmed: string | null | undefined = undefined,
 ): string {
   const parts: string[] = [
     `u:${selection.unitIds.join(',')}`,
@@ -182,6 +188,8 @@ export function selectionDigest(
     `mt:${menuTab}`,
     // The active main tab's sub-tab (mt: already carries the main tab).
     `sb:${subTab}`,
+    // The armed palette build tool ('off' when disarmed).
+    `ar:${buildToolArmed ?? 'off'}`,
   ];
   if (selection.unitIds.length > 0) {
     // Unit vitals (hp%) are the only per-tick mover in this branch.
@@ -775,11 +783,18 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'portrait',
       'palette-name',
       'palette-cost',
+      // Roadmap B11 (2026-10-02): the armed palette tool's card
+      // highlight ('armed' suffix on build-btn) + the armed status
+      // line (panel-status, also claimed by airline-panel).
+      'armed',
+      'panel-status',
     ],
     // Entity portraits (2026-10-01): palette-thumb + portrait (the
     // atlas CSS-sprite overlay on card thumbnails) are decorative — no
     // digest segment; hud.ts patches overlays in after each build.
-    digestLabels: ['bt:', 'ba:'],
+    // Roadmap B11 (2026-10-02): ar: — the armed palette tool (card
+    // highlight + status line are rendered content).
+    digestLabels: ['bt:', 'ba:', 'ar:'],
   },
   {
     id: 'tools-row',
@@ -794,10 +809,16 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       // button, and the rail button in the networks group.
       'palette-class-row',
       'class-btn',
+      // Roadmap B11 (2026-10-02): the armed tool button's highlight
+      // ('armed' suffix on build-btn) + the armed status line.
+      'armed',
+      'panel-status',
     ],
     // Phase 4 (transport): the class picker highlights the selected
     // road class — the only dynamic value in the tools row.
-    digestLabels: ['rc:'],
+    // Roadmap B11 (2026-10-02): ar: — the armed tool (button highlight
+    // + status line are rendered content).
+    digestLabels: ['rc:', 'ar:'],
   },
   {
     id: 'airline-panel',

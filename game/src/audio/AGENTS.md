@@ -27,6 +27,12 @@ state. Pause = ctx.suspend(); settings persist to localStorage.
   friend/foe flags, damage events, trained units, research completion,
   embedded spies (`snapshotForAudio(world, playerId, cellToWorld)` —
   the caller passes the cell converter so this module stays sim-free).
+  Roadmap B11 (2026-10-02): `buildsComplete` — `snapshotForAudio`
+  carries each building's `progress` (missing = 1 = already standing,
+  so pre-B11 snapshots never false-fire) and `observe` emits one event
+  per `prev.progress < 1 → now.progress >= 1` transition on standing
+  buildings; game.ts plays the `buildComplete` cue positionally for
+  friendly completions only.
 - `music.ts` — adaptive music: `selectMood({playerUnitsInCombat})` is a pure
   function (`war` iff any player unit has a live target). `MusicDirector`
   owns two looping `<audio>` tracks (peace/war) routed through the music

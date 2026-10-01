@@ -896,6 +896,11 @@ export const STRINGS = {
     placeSeaHint: { en: 'Click WATER on the map to place' },
     trainToast: { en: 'Place {name}: {hint}. Right-click cancels.' },
     buildToast: { en: 'Construction: drag or click on the map. Right-click cancels.' },
+    // Roadmap B11 (2026-10-02): the armed palette tool's persistent
+    // status lines (the airline/sea-trade armed-line pattern) — the
+    // palette cards/buttons get an 'armed' highlight to match.
+    placingLine: { en: 'Placing {name}: drag or click on the map. Right-click cancels.' },
+    toolArmedLine: { en: 'Tool armed: {name} — paint on the map. Right-click cancels.' },
     requiresBuilding: { en: 'Requires: {name}' },
     requiresAge: { en: 'Requires the {age} age' },
     requiresUpgrade: { en: 'Requires upgrade: {name}' },

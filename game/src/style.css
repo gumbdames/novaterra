@@ -616,6 +616,15 @@ body {
   color: #ffb4a2;
 }
 
+/* Roadmap B11 (2026-10-02): the armed palette tool's card/button stays
+   visibly highlighted while its gesture is live (the airline/sea-trade
+   armed-indicator pattern). */
+.build-btn.armed {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft, rgba(56, 189, 248, 0.25));
+  background: rgba(56, 189, 248, 0.12);
+}
+
 /* tabbed train/build palettes (roster expansion) */
 .palette-tabs {
   display: flex;

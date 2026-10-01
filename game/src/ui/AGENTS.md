@@ -172,6 +172,18 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   with 20 live fields (typical: ~300KB / ~35ms). Autosave warns loudly
   past 10 live fields; a rebuild-on-load format would need a snapshot
   version bump.
+  Roadmap B11 (2026-10-02): (a) the `buildComplete` SFX finally plays —
+  the audio differ (`audio/events.ts`) watches `prev.progress < 1 →
+  now.progress >= 1` transitions on standing buildings and the game loop
+  plays the cue positionally for friendly completions (foe completions
+  stay silent). (b) One `PlacementGhost` (see `render/placementGhost.ts`)
+  is owned by the controller and repositioned every frame via the
+  `updatePlacementGhost` frame dep while a `building:<kind>` palette tool
+  is armed — green/red by the sim's `validatePlacement`. (c) The armed
+  palette tool gets a persistent indicator: `hud.buildToolArmed`
+  (controller-owned, cleared on cancel/disarm), the armed card/button's
+  'armed' highlight, and a status line — the airline/sea-trade armed-line
+  pattern, digest-covered by the always-emitted `ar:` segment.
 - `cheatconsole.ts` — the cheat console overlay. `parseCheatCommand` is
   pure and tested (case/whitespace-tolerant); the `CheatConsole` class is
   DOM-only and emits parsed actions to the controller. Sim-affecting

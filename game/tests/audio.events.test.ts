@@ -64,7 +64,7 @@ function building(
   owner: number,
   cx: number,
   cz: number,
-  overrides: Partial<{ hp: number }> = {},
+  overrides: Partial<{ hp: number; progress: number }> = {},
 ) {
   return { id, owner, cx, cz, hp: 500, ...overrides };
 }
@@ -242,6 +242,94 @@ describe('AudioEventTracker', () => {
     const first = tracker.observe(snapshot({ units: [unit(1, PLAYER, 0, 0)] }));
     expect(first.trained).toBe(0);
     expect(first.damageEvents).toBe(0);
+  });
+
+  // Roadmap B11 (2026-10-02): construction-complete transitions —
+  // `prev.progress < 1 → now.progress >= 1` on a standing building
+  // emits buildsComplete (the game loop plays the 'buildComplete' cue
+  // for friendly completions).
+  it('fires buildsComplete on the 0..1 → 1 progress transition', () => {
+    const tracker = new AudioEventTracker(PLAYER);
+    tracker.observe(
+      snapshot({ buildings: [building(1, PLAYER, 2, 3, { progress: 0.5 })] }),
+    );
+    const events = tracker.observe(
+      snapshot({ buildings: [building(1, PLAYER, 2, 3, { progress: 1 })] }),
+    );
+    expect(events.buildsComplete).toHaveLength(1);
+    expect(events.buildsComplete[0]).toEqual({
+      x: cellToWorld(2),
+      z: cellToWorld(3),
+      friendly: true,
+    });
+  });
+
+  it('does not fire while construction is still under way', () => {
+    const tracker = new AudioEventTracker(PLAYER);
+    tracker.observe(
+      snapshot({ buildings: [building(1, PLAYER, 2, 3, { progress: 0.5 })] }),
+    );
+    const events = tracker.observe(
+      snapshot({ buildings: [building(1, PLAYER, 2, 3, { progress: 0.8 })] }),
+    );
+    expect(events.buildsComplete).toEqual([]);
+  });
+
+  it('does not fire for buildings that already stood at progress 1', () => {
+    const tracker = new AudioEventTracker(PLAYER);
+    tracker.observe(
+      snapshot({ buildings: [building(1, PLAYER, 2, 3, { progress: 1 })] }),
+    );
+    const events = tracker.observe(
+      snapshot({ buildings: [building(1, PLAYER, 2, 3, { progress: 1 })] }),
+    );
+    expect(events.buildsComplete).toEqual([]);
+  });
+
+  it('does not fire a false completion for pre-B11 snapshots (no progress tracked)', () => {
+    const tracker = new AudioEventTracker(PLAYER);
+    // building() carries no progress unless the override is passed —
+    // snapshotForAudio treats that as 1 (already standing).
+    tracker.observe(snapshot({ buildings: [building(1, PLAYER, 2, 3)] }));
+    const events = tracker.observe(snapshot({ buildings: [building(1, PLAYER, 2, 3)] }));
+    expect(events.buildsComplete).toEqual([]);
+  });
+
+  it('reports destroyed-in-progress buildings as destroyed, not completed', () => {
+    const tracker = new AudioEventTracker(PLAYER);
+    tracker.observe(
+      snapshot({ buildings: [building(1, PLAYER, 2, 3, { progress: 0.5 })] }),
+    );
+    const events = tracker.observe(snapshot({ buildings: [] }));
+    expect(events.buildsComplete).toEqual([]);
+    expect(events.destroyed).toHaveLength(1);
+  });
+
+  it('marks rival completions as foe (game loop keeps them silent)', () => {
+    const tracker = new AudioEventTracker(PLAYER);
+    tracker.observe(
+      snapshot({ buildings: [building(1, RIVAL, 4, 5, { progress: 0.2 })] }),
+    );
+    const events = tracker.observe(
+      snapshot({ buildings: [building(1, RIVAL, 4, 5, { progress: 1 })] }),
+    );
+    expect(events.buildsComplete).toHaveLength(1);
+    expect(events.buildsComplete[0]!.friendly).toBe(false);
+  });
+
+  it('fires each completion exactly once', () => {
+    const tracker = new AudioEventTracker(PLAYER);
+    tracker.observe(
+      snapshot({ buildings: [building(1, PLAYER, 2, 3, { progress: 0.5 })] }),
+    );
+    const first = tracker.observe(
+      snapshot({ buildings: [building(1, PLAYER, 2, 3, { progress: 1 })] }),
+    );
+    expect(first.buildsComplete).toHaveLength(1);
+    const second = tracker.observe(
+      snapshot({ buildings: [building(1, PLAYER, 2, 3, { progress: 1 })] }),
+    );
+    expect(second.buildsComplete).toEqual([]);
   });
 });
 

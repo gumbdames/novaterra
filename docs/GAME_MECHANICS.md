@@ -14,6 +14,10 @@
   them. Power plants and water pumps fit anywhere.
 - **Buildings** take time to construct and cost upkeep every second.
   Demolishing is free but you get nothing back — plan before you place.
+  Build feedback: while a building tool is armed, the armed card stays
+  highlighted and a ghost of the footprint follows your cursor — green
+  where the building is legal, red where it isn't — and a chime plays
+  when construction finishes.
 - **Production buildings** unlock your military: the **Barracks**
   trains advanced infantry, the **War Factory** builds armor, the
   **Airfield** builds aircraft, and the **Naval Yard** (must touch the
