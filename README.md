@@ -81,11 +81,18 @@ land, sea and air — or play a fully peaceful game with war disabled.
   policies; ships sail the route automatically). The peaceful AI builds
   a shipyard and two docks, establishes a funds route, and assigns
   freighters on its own. The military half wired the naval supply chain the docs had
-  promised: the fuel tanker (400 fuel + 200 materials) and ammo ship
-  (80 shells + 100 materials) load at naval bases and serve friendly
-  ships at sea, the naval base pulls fuel and caches materials forward,
-  Load/Unload orders move cargo by hand, and the marshal AI trains and
-  loads its own supply tail.
+  promised, under the naval-building model (2026-10-01): the
+  **Naval Shipyard** (renamed from Shipyard) builds and repairs
+  light/support ships, the **Naval Yard** keeps the heavy warships,
+  and the **Naval Base** is the military dock. The fuel tanker (400
+  fuel + 200 materials) and ammo ship (80 shells + 100 materials)
+  load only at military naval points — one side per dock, so civilian
+  hulls can never draw military stocks and vice versa — and serve
+  friendly ships at sea; the naval base pulls fuel and caches
+  materials forward, Load/Unload orders move cargo by hand, damaged
+  ships at a friendly yard show **Under repair** while the drydock
+  works, and the marshal AI builds its own naval base and loads its
+  supply tail from it.
   See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 

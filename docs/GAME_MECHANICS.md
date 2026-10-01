@@ -436,13 +436,19 @@ airliners start flying circuits between your airports.
 
 ## Navy
 
-Water is not just scenery. Build a **Shipyard** (small boats) or a
-**Naval Yard** (warships — must touch the coastline), reach the
-Industry age, and rule the seas:
+Water is not just scenery. Build a **Naval Shipyard** (light and
+support craft) or a **Naval Yard** (heavy warships — must touch the
+coastline), reach the Industry age, and rule the seas. The split is
+strict: the Naval Shipyard builds and repairs missile boats,
+corvettes, ammo ships, repair ships, and minelayers; the Naval Yard
+builds and repairs destroyers, frigates, submarines, and carriers.
+Damaged ships moored at a friendly yard of their side are repaired
+automatically (3 hull/s) — the selection panel shows an
+**Under repair** badge while the work is underway:
 
 - **Patrol Boat** — fast scout, good against light ships.
 - **Missile Boat** — packs a punch far above its weight; swarms kill
-  destroyers (needs a naval yard).
+  destroyers (needs a naval shipyard).
 - **Frigate** — the submarine hunter; also screens against aircraft
   (needs a naval yard).
 - **Submarine** — long-range torpedoes murder capital ships; only
@@ -465,7 +471,7 @@ Industry age, and rule the seas:
   refuels**, and its long-range missiles reach 40 cells. The fleet's
   ultimate deterrent (Information age).
 - **Corvette** — a fast, cheap escort that screens against light ships
-  and aircraft (Connectivity age, from a shipyard).
+  and aircraft (Connectivity age, from a naval shipyard).
 - **Heavy Destroyer** — a tougher, longer-ranged destroyer.
 - **Cruiser** — a heavy gun platform with strong anti-air cover.
 - **Battleship** — the heaviest surface guns afloat: 800 hull points
@@ -478,7 +484,7 @@ moving:
   income); trains at the **Civilian Shipyard** (Industry age).
 - **Fuel Tanker** — a floating fuel depot for the Phase 3 naval
   logistics chain.
-- **Ammo Ship** — a floating munitions store (needs a shipyard).
+- **Ammo Ship** — a floating munitions store (needs a naval shipyard).
 - **Repair Ship** — heals friendly **sea** units in a 15-cell radius
   (the combat medic still owns land).
 - **Minelayer** — lays **Naval Mines** (see below).
@@ -872,6 +878,17 @@ supply ship at the base and order **Unload** to empty its holds into
 the base's caches (300 fuel / 100 ammo / 200 materials). **Load** fills
 the ship from the base on demand. Land trucks work the same way at
 land depots — any supply unit loads at a depot, no special case.
+
+**One side per dock.** Cargo stays on its own side of the
+civilian/military split: military supply ships (Fuel Tanker, Ammo
+Ship) load and unload **only** at military naval points (Naval Yard,
+Naval Base); civilian cargo ships (Fuel Barge, Cargo Freighter) load
+**only** at civilian harbors and docks. A cross-side order is rejected
+outright, and the depot aura simply never cross-loads. (Refueling a
+ship's own engines at any friendly port is unaffected — that's not
+cargo.) The military **Naval Shipyard** is deliberately dry: it builds
+and repairs ships but carries no stocks and is not a load point — the
+Naval Base is the fleet's shipping interface.
 
 Out at sea, the ships work on their own: a loaded fuel tanker
 automatically refuels the thirstiest friendly ship nearby, and the

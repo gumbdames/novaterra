@@ -915,6 +915,17 @@ function serveDepotUnit(world: World, d: BuildingRecord, u: UnitRecord, isReserv
   // holds were previously unloadable-but-unfillable) work: the depot
   // aura is the load side, `runMobileSupply` the discharge side.
   //
+  // Naval-building model (2026-10-01, Worker B): sea cargo stays on
+  // its own side — a military fuelTanker never loads fuel/ammo/
+  // materials at a civilian harbor, and a civilian fuel barge /
+  // freighter never draws a navalBase's military stocks. Land and air
+  // depots keep the legacy side-blind behavior (Phase 3 predates the
+  // split; civilian haulers load at military fuelDepots by design).
+  // The own-tank/own-magazine refill legs above are intentionally
+  // side-blind too: a ship refueling its own engines at any friendly
+  // port is the standing "friendly port" abstraction, not cargo
+  // logistics.
+  //
   // Order: the unit's OWN tank/magazine fill first (legs above) — a
   // supply ship that cannot move is useless. Cargo draws only on
   // stock the depot has not reserved for resupply orders (cargo never
@@ -925,44 +936,49 @@ function serveDepotUnit(world: World, d: BuildingRecord, u: UnitRecord, isReserv
   //     building stocks materials) — the depot is only the loading
   //     point.
   // Deterministic: pure arithmetic, no RNG.
-  const cargoFuelCap = def.cargoFuelCapacity ?? 0;
-  if (cargoFuelCap > 0) {
-    const need = cargoFuelCap - u.cargoFuel;
-    if (need > 0) {
-      const stock = d.fuelStock ?? 0;
-      const reserved = d.reservedFuel ?? 0;
-      const avail = isReserved ? stock : stock - reserved;
-      const give = Math.min(need, Math.max(0, avail));
-      if (give > 0) {
-        d.fuelStock = stock - give;
-        u.cargoFuel += give;
+  const bdef = BUILDING_DEFS[d.kind as keyof typeof BUILDING_DEFS];
+  const cargoAllowed =
+    def.domain !== 'sea' || !!def.military === !!bdef?.military;
+  if (cargoAllowed) {
+    const cargoFuelCap = def.cargoFuelCapacity ?? 0;
+    if (cargoFuelCap > 0) {
+      const need = cargoFuelCap - u.cargoFuel;
+      if (need > 0) {
+        const stock = d.fuelStock ?? 0;
+        const reserved = d.reservedFuel ?? 0;
+        const avail = isReserved ? stock : stock - reserved;
+        const give = Math.min(need, Math.max(0, avail));
+        if (give > 0) {
+          d.fuelStock = stock - give;
+          u.cargoFuel += give;
+        }
       }
     }
-  }
-  const cargoAmmoCap = def.cargoAmmoCapacity ?? 0;
-  if (cargoAmmoCap > 0) {
-    const need = Math.floor(cargoAmmoCap - u.cargoAmmo);
-    if (need >= 1) {
-      const stock = d.ammoStock ?? 0;
-      const reserved = d.reservedAmmo ?? 0;
-      const avail = Math.floor(isReserved ? stock : stock - reserved);
-      const give = Math.min(need, Math.max(0, avail));
-      if (give > 0) {
-        d.ammoStock = stock - give;
-        u.cargoAmmo += give;
+    const cargoAmmoCap = def.cargoAmmoCapacity ?? 0;
+    if (cargoAmmoCap > 0) {
+      const need = Math.floor(cargoAmmoCap - u.cargoAmmo);
+      if (need >= 1) {
+        const stock = d.ammoStock ?? 0;
+        const reserved = d.reservedAmmo ?? 0;
+        const avail = Math.floor(isReserved ? stock : stock - reserved);
+        const give = Math.min(need, Math.max(0, avail));
+        if (give > 0) {
+          d.ammoStock = stock - give;
+          u.cargoAmmo += give;
+        }
       }
     }
-  }
-  const cargoMaterialsCap = def.cargoMaterialsCapacity ?? 0;
-  if (cargoMaterialsCap > 0) {
-    const need = Math.floor(cargoMaterialsCap - u.cargoMaterials);
-    if (need >= 1) {
-      const player = getPlayer(world.city, d.owner);
-      const stockpile = player?.materials ?? 0;
-      const give = Math.min(need, Math.max(0, Math.floor(stockpile)));
-      if (give > 0 && player) {
-        player.materials = stockpile - give;
-        u.cargoMaterials += give;
+    const cargoMaterialsCap = def.cargoMaterialsCapacity ?? 0;
+    if (cargoMaterialsCap > 0) {
+      const need = Math.floor(cargoMaterialsCap - u.cargoMaterials);
+      if (need >= 1) {
+        const player = getPlayer(world.city, d.owner);
+        const stockpile = player?.materials ?? 0;
+        const give = Math.min(need, Math.max(0, Math.floor(stockpile)));
+        if (give > 0 && player) {
+          player.materials = stockpile - give;
+          u.cargoMaterials += give;
+        }
       }
     }
   }

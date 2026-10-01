@@ -181,6 +181,10 @@ export const STRINGS = {
     demolishTitle: { en: 'Arm the demolish tool — demolition is pure loss, no refund' },
     operational: { en: 'Operational' },
     notOperational: { en: 'Not operational' },
+    // Naval-building model (2026-10-01): the unit detail panel shows
+    // this badge when the sim's isShipUnderRepair says the ship is
+    // inside a drydock's repair radius (sim/shipyardRepair.ts).
+    underRepair: { en: 'Under repair' },
   },
   /** Veterancy display (grand-expansion Phase 1). English-only. */
   veterancy: {
@@ -459,7 +463,11 @@ export const STRINGS = {
     nuclearPlant: { en: 'Nuclear Plant' },
     waterPump: { en: 'Water Pump' },
     desalination: { en: 'Desalination Plant' },
-    shipyard: { en: 'Shipyard' },
+    // Naval-building model (2026-10-01): renamed from "Shipyard" — the
+    // military shipyard builds AND repairs military light/support craft
+    // (missile boats, corvettes, ammo ships, repair ships, minelayers).
+    // Key unchanged ('shipyard'), so old saves keep loading.
+    shipyard: { en: 'Naval Shipyard' },
     navalYard: { en: 'Naval Yard' },
     airfield: { en: 'Airfield' },
     radarStation: { en: 'Radar Station' },

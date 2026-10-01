@@ -1203,7 +1203,8 @@ function hasVirtualHangarRoom(world: World, owner: number, hangarClass: HangarCl
 /**
  * Construction priority per difficulty, in order. Skipped entries: kinds
  * already held (real or virtual), kinds whose minAge isn't met yet, and
- * shipyard/navalYard until water is found (no point without a coast).
+ * shipyard/navalYard/navalBase until water is found (no point without
+ * a coast).
  * Cadet builds nothing — consistent with its "no decisions" profile.
  * Exported for tests (the marshal civilAirport entry is pinned).
  */
@@ -1227,7 +1228,12 @@ export const CONSTRUCTION_PRIORITY: Record<AIDifficulty, BuildingKind[]> = {
   // (100 influence) in ~125 sim-seconds; without it the marshal
   // dead-ends at the age gate — intelHQ, signalsStation,
   // ordnanceDepot, missileSilo, and navalYard never unlock.
-  marshal: ['barracks', 'warFactory', 'lab', 'airfield', 'radarStation', 'shipyard', 'navalYard', 'civilAirport', 'mediaCenter'],
+  // Naval-building model (2026-10-01): the marshal builds the naval
+  // docks right after the yards that build the fleet — the navalBase
+  // is the military shipping interface where its fuelTanker/ammoShip
+  // tail would load (thinkNavalSupply credits the completed base's
+  // abstract stocks). Coastal-gated like the yards, below.
+  marshal: ['barracks', 'warFactory', 'lab', 'airfield', 'radarStation', 'shipyard', 'navalYard', 'navalBase', 'civilAirport', 'mediaCenter'],
 };
 
 /** Complete whatever finished building; start the next priority kind. */
@@ -1254,7 +1260,9 @@ function thinkConstruction(world: World, ai: AIPlayerState): void {
     // Age-gated kinds wait for the age (marshal may get there).
     if (!isBuildingAgeMet(world.ages.age, def.minAge)) continue;
     // Naval production only makes sense with a coast to use it from.
-    if ((kind === 'shipyard' || kind === 'navalYard') && ai.navalStatus !== 'coastal') continue;
+    // Naval-building model (2026-10-01): the navalBase is the yards'
+    // shipping interface — same coastal gate.
+    if ((kind === 'shipyard' || kind === 'navalYard' || kind === 'navalBase') && ai.navalStatus !== 'coastal') continue;
     // Ledger-aware: the payment must not undercut commands already
     // queued this think (see canPayImmediate).
     if (!canPayImmediate(ai, player, def.costFunds, def.costMaterials)) continue;
@@ -1561,6 +1569,28 @@ function thinkNavalSupply(world: World, queue: CommandQueue, ai: AIPlayerState):
     if (spawn(world, queue, ai, 'ammoShip', p.x, p.z)) {
       ai.builtCounts['ammoShip'] = (ai.builtCounts['ammoShip'] ?? 0) + 1;
     }
+  }
+  // Naval-building model (2026-10-01, Worker B): the marshal's
+  // forward naval logistics. The navalBase sits on the marshal's
+  // construction priority right after the navalYard (coastal-gated,
+  // like the yards); this call is the top-up for thinks where the
+  // slot is free and the priority pass hasn't reached it yet — the
+  // same pattern as the land depots in thinkLogistics. A completed
+  // virtual navalBase yields the same abstract stocks as the land
+  // depots (the forward-base flavor: the fleet's fuel/ammo cache is
+  // filled at the docks, not at a land depot), which thinkNavalSupply
+  // then abstract-loads into the tanker/ammoShip holds below — and
+  // runMobileSupply discharges them for real at sea. Deterministic:
+  // no RNG, id-ordered, through the standard virtual-construction
+  // path (the AI never owns physical buildings, so physical
+  // loadCargo orders are impossible for it — this is the documented
+  // virtual-economy abstraction).
+  if (seaCombat > 0) {
+    thinkVirtualDepot(world, ai, 'navalBase');
+  }
+  if (ai.virtualBuildings.completed.includes('navalBase')) {
+    ai.virtualAmmoStock = (ai.virtualAmmoStock ?? 0) + VIRTUAL_AMMO_PER_THINK;
+    ai.virtualFuelStock = (ai.virtualFuelStock ?? 0) + VIRTUAL_FUEL_PER_THINK;
   }
   // Service the tail.
   let rallyX = ai.navalWater?.x ?? ai.baseX;

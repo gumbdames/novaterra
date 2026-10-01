@@ -480,7 +480,10 @@ interface CargoTransferPlan {
  * as the supply aura, so "park at the gate, then order" works. The
  * shipyard is deliberately NOT a load point: it is a dry production
  * building with no stocks (see docs/research/sea-logistics-
- * military.md §3.5).
+ * military.md §3.5). Same-side only: the defs' `military` flag must
+ * match on both ends — a military hull never loads/unloads at a
+ * civilian harbor and a civilian hull never draws military stocks
+ * (the naval-building model's civilian/military split).
  *
  *   - loadCargo: fuel/ammo move from the depot's stocks — never from
  *     another unit's resupply reservations (the serveDepotUnit rule);
@@ -530,6 +533,23 @@ function computeCargoTransfer(
   const bdef = BUILDING_DEFS[depot.kind];
   if (!bdef || !bdef.reloadPoint) {
     return `${cmdName}: building ${buildingId} (${depot.kind}) is not a naval supply point`;
+  }
+  // Naval-building model (2026-10-01): the civilian/military cargo
+  // split. Military supply ships (fuelTanker, ammoShip) load/unload
+  // ONLY at military naval points (navalYard, navalBase); civilian
+  // cargo ships (fuelBarge, cargoFreighter, the depot-ship variant)
+  // ONLY at civilian harbors (commercialHarbor, commercialPort). A
+  // military hull at a civilian harbor — or the reverse — is a loud
+  // rejection, never a silent cross-side stock transfer.
+  const unitSide = !!udef.military;
+  const depotSide = !!bdef.military;
+  if (unitSide !== depotSide) {
+    const want = unitSide ? 'military' : 'civilian';
+    return (
+      `${cmdName}: unit ${unitId} (${unit.kind}) is ${want} but building ` +
+      `${buildingId} (${depot.kind}) is not — cargo transfers only ` +
+      `between same-side ships and naval points`
+    );
   }
   const x = cellCenterWorld(depot.cx + (bdef.footprintW - 1) / 2);
   const z = cellCenterWorld(depot.cz + (bdef.footprintH - 1) / 2);

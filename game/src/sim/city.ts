@@ -1183,8 +1183,16 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     minAge: 'foundation',
     jobs: 15,
   },
+  // Naval-building model (2026-10-01): the MILITARY shipyard — builds
+  // AND repairs military light/support craft (missile boats, corvettes,
+  // ammo ships, repair ships, minelayers). The heavy combatants
+  // (destroyers, frigates, carriers, ...) belong to the navalYard. Dry
+  // production only: it carries no stocks and is NOT a cargo load point
+  // (see computeCargoTransfer in commands.ts). Renamed to "Naval
+  // Shipyard" to distinguish it from the civilian shipyard; the key
+  // ('shipyard') is unchanged so old saves keep loading.
   shipyard: {
-    kind: 'shipyard', name: 'Shipyard', zone: UTILITY_ZONE,
+    kind: 'shipyard', name: 'Naval Shipyard', zone: UTILITY_ZONE,
     hp: 800,
     footprintW: 4, footprintH: 3, costFunds: 1200, costMaterials: 500,
     buildSeconds: 60, upkeepFundsPerSec: 1.5,
@@ -1282,7 +1290,13 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     powerDemand: 6, powerSupply: 0, waterDemand: 3, waterSupply: 0,
     output: {}, input: {}, population: 0, taxBasePerSec: 5.0,
     minAge: 'industry',
-    // Phase 3: the naval base is a reload point for ships.
+    // Naval-building model (2026-10-01): the navalYard builds AND
+    // repairs the HEAVY military combatants (destroyers, frigates,
+    // submarines, carriers, ...), while the (naval) shipyard handles
+    // light/support craft. The reloadPoint makes it a cargo load point
+    // for military supply ships — production + logistics in one, the
+    // military mirror of the civilian commercialHarbor.
+    // Phase 3: the naval yard is a reload point for ships.
     reloadPoint: true,
     jobs: 25,
     military: true,
@@ -2304,6 +2318,13 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     minAge: 'industry',
     portType: 'military',
     countsAs: ['navalYard'],
+    // Naval-building model (2026-10-01): the military shipping
+    // interface — the docks where military transports load/unload fuel,
+    // ammunition, and materials for forward operations. It builds
+    // nothing and repairs nothing (production vs. logistics stays
+    // unblurred: shipyards build/repair, docks move cargo). The primary
+    // forward logistics point for the fuelTanker / ammoShip pair
+    // (see computeCargoTransfer in commands.ts).
     reloadPoint: true,
     fuelStorage: 300,
     ammoStorage: 100,

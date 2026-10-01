@@ -132,7 +132,7 @@ const M4_BRIEFING = [
   'The Archipelago straits carry half the continent\u2019s trade, and ' +
     'pirates have noticed. The navy exists mostly on paper. Time to ' +
     'change that.',
-  'Build a shipyard and put 3 warships to sea — or corner the market: ' +
+  'Build a naval shipyard and put 3 warships to sea — or corner the market: ' +
     'stockpile 2,500 goods and let the merchants win this one.',
 ];
 
@@ -353,7 +353,7 @@ export const MISSIONS: readonly MissionDef[] = [
         name: 'Military: Rule the straits',
         peaceful: false,
         objectives: [
-          { kind: 'build', building: 'shipyard', count: 1, label: 'Build 1 shipyard' },
+          { kind: 'build', building: 'shipyard', count: 1, label: 'Build 1 naval shipyard' },
           { kind: 'train', unit: 'patrolBoat', count: 3, label: 'Float 3 patrol boats' },
         ],
       },
@@ -371,7 +371,7 @@ export const MISSIONS: readonly MissionDef[] = [
         id: 'm4-pirates',
         trigger: { kind: 'atTick', tick: 30 },
         message:
-          'Pirate skiffs were spotted near the straits. A shipyard on ' +
+          'Pirate skiffs were spotted near the straits. A naval shipyard on ' +
           'the coast and patrol boats on the water will end that.',
       },
       {

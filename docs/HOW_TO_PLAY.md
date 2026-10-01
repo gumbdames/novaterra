@@ -111,10 +111,10 @@ missing production building, not enough resources, or not enough
 manpower.
 
 Units need a production building: **Barracks** (infantry), **War
-Factory** (vehicles), **Airfield** (aircraft), **Shipyard** (ships),
-**Naval Yard** (warships — coastal construction: at least one footprint
-cell must touch water). Pick a unit, then click open ground (or water
-for ships) to train it.
+Factory** (vehicles), **Airfield** (aircraft), **Naval Shipyard**
+(light/support ships), **Naval Yard** (heavy warships — coastal
+construction: at least one footprint cell must touch water). Pick a
+unit, then click open ground (or water for ships) to train it.
 
 **Research:** build a **Research Lab** (Commerce tab), then select it
 — or open Management → **Research** — to open the research panel: 21
@@ -177,9 +177,13 @@ Tanker** (Navy tab) carries 400 fuel and refuels friendly ships around
 it; the **Ammo Ship** carries 80 shells and rearms them — both also
 haul **materials** as forward dry stores. Park one at a stocked
 **Naval Base** and its holds fill automatically; select it there and
-use **Load** / **Unload** to fill or empty its holds on demand. At sea
-they serve nearby friendly ships on their own. Nuclear ships are never
-refueled, and the refuel/rearm toggles let you specialize each hull.
+use **Load** / **Unload** to fill or empty its holds on demand. Cargo
+stays on its own side: military supply ships load only at military
+naval points (Naval Yard, Naval Base) — never at civilian harbors —
+and the Naval Shipyard itself is dry (it builds and repairs ships but
+carries no cargo). At sea they serve nearby friendly ships on their
+own. Nuclear ships are never refueled, and the refuel/rearm toggles
+let you specialize each hull.
 
 Watch the top bar: Funds, Materials, Food, Fuel, Goods, Influence,
 Manpower, Population, and your age. Your advisor (left side) warns you
@@ -287,10 +291,18 @@ harmless neighbor.
   tank-hunters. Build counters, not just more of the same.
 - On water maps, control the sea first — ships can't be touched by
   land armies.
-- Ports must touch the coastline. A Commercial Port earns funds and
-  trains shipyard ships; a Naval Base trains warships like a naval
-  yard. Two or more trade ports bring decorative container ships to
-  your sea lanes.
+- Ports must touch the coastline. The **Civilian Shipyard** builds
+  and repairs civilian ships; the **Commercial Docks**, **Container
+  Port**, and **Fishing Harbor** are the trade docks where sea routes
+  anchor. A Naval Base trains warships like a naval yard. On the
+military side the split mirrors the civilian one: the **Naval
+Shipyard** builds and repairs light/support ships (missile boats,
+corvettes, ammo ships), the **Naval Yard** builds and repairs heavy
+warships (destroyers, frigates, submarines, carriers), and the
+**Naval Base** is the military dock where supply ships load fuel,
+ammo, and materials. A damaged ship moored at a friendly yard shows
+**Under repair** while the work is underway. Two or more
+  trade docks bring decorative container ships to your sea lanes.
 - Minelayers don't fight — they lay naval mines (50 Funds + 10
   Materials each) that detonate under enemy ships. Your own fleet
   sails over them safely.
