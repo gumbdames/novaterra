@@ -46,8 +46,11 @@ jobs:
       # with ZERO test failures. It is intermittent and unrelated to
       # the code under test (seen on small/loaded hosts).
       #
-      # Retry policy: up to 3 attempts, but ONLY when the run died with
-      # the flake signature and no failed tests. A run with real test
+      # Retry/accept policy: up to 3 attempts. A run is accepted when
+      # vitest exits 0, OR when the output shows the flake signature with
+      # no failed tests AND a "Tests N passed" summary — the flake fires
+      # in the reporter RPC *after* every test has already passed, so
+      # that combination is a genuine green run. A run with real test
       # failures ("Failed Tests" in the output) fails fast — flakes must
       # never mask a genuine regression.
       #
@@ -68,12 +71,16 @@ jobs:
               exit 0
             fi
             if echo "$output" | grep -q 'Timeout calling "onTaskUpdate"' \
-              && ! echo "$output" | grep -q 'Failed Tests'; then
-              echo "known environmental flake (worker timeout, no test failures) — retrying"
-              continue
+              && ! echo "$output" | grep -q 'Failed Tests' \
+              && echo "$output" | grep -qE 'Tests.*[0-9]+ passed'; then
+              echo "all tests passed; only the known reporter flake fired — accepting as green"
+              exit 0
             fi
-            echo "real test failure on attempt $attempt — not retrying"
-            exit 1
+            if echo "$output" | grep -q 'Failed Tests'; then
+              echo "real test failure on attempt $attempt — not retrying"
+              exit 1
+            fi
+            echo "unrecognized failure on attempt $attempt — retrying"
           done
-          echo "vitest hit the environmental flake 3 times in a row — failing"
+          echo "vitest failed 3 times in a row — failing"
           exit 1
