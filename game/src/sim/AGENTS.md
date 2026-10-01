@@ -609,8 +609,8 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 - `veterancy.ts` — unit veterancy (grand-expansion Phase 1, pure: no
   imports from combat/city, so no cycles). `UnitRecord.xp` grows on
   kills (`xpForKillValue = trainFunds + trainMaterials`), `vetLevel`
-  derives from cumulative thresholds (200/500/1000 → Regular/Veteran/
-  Elite). `awardKillXp` credits the killer in combat's id-order pass;
+  derives from cumulative thresholds (300/800/1600 → Regular/Veteran/
+  Elite; roadmap B5, 2026-10-02 — softened from 200/500/1000). `awardKillXp` credits the killer in combat's id-order pass;
   a maxed killer's award splits among friendly living non-maxed units
   within 40 (id order, floor shares, remainder to lowest ids; lost with
   no allies). Bonuses: damage/sight ×(1+0.10L), cooldown ×(1−0.10L)

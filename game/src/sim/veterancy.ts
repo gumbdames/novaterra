@@ -19,7 +19,10 @@
  *
  * Responsibilities:
  *  - XP accounting per unit: `xp` grows on kills, `vetLevel` derives from
- *    cumulative thresholds (200 / 500 / 1000 → Regular / Veteran / Elite).
+ *    cumulative thresholds (300 / 800 / 1600 → Regular / Veteran / Elite).
+ *    (Roadmap B5, 2026-10-02: softened from 200 / 500 / 1000 — the old curve
+ *    promoted a unit after ~2 tank kills, so the first-engagement winner
+ *    nearly doubled in power with no catch-up.)
  *  - Level bonuses: +10%/level damage, +10%/level sight, −10%/level
  *    reload cooldown (min 1 tick), +15% max hp at L2 and +30% at L3,
  *    +2 hp/s regen at L3.
@@ -46,8 +49,13 @@ export const VET_MAX_LEVEL = 3;
 /**
  * Cumulative XP thresholds for levels 1..3. A unit at `xp` has level
  * equal to the number of thresholds it has reached.
+ *
+ * (Roadmap B5, 2026-10-02: 300 / 800 / 1600, softened from 200 / 500 /
+ * 1000. The old curve promoted after ~2 tank kills — ~1.86× DPS plus
+ * regen with no catch-up for the loser. The new curve needs ~4 tank
+ * kills for Regular, ~9 for Veteran, ~17 for Elite.)
  */
-export const VET_XP_THRESHOLDS = [200, 500, 1000] as const;
+export const VET_XP_THRESHOLDS = [300, 800, 1600] as const;
 
 /** Rank names shown to the player, indexed by level 0..3. */
 export const VET_RANK_NAMES = ['Recruit', 'Regular', 'Veteran', 'Elite'] as const;
@@ -89,7 +97,7 @@ export function vetMaxHpMult(level: number): number {
 
 /**
  * Veterancy level for a cumulative XP total: the count of thresholds
- * reached (199→0, 200→1, 500→2, 1000→3). Capped at VET_MAX_LEVEL.
+ * reached (299→0, 300→1, 800→2, 1600→3). Capped at VET_MAX_LEVEL.
  */
 export function vetLevelForXp(xp: number): number {
   let level = 0;

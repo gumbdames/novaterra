@@ -247,7 +247,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   group is the utility research ladder: combustion → advanced nuclear →
   fusion, groundwater survey, desalination tech, grid storage). Selected
   military units show a veterancy line (Phase 1: rank + ▲ chevrons + XP
-  progress, e.g. "Veteran ▲▲ · 320/500 XP" via `ui/veterancy.ts`); selected
+  progress, e.g. "Veteran ▲▲ · 320/800 XP" via `ui/veterancy.ts`); selected
   buildings show their crew training level ("Level 2/3", from economy.ts)
   AND a Phase 2 power/water diagnosis line ("Power: Shortage", "Water:
   Disconnected" — from the sim's `powerDiag`/`waterDiag`). Final-review

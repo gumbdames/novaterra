@@ -20,7 +20,7 @@
  * Responsibilities:
  *  - Player-facing veterancy text for the selection panel: rank name +
  *    chevron glyphs + XP progress toward the next threshold, e.g.
- *    "Veteran ▲▲ · 320/500 XP".
+ *    "Veteran ▲▲ · 320/800 XP".
  *  - All copy flows through the `loc()` / `fillLoc()` machinery in
  *    ui/strings.ts (English-only in 0.1 Alpha, localizable later).
  *
@@ -53,7 +53,7 @@ export function vetChevronGlyphs(level: number): string {
 
 /**
  * One-line veterancy summary for a selected unit:
- * "Veteran ▲▲ · 320/500 XP". Elite (no next threshold) shows the total:
+ * "Veteran ▲▲ · 320/800 XP". Elite (no next threshold) shows the total:
  * "Elite ▲▲▲ · 1240 XP".
  */
 export function vetXpLine(u: UnitRecord): string {
@@ -61,7 +61,7 @@ export function vetXpLine(u: UnitRecord): string {
   const xp = Math.max(0, Math.round(u.xp ?? 0));
   const rank = vetRankLabel(level);
   const chevrons = vetChevronGlyphs(level);
-  // No chevrons at Recruit: "Recruit · 0/200 XP", not "Recruit  · …".
+  // No chevrons at Recruit: "Recruit · 0/300 XP", not "Recruit  · …".
   const rankPart = chevrons.length > 0 ? `${rank} ${chevrons}` : rank;
   if (level >= VET_XP_THRESHOLDS.length) {
     return fillLoc(STRINGS.veterancy.xpElite, { rank: rankPart, xp });

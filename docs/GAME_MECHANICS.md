@@ -593,10 +593,10 @@ killing a Rifles squad (60 funds) is worth 60 XP, killing a tank
 unit through four ranks:
 
 - **Recruit** (0 XP) — fresh off the line.
-- **Regular** (200 XP) — +10% damage, +10% sight, reloads 10% faster.
-- **Veteran** (500 XP) — +20% damage, +20% sight, reloads 20% faster,
+- **Regular** (300 XP) — +10% damage, +10% sight, reloads 10% faster.
+- **Veteran** (800 XP) — +20% damage, +20% sight, reloads 20% faster,
   +15% max health.
-- **Elite** (1000 XP) — +30% damage, +30% sight, reloads 30% faster,
+- **Elite** (1600 XP) — +30% damage, +30% sight, reloads 30% faster,
   +30% max health, and regenerates 2 health per second.
 
 Build a **Military Academy** (industrial zone, needs a completed

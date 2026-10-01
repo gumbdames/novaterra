@@ -1866,16 +1866,17 @@ export function spawnUnit(world: World, kind: string, owner: number, x: number, 
     e.last = record;
   }
   // Veterancy (Phase 1): an armed unit trained while its owner has a
-  // completed Military Academy graduates as Regular — spawn XP 200, the
+  // completed Military Academy graduates as Regular — spawn XP 300, the
   // first threshold in veterancy.ts (hardcoded to keep this module from
-  // importing veterancy.ts; the constant lives there). Unarmed units
+  // importing veterancy.ts; the constant lives there — roadmap B5,
+  // 2026-10-02, raised it from 200 to 300). Unarmed units
   // (haulers, medics, transports) get no bonus — there is nothing to
   // drill them in. Deployable-only kinds (navalMine, Phase 6
   // workstream C) get no bonus either — mines earn no XP, they detonate.
   // `hasProductionBuilding` covers real and AI-virtual academies, like
   // every other production gate in this file.
   if (def.damage > 0 && def.deployableOnly !== true && hasProductionBuilding(world, owner, 'militaryAcademy')) {
-    record.xp = 200;
+    record.xp = 300;
     record.vetLevel = 1;
   }
   return record;

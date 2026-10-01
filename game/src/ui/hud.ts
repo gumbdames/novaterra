@@ -2321,7 +2321,7 @@ export class HUD {
         const actions = el('div', 'detail-actions');
         stats.append(el('div', 'stat-row', `${def?.name ?? u.kind} · ${hpFrac}%`));
         // Veterancy (Phase 1): rank + chevrons + XP progress, e.g.
-        // "Veteran ▲▲ · 320/500 XP". Uses the 'stat-row' class — the
+        // "Veteran ▲▲ · 320/800 XP". Uses the 'stat-row' class — the
         // detail-view stat line (command-menu rebuild, 2026-10-01).
         stats.append(el('div', 'stat-row', vetXpLine(u)));
         // Naval-building model (2026-10-01): the drydock badge — the

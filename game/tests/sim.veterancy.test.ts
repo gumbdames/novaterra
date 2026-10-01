@@ -158,14 +158,14 @@ function findLandRect(t: TerrainData, w: number, h: number): { cx: number; cz: n
 }
 
 describe('veterancy thresholds and bonuses (pure)', () => {
-  it('vetLevelForXp: 199→0, 200→1, 500→2, 1000→3', () => {
+  it('vetLevelForXp: 299→0, 300→1, 800→2, 1600→3', () => {
     expect(vetLevelForXp(0)).toBe(0);
-    expect(vetLevelForXp(199)).toBe(0);
-    expect(vetLevelForXp(200)).toBe(1);
-    expect(vetLevelForXp(499)).toBe(1);
-    expect(vetLevelForXp(500)).toBe(2);
-    expect(vetLevelForXp(999)).toBe(2);
-    expect(vetLevelForXp(1000)).toBe(3);
+    expect(vetLevelForXp(299)).toBe(0);
+    expect(vetLevelForXp(300)).toBe(1);
+    expect(vetLevelForXp(799)).toBe(1);
+    expect(vetLevelForXp(800)).toBe(2);
+    expect(vetLevelForXp(1599)).toBe(2);
+    expect(vetLevelForXp(1600)).toBe(3);
     expect(vetLevelForXp(99999)).toBe(VET_MAX_LEVEL);
   });
 
@@ -233,32 +233,32 @@ describe('kill XP awarding', () => {
   it('kills level the killer up through the thresholds', () => {
     const ctx = setup();
     const killer = directSpawn(ctx.world, 'rifles', 0, 0, 0);
-    killer.xp = 199;
-    awardKillXp(ctx.world, killer, UNIT_DEFS.engineer); // +50 → 249
-    expect(killer.xp).toBe(249);
+    killer.xp = 299;
+    awardKillXp(ctx.world, killer, UNIT_DEFS.engineer); // +50 → 349
+    expect(killer.xp).toBe(349);
     expect(killer.vetLevel).toBe(1);
-    awardKillXp(ctx.world, killer, UNIT_DEFS.rifles); // +60 → 309
+    awardKillXp(ctx.world, killer, UNIT_DEFS.rifles); // +60 → 409
     expect(killer.vetLevel).toBe(1);
-    killer.xp = 950;
-    awardKillXp(ctx.world, killer, UNIT_DEFS.rifles); // +60 → 1010
-    expect(killer.xp).toBe(1010);
+    killer.xp = 1550;
+    awardKillXp(ctx.world, killer, UNIT_DEFS.rifles); // +60 → 1610
+    expect(killer.xp).toBe(1610);
     expect(killer.vetLevel).toBe(3);
   });
 
   it('two kills in the same tick credit in attacker id order', () => {
     const ctx = setup();
-    // A1 (low id, Elite) and A2 (high id, 950 xp) each kill a 1-hp
+    // A1 (low id, Elite) and A2 (high id, 1550 xp) each kill a 1-hp
     // rifles (+60) in the same tick via opportunistic fire. A2 is within
     // A1's overflow range; R (Recruit) is within A2's overflow range but
-    // NOT A1's. Id order: A1's overflow lands FIRST, pushing A2 to 1010
+    // NOT A1's. Id order: A1's overflow lands FIRST, pushing A2 to 1610
     // (Elite), so A2's own kill then overflows to R. Reverse order would
     // leave R at 0 (A2 banks its own kill first, then A1's overflow finds
     // A2 already maxed and is lost) — so R.xp pins id-order crediting.
     const a1 = directSpawn(ctx.world, 'rifles', 0, 0, 0);
-    a1.xp = 1000;
+    a1.xp = 1600;
     a1.vetLevel = 3;
     const a2 = directSpawn(ctx.world, 'rifles', 0, 30, 0);
-    a2.xp = 950;
+    a2.xp = 1550;
     a2.vetLevel = 2;
     const r = directSpawn(ctx.world, 'rifles', 0, 60, 0);
     const t1 = directSpawn(ctx.world, 'rifles', 1, 10, 0);
@@ -271,18 +271,18 @@ describe('kill XP awarding', () => {
     expect(findUnit(ctx.world, t1.id)).toBeUndefined();
     expect(findUnit(ctx.world, t2.id)).toBeUndefined();
     // A1's +60 overflowed to A2 (only eligible ally in A1's range).
-    expect(a2.xp).toBe(1010);
+    expect(a2.xp).toBe(1610);
     expect(a2.vetLevel).toBe(3);
     // A2's own kill overflowed to R (A1 already maxed).
     expect(r.xp).toBe(60);
     // A1 is maxed: its own award went to A2, A1's xp is untouched.
-    expect(a1.xp).toBe(1000);
+    expect(a1.xp).toBe(1600);
   });
 
   it('overflow splits floor shares by id; remainder goes to the lowest ids', () => {
     const ctx = setup();
     const killer = directSpawn(ctx.world, 'rifles', 0, 0, 0);
-    killer.xp = 1000;
+    killer.xp = 1600;
     killer.vetLevel = 3;
     // Three allies in range, one out of range (must get nothing).
     const a = directSpawn(ctx.world, 'rifles', 0, 10, 0);
@@ -297,35 +297,35 @@ describe('kill XP awarding', () => {
     expect(b.xp).toBe(17);
     expect(c.xp).toBe(16);
     expect(far.xp).toBe(0);
-    expect(killer.xp).toBe(1000); // maxed killer gains nothing
+    expect(killer.xp).toBe(1600); // maxed killer gains nothing
   });
 
   it('overflow skips dead, enemy, and maxed units', () => {
     const ctx = setup();
     const killer = directSpawn(ctx.world, 'rifles', 0, 0, 0);
-    killer.xp = 1000;
+    killer.xp = 1600;
     killer.vetLevel = 3;
     const dead = directSpawn(ctx.world, 'rifles', 0, 10, 0);
     dead.hp = 0;
     const enemy = directSpawn(ctx.world, 'rifles', 1, 12, 0);
     const maxed = directSpawn(ctx.world, 'rifles', 0, 14, 0);
-    maxed.xp = 1000;
+    maxed.xp = 1600;
     maxed.vetLevel = 3;
     const ally = directSpawn(ctx.world, 'rifles', 0, 16, 0);
     awardKillXp(ctx.world, killer, UNIT_DEFS.engineer); // 50, one ally
     expect(ally.xp).toBe(50);
     expect(dead.xp).toBe(0);
     expect(enemy.xp).toBe(0);
-    expect(maxed.xp).toBe(1000);
+    expect(maxed.xp).toBe(1600);
   });
 
   it('no eligible allies → XP is lost', () => {
     const ctx = setup();
     const killer = directSpawn(ctx.world, 'rifles', 0, 0, 0);
-    killer.xp = 1000;
+    killer.xp = 1600;
     killer.vetLevel = 3;
     awardKillXp(ctx.world, killer, UNIT_DEFS.tank); // 460, nobody in range
-    expect(killer.xp).toBe(1000);
+    expect(killer.xp).toBe(1600);
   });
 
   it('zero-value kills award nothing', () => {
@@ -359,7 +359,7 @@ describe('Elite regen and veterancy combat bonuses', () => {
   it('Elite units regen 2 hp/s up to the vet-adjusted max', () => {
     const ctx = setup();
     const u = directSpawn(ctx.world, 'rifles', 0, 0, 0);
-    u.xp = 1000;
+    u.xp = 1600;
     u.vetLevel = 3;
     const maxHp = vetAdjustedMaxHp(ctx.world, u); // 110 * 1.3 = 143
     u.hp = maxHp - 10;
@@ -382,7 +382,7 @@ describe('Elite regen and veterancy combat bonuses', () => {
     const ctx = setup();
     const a0 = directSpawn(ctx.world, 'rifles', 0, 0, 0);
     const a1 = directSpawn(ctx.world, 'rifles', 0, 30, 0);
-    a1.xp = 200;
+    a1.xp = 300;
     a1.vetLevel = 1;
     const t0 = directSpawn(ctx.world, 'rifles', 1, 10, 0);
     const t1 = directSpawn(ctx.world, 'rifles', 1, 40, 0);
@@ -403,7 +403,7 @@ describe('Elite regen and veterancy combat bonuses', () => {
     const ctx = setup();
     const a0 = directSpawn(ctx.world, 'rifles', 0, 0, 0);
     const a3 = directSpawn(ctx.world, 'rifles', 0, 30, 0);
-    a3.xp = 1000;
+    a3.xp = 1600;
     a3.vetLevel = 3;
     const t0 = directSpawn(ctx.world, 'rifles', 1, 10, 0);
     const t1 = directSpawn(ctx.world, 'rifles', 1, 40, 0);
@@ -436,7 +436,7 @@ describe('Military Academy', () => {
     const ctx = setup();
     completeBuilding(ctx.world, 'militaryAcademy', 0, 10, 10);
     const rifles = directSpawn(ctx.world, 'rifles', 0, 0, 0);
-    expect(rifles.xp).toBe(200);
+    expect(rifles.xp).toBe(300);
     expect(rifles.vetLevel).toBe(1);
     // Unarmed units get no bonus.
     const hauler = directSpawn(ctx.world, 'hauler', 0, 5, 5);
@@ -457,7 +457,7 @@ describe('Military Academy', () => {
     expect(b.xp).toBe(0);
     expect(b.vetLevel).toBe(0);
     const c = directSpawn(ctx.world, 'rifles', 1, 8, 8);
-    expect(c.xp).toBe(200);
+    expect(c.xp).toBe(300);
     expect(c.vetLevel).toBe(1);
   });
 

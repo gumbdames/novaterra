@@ -18,7 +18,7 @@
  * NOVATERRA — veterancy display tests (ui/veterancy.ts, Phase 1).
  *
  * The selection panel shows rank + chevrons + XP progress per selected
- * unit, e.g. "Veteran ▲▲ · 320/500 XP". These tests pin the format
+ * unit, e.g. "Veteran ▲▲ · 320/800 XP". These tests pin the format
  * (including the Elite no-next-threshold form) and pin the UI rank-name
  * copy to the sim's VET_RANK_NAMES so the two cannot drift.
  */
@@ -35,29 +35,29 @@ function fakeUnit(xp: number, vetLevel: number): UnitRecord {
 
 describe('vetXpLine', () => {
   it('shows rank, no chevrons, and progress to the first threshold for recruits', () => {
-    expect(vetXpLine(fakeUnit(0, 0))).toBe('Recruit · 0/200 XP');
-    expect(vetXpLine(fakeUnit(120, 0))).toBe('Recruit · 120/200 XP');
+    expect(vetXpLine(fakeUnit(0, 0))).toBe('Recruit · 0/300 XP');
+    expect(vetXpLine(fakeUnit(120, 0))).toBe('Recruit · 120/300 XP');
   });
 
   it('shows the example format for a mid-band veteran', () => {
-    // Veteran (level 2) works toward the Elite threshold: 700/1000 XP.
-    expect(vetXpLine(fakeUnit(700, 2))).toBe('Veteran ▲▲ · 700/1000 XP');
+    // Veteran (level 2) works toward the Elite threshold: 700/1600 XP.
+    expect(vetXpLine(fakeUnit(700, 2))).toBe('Veteran ▲▲ · 700/1600 XP');
   });
 
-  it('shows one chevron for Regular with progress to 500', () => {
-    expect(vetXpLine(fakeUnit(200, 1))).toBe('Regular ▲ · 200/500 XP');
+  it('shows one chevron for Regular with progress to 800', () => {
+    expect(vetXpLine(fakeUnit(300, 1))).toBe('Regular ▲ · 300/800 XP');
   });
 
   it('shows total XP with no next threshold for Elite', () => {
     expect(vetXpLine(fakeUnit(1240, 3))).toBe('Elite ▲▲▲ · 1240 XP');
-    expect(vetXpLine(fakeUnit(1000, 3))).toBe('Elite ▲▲▲ · 1000 XP');
+    expect(vetXpLine(fakeUnit(1600, 3))).toBe('Elite ▲▲▲ · 1600 XP');
   });
 
-  it('uses the sim thresholds (200/500/1000 cumulative)', () => {
-    expect([...VET_XP_THRESHOLDS]).toEqual([200, 500, 1000]);
-    expect(vetXpLine(fakeUnit(199, 0))).toContain('/200 XP');
-    expect(vetXpLine(fakeUnit(499, 1))).toContain('/500 XP');
-    expect(vetXpLine(fakeUnit(999, 2))).toContain('/1000 XP');
+  it('uses the sim thresholds (300/800/1600 cumulative)', () => {
+    expect([...VET_XP_THRESHOLDS]).toEqual([300, 800, 1600]);
+    expect(vetXpLine(fakeUnit(299, 0))).toContain('/300 XP');
+    expect(vetXpLine(fakeUnit(799, 1))).toContain('/800 XP');
+    expect(vetXpLine(fakeUnit(1599, 2))).toContain('/1600 XP');
   });
 });
 

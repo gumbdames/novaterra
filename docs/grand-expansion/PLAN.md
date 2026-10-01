@@ -625,6 +625,10 @@ delta → AI work.** Step gate (§0) applies to every step inside.
   - Note: the "academy produces Veteran units" line above meant
     "promoted above Recruit" loosely — the locked rule is Regular
     (200 XP / level 1), per the coordinator's numbers.
+  - Amendment (roadmap B5, 2026-10-02): the curve above was softened to
+    thresholds 300/800/1600 (academy spawn bonus to 300 XP); the old
+    200/500/1000 promoted after ~2 tank kills, giving the
+    first-engagement winner ~1.86× DPS plus regen with no catch-up.
 
 ### Workstream Z — Zone overlay + education + zone-tool clarity (2026-09-30, 0.1 Alpha)
 - **Goal:** make zoning visible on the map, give education its own
