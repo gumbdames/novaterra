@@ -330,6 +330,14 @@ function copyCity(city: CityState, legacy = false): CityState {
       establishedTick: r.establishedTick,
     })),
     nextAirlineRouteId: city.nextAirlineRouteId ?? 1,
+    // Civilian sea trade (Half A, 2026-10-01): sea routes. Legacy
+    // saves (no field) decode to [] / 1 — AD9 additive, no version
+    // bump (stays v8).
+    seaRoutes: (city.seaRoutes ?? []).map((r) => ({
+      id: r.id, owner: r.owner, from: r.from, to: r.to, policy: r.policy,
+      establishedTick: r.establishedTick,
+    })),
+    nextSeaRouteId: city.nextSeaRouteId ?? 1,
   };
 }
 
@@ -369,6 +377,16 @@ function copyUnit(u: UnitRecord): UnitRecord {
     // — no version bump, stays v6 (AD9, same precedent as fuel/ammo).
     cargoFuel: u.cargoFuel ?? 0,
     cargoAmmo: u.cargoAmmo ?? 0,
+    // Civilian sea trade (Half A, 2026-10-01): the materials hold.
+    // ?? 0 so legacy v8 saves decode to an empty hold — no version
+    // bump, stays v8 (AD9, same precedent as fuel/ammo). spawnUnit
+    // always sets it, so round-trips stay exact.
+    cargoMaterials: u.cargoMaterials ?? 0,
+    // Civilian sea trade (Half A, 2026-10-01): sea-route assignment.
+    // Preserve absence (see buildingTargetId above) — only assigned
+    // ships carry these fields.
+    ...(u.seaRouteId !== undefined ? { seaRouteId: u.seaRouteId } : {}),
+    ...(u.seaRouteLeg !== undefined ? { seaRouteLeg: u.seaRouteLeg } : {}),
     // Phase 4 (S7, v7): the ferry's shipping lane. Preserve absence —
     // see buildingTargetId above (explicit `undefined` breaks the
     // save/load deep-equal).

@@ -433,6 +433,9 @@ describe('age-gated units', () => {
       heavyDestroyer: 'industry', cargoFreighter: 'industry',
       fuelTanker: 'industry', ammoShip: 'industry', minelayer: 'industry',
       navalMine: 'industry', coastGuardCutter: 'industry',
+      // Civilian sea trade (Half A, 2026-10-01): the fuel barge is the
+      // tanker's civilian sibling — industry age like its harbor.
+      fuelBarge: 'industry',
       awacs: 'information', carrier: 'information',
       commandShip: 'information', strategicBomber: 'information',
       maritimePatrol: 'information', missileSub: 'information',

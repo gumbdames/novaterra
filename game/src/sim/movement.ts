@@ -59,10 +59,21 @@ import {
   MAP_HALF_SIZE,
   cellCenterWorld,
   cellCoords,
+  cellIsWater,
   BUILDING_DEFS,
   nearestRailStation,
   railSortedHas,
 } from './city';
+import type { SeaRoute } from './city';
+// Civilian sea trade (Half A, 2026-10-01): the movement-side sea-trade
+// loop calls the port action from the seaTrade LEAF module
+// (sim/seaTrade.ts) — never from economy.ts directly: economy.ts
+// reads city.ts at module scope (SPEC_ZONE over ZoneType), and the
+// city→…→commands→movement chain means a movement→economy value edge
+// evaluates economy.ts while city.ts is still partially initialized
+// (the market.ts leaf-module precedent documents the same trap for
+// ai→economy).
+import { runSeaTradePortCall } from './seaTrade';
 import type { CommandQueue } from './commands';
 import {
   DIRS,
@@ -413,6 +424,11 @@ export function createMovementSystem(t: TerrainData): (world: World, dt: number)
     // ferries with a route get dispatched before any displacement, so a
     // ferry that just arrived re-dispatches and sails the same tick.
     advanceFerryRoutes(world);
+    // Civilian sea trade (Half A, 2026-10-01): the sea-trade loop runs
+    // right after the ferry loop — same contract (idle route ships get
+    // dispatched before displacement, so a ship that just arrived
+    // re-dispatches and sails the same tick).
+    advanceSeaTrade(world, t);
     // Only actively moving units separate: idle/failed/awaitingPath units
     // are parked (or stationary) and invisible to separation. Otherwise
     // already-parked units form a repulsion "wall" that newcomers can
@@ -494,6 +510,138 @@ function advanceFerryRoutes(world: World): void {
   }
 }
 
+/**
+ * Civilian sea trade (Half A, 2026-10-01): retry cadence for route
+ * ships stuck 'out of fuel' — the ferry `FERRY_RETRY_TICKS` precedent.
+ */
+export const SEA_TRADE_RETRY_TICKS = 30;
+/**
+ * How close (world units) a route ship must be to its leg's harbor
+ * water cell for the arrival port action to fire. 14 ≈ 3.5 cells —
+ * generous vs the arrival snap radius (2), so a ship that drifted
+ * slightly off the exact cell still docks.
+ */
+const SEA_TRADE_DOCK_RADIUS = 14;
+
+/**
+ * Civilian sea trade (Half A, 2026-10-01): the deterministic water
+ * cell a harbor loads/unloads at — the lowest cell index in the
+ * one-cell ring around the footprint that is water. The coastal
+ * placement rule guarantees the ring is never waterless, but the scan
+ * stays total (0 = none, the caller fails loudly). Same shape as the
+ * siege `siegeStandCell` ring scan.
+ */
+export function harborWaterCell(t: TerrainData, b: { cx: number; cz: number; kind: string }): number {
+  const def = BUILDING_DEFS[b.kind as keyof typeof BUILDING_DEFS];
+  let best = 0;
+  for (let dx = -1; dx <= def.footprintW; dx++) {
+    for (let dz = -1; dz <= def.footprintH; dz++) {
+      // Ring only: skip the footprint interior.
+      if (dx >= 0 && dx < def.footprintW && dz >= 0 && dz < def.footprintH) continue;
+      const cx = b.cx + dx;
+      const cz = b.cz + dz;
+      if (cx < 0 || cz < 0 || cx >= CITY_GRID_CELLS || cz >= CITY_GRID_CELLS) continue;
+      const cell = cz * CITY_GRID_CELLS + cx;
+      if (cellIsWater(t, cx, cz) && (best === 0 || cell < best)) best = cell;
+    }
+  }
+  return best;
+}
+
+/**
+ * Civilian sea trade (Half A, 2026-10-01): sail assigned cargo vessels
+ * along their sea routes. Runs inside the movement system (after the
+ * ferry loop — same shape): unit-id order; only idle ships are
+ * dispatched (a manual `moveUnit` is a DETOUR — the ship finishes it,
+ * idles, and the loop resumes from there, exactly like ferries).
+ *
+ * Each idle assigned ship sails to its leg's harbor water cell
+ * (`harborWaterCell`). When it is within `SEA_TRADE_DOCK_RADIUS` of
+ * that cell it has ARRIVED: the route policy's port action fires
+ * (`runSeaTradePortCall` — load at the origin, unload/income at the
+ * destination), the leg flips, and the ship sails back. A ship idle
+ * elsewhere (detour ended off-harbor) just resumes sailing — no port
+ * action fires away from the harbor.
+ *
+ * Loud failures mirror the ferry loop: 'out of fuel' retries every
+ * `SEA_TRADE_RETRY_TICKS`; a route that vanished mid-tick releases
+ * the assignment loudly ('sea route ended' — the economy tick owns
+ * the canonical dead-route cleanup, this is the mid-tick defense).
+ */
+function advanceSeaTrade(world: World, t: TerrainData): void {
+  const city = world.city;
+  const routes = city.seaRoutes ?? [];
+  // Fast path: no routes and no assigned ships → nothing to do. (The
+  // mid-tick release below must still run when the routes vanished but
+  // ships still carry assignments — hence the assigned-ship check, not
+  // just the route count.)
+  if (routes.length === 0) {
+    let anyAssigned = false;
+    for (const u of world.units) {
+      if ((u.seaRouteId ?? 0) !== 0) {
+        anyAssigned = true;
+        break;
+      }
+    }
+    if (!anyAssigned) return;
+  }
+  const byId = new Map<number, SeaRoute>();
+  for (const r of routes) byId.set(r.id, r);
+  const ordered = [...world.units].sort((a, b) => a.id - b.id);
+  for (const u of ordered) {
+    const routeId = u.seaRouteId ?? 0;
+    if (routeId === 0 || u.hp <= 0) continue;
+    const route = byId.get(routeId);
+    if (!route) {
+      u.seaRouteId = 0;
+      u.seaRouteLeg = undefined;
+      u.failReason = 'sea route ended';
+      continue;
+    }
+    if (u.state === 'failed' && u.failReason === 'out of fuel' && world.tick % SEA_TRADE_RETRY_TICKS === 0) {
+      // Transient failure (the ferry precedent): retry the dispatch.
+      u.state = 'idle';
+      u.failReason = null;
+    }
+    if (u.state !== 'idle') continue;
+    const leg = u.seaRouteLeg ?? 'to';
+    const targetId = leg === 'from' ? route.from : route.to;
+    const harbor = city.buildings.find((b) => b.id === targetId);
+    // Dead endpoint: the economy tick removes the route and releases
+    // the ships; until then the ship waits (never sails at a ghost).
+    if (!harbor || harbor.progress < 1 || !harbor.operational) continue;
+    const cell = harborWaterCell(t, harbor);
+    if (cell === 0) {
+      u.failReason = 'no harbor water access';
+      continue;
+    }
+    const { cx, cz } = cellCoords(cell);
+    const wx = cellCenterWorld(cx);
+    const wz = cellCenterWorld(cz);
+    const dx = u.x - wx;
+    const dz = u.z - wz;
+    if (dx * dx + dz * dz <= SEA_TRADE_DOCK_RADIUS * SEA_TRADE_DOCK_RADIUS) {
+      // Arrived: run the port action, flip the leg, sail the next leg.
+      const atOrigin = leg === 'from';
+      runSeaTradePortCall(world, u, route, targetId, atOrigin);
+      const nextLeg = leg === 'from' ? 'to' : 'from';
+      const nextId = nextLeg === 'from' ? route.from : route.to;
+      const nextHarbor = city.buildings.find((b) => b.id === nextId);
+      const nextCell = nextHarbor ? harborWaterCell(t, nextHarbor) : 0;
+      if (nextCell === 0) {
+        u.failReason = 'no harbor water access';
+        continue;
+      }
+      u.seaRouteLeg = nextLeg;
+      const nc = cellCoords(nextCell);
+      orderMoveTo(world, u, cellCenterWorld(nc.cx), cellCenterWorld(nc.cz));
+    } else {
+      // Idle away from the harbor (detour/manual order): resume
+      // sailing to the leg's harbor. No port action off-harbor.
+      orderMoveTo(world, u, wx, wz);
+    }
+  }
+}
 /**
  * Grand-expansion Phase 5 (S4): embarked aircraft ride their carrier.
  * world.units is spawn (id) order, so this loop is id-ordered —

@@ -207,9 +207,9 @@ function runUntilDestroyed(ctx: Ctx, buildingId: number, cap = 2000): void {
 }
 
 describe('BuildingDef.hp scale', () => {
-  it('all 99 defs carry positive integer hp', () => {
+  it('all 100 defs carry positive integer hp', () => {
     const kinds = Object.keys(BUILDING_DEFS);
-    expect(kinds).toHaveLength(99);
+    expect(kinds).toHaveLength(100);
     for (const kind of kinds) {
       const hp = BUILDING_DEFS[kind as BuildingKind].hp;
       expect(Number.isInteger(hp), `${kind}.hp`).toBe(true);

@@ -145,7 +145,7 @@ describe('logistics roster (Phase 3 workstream 2)', () => {
     expect(defs.fuelDepot.fuelStorage).toBe(250);
   });
 
-  it('marks exactly the 18 reload points (12 classic + 4 Phase 5 airports + 2 Phase 6 ports)', () => {
+  it('marks exactly the 19 reload points (12 classic + 4 Phase 5 airports + 2 Phase 6 ports + Half A commercialHarbor)', () => {
     const reloadPoints = (Object.keys(BUILDING_DEFS) as BuildingKind[]).filter(
       (k) => BUILDING_DEFS[k].reloadPoint,
     );
@@ -172,6 +172,9 @@ describe('logistics roster (Phase 3 workstream 2)', () => {
         // are naval resupply points (fuel/ammo ships top up alongside).
         'commercialPort',
         'navalBase',
+        // Civilian sea trade (Half A, 2026-10-01): the commercialHarbor
+        // is a reload point too (its fuelBarge + freighter cargo loop).
+        'commercialHarbor',
       ].sort(),
     );
   });

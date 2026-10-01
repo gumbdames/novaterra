@@ -16,6 +16,15 @@
 
 # Sea logistics — civilian sea trade (Half A, 0.1 Alpha)
 
+**Status: COMPLETE (2026-10-01, 0.1 Alpha).** Shipped on the
+`sea-civilian` branch. All workstream items landed: the
+`commercialHarbor` building, the `fuelBarge` unit, harbor-to-harbor
+`SeaRoute`s with per-voyage sailing, the three cargo policies, the
+Management → Trade UI, peaceful-AI adoption (2 harbors → 1 funds
+route → 2 freighters), menu portraits for both new kinds, and the AI
+soak test. Snapshot stays v8 (additive); digest covers the new
+fields.
+
 Workstream: civilian sea trade — the `commercialHarbor` production
 building, the civilian `fuelBarge`, harbor-to-harbor `SeaRoute`s with
 per-voyage ship sailing, physical fuel/materials hauling on the Phase 3

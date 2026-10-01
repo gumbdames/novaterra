@@ -102,6 +102,8 @@ import {
   type ResourceKey,
   type TradeRoute,
   type AirlineRoute,
+  type SeaRoute,
+  type SeaRoutePolicy,
 } from './city';
 
 /** Economy ticks run once per sim-second (30 sim ticks). */
@@ -1194,6 +1196,194 @@ const cancelAirlineRouteSpec: CommandSpec = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Civilian sea trade (Half A, 2026-10-01): harbor-to-harbor routes.
+// ---------------------------------------------------------------------------
+
+// The sea-trade constants (SEA_ROUTE_SETUP_COST), the voyage-income
+// formula, the route-ship predicate, and the port-call mechanic live
+// in the seaTrade LEAF module (sim/seaTrade.ts) — the movement tick
+// calls them every tick, and a movement→economy value edge breaks
+// module init (see the import comment in movement.ts). The AI reads
+// the setup cost from the leaf too: an ai→economy value import
+// completes the ai→economy→city→world→ai evaluation cycle that breaks
+// module init (the market.ts precedent).
+import { SEA_ROUTE_SETUP_COST, isSeaTradeShip } from './seaTrade';
+// Re-exported: the setup cost's public home was economy.ts before the
+// leaf move (the market.ts precedent — economy's public API is unchanged).
+export { SEA_ROUTE_SETUP_COST };
+
+/** A sea-route endpoint must be the owner's completed civilian port. */
+function seaRouteEndpointProblem(
+  world: World,
+  owner: number,
+  id: number,
+  which: string,
+): string | null {
+  const b = world.city.buildings.find((x) => x.id === id);
+  if (!b) return `establishSeaRoute: unknown ${which} building #${id}`;
+  if (b.owner !== owner) return `establishSeaRoute: ${which} building #${id} is not yours`;
+  if (b.progress < 1) return `establishSeaRoute: ${which} building #${id} is not completed`;
+  // The airline rule, port-side: civilian ports anchor trade routes;
+  // the military navalBase is rejected loudly (military airbases can't
+  // take airline routes either).
+  const type = BUILDING_DEFS[b.kind].portType;
+  if (type !== 'civilian') {
+    return `establishSeaRoute: ${which} building #${id} is not a civilian port`;
+  }
+  return null;
+}
+
+const SEA_ROUTE_POLICIES: SeaRoutePolicy[] = ['funds', 'fuel', 'materials'];
+
+const establishSeaRouteSpec: CommandSpec = {
+  validate(cmd, world): string | null {
+    const owner = payloadInt(cmd.payload, 'owner');
+    if (owner === null || !getPlayer(world.city, owner)) {
+      return 'establishSeaRoute: unknown owner';
+    }
+    const from = payloadInt(cmd.payload, 'from');
+    const to = payloadInt(cmd.payload, 'to');
+    if (from === null || to === null) {
+      return 'establishSeaRoute: from/to must be building ids';
+    }
+    if (from === to) return 'establishSeaRoute: from and to must be different harbors';
+    const policy = cmd.payload['policy'];
+    if (typeof policy !== 'string' || !SEA_ROUTE_POLICIES.includes(policy as SeaRoutePolicy)) {
+      return `establishSeaRoute: unknown policy ${String(policy)}`;
+    }
+    const problem = seaRouteEndpointProblem(world, owner, from, 'from')
+      ?? seaRouteEndpointProblem(world, owner, to, 'to');
+    if (problem) return problem;
+    // Routes are undirected for duplication (A↔B == B↔A), like airlines.
+    const a = Math.min(from, to);
+    const b = Math.max(from, to);
+    const dup = (world.city.seaRoutes ?? []).some(
+      (r) => r.owner === owner && Math.min(r.from, r.to) === a && Math.max(r.from, r.to) === b,
+    );
+    if (dup) return 'establishSeaRoute: route already exists';
+    const player = getPlayer(world.city, owner) as PlayerState;
+    if (player.funds < SEA_ROUTE_SETUP_COST) {
+      return `establishSeaRoute: cannot afford ${SEA_ROUTE_SETUP_COST} funds setup`;
+    }
+    return null;
+  },
+  apply(cmd, world): unknown {
+    const owner = payloadInt(cmd.payload, 'owner') as number;
+    const from = payloadInt(cmd.payload, 'from') as number;
+    const to = payloadInt(cmd.payload, 'to') as number;
+    const policy = cmd.payload['policy'] as SeaRoutePolicy;
+    const player = getPlayer(world.city, owner) as PlayerState;
+    player.funds -= SEA_ROUTE_SETUP_COST;
+    const route: SeaRoute = {
+      id: world.city.nextSeaRouteId++,
+      owner,
+      from,
+      to,
+      policy,
+      establishedTick: world.tick,
+    };
+    world.city.seaRoutes.push(route);
+    return { id: route.id, from, to, policy };
+  },
+};
+
+const cancelSeaRouteSpec: CommandSpec = {
+  validate(cmd, world): string | null {
+    const owner = payloadInt(cmd.payload, 'owner');
+    if (owner === null || !getPlayer(world.city, owner)) {
+      return 'cancelSeaRoute: unknown owner';
+    }
+    const id = payloadInt(cmd.payload, 'id');
+    const route = (world.city.seaRoutes ?? []).find((r) => r.id === id);
+    if (!route) return 'cancelSeaRoute: unknown route';
+    if (route.owner !== owner) return 'cancelSeaRoute: route belongs to another player';
+    return null;
+  },
+  apply(cmd, world): unknown {
+    const id = payloadInt(cmd.payload, 'id') as number;
+    world.city.seaRoutes = (world.city.seaRoutes ?? []).filter((r) => r.id !== id);
+    clearSeaRouteAssignments(world, id, 'sea route cancelled');
+    return { id };
+  },
+};
+
+const assignSeaRouteSpec: CommandSpec = {
+  validate(cmd, world): string | null {
+    const owner = payloadInt(cmd.payload, 'owner');
+    if (owner === null || !getPlayer(world.city, owner)) {
+      return 'assignSeaRoute: unknown owner';
+    }
+    const unitId = payloadInt(cmd.payload, 'unitId');
+    const unit = world.units.find((u) => u.id === unitId);
+    if (!unit || unit.hp <= 0) return 'assignSeaRoute: unknown unit';
+    if (unit.owner !== owner) return 'assignSeaRoute: unit is not yours';
+    if (!isSeaTradeShip(unit.kind)) {
+      return `assignSeaRoute: ${unit.kind} is not a civilian cargo vessel`;
+    }
+    const routeId = payloadInt(cmd.payload, 'routeId');
+    if (routeId === null) return 'assignSeaRoute: routeId must be a route id (0 = unassign)';
+    if (routeId === 0) return null; // unassign: always legal
+    const route = (world.city.seaRoutes ?? []).find((r) => r.id === routeId);
+    if (!route) return 'assignSeaRoute: unknown route';
+    if (route.owner !== owner) return 'assignSeaRoute: route belongs to another player';
+    return null;
+  },
+  apply(cmd, world): unknown {
+    const unitId = payloadInt(cmd.payload, 'unitId') as number;
+    const routeId = payloadInt(cmd.payload, 'routeId') as number;
+    const unit = world.units.find((u) => u.id === unitId) as UnitRecord;
+    if (routeId === 0) {
+      unit.seaRouteId = 0;
+      unit.seaRouteLeg = undefined;
+    } else {
+      unit.seaRouteId = routeId;
+      // Start sailing TO the destination: the origin load happens on
+      // the first arrival at `from` (the leg flips to 'from' there).
+      unit.seaRouteLeg = 'to';
+      unit.failReason = null;
+    }
+    return { unitId, routeId };
+  },
+};
+
+/**
+ * Clear every ship assignment to sea route `routeId` (id order),
+ * stamping the reason loudly on the unit. Used by `cancelSeaRoute`
+ * and the dead-route cleanup below — one path, no drift.
+ */
+export function clearSeaRouteAssignments(world: World, routeId: number, reason: string): void {
+  const ordered = [...world.units].sort((a, b) => a.id - b.id);
+  for (const u of ordered) {
+    if ((u.seaRouteId ?? 0) !== routeId) continue;
+    u.seaRouteId = 0;
+    u.seaRouteLeg = undefined;
+    u.failReason = reason;
+  }
+}
+
+function runSeaRouteCleanup(world: World, city: CityState): void {
+  const routes = city.seaRoutes ?? [];
+  if (routes.length === 0) return;
+  const dead = new Set<number>();
+  for (const route of routes) {
+    const from = city.buildings.find((b) => b.id === route.from);
+    const to = city.buildings.find((b) => b.id === route.to);
+    if (
+      !from || !to ||
+      from.progress < 1 || !from.operational ||
+      to.progress < 1 || !to.operational
+    ) {
+      dead.add(route.id);
+    }
+  }
+  if (dead.size === 0) return;
+  city.seaRoutes = routes.filter((r) => !dead.has(r.id));
+  for (const id of [...dead].sort((a, b) => a - b)) {
+    clearSeaRouteAssignments(world, id, 'sea route ended');
+  }
+}
+
 /** Slow development levels for thriving buildings (1→3). */
 function runLevels(world: World): void {  const bank = rngBank(world);
   for (const b of world.city.buildings) {
@@ -1341,6 +1531,10 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   // Grand-expansion Phase 5 (S5, 2026-09-30): airline route income —
   // same position as trade routes (after taxes, before growth).
   runAirlineIncome(world, city);
+  // Civilian sea trade (Half A, 2026-10-01): dead sea routes (lost
+  // endpoint) are removed here; per-voyage income is credited on
+  // arrival by the movement-tick sea-trade loop, not here.
+  runSeaRouteCleanup(world, city);
   runLevels(world);
   runGrowth(t, world, powerHeadroom, waterHeadroom);
 }
@@ -1417,6 +1611,10 @@ export function registerEconomyCommands(queue: CommandQueue): void {
   // Grand-expansion Phase 5 (S5, 2026-09-30): civilian airline routes.
   queue.register('establishAirlineRoute', establishAirlineRouteSpec);
   queue.register('cancelAirlineRoute', cancelAirlineRouteSpec);
+  // Civilian sea trade (Half A, 2026-10-01): harbor-to-harbor routes.
+  queue.register('establishSeaRoute', establishSeaRouteSpec);
+  queue.register('cancelSeaRoute', cancelSeaRouteSpec);
+  queue.register('assignSeaRoute', assignSeaRouteSpec);
 }
 
 const establishTradeRouteSpec: CommandSpec = {

@@ -555,8 +555,10 @@ describe('veterancy snapshots and digests', () => {
     // Phase 3 logistics: the unit segment now carries fuel, ammo, the
     // 3-bit service toggles, the resupply depot id, reserved amounts and
     // cargo holds after vetLevel (all defaults here: 0,0,111,0,0,0,0,0),
-    // then the Phase 4 (S7) ferry route ('-' = no route).
-    expect(canonicalizeWorld(ctx.world)).toContain(`,60,0,0,0,111,0,0,0,0,0,-`);
+    // then the Phase 4 (S7) ferry route ('-' = no route). Half A
+    // (2026-10-01) adds the materials hold + the sea-route assignment
+    // (0 = unassigned, leg '-' = no route) before the ferry route.
+    expect(canonicalizeWorld(ctx.world)).toContain(`,60,0,0,0,111,0,0,0,0,0,0,0,-,-`);
   });
 
   it('same seed + same commands ⇒ identical digest (veterancy included)', () => {

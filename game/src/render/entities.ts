@@ -366,6 +366,18 @@ export type ModelSource =
   coastGuardCutter: { type: 'glb', pieces: [piece('coastGuardCutterBoat')] },
   cruiseLiner: { type: 'glb', pieces: [piece('cruiseLinerShip')] },
   yacht: { type: 'glb', pieces: [piece('yachtBoat')] },
+  // Civilian sea trade (Half A, 2026-10-01): the civilian fuel barge —
+  // the fuelTanker kitbash with its deck tanks clustered amidships
+  // (the tanker spreads them fore/aft; the tight pair reads as the
+  // smaller uncrewed barge at portrait scale).
+  fuelBarge: {
+    type: 'glb',
+    pieces: [
+      piece('fuelTankerHull'),
+      piece('industrialTank', 0, 0.7, -1.0),
+      piece('industrialTank', 0, 0.7, 1.0),
+    ],
+  },
   // Grand-expansion Phase 6 — ports (workstream E, pass 2): composite
   // kitbashes from existing CC0 pieces (all lazy).
   // commercialPort 8×6 world: harbor crane + 2 container stacks.
@@ -406,6 +418,21 @@ export type ModelSource =
       piece('navalYardHall', 2.2, 0, 0.8),
       piece('cargoContainerB', -0.5, 0, 2.6),
       piece('cargoContainerC', 3.2, 0, -2.2),
+    ],
+  },
+  // Civilian sea trade (Half A, 2026-10-01): the Commercial Harbor —
+  // the commercialPort kitbash scaled down to the smaller civilian
+  // harbor (one crane + one container stack; the port carries two).
+  // NOTE: the portrait build logs one mergeGeometries attribute warning
+  // for this kitbash (the single-container bucket); extractModelGeometry
+  // keeps the pieces unmerged and the sprite renders correctly — the
+  // atlas is byte-deterministic. Not worth a geometry rework for a
+  // build-log cosmetic.
+  commercialHarbor: {
+    type: 'glb',
+    pieces: [
+      piece('shipyardCrane', 0, 0, -1),
+      piece('cargoContainerA', 0, 0, 1.2),
     ],
   },
   // Grand-expansion Phase 6 — intel roster (workstream 5, art): the

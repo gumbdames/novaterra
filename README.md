@@ -71,6 +71,14 @@ land, sea and air — or play a fully peaceful game with war disabled.
   the largest visible enemy cluster, and **Emergency refuel** for
   stranded fossil-fuel aircraft (+30% tank for 150 funds, airdropped —
   Resupply can't reach an aircraft that can't fly to a depot).
+  Civilian sea trade (Half A, 2026-10-01) is in too: the
+  **Commercial Harbor** (civilian coastal port, Industry age — trains
+  the cargo freighter and the new fuel barge, reloads ships, stores
+  fuel) and **sea-trade routes** like the airline system (500 funds to
+  establish between two harbors; funds / materials / fuel policies;
+  ships sail the route automatically). The peaceful AI builds two
+  harbors, establishes a funds route, and assigns freighters on its
+  own.
   See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 

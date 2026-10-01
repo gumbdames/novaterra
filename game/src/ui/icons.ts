@@ -72,7 +72,7 @@ function svg(body: string, strokeWidth = 2): string {
 }
 
 // ---------------------------------------------------------------------------
-// Units — 96 glyphs, one per UnitKind (silhouette reads the domain at a
+// Units — 97 glyphs, one per UnitKind (silhouette reads the domain at a
 // glance: person / tracked hull / aircraft / ship hull). The 28 Phase 8
 // Mk II/Mk III variants reuse their base glyph + a tier chevron
 // (provisional — the UI workstream owns the final variant art).
@@ -277,6 +277,12 @@ const BASE_UNIT_ICONS: Record<Exclude<UnitKind, VariantUnitKind>, string> = {
     '<path d="M2.5 15h19l-2.5 5h-14Z"/>' +
     '<ellipse cx="12" cy="11.5" rx="6" ry="3"/>' +
     '<path d="M17 8.8V6h2v2.8"/>',
+  // Civilian sea trade (Half A, 2026-10-01): the civilian fuel barge —
+  // a hull with a fuel droplet (vs the military fuelTanker's tank
+  // ellipse): the civilian fuel hauler.
+  fuelBarge:
+    '<path d="M2.5 15.5h19l-2.5 5h-14Z"/>' +
+    '<path d="M12 4.5c2 2.8 3.5 5 3.5 7a3.5 3.5 0 0 1-7 0c0-2 1.5-4.2 3.5-7Z"/>',
   ammoShip:
     '<path d="M2.5 15h19l-2.5 5h-14Z"/><rect x="6" y="11" width="3.5" height="4"/>' +
     '<rect x="10" y="8.5" width="3.5" height="6.5"/><rect x="14" y="11" width="3.5" height="4"/>',
@@ -610,6 +616,14 @@ const BUILDING_ICONS: Record<BuildingKind, string> = {
     '<path d="M3.5 14.5h17l-2 2.5h-13Z"/>' +
     '<rect x="5" y="9" width="4" height="5.5"/><rect x="15" y="9" width="4" height="5.5"/>' +
     '<path d="M7 9V5M17 9V5"/>' +
+    '<path d="M3 20.5c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/>',
+  // Civilian sea trade (Half A, 2026-10-01): the commercial harbor —
+  // quay + gantry crane + water waves (vs the commercialPort's derrick
+  // crane): the civilian shipyard.
+  commercialHarbor:
+    '<path d="M2 17h20"/>' +
+    '<path d="M6 17V6h9"/><path d="M15 6v3"/>' +
+    '<rect x="13.2" y="9" width="3.6" height="2.8"/>' +
     '<path d="M3 20.5c2-1.5 4-1.5 6 0s4 1.5 6 0 4-1.5 6 0"/>',
   // Grand-expansion Phase 5 — airports (workstream A, S5+S8,
   // 2026-09-30): glyphs for the 14 airport kinds, in the established

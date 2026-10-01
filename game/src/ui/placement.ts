@@ -43,6 +43,7 @@ import {
   type OrderIntent,
 } from './orders';
 import { isAirlineEndpoint } from './airports';
+import { isSeaTradeHarbor } from './seatrade';
 import { STRINGS, loc } from './strings';
 import { CITY_GRID_CELLS, type BuildingRecord, type RoadClass } from '../sim/city';
 
@@ -188,4 +189,53 @@ export function resolveAirlineClick(
     kind: 'order',
     intent: buildEstablishAirlineRouteOrder(owner, fromId, target.id),
   };
+}
+
+/**
+ * What a sea-trade-tool click means: an armed first or second harbor
+ * (the controller remembers both building ids — the second click does
+ * NOT emit the order; the Trade panel's cargo-policy picker does), or
+ * a hint to toast. Nothing fails silently. The airline tool's mirror
+ * (Half A, 2026-10-01), with the policy-pick step added.
+ */
+export type SeaTradeClickResolution =
+  | { kind: 'armFirst'; id: number }
+  | { kind: 'armSecond'; from: number; to: number }
+  | { kind: 'disarm' }
+  | { kind: 'hint'; message: string };
+
+/**
+ * Resolve a sea-trade-tool click. The gesture is two clicks on the
+ * owner's completed civilian ports (the sim's establishSeaRoute
+ * validation is authoritative — the resolver mirrors it: owned,
+ * completed, civilian port). The first click arms the first harbor;
+ * the second arms the pair (the panel then shows the policy picker).
+ * Clicking the armed harbor again disarms the tool. `target` is the
+ * controller's picked building (null when the click missed every
+ * building).
+ */
+export function resolveSeaTradeClick(
+  owner: number,
+  fromId: number | null,
+  target: BuildingRecord | null,
+): SeaTradeClickResolution {
+  const h = (message: string): SeaTradeClickResolution => ({ kind: 'hint', message });
+  if (target === null) {
+    return h(fromId === null ? loc(STRINGS.menuTabs.seaTradePickFirst) : loc(STRINGS.menuTabs.seaTradeRouteArmed));
+  }
+  if (target.owner !== owner) {
+    return h(loc(STRINGS.menuTabs.seaTradeNeedsOwner));
+  }
+  if (!isSeaTradeHarbor(target) || target.progress < 1) {
+    return h(loc(STRINGS.menuTabs.seaTradeNotHarbor));
+  }
+  if (fromId === null) {
+    return { kind: 'armFirst', id: target.id };
+  }
+  if (target.id === fromId) {
+    // Re-clicking the armed harbor disarms the tool (a fresh "New sea
+    // route…" click re-arms it).
+    return { kind: 'disarm' };
+  }
+  return { kind: 'armSecond', from: fromId, to: target.id };
 }

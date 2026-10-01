@@ -370,6 +370,56 @@ export function buildCancelTradeRouteOrder(
 }
 
 /**
+ * Civilian sea trade (Half A, 2026-10-01): establish a sea route
+ * between two of the owner's harbors. `from` / `to` are building ids —
+ * both must be the owner's completed civilian ports (the sim's
+ * `establishSeaRoute` validation is authoritative); `policy` is one of
+ * 'funds' | 'fuel' | 'materials'. 500 funds setup.
+ */
+export function buildEstablishSeaRouteOrder(
+  owner: number,
+  from: number,
+  to: number,
+  policy: string,
+): OrderIntent {
+  return {
+    kind: 'establishSeaRoute',
+    payload: { owner, from, to, policy },
+  };
+}
+
+/**
+ * Civilian sea trade (Half A, 2026-10-01): cancel a sea route by its
+ * route id. The sim releases assigned ships loudly
+ * (`clearSeaRouteAssignments`).
+ */
+export function buildCancelSeaRouteOrder(
+  owner: number,
+  id: number,
+): OrderIntent {
+  return {
+    kind: 'cancelSeaRoute',
+    payload: { owner, id },
+  };
+}
+
+/**
+ * Civilian sea trade (Half A, 2026-10-01): assign a civilian cargo
+ * vessel to a sea route (`routeId` 0 = unassign). The sim validates
+ * the hull (`isSeaTradeShip`) and the route's ownership loudly.
+ */
+export function buildAssignSeaRouteOrder(
+  owner: number,
+  unitId: number,
+  routeId: number,
+): OrderIntent {
+  return {
+    kind: 'assignSeaRoute',
+    payload: { owner, unitId, routeId },
+  };
+}
+
+/**
  * Grand-expansion Phase 5 (S5): establish an airline route between two of
  * the owner's airport anchors. `from` / `to` are building ids — both must
  * be the owner's completed civil or mixed airports (the sim's

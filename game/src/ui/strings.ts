@@ -379,6 +379,8 @@ export const STRINGS = {
     heavyDestroyer: { en: 'Heavy Destroyer' },
     cargoFreighter: { en: 'Cargo Freighter' },
     fuelTanker: { en: 'Fuel Tanker' },
+    // Civilian sea trade (Half A, 2026-10-01): the civilian fuel barge.
+    fuelBarge: { en: 'Fuel Barge' },
     ammoShip: { en: 'Ammo Ship' },
     repairShip: { en: 'Repair Ship' },
     minelayer: { en: 'Minelayer' },
@@ -508,6 +510,8 @@ export const STRINGS = {
     containerPort: { en: 'Container Port' },
     fishingHarbor: { en: 'Fishing Harbor' },
     navalBase: { en: 'Naval Base' },
+    // Civilian sea trade (Half A, 2026-10-01): the civilian harbor.
+    commercialHarbor: { en: 'Commercial Harbor' },
     // Grand-expansion Phase 5 — airports (workstream A, S5+S8,
     // 2026-09-30): the 14 airport kinds.
     civilAirport: { en: 'Civil Airport' },
@@ -919,6 +923,37 @@ export const STRINGS = {
     tradeEstablishTitle: { en: 'Establish a trade route ({cost} funds setup)' },
     tradeCancel: { en: 'Cancel route' },
     tradePartnerRival: { en: 'Rival nation' },
+    /** Management → Trade: civilian sea trade (Half A, 2026-10-01).
+     * Harbor-to-harbor routes with a cargo policy per route; ships sail
+     * the route physically (the ferry-loop pattern). */
+    seaTradeTitle: { en: 'Sea trade' },
+    seaTradeEmpty: {
+      en: 'No sea routes yet — build two Commercial Harbors on the coast, then link them.',
+    },
+    seaTradeNewRoute: { en: 'New sea route…' },
+    seaTradePickFirst: { en: 'Click one of your completed Commercial Harbors' },
+    seaTradeRouteArmed: { en: 'Click a second Commercial Harbor to complete the route' },
+    seaTradePickPolicy: { en: 'Choose the cargo policy for the new route' },
+    seaTradeNotHarbor: { en: 'Sea routes need completed Commercial Harbors' },
+    seaTradeSameHarbor: { en: 'Pick a different harbor for the route\u2019s other end' },
+    seaTradeNeedsOwner: { en: 'Sea routes link your own harbors' },
+    seaTradeNeedsTwo: { en: 'Build two completed Commercial Harbors to link a sea route' },
+    seaTradeCancel: { en: 'Cancel route' },
+    seaTradePolicyFunds: { en: 'Funds' },
+    seaTradePolicyFundsDesc: { en: 'Pays funds on every voyage into the destination harbor' },
+    seaTradePolicyFuel: { en: 'Fuel' },
+    seaTradePolicyFuelDesc: { en: 'Shuttles fuel from the origin harbor\u2019s depot to the destination' },
+    seaTradePolicyMaterials: { en: 'Materials' },
+    seaTradePolicyMaterialsDesc: { en: 'Hauls your materials abroad and sells them at the mid-market price' },
+    seaTradeIncomeLine: { en: '+{income} funds/voyage' },
+    seaTradeTrainShips: { en: 'Train ships' },
+    seaTradeHarborRoutes: { en: 'Sea routes calling here' },
+    seaTradeNoHarborRoutes: { en: 'No sea routes call here yet.' },
+    seaTradeShipRoute: { en: 'Route: {from} \u2194 {to} ({policy})' },
+    seaTradeShipNoRoute: { en: 'No route assigned — pick one below to put this ship to work.' },
+    seaTradeAssign: { en: 'Assign' },
+    seaTradeUnassign: { en: 'Unassign' },
+    seaTradeNoRoutesForShip: { en: 'Establish a sea route first (Management \u2192 Trade).' },
     /** Management → Research shown when the player owns no completed lab. */
     researchNeedsLab: { en: 'Build a Research Lab (Commerce tab) to unlock research.' },
   },

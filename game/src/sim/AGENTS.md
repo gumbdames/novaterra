@@ -91,6 +91,16 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   ZoneType); an ai→economy value import completes the
   ai→economy→city→world→ai evaluation cycle that breaks module init.
   economy.ts re-exports everything here; its public API is unchanged.
+- `seaTrade.ts` — (civilian sea trade, Half A, 2026-10-01) the sea-trade
+  LEAF module: `SEA_ROUTE_SETUP_COST`, the voyage-income formula
+  (`seaVoyageIncome`: 40 + 0.25×distance), `MATERIALS_EXPORT_PRICE`,
+  the route-ship predicate (`isSeaTradeShip`), and the port-call
+  mechanic (`runSeaTradePortCall`). Imports values only from city.ts,
+  units.ts, and desirability.ts — never economy.ts or movement.ts — so
+  the movement tick and the AI can consume it without opening a
+  movement→economy→city or ai→economy→city→world→ai evaluation cycle
+  (economy.ts re-exports `SEA_ROUTE_SETUP_COST`; its public API is
+  unchanged — the market.ts precedent).
 - `utilityNetworks.ts` — (grand-expansion Phase 2) the derived utility
   topology: integer-BFS flood fill over conductors (roads ∪ power
   lines/pipes ∪ substation/pumping-station footprints) per player per

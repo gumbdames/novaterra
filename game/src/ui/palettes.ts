@@ -19,8 +19,8 @@
  * data and availability logic (roster expansion).
  *
  * Responsibilities:
- *  - The tab groupings (spec §8): 6 train tabs for the 96 units, 13
- *    build tabs for the 99 buildings, 5 research groups for the 21
+ *  - The tab groupings (spec §8): 6 train tabs for the 97 units, 13
+ *    build tabs for the 100 buildings, 5 research groups for the 21
  *    upgrades.
  *  - Availability checks that mirror the sim's command validation so the
  *    UI greys out exactly what the sim would reject: `unitAvailability`
@@ -62,9 +62,9 @@ export interface TrainTab {
   kinds: readonly UnitKind[];
 }
 
-/** 96 units across 6 tabs (Phase 8 adds the 28 Mk II/III tech-level
- * variants next to their base kinds). Every unit kind appears in
- * exactly one tab. */
+/** 97 units across 6 tabs (Phase 8 adds the 28 Mk II/III tech-level
+ * variants next to their base kinds; Half A adds the civilian fuel
+ * barge to the navy tab). Every unit kind appears in exactly one tab. */
 export const TRAIN_TABS: readonly TrainTab[] = [
   {
     id: 'infantry',
@@ -152,6 +152,9 @@ export const TRAIN_TABS: readonly TrainTab[] = [
       'heavyDestroyer',
       'cargoFreighter',
       'fuelTanker',
+      // Civilian sea trade (Half A, 2026-10-01): the civilian fuel
+      // barge trains at the commercialHarbor (alongside the freighter).
+      'fuelBarge',
       'ammoShip',
       'repairShip',
       'minelayer',
@@ -203,7 +206,7 @@ export interface BuildTab {
   kinds: readonly BuildingKind[];
 }
 
-/** 99 buildings across 13 tabs. Every building kind appears in exactly one. */
+/** 100 buildings across 13 tabs. Every building kind appears in exactly one. */
 export const BUILD_TABS: readonly BuildTab[] = [
   { id: 'housing', kinds: ['house', 'apartment'] },
   // Workstream Z (2026-09-30): the civic tab — the four education
@@ -309,12 +312,16 @@ export const BUILD_TABS: readonly BuildTab[] = [
   // own tab (civilian infrastructure, not military logistics).
   // Tiered transit stops/stations (2026-09-30): the seven passenger
   // stops join the same tab — the full civilian-transport palette.
+  // Civilian sea trade (Half A, 2026-10-01): the Commercial Harbor is
+  // civilian transport infrastructure (peaceful-buildable), not a
+  // military navalAir port.
   {
     id: 'transport',
     kinds: [
       'railStation', 'busDepot', 'ferryTerminal', 'marina', 'marinaLarge',
       'busStop', 'taxiStand', 'tramStop', 'ferryPier',
       'neighborhoodStation', 'centralStation', 'airportInterchange',
+      'commercialHarbor',
     ],
   },
   // Grand-expansion Phase 5 (S5+S8, 2026-09-30): the airport roster —

@@ -247,19 +247,20 @@ describe('parking UI coverage', () => {
     expect(idx('parkingGarage')).toBeGreaterThan(idx('parkingLot'));
   });
 
-  it('99 building kinds across palettes, icons, strings, and defs', () => {
+  it('100 building kinds across palettes, icons, strings, and defs', () => {
     const kinds = Object.keys(BUILDING_DEFS) as BuildingKind[];
     // Grand-expansion Phase 8 (civilian, workstream E, 2026-09-30): 89 +
     // the 10 new civilian kinds (museum, theater, sportsStadium,
     // botanicalGarden, grandMarket, bank, officeTower, clinic,
     // medicalCenter, fireStation).
-    expect(kinds).toHaveLength(99);
+    // Civilian sea trade (Half A, 2026-10-01): + the commercialHarbor.
+    expect(kinds).toHaveLength(100);
     const paletteKinds = new Set(BUILD_TABS.flatMap((t) => t.kinds));
     // NOTE (workstream E): the 10 new kinds land in BUILD_TABS with the
     // palettes-owning workstream's tab integration (ui/palettes.ts is
     // sibling-owned). Until then this assertion fails on the new kinds
     // — that is a cross-workstream handoff, not a sim regression.
-    expect(paletteKinds.size).toBe(99);
+    expect(paletteKinds.size).toBe(100);
     for (const kind of kinds) {
       expect(paletteKinds.has(kind)).toBe(true);
       expect(buildingIcon(kind)).toBeTruthy();
