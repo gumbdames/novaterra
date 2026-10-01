@@ -219,6 +219,26 @@ describe('every pre-existing control has a home under the rebuilt menu', () => {
     expect(body).toContain('sub-tab');
     expect(body).toContain('active');
   });
+
+  it('the detail view has a Back button, header, stat blocks and action rows', () => {
+    const back = methodBody('detailBackEl');
+    expect(back).toContain('onDeselect');
+    const sel = methodBody('updateSelection');
+    expect(sel).toContain('this.detailBackEl()');
+    expect(sel).toContain('this.detailHeaderEl(');
+    for (const cls of ['stat-block', 'stat-row', 'detail-actions']) {
+      expect(sel, `detail class '${cls}' missing from the selection view`).toContain(`'${cls}'`);
+    }
+    const header = methodBody('detailHeaderEl');
+    expect(header).toContain(`'detail-header'`);
+    // The building detail view arms the demolish tool.
+    expect(sel).toContain('demolishVerb');
+    // game.ts owns the selection: Back clears it like Esc / empty-ground
+    // click do.
+    const gameSrc = readFileSync(join(GAME_DIR, 'src/ui/game.ts'), 'utf8');
+    expect(gameSrc).toContain('onDeselect');
+    expect(gameSrc).toContain('clearSelection()');
+  });
 });
 
 describe('menu-tab digest coverage', () => {

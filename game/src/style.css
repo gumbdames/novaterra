@@ -414,15 +414,71 @@ body {
   margin-bottom: 8px;
 }
 
-.sel-title {
+/* Command-menu rebuild (2026-10-01): the detail view — the Back
+ * button back to the tab menu, the header (icon + name), one stat
+ * block per unit/building, and the action row. */
+.detail-back {
+  appearance: none;
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  color: var(--ink-dim);
+  font-size: 12px;
   font-weight: 600;
-  margin-bottom: 6px;
+  padding: 2px 0 8px;
+  cursor: pointer;
 }
 
-.sel-unit {
+.detail-back:hover {
+  color: var(--ink);
+}
+
+.detail-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.detail-header .palette-icon {
+  width: 40px;
+  height: 40px;
+}
+
+.detail-title {
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.stat-block {
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.03);
+  padding: 6px 10px;
+  margin-bottom: 8px;
+}
+
+.stat-row {
   font-size: 12px;
   color: var(--ink-dim);
-  margin-bottom: 2px;
+  padding: 3px 0;
+}
+
+.stat-row + .stat-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.detail-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.detail-actions .sel-action {
+  margin-top: 0;
 }
 
 .sel-action {

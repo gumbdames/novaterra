@@ -805,6 +805,12 @@ export const STRINGS = {
     toolSectionZoning: { en: 'Zoning' },
     // Phase 2 (utilities): the drag-paint network tools sit together.
     toolSectionNetworks: { en: 'Networks' },
+    // Command-menu rebuild (2026-10-01): the road tool + class picker
+    // and the demolish tool each get their own labeled group, like the
+    // Networks and Zoning groups, so the Tools sub-tab scans at a
+    // glance.
+    toolSectionRoads: { en: 'Roads' },
+    toolSectionDemolish: { en: 'Demolish' },
     toolDemolish: { en: 'Demolish' },
     cancelPlacement: { en: 'Cancel (Esc)' },
     placeLandHint: { en: 'Click the map to place' },

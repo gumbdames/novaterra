@@ -817,6 +817,12 @@ class GameController {
       },
       onOpenMenu: () => this.setPaused(true, true),
       onStopSelection: () => this.issueStop(),
+      // Command-menu rebuild (2026-10-01): the detail view's Back
+      // button — same as Esc / clicking empty ground (verified by the
+      // ui.menuTabs test: game.ts still owns the selection).
+      onDeselect: () => {
+        this.selection = clearSelection();
+      },
       onTrainUnit: (kind) => {
         this.placement = { kind: 'train', unitKind: kind };
         // Grand-expansion Phase 5 (S5): arming a palette tool disarms

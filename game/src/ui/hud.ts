@@ -225,6 +225,12 @@ export interface HUDActions {
   onSpeedChange(speed: number): void;
   onOpenMenu(): void;
   onStopSelection(): void;
+  /**
+   * Command-menu rebuild (2026-10-01): the detail view's Back button —
+   * returns to the tab menu. Same as Esc / clicking empty ground
+   * (game.ts owns the selection).
+   */
+  onDeselect(): void;
   /** Train panel: enter unit-placement mode for this kind. */
   onTrainUnit(kind: UnitKind): void;
   /** Build palette: enter construction mode with this tool. */
@@ -736,6 +742,30 @@ export class HUD {
   }
 
   /**
+   * Command-menu rebuild (2026-10-01): the detail view's Back button —
+   * returns to the tab menu. Same as Esc / clicking empty ground
+   * (game.ts owns the selection; see HUDActions.onDeselect).
+   */
+  private detailBackEl(): HTMLElement {
+    const back = document.createElement('button');
+    back.className = 'detail-back';
+    back.textContent = `← ${loc(STRINGS.selection.backToMenu)}`;
+    back.addEventListener('click', () => this.actions.onDeselect());
+    return back;
+  }
+
+  /**
+   * Command-menu rebuild (2026-10-01): the detail header — the
+   * selected unit/building's icon plus its name.
+   */
+  private detailHeaderEl(icon: string, title: string): HTMLElement {
+    const h = el('div', 'detail-header');
+    if (icon !== '') h.prepend(iconSpan(icon));
+    h.append(el('div', 'detail-title', title));
+    return h;
+  }
+
+  /**
    * Civilian main tab: three sub-tabs (command-menu rebuild, 2026-10-01)
    * — Tools (road / power line / water pipe / rail / zones / demolish),
    * Build (the 9 civilian build tabs as pills + the card grid), and
@@ -806,69 +836,101 @@ export class HUD {
       b.addEventListener('click', () => this.actions.onBuildTool(tool));
       return b;
     };
-    toolsRow.append(makeToolButton('road', loc(p.toolRoad), 'road'));
-    // Phase 4 (transport): the road tool paints the selected class — the
-    // small class picker sits next to the road button (dirt/country/
-    // paved/highway, per-cell cost in the title). Dragging over existing
-    // lower-class roads upgrades them in place (difference pricing via
-    // the sim's upgradeRoad). Registered in HUD_PANEL_BRANCHES as
-    // 'tools-row' (digestLabels: rc:).
-    const classRow = el('div', 'palette-class-row');
-    const classNames: Record<RoadClass, LocalizedString> = {
-      dirt: p.roadClassDirt,
-      country: p.roadClassCountry,
-      paved: p.roadClassPaved,
-      highway: p.roadClassHighway,
-    };
-    for (const cls of ROAD_CLASS_ORDER) {
-      const stats = ROAD_CLASS_STATS[cls];
-      const cb = document.createElement('button');
-      cb.className = `class-btn${this.selectedRoadClass === cls ? ' active' : ''}`;
-      cb.textContent = loc(classNames[cls]);
-      cb.title = fillLoc(p.roadClassCost, {
-        funds: stats.costFunds,
-        materials: stats.costMaterials,
-      });
-      cb.setAttribute('aria-pressed', this.selectedRoadClass === cls ? 'true' : 'false');
-      cb.addEventListener('click', () => {
-        this.selectedRoadClass = cls;
-        this.paletteDirty = true;
-      });
-      classRow.append(cb);
-    }
-    toolsRow.append(classRow);
-    // Phase 2 (utilities): the drag-paint network tools sit together in a
-    // "Networks" group, next to the road tool they share a gesture with.
-    // Phase 4 (transport): the rail tool joins them.
-    const netGroup = el('div', 'palette-zones');
-    netGroup.append(el('div', 'palette-section-title', loc(p.toolSectionNetworks)));
-    const netTools = [
-      { tool: 'powerLine', label: loc(p.toolPowerLine), icon: 'powerLine' },
-      { tool: 'waterPipe', label: loc(p.toolWaterPipe), icon: 'waterPipe' },
-      { tool: 'rail', label: loc(p.toolRail), icon: 'rail' },
-    ] as const;
-    for (const { tool, label, icon } of netTools) {
-      netGroup.append(makeToolButton(tool, label, icon));
-    }
-    toolsRow.append(netGroup);
-    // Workstream Z: the three zone tools are grouped under a small
-    // "Zoning" section header so their purpose is obvious at a glance.
-    const zoneGroup = el('div', 'palette-zones');
-    zoneGroup.append(el('div', 'palette-section-title', loc(p.toolSectionZoning)));
-    const zoneTools = [
-      { tool: 'zoneR', label: loc(p.toolZoneR), icon: 'zoneR' },
-      { tool: 'zoneC', label: loc(p.toolZoneC), icon: 'zoneC' },
-      { tool: 'zoneI', label: loc(p.toolZoneI), icon: 'zoneI' },
-      // Grand-expansion Phase 5 (S5): the airport zone tool rides the
-      // same drag pipeline as the other zones.
-      { tool: 'zoneA', label: loc(p.toolZoneA), icon: 'zoneA' },
-    ] as const;
-    for (const { tool, label, icon } of zoneTools) {
-      zoneGroup.append(makeToolButton(tool, label, icon));
-    }
-    toolsRow.append(zoneGroup);
-    toolsRow.append(makeToolButton('demolish', loc(p.toolDemolish), 'demolish'));
+    toolsRow.append(this.civilianToolsSection(
+      loc(p.toolSectionRoads),
+      (group) => {
+        group.append(makeToolButton('road', loc(p.toolRoad), 'road'));
+        // Phase 4 (transport): the road tool paints the selected class —
+        // the small class picker sits with the road button
+        // (dirt/country/paved/highway, per-cell cost in the title).
+        // Dragging over existing lower-class roads upgrades them in
+        // place (difference pricing via the sim's upgradeRoad).
+        // Registered in HUD_PANEL_BRANCHES as 'tools-row'
+        // (digestLabels: rc:).
+        const classRow = el('div', 'palette-class-row');
+        const classNames: Record<RoadClass, LocalizedString> = {
+          dirt: p.roadClassDirt,
+          country: p.roadClassCountry,
+          paved: p.roadClassPaved,
+          highway: p.roadClassHighway,
+        };
+        for (const cls of ROAD_CLASS_ORDER) {
+          const stats = ROAD_CLASS_STATS[cls];
+          const cb = document.createElement('button');
+          cb.className = `class-btn${this.selectedRoadClass === cls ? ' active' : ''}`;
+          cb.textContent = loc(classNames[cls]);
+          cb.title = fillLoc(p.roadClassCost, {
+            funds: stats.costFunds,
+            materials: stats.costMaterials,
+          });
+          cb.setAttribute('aria-pressed', this.selectedRoadClass === cls ? 'true' : 'false');
+          cb.addEventListener('click', () => {
+            this.selectedRoadClass = cls;
+            this.paletteDirty = true;
+          });
+          classRow.append(cb);
+        }
+        group.append(classRow);
+      },
+    ));
+    // Phase 2 (utilities): the drag-paint network tools sit together in
+    // a "Networks" group, next to the road tool they share a gesture
+    // with. Phase 4 (transport): the rail tool joins them.
+    toolsRow.append(this.civilianToolsSection(
+      loc(p.toolSectionNetworks),
+      (group) => {
+        const netTools = [
+          { tool: 'powerLine', label: loc(p.toolPowerLine), icon: 'powerLine' },
+          { tool: 'waterPipe', label: loc(p.toolWaterPipe), icon: 'waterPipe' },
+          { tool: 'rail', label: loc(p.toolRail), icon: 'rail' },
+        ] as const;
+        for (const { tool, label, icon } of netTools) {
+          group.append(makeToolButton(tool, label, icon));
+        }
+      },
+    ));
+    // Workstream Z: the zone tools are grouped under a small "Zoning"
+    // section header so their purpose is obvious at a glance.
+    toolsRow.append(this.civilianToolsSection(
+      loc(p.toolSectionZoning),
+      (group) => {
+        const zoneTools = [
+          { tool: 'zoneR', label: loc(p.toolZoneR), icon: 'zoneR' },
+          { tool: 'zoneC', label: loc(p.toolZoneC), icon: 'zoneC' },
+          { tool: 'zoneI', label: loc(p.toolZoneI), icon: 'zoneI' },
+          // Grand-expansion Phase 5 (S5): the airport zone tool rides
+          // the same drag pipeline as the other zones.
+          { tool: 'zoneA', label: loc(p.toolZoneA), icon: 'zoneA' },
+        ] as const;
+        for (const { tool, label, icon } of zoneTools) {
+          group.append(makeToolButton(tool, label, icon));
+        }
+      },
+    ));
+    toolsRow.append(this.civilianToolsSection(
+      loc(p.toolSectionDemolish),
+      (group) => {
+        group.append(makeToolButton('demolish', loc(p.toolDemolish), 'demolish'));
+      },
+    ));
     return toolsRow;
+  }
+
+  /**
+   * One labeled tool group inside Civilian → Tools (command-menu
+   * rebuild, 2026-10-01): the Roads / Networks / Zoning / Demolish
+   * sections share the same wrapper. The name carries no append/build/
+   * update prefix, so the AD11 method scan skips it; all DOM classes
+   * are the ones the 'tools-row' branch already claims.
+   */
+  private civilianToolsSection(
+    title: string,
+    fill: (group: HTMLElement) => void,
+  ): HTMLElement {
+    const group = el('div', 'palette-zones');
+    group.append(el('div', 'palette-section-title', title));
+    fill(group);
+    return group;
   }
 
   /**
@@ -1819,36 +1881,51 @@ export class HUD {
       const units = selection.unitIds
         .map((id) => world.units.find((u) => u.id === id))
         .filter((u) => u !== undefined);
-      panel.append(el('div', 'sel-title', sel.unitsSelected(units.length)));
+      // Command-menu rebuild (2026-10-01): the detail view — Back to
+      // the tab menu, the header (icon + name), then one stat block and
+      // one action row per unit. All values keep their digest segments
+      // (u:/uh:/uv:/um:/uf:/us:/ue:/ew:/iu:/er:); the new detail classes
+      // are claimed by the 'selection-units' digest branch.
+      panel.append(this.detailBackEl());
+      const firstKind = units[0]?.kind as UnitKind | undefined;
+      panel.append(
+        this.detailHeaderEl(
+          firstKind !== undefined ? unitIcon(firstKind) : '',
+          sel.unitsSelected(units.length),
+        ),
+      );
       for (const u of units.slice(0, 6)) {
         const def = UNIT_DEFS[u.kind as UnitKind];
         const hpFrac = def ? Math.max(0, Math.round((u.hp / def.hp) * 100)) : 0;
-        panel.append(el('div', 'sel-unit', `${def?.name ?? u.kind} · ${hpFrac}%`));
+        const stats = el('div', 'stat-block');
+        const actions = el('div', 'detail-actions');
+        stats.append(el('div', 'stat-row', `${def?.name ?? u.kind} · ${hpFrac}%`));
         // Veterancy (Phase 1): rank + chevrons + XP progress, e.g.
-        // "Veteran ▲▲ · 320/500 XP". Reuses the 'sel-unit' class — no new
-        // DOM class, no digest-registry change needed for markup.
-        panel.append(el('div', 'sel-unit', vetXpLine(u)));
+        // "Veteran ▲▲ · 320/500 XP". Uses the 'stat-row' class — the
+        // detail-view stat line (command-menu rebuild, 2026-10-01).
+        stats.append(el('div', 'stat-row', vetXpLine(u)));
         // Grand-expansion Phase 7 (intel): a selected owned spy shows
         // its mission state ("Infiltrating Power Plant · 12s left",
-        // "Exposed — visible to all enemies · 24s left"). Reuses the
-        // 'sel-unit' class — no new DOM class; the iu: digest segment
-        // covers the rendered value (AD11).
+        // "Exposed — visible to all enemies · 24s left"). Uses the
+        // 'stat-row' class; the iu: digest segment covers the rendered
+        // value (AD11).
         if (u.owner === HUMAN_PLAYER_ID && isSpyUnit(u)) {
-          panel.append(el('div', 'sel-unit', spyMissionLine(world, u)));
+          stats.append(el('div', 'stat-row', spyMissionLine(world, u)));
         }
         // Phase 3 (logistics): fuel/ammo bars for tracked units, the
         // cargo line + field-service toggles for supply units, and the
-        // Resupply button. New DOM classes ('sel-bar', 'sel-bar-fill',
-        // 'sel-toggle') are registered in HUD_PANEL_BRANCHES and every
-        // value digested by the uf:/us: segments (AD11) — the panel
-        // rebuilds exactly when a bar or toggle would render
-        // differently.
+        // Resupply button. Bars use the 'sel-bar' classes (registered in
+        // HUD_PANEL_BRANCHES); every value is digested by the uf:/us:
+        // segments (AD11) — the panel rebuilds exactly when a bar or
+        // toggle would render differently.
         if (def !== undefined && isTrackedUnit(def)) {
           const lg = STRINGS.logistics;
-          panel.append(supplyBar(`${loc(lg.fuelLabel)} ${Math.round(fuelFracOf(def, u) * 100)}%`, fuelFracOf(def, u)));
-          panel.append(supplyBar(`${loc(lg.ammoLabel)} ${Math.round(ammoFracOf(def, u) * 100)}%`, ammoFracOf(def, u)));
+          stats.append(supplyBar(`${loc(lg.fuelLabel)} ${Math.round(fuelFracOf(def, u) * 100)}%`, fuelFracOf(def, u)));
+          stats.append(supplyBar(`${loc(lg.ammoLabel)} ${Math.round(ammoFracOf(def, u) * 100)}%`, ammoFracOf(def, u)));
           if (isLowSupply(def, u)) {
-            panel.append(el('div', 'sel-unit', `⚠ ${loc(lg.lowSupplyWarning)}`));
+            // Command-menu rebuild (2026-10-01): the warning glyph is
+            // gone (no emoji/symbols in UI) — the warning text says it.
+            stats.append(el('div', 'stat-row', loc(lg.lowSupplyWarning)));
           }
           // Final-review R5 (2026-10-01): Emergency refuel — the
           // stranded-aircraft affordance. A fossil-fuel aircraft with an
@@ -1868,12 +1945,12 @@ export class HUD {
               er.disabled = true;
               er.title = erBlock;
             }
-            panel.append(er);
+            actions.append(er);
           }
         }
         if (def !== undefined && isSupplyUnit(def) && u.owner === HUMAN_PLAYER_ID) {
           const lg = STRINGS.logistics;
-          panel.append(el('div', 'sel-unit', cargoLine(u)));
+          stats.append(el('div', 'stat-row', cargoLine(u)));
           const svc = serviceTogglesOf(u);
           const toggleRow = el('div', 'sel-toggle-row');
           const toggles = [
@@ -1892,7 +1969,7 @@ export class HUD {
             });
             toggleRow.append(b);
           }
-          panel.append(toggleRow);
+          actions.append(toggleRow);
           // Resupply: the UI proposes the depot (nearest with available
           // stock); the sim validates and rejects loudly when nothing can
           // serve the unit. The disabled reason names the blocker — never
@@ -1908,7 +1985,7 @@ export class HUD {
             rs.disabled = true;
             rs.title = block ?? loc(lg.noDepotReason);
           }
-          panel.append(rs);
+          actions.append(rs);
         }
         // Grand-expansion Phase 5 (hangar/carrier shelter): the shelter
         // line + Embark / Park / Launch buttons for aircraft, and the
@@ -1917,15 +1994,17 @@ export class HUD {
         // their sheltered aircraft with Launch buttons — otherwise a
         // parked aircraft could never be launched from the UI. Every
         // value is digest-covered by the ue: / ew: segments (AD11).
+        // Stat lines use 'stat-row', buttons live in the per-unit
+        // 'detail-actions' row (command-menu rebuild, 2026-10-01).
         if (u.owner === HUMAN_PLAYER_ID) {
           const sheltered = shelterLine(world, u);
           if (sheltered !== '') {
-            panel.append(el('div', 'sel-unit', sheltered));
+            stats.append(el('div', 'stat-row', sheltered));
             const launch = document.createElement('button');
             launch.className = 'sel-action';
             launch.textContent = loc(sel.launchVerb);
             launch.addEventListener('click', () => this.actions.onLaunchAircraft(u.id));
-            panel.append(launch);
+            actions.append(launch);
           } else if (canEmbarkUI(u)) {
             // Embark: the UI proposes the nearest friendly carrier in
             // range; the sim validates. Disabled with the reason named —
@@ -1944,7 +2023,7 @@ export class HUD {
               eb.disabled = true;
               eb.title = eblock ?? 'No carrier in range';
             }
-            panel.append(eb);
+            actions.append(eb);
           }
           if (canBaseUI(u)) {
             // Park in hangar: the UI proposes the nearest friendly
@@ -1963,87 +2042,105 @@ export class HUD {
               bb.disabled = true;
               bb.title = bblock ?? 'No hangar in range';
             }
-            panel.append(bb);
+            actions.append(bb);
           }
           // Carrier wing manifest: carriers train EMPTY (the wing fills
           // only through embark orders), so the panel lists the embarked
           // aircraft with per-aircraft Launch buttons.
           const wing = wingLine(world, u);
           if (wing !== '') {
-            panel.append(el('div', 'sel-unit', wing));
+            stats.append(el('div', 'stat-row', wing));
             for (const w of embarkedAircraft(world, u.id)) {
               const wdef = UNIT_DEFS[w.kind as UnitKind];
-              const row = el('div', 'sel-unit', `✈ ${wdef?.name ?? w.kind}`);
-              panel.append(row);
+              // Command-menu rebuild (2026-10-01): the ✈ glyph is gone
+              // (no emoji/symbols in UI) — the row is the aircraft name.
+              const row = el('div', 'stat-row', wdef?.name ?? w.kind);
+              stats.append(row);
               const wl = document.createElement('button');
               wl.className = 'sel-action';
               wl.textContent = loc(sel.launchVerb);
               wl.addEventListener('click', () => this.actions.onLaunchAircraft(w.id));
-              panel.append(wl);
+              actions.append(wl);
             }
           }
         }
+        panel.append(stats);
+        if (actions.hasChildNodes()) panel.append(actions);
       }
-      if (units.length > 6) panel.append(el('div', 'sel-unit', `… +${units.length - 6} more`));
+      if (units.length > 6) {
+        const more = el('div', 'stat-block');
+        more.append(el('div', 'stat-row', `… +${units.length - 6} more`));
+        panel.append(more);
+      }
+      const stopRow = el('div', 'detail-actions');
       const stopBtn = document.createElement('button');
       stopBtn.className = 'sel-action';
       stopBtn.textContent = sel.stop;
       stopBtn.addEventListener('click', () => this.actions.onStopSelection());
-      panel.append(stopBtn);
+      stopRow.append(stopBtn);
+      panel.append(stopRow);
       return;
     }
 
     const b = world.city.buildings.find((x) => x.id === selection.buildingId);
     if (b) {
-      panel.append(el('div', 'sel-title', buildingName(b.kind)));
-      panel.append(
-        el('div', 'sel-unit', b.operational ? 'Operational' : 'Not operational'),
+      // Command-menu rebuild (2026-10-01): the detail view — Back to
+      // the tab menu, the header (icon + name), the stat block, and the
+      // action row (Demolish arms the demolish tool). All values keep
+      // their digest segments (b:/bs:/bl:/bu:/bq:/bv:/bo:/bh:/bw:); the
+      // new detail classes are claimed by the 'selection-building'
+      // digest branch.
+      panel.append(this.detailBackEl());
+      panel.append(this.detailHeaderEl(buildingIcon(b.kind), buildingName(b.kind)));
+      const stats = el('div', 'stat-block');
+      stats.append(
+        el('div', 'stat-row', b.operational ? loc(sel.operational) : loc(sel.notOperational)),
       );
       // Final-review R2 (2026-10-01): structural HP — buildings are
       // destructible now (C3), so the selection panel shows how much
-      // damage the building has taken. Reuses the 'sel-unit' class so
-      // no new DOM class is introduced; digest-covered by the bw:
-      // segment (AD11). Always shown: an enemy army can siege any
-      // building, finished or not.
+      // damage the building has taken. Uses the 'stat-row' class (the
+      // detail-view stat line); digest-covered by the bw: segment (AD11).
+      // Always shown: an enemy army can siege any building, finished or
+      // not.
       const bdef = BUILDING_DEFS[b.kind];
       const hpPct = Math.max(
         0,
         Math.round(((b.hp ?? bdef.hp) / (b.maxHp ?? bdef.hp)) * 100),
       );
-      panel.append(el('div', 'sel-unit', fillLoc(sel.hpLine, { hp: hpPct })));
+      stats.append(el('div', 'stat-row', fillLoc(sel.hpLine, { hp: hpPct })));
       // Crew training level (economy.ts levels thriving buildings 1→3).
-      panel.append(el('div', 'sel-unit', fillLoc(sel.levelLine, { level: b.level })));
+      stats.append(el('div', 'stat-row', fillLoc(sel.levelLine, { level: b.level })));
       // Phase 2 (utilities): power/water diagnosis for the selected
-      // building — reuses the 'sel-unit' class so no new DOM class is
-      // introduced; digest-covered by the bu: segment.
-      panel.append(el('div', 'sel-unit', buildingUtilityLine(b)));
+      // building — uses the 'stat-row' class; digest-covered by the bu:
+      // segment.
+      stats.append(el('div', 'stat-row', buildingUtilityLine(b)));
       // Phase 3 (logistics): the depot stock line for storage buildings
       // ("Ammo 42/150 · Fuel 200/250"); empty string (no div) otherwise.
       // Digest-covered by the bq: segment (AD11).
       const stock = depotStockLine(b);
-      if (stock !== '') panel.append(el('div', 'sel-unit', stock));
+      if (stock !== '') stats.append(el('div', 'stat-row', stock));
       // Workstream W (desirability): the land-value line for residential
-      // buildings ("Land: Nice (64) · tax ×1.3") — reuses the 'sel-unit'
-      // class so no new DOM class is introduced; digest-covered by the
-      // bv: segment (AD11). The derived model is per-owner and cached
-      // on structural change, so this is free per frame. The model is
-      // the BUILDING owner's — the land value a building taxes on is
-      // shaped by its owner's own ordinances.
+      // buildings ("Land: Nice (64) · tax ×1.3") — uses the 'stat-row'
+      // class; digest-covered by the bv: segment (AD11). The derived
+      // model is per-owner and cached on structural change, so this is
+      // free per frame. The model is the BUILDING owner's — the land
+      // value a building taxes on is shaped by its owner's own
+      // ordinances.
       const desirModel =
         terrain !== undefined ? getDesirabilityModel(terrain, world, b.owner) : undefined;
       const landLine = landValueLine(desirModel, b);
-      if (landLine !== null) panel.append(el('div', 'sel-unit', landLine));
+      if (landLine !== null) stats.append(el('div', 'stat-row', landLine));
       // Phase 4 (transport): the occupancy line ("Residents 12/50 ·
-      // Workers 8/20") from the sim's buildingOccupancy() — reuses the
-      // 'sel-unit' class so no new DOM class is introduced;
-      // digest-covered by the bo: segment (AD11). Hidden for buildings
-      // with neither residents nor workers (military/utility).
+      // Workers 8/20") from the sim's buildingOccupancy() — uses the
+      // 'stat-row' class; digest-covered by the bo: segment (AD11).
+      // Hidden for buildings with neither residents nor workers
+      // (military/utility).
       const occ = buildingOccupancy(world, b.id);
       if (occ !== null && (occ.residentCap > 0 || occ.workerCap > 0)) {
-        panel.append(
+        stats.append(
           el(
             'div',
-            'sel-unit',
+            'stat-row',
             fillLoc(sel.occupancyLine, {
               residents: occ.residents,
               residentCap: occ.residentCap,
@@ -2053,25 +2150,47 @@ export class HUD {
           ),
         );
       }
+      panel.append(stats);
+      // The detail action row: parked-aircraft Launch buttons plus the
+      // Demolish button (owned buildings only).
+      const actions = el('div', 'detail-actions');
       // Grand-expansion Phase 5 (hangar/carrier shelter): the hangar
       // occupancy line + parked-aircraft manifest with per-aircraft
       // Launch buttons. Parked aircraft are invisible on the map (render
       // skips sheltered units), so this is the only way to launch them.
-      // Reuses 'sel-unit' / 'sel-action' — no new DOM class; the bh:
-      // segment digests the parked aircraft ids (AD11).
+      // Stat rows use 'stat-row'; the bh: segment digests the parked
+      // aircraft ids (AD11).
       const hl = hangarLine(b);
       if (hl !== '' && b.owner === HUMAN_PLAYER_ID) {
-        panel.append(el('div', 'sel-unit', hl));
+        const hangarBlock = el('div', 'stat-block');
+        hangarBlock.append(el('div', 'stat-row', hl));
         for (const p of parkedAircraft(world, b.id)) {
           const pdef = UNIT_DEFS[p.kind as UnitKind];
-          panel.append(el('div', 'sel-unit', `✈ ${pdef?.name ?? p.kind}`));
+          // Command-menu rebuild (2026-10-01): the ✈ glyph is gone (no
+          // emoji/symbols in UI) — the row is the aircraft name.
+          hangarBlock.append(el('div', 'stat-row', pdef?.name ?? p.kind));
           const pl = document.createElement('button');
           pl.className = 'sel-action';
           pl.textContent = loc(sel.launchVerb);
           pl.addEventListener('click', () => this.actions.onLaunchAircraft(p.id));
-          panel.append(pl);
+          actions.append(pl);
         }
+        panel.append(hangarBlock);
       }
+      // Command-menu rebuild (2026-10-01): the Demolish button arms the
+      // demolish tool for the selected building (the existing
+      // onBuildTool('demolish') — the sim's demolish command validates,
+      // and the HUD already surfaces it in Civilian → Tools). Owned
+      // buildings only.
+      if (b.owner === HUMAN_PLAYER_ID) {
+        const dem = document.createElement('button');
+        dem.className = 'sel-action';
+        dem.textContent = loc(sel.demolishVerb);
+        dem.title = loc(sel.demolishTitle);
+        dem.addEventListener('click', () => this.actions.onBuildTool('demolish'));
+        actions.append(dem);
+      }
+      if (actions.hasChildNodes()) panel.append(actions);
       // A completed Research Lab opens the research panel (spec §8).
       if (b.kind === 'lab' && b.owner === HUMAN_PLAYER_ID && b.progress >= 1) {
         this.appendResearchPanel(panel, world);

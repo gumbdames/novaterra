@@ -544,10 +544,27 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
   {
     id: 'selection-units',
     renderedIn: 'updateSelection',
+    // Command-menu rebuild (2026-10-01): the detail view — detail-back
+    // (Back to the tab menu), detail-header / detail-title (icon +
+    // name), one stat-block of stat-row lines per unit, and one
+    // detail-actions row per unit holding the sel-action buttons.
     // sel-bar / sel-bar-fill / sel-bar-label: the Phase 3 fuel/ammo
     // bars; sel-toggle / sel-toggle-row: the Repair/Rearm/Refuel buttons
     // on supply units.
-    domClasses: ['sel-title', 'sel-unit', 'sel-action', 'sel-bar', 'sel-bar-fill', 'sel-bar-label', 'sel-toggle-row', 'sel-toggle'],
+    domClasses: [
+      'detail-back',
+      'detail-header',
+      'detail-title',
+      'stat-block',
+      'stat-row',
+      'detail-actions',
+      'sel-action',
+      'sel-bar',
+      'sel-bar-fill',
+      'sel-bar-label',
+      'sel-toggle-row',
+      'sel-toggle',
+    ],
     // uf: fuel/ammo/cargo levels (Phase 3 logistics, 5% quantization);
     // us: the unit's field-service toggles.
     // ue: the aircraft's shelter state (Phase 5 hangar/carrier shelter:
@@ -567,7 +584,20 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
   {
     id: 'selection-building',
     renderedIn: 'updateSelection',
-    domClasses: ['sel-title', 'sel-unit'],
+    // Command-menu rebuild (2026-10-01): the detail view — detail-back
+    // (Back to the tab menu), detail-header / detail-title (icon +
+    // name), the stat-block of stat-row lines, the hangar manifest
+    // stat-block, and the detail-actions row (parked-aircraft Launch
+    // buttons + the Demolish button, all 'sel-action').
+    domClasses: [
+      'detail-back',
+      'detail-header',
+      'detail-title',
+      'stat-block',
+      'stat-row',
+      'detail-actions',
+      'sel-action',
+    ],
     // bu: power/water diagnosis line (Phase 2 utilities; the panel renders
     // it for every selected building via buildingUtilityLine).
     // bq: depot stock line (Phase 3 logistics; "Ammo 42/150 · Fuel 200/250").
