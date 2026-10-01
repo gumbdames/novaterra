@@ -235,8 +235,6 @@ export const STRINGS = {
     liveMuseTitle: 'Live Muse (hopefully coming)',
     liveMuseNote:
       'Point Muse at a live language model for strategic advice. The live model is advisory only — it can never drive the game. Not wired yet in 0.1 Alpha; the offline Muse covers you meanwhile.',
-    liveKeyLabel: 'API key',
-    liveKeyPlaceholder: 'Stored only in this browser',
     liveEnableLabel: 'Enable Live Muse (hopefully coming)',
   },
   help: {

@@ -15,34 +15,30 @@
  */
 
 /**
- * NOVATERRA — muse/live.ts — optional Live Muse advisory link (Phase 2).
+ * NOVATERRA — muse/live.ts — optional Live Muse advisory link (0.1 Alpha).
  *
- * Responsibilities:
- *  - The strategic digest → advisory directive protocol: the game sends
- *    a small JSON digest (tick, age, resources, forces, threat, mission
- *    progress) to an LLM endpoint; the model answers with one or more
- *    `MUSE: <directive>` lines. Only `advise` directives are honored —
- *    they become persona flavor text. The live model NEVER drives ticks
- *    and NEVER mutates sim state (the directive parser rejects anything
- *    else).
- *  - `buildDigest(...)`: pure JSON-safe digest builder.
+ * Honest status: Live Muse is "hopefully coming" and is OFFLINE ONLY in
+ * 0.1 Alpha. There is no API-key flow (removed entirely per the
+ * 2026-09-29 user directive), no endpoint, and no networking — zero
+ * third-party AI API surface. The game's five Classic AI rivals and the
+ * offline Muse persona are the only advisors that ship.
+ *
+ * Responsibilities of what remains:
+ *  - `buildDigest(...)`: pure JSON-safe digest builder (kept for the
+ *    future protocol and for tests).
  *  - `parseDirectives(text)`: strict parser for the advisory protocol.
- *  - `hasLiveKey()` / storage helpers: the user-supplied API key lives
- *    in localStorage only, is never committed, never logged, never
- *    leaves except as a Bearer header to the configured endpoint.
- *  - `queryLiveMuse(...)`: performs the fetch; on any failure it throws
- *    a `LiveMuseError` so the caller falls back to the offline persona.
- *
- * Status (0.1 Alpha): the protocol and UI scaffolding are implemented;
- * the settings panel marks Live Muse as hopefully coming until an endpoint
- * is wired. Offline Muse is always the fallback.
+ *  - `createLiveMuseClient()`: the advise-only client. It throws
+ *    `LiveMuseError` on every call in 0.1 Alpha so callers fall back
+ *    to the offline persona — constructing it never networks.
+ *  - `isLiveEnabled()`: the persisted live-mode flag (drives the
+ *    disabled "hopefully coming" checkbox only; the checkbox is never
+ *    interactive in 0.1 Alpha, so there is no setter).
  */
 
 import type { World } from '../sim/world';
 import { getPlayer } from '../sim/city';
 import { computeThreat, militaryValue } from './director';
 
-const LIVE_KEY_STORAGE = 'novaterra.muse.liveKey';
 const LIVE_ENABLED_STORAGE = 'novaterra.muse.liveEnabled';
 
 /** Strategic digest sent to the live model. JSON-safe. */
@@ -124,36 +120,11 @@ export function parseDirectives(responseText: string): LiveDirective[] {
   return out;
 }
 
-export function getLiveKey(): string {
-  try {
-    return localStorage.getItem(LIVE_KEY_STORAGE) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-export function setLiveKey(key: string): void {
-  try {
-    if (key.length === 0) localStorage.removeItem(LIVE_KEY_STORAGE);
-    else localStorage.setItem(LIVE_KEY_STORAGE, key);
-  } catch {
-    // Storage unavailable — live mode simply won't persist.
-  }
-}
-
 export function isLiveEnabled(): boolean {
   try {
-    return localStorage.getItem(LIVE_ENABLED_STORAGE) === '1' && getLiveKey().length > 0;
+    return localStorage.getItem(LIVE_ENABLED_STORAGE) === '1';
   } catch {
     return false;
-  }
-}
-
-export function setLiveEnabled(enabled: boolean): void {
-  try {
-    localStorage.setItem(LIVE_ENABLED_STORAGE, enabled ? '1' : '0');
-  } catch {
-    // Ignore.
   }
 }
 

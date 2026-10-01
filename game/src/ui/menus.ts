@@ -47,7 +47,6 @@ import {
   saveMuseFrequency,
   type MuseFrequency,
 } from '../muse/controller';
-import { getLiveKey, setLiveKey } from '../muse/live';
 
 /** Graphics quality levels. */
 export type QualityLevel = 'low' | 'medium' | 'high';
@@ -511,15 +510,10 @@ export class SettingsPanel {
 
     panel.append(el('h3', '', s.liveMuseTitle));
     panel.append(el('p', 'settings-note', s.liveMuseNote));
-    const liveKeyLabel = el('label', 'settings-row', `${s.liveKeyLabel}: `);
-    const liveKey = document.createElement('input');
-    liveKey.type = 'password';
-    liveKey.placeholder = s.liveKeyPlaceholder;
-    liveKey.autocomplete = 'off';
-    liveKey.value = getLiveKey();
-    liveKey.addEventListener('change', () => setLiveKey(liveKey.value.trim()));
-    liveKeyLabel.append(liveKey);
-    panel.append(liveKeyLabel);
+    // No API-key field (user directive 2026-09-29, rip-out 2026-10-01):
+    // Live Muse is an offline placeholder until the integration is
+    // wired — there is no key flow, no endpoint, and no third-party
+    // AI API surface in 0.1 Alpha.
     const liveEnableLabel = el('label', 'settings-row', '');
     const liveEnable = document.createElement('input');
     liveEnable.type = 'checkbox';

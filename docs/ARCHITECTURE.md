@@ -191,14 +191,16 @@ they never mutate sim state.
   meter, ~150 event taunts) — a pure function of sim state with serializable
   brain (an LLM in the tick would break determinism, offline play and budget).
   Mode 2 ships in Phase 2; data model reserves the slot in Phase 1.
-- **Live Muse link (online option, user-confirmed 2026-09-28):** when the
-  player connects their own API key (settings screen; stored in `localStorage`
-  only, never leaves the browser except to the API endpoint), the game
-  exchanges compact strategic digests (~KB JSON, every 30–60 s) for directives
-  + commentary. The model is a **strategic commander only**: it never blocks
-  the tick and never mutates sim state directly — local systems execute
-  tactically. No key / offline / API error ⇒ silent fallback to the persona
-  director. Offline-first is unconditional.
+- **Live Muse (hopefully coming, offline in 0.1 Alpha):** the optional
+  live-language-model advisory link is NOT wired in 0.1 Alpha and has
+  NO API-key flow — the key settings were removed entirely per the
+  2026-09-29 user directive (no key storage, no endpoint, no
+  networking; zero third-party AI API surface). The settings panel and
+  Muse box mark Live Muse "hopefully coming"; when it ships it will be
+  a **strategic advisor only**: it never blocks the tick and never
+  mutates sim state directly — local systems execute tactically. The
+  offline persona director is the only advisor that ships in 0.1
+  Alpha. Offline-first is unconditional.
 - **Ages/tech:** 5 near-future ages; age-ups are costly commitments with
   landmark-style National Program choices (positive framing: bonuses, never
   lockouts). MVP: 2 ages.
@@ -281,7 +283,7 @@ fallbacks so the game is never blank:
 | D5 | 2026-09-28 | Same-machine determinism; doubles OK | Single-player: no lockstep; fixed-point seam kept in `sim/math.ts` | — |
 | D6 | 2026-09-28 | Hand-rolled SoA hot store + OOP strategic layer (prototype vs apecs before committing) | Must own system iteration order for the determinism contract | — |
 | D7 | 2026-09-28 | Mode 2 = "Muse persona" adaptive AI director (offline default) | Persona is a pure function of sim state (serializable brain); a model in the tick would break determinism/offline/budget | — |
-| D8 | 2026-09-28 | Optional "Live Muse link": user's own API key, digest↔directive protocol, strategic-commander only, silent fallback to persona | User request 2026-09-28; keeps offline-first intact; model never touches the tick, so determinism and offline play are preserved | — |
+| D8 | 2026-09-28, reversed 2026-09-29 | "Live Muse link" was: user's own API key, digest↔directive protocol, strategic-commander only, silent fallback to persona — REVERSED per user directive ("rip it out entirely", 2026-09-29): key UI removed, key storage deleted, no endpoint, no networking; Live Muse ships as an honest offline "hopefully coming" placeholder | User request 2026-09-28, then user rip-out 2026-09-29; offline-first unconditional | — |
 | D9 | 2026-09-28 | Tick accumulator epsilon (1e-9 ms); named RNG streams | Float subtraction of TICK_MS accumulates ~1e-13 dust per tick — without the epsilon an accumulator holding exactly N ticks' worth of time compares just below TICK_MS and loses a tick (100 ms fed only 2 ticks instead of 3). Named streams (seed = FNV-1a(master, name)) keep subsystems from shifting each other's draws; all stream states live in `world.rng`, so saves capture them | — |
 | D10 | 2026-09-28 | Meridian Plains terrain: regen-from-seed, not stored in World | 256×256 uint16 heightfield regenerates identically from the map seed (5th-percentile water level ⇒ ~5% water; 2 spawns on land, ≥300 apart), so snapshots stay small and saves never store terrain. Water level is derived from the generated heights (percentile), not a tuned constant, so reseeds keep the 5% character automatically | — |
 

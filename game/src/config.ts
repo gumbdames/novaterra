@@ -20,9 +20,10 @@
  * This module is intentionally pure (no DOM, no three.js): it is imported by
  * headless tests and by every other module. Keep it that way.
  *
- * PHASE 2 SEAM: user settings — including the optional "Live Muse link"
- * (the player's own API key, stored in localStorage only, never leaving the
- * browser except to the API endpoint) — will live behind a Settings
+ * PHASE 2 SEAM: user settings — including the offline Muse persona
+ * frequency and the honest "Live Muse (hopefully coming)" placeholder
+ * (no API-key flow: removed entirely per the 2026-09-29 user
+ * directive; zero third-party AI API surface) — live behind a Settings
  * interface defined here. Nothing is implemented in Phase 1; this comment
  * is the reservation, not the feature.
  */

@@ -23,13 +23,15 @@ advisory-only scaffolding marked hopefully coming in 0.1 Alpha.
   meter swings past 75/25. `notify(text)` injects authored content
   (campaign messages, live-Muse advice) bypassing throttle.
   UI-owned: never mutates sim state.
-- `live.ts` — optional Live Muse link: `MuseDigest` builder, the
+- `live.ts` — Live Muse "hopefully coming" placeholder (0.1 Alpha): the
   `MUSE: advise: <text>` directive protocol (`parseDirectives` honors
   ONLY advise lines — a live model can never drive ticks or mutate
-  state), localStorage-only API key (never committed, never logged),
-  `LiveMuseError` for offline fallback. In 0.1 Alpha no endpoint is
-  wired: `createLiveMuseClient` always falls back; the settings panel
-  marks Live Muse "hopefully coming".
+  state) and the `MuseDigest` builder. NO API-key flow — removed
+  entirely per the 2026-09-29 user directive: no key storage, no
+  endpoint, no networking, zero third-party AI API surface.
+  `createLiveMuseClient().advise()` always throws `LiveMuseError` so
+  callers fall back to the offline persona; the settings panel marks
+  Live Muse "hopefully coming".
 
 ## Rules
 

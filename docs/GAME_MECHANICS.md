@@ -704,11 +704,13 @@ Muse is charming, never annoying: how often they speak is your call —
 only. In campaign missions Muse also delivers the story's scripted
 messages.
 
-**Live Muse (hopefully coming):** connect your own language-model API key
-in Settings and Muse will offer strategic advice from a live summary
-of your game. The key stays in your browser only, and the live model
-is advisory — it can never take over your game. Not wired yet in
-0.1 Alpha; the offline Muse covers you meanwhile.
+**Live Muse (hopefully coming):** an optional live-language-model link
+for strategic advice from a live summary of your game — marked
+"hopefully coming" in Settings, NOT wired yet in 0.1 Alpha. When it
+ships it will be advisory only: it can never take over your game.
+There is no API-key flow in the game (removed entirely per the
+2026-09-29 directive), no endpoint, no networking, and no third-party
+AI API surface — the offline Muse covers you meanwhile.
 
 ## Phase 3: Chain of command
 

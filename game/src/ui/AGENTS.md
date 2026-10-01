@@ -457,8 +457,10 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `game.ts` (Phase 2): owns the mission run + `MuseController` +
   `MuseBox` + `MissionPanel`; polls the campaign director ~2×/sec and
   Muse ~1×/sec in the game loop. Victory/defeat → debrief overlay →
-  `onMissionEnd` records progress. Muse settings (frequency + live key)
-  live in the settings panel, live-applied in game.
+  `onMissionEnd` records progress. Muse settings (frequency + the
+  disabled "hopefully coming" Live Muse checkbox) live in the settings
+  panel, live-applied in game. (No API-key flow — removed entirely per
+  the 2026-09-29 user directive.)
 - `veterancy.ts` — **veterancy display helpers (Phase 1, pure, tested,
   `tests/ui.veterancy.test.ts`).** `vetXpLine(u)` formats the selection
   panel's per-unit line (rank + ▲ glyphs + XP progress, Elite shows the

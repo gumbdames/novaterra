@@ -134,9 +134,11 @@ pass, the build is green, and all previous steps' smoke tests still pass
 8-mission campaign "The First Term" (briefings, objectives, scripted events,
 peaceful path in every mission, two endings) + offline deterministic Muse
 persona director (commentary, taunts, visible threat meter, fair dirty
-tricks, configurable chattiness) + optional **Live Muse link** scaffolding
-(user API key in localStorage only; digest → `MUSE: advise:` protocol;
-offline fallback; marked hopefully coming in 0.1 Alpha).
+tricks, configurable chattiness) + Live Muse "hopefully coming"
+placeholder (honest offline scaffolding — digest → `MUSE: advise:`
+protocol, offline fallback; NO API-key flow, no endpoint, no
+networking, zero third-party AI API surface — the 2026-09-29 rip-out
+directive is recorded under Decisions below).
 
 Done so far:
 - `src/campaign/`: `missions.ts` (8 missions as data), `objectives.ts`
@@ -146,8 +148,9 @@ Done so far:
   with memory fallback).
 - `src/muse/`: `persona.ts` (deterministic event→line hash), `director.ts`
   (threat meter), `controller.ts` (event detection + chattiness throttle),
-  `live.ts` (digest builder, advise-only protocol, localStorage key,
-  coming-soon client).
+  `live.ts` (digest builder, advise-only protocol, "hopefully coming"
+  client that always falls back to the offline persona — no API-key
+  flow, no endpoint, no networking).
 - `src/ui/campaignui.ts` (mission select/briefing/debrief/objective
   tracker), `src/ui/musebox.ts` (Muse widget + threat meter), session
   campaign setup, game-controller wiring, main-menu Missions flow,
@@ -165,11 +168,16 @@ HOW_TO_PLAY.md).
 
 ## Decisions (resolved with user 2026-09-28)
 
-1. Mode 2 = "Muse persona" adaptive AI director (offline default) + optional
-   "Live Muse link" when online (user connects their own Muse API key in
-   settings; key in `localStorage` only, never leaves the browser except to
-   the API endpoint; strategic-commander protocol that never blocks the tick;
-   silent fallback to persona when offline). Offline-first is unconditional.
+1. Mode 2 = "Muse persona" adaptive AI director (offline default) + a
+   "Live Muse link" hopefully coming (advisory-only strategic-commander
+   protocol that never blocks the tick; offline fallback to the persona).
+   REVERSED 2026-09-29 per user directive ("rip it out entirely" — no
+   connection to any third-party AI): the API-key settings UI was
+   removed from both the settings panel and the Muse box, the key
+   storage was deleted from `muse/live.ts`, and Live Muse ships as an
+   honest OFFLINE placeholder marked "hopefully coming" — no key flow,
+   no endpoint, no networking, zero third-party AI API surface in
+   0.1 Alpha. Offline-first is unconditional.
 2. Game name: **NOVATERRA**. Backstory draft adopted.
 3. Build order: vertical slice as above — approved.
 4. Repo visibility: **public** since 2026-09-28 (user flipped it; was

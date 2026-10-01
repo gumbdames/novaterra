@@ -24,9 +24,9 @@
  *    seconds. `setThreat(n)` updates the meter. Hidden entirely when
  *    the frequency is `off`.
  *  - `MuseSettingsPanel`: frequency selector (off/quiet/normal/chatty)
- *    and the Live Muse section — API key field (stored in localStorage
- *    only, never committed, never logged), enable checkbox, and the
- *    honest "hopefully coming" note for 0.1 Alpha.
+ *    and the Live Muse section — the honest "hopefully coming" note
+ *    plus the disabled enable checkbox for 0.1 Alpha. (No API-key
+ *    field — removed entirely per the 2026-09-29 user directive.)
  *
  * Pure DOM. The `MuseController` (muse/controller.ts) decides what to
  * say; this only renders.
@@ -37,12 +37,7 @@ import {
   saveMuseFrequency,
   type MuseFrequency,
 } from '../muse/controller';
-import {
-  getLiveKey,
-  setLiveKey,
-  isLiveEnabled,
-  setLiveEnabled,
-} from '../muse/live';
+import { isLiveEnabled } from '../muse/live';
 
 function el(tag: string, className: string, text?: string): HTMLElement {
   const e = document.createElement(tag);
@@ -191,16 +186,9 @@ export class MuseSettingsPanel {
       'Point Muse at a live language model for strategic advice. ' +
       'The live model is advisory only — it can never drive the game. ' +
       'Live integration is not wired yet in 0.1 Alpha; the offline Muse covers you meanwhile.'));
-    const keyRow = el('div', 'setting-row');
-    keyRow.append(el('span', 'setting-label', 'API key'));
-    const keyInput = document.createElement('input');
-    keyInput.type = 'password';
-    keyInput.placeholder = 'Stored only in this browser';
-    keyInput.value = getLiveKey();
-    keyInput.autocomplete = 'off';
-    keyInput.addEventListener('change', () => setLiveKey(keyInput.value.trim()));
-    keyRow.append(keyInput);
-    overlay.append(keyRow);
+    // No API-key field (user directive 2026-09-29, rip-out 2026-10-01):
+    // there is no key flow, no endpoint, and no third-party AI API
+    // surface in 0.1 Alpha.
     const enableRow = el('div', 'setting-row');
     const enableLabel = document.createElement('label');
     const enableBox = document.createElement('input');

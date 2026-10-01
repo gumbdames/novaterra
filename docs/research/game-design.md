@@ -696,7 +696,7 @@ sessions. Everything deferred *extends* this loop rather than completing it.
 
 | # | Question | Recommendation | Owner/Status |
 |---|---|---|---|
-| 1 | Mode 2 "play against Muse". | **Confirmed 2026-09-28:** persona director as the offline default **plus** an optional "Live Muse link" when online (user connects their own API key in settings; key in `localStorage` only; strategic-commander protocol that never blocks the tick; silent fallback to persona when offline). See C7 + C7a. | Resolved |
+| 1 | Mode 2 "play against Muse". | **Confirmed 2026-09-28:** persona director as the offline default **plus** an optional "Live Muse link" when online (user connects their own API key in settings; key in `localStorage` only; strategic-commander protocol that never blocks the tick; silent fallback to persona when offline). See C7 + C7a. **REVERSED 2026-09-29** per user directive ("rip it out entirely" — no third-party AI): the API-key settings UI was removed, the key storage deleted, and Live Muse ships as an honest offline "hopefully coming" placeholder — no key flow, no endpoint, no networking. | Resolved, then reversed 2026-09-29 |
 | 2 | Game name. | **NOVATERRA** (see C1 for the shortlist + rationale). | Resolved 2026-09-28: NOVATERRA confirmed; repo renamed to `novaterra` |
 | 3 | Faction count at launch: 1 shared roster + 2 doctrines, or fully asymmetric rosters? | 1 shared roster + 2 doctrine overlays at launch (balance cost); full asymmetry post-launch. | Design decision, recorded |
 | 4 | Mobile/touch scope. | Per brief: only if playtests show it's genuinely fun. Desktop-first; reassess after MVP playtests. | Deferred to post-MVP |
