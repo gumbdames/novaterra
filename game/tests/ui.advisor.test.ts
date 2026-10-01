@@ -23,7 +23,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createWorld, type World } from '../src/sim/world';
-import { getPlayer, placeBuilding } from '../src/sim/city';
+import { getPlayer, placeBuilding, BUILDING_DEFS } from '../src/sim/city';
 import { spawnUnit } from '../src/sim/units';
 import {
   ADVISOR_DAMAGED_FRACTION,
@@ -33,11 +33,10 @@ import {
 } from '../src/ui/advisor';
 import { CONNECTIVITY_COST , getAgeState } from '../src/sim/ages';
 import { UNIT_DEFS } from '../src/sim/units';
+import { STRINGS } from '../src/ui/strings';
 
 function setup(): World {
   const world = createWorld(20260928);
-  // Keep an engineer so the "no engineers" warning stays out by default.
-  spawnUnit(world, 'engineer', 0, 0, 0);
   // Fresh worlds start rich enough to afford the age advance; keep funds
   // below the age cost so "all clear" really means all clear.
   setFunds(world, CONNECTIVITY_COST.funds - 1);
@@ -87,10 +86,10 @@ describe('advisor', () => {
     expect(damaged?.detail).toContain('1');
   });
 
-  it('flags a missing engineer corps', () => {
-    const world = createWorld(20260928); // no engineer this time
+  it('never warns about missing engineers (A9: the trigger was false advice)', () => {
+    const world = createWorld(20260928); // no engineer — must stay silent
     const items = evaluateAdvisor(world, 0);
-    expect(items.some((i) => i.title.toLowerCase().includes('engineer'))).toBe(true);
+    expect(items.some((i) => i.title.toLowerCase().includes('engineer'))).toBe(false);
   });
 
   it('suggests the age advance as info when affordable', () => {
@@ -172,5 +171,53 @@ describe('advisor', () => {
     const items = evaluateAdvisor(world, 0);
     expect(items.some((i) => i.title.toLowerCase().includes('power'))).toBe(false);
     expect(items.some((i) => i.title.toLowerCase().includes('water'))).toBe(false);
+  });
+
+  // Roadmap A9 (2026-10-01): the advisor must never recommend buildings
+  // that do not exist or roles units do not have.
+  it('names only real material producers when materials run low', () => {
+    const world = setup();
+    getPlayer(world.city, 0)!.materials = ADVISOR_MATERIALS_LOW - 1;
+    const items = evaluateAdvisor(world, 0);
+    const warn = items.find((i) => i.severity === 'warning');
+    expect(warn).toBeDefined();
+    expect(warn!.detail.toLowerCase()).not.toContain('warehouse');
+    // Every producer the advice names exists and really outputs materials.
+    expect(BUILDING_DEFS.factory).toBeDefined();
+    expect(BUILDING_DEFS.quarry).toBeDefined();
+    const out = (k: 'factory' | 'quarry') =>
+      (BUILDING_DEFS[k].output as unknown as Record<string, number>).materials ?? 0;
+    expect(out('factory')).toBeGreaterThan(0);
+    expect(out('quarry')).toBeGreaterThan(0);
+  });
+
+  it('never mentions warehouses in any advisor state', () => {
+    // Trigger every advice branch, then sweep all copy for the A9
+    // falsehood class (nonexistent buildings).
+    const world = setup();
+    setFunds(world, ADVISOR_FUNDS_CRITICAL - 1);
+    getPlayer(world.city, 0)!.materials = ADVISOR_MATERIALS_LOW - 1;
+    world.city.foodShortage = true;
+    const u = spawnUnit(world, 'tank', 0, 10, 10);
+    u.hp = 1;
+    const b = placeBuilding(world.city, { kind: 'house', owner: 0, cx: 5, cz: 5, facing: 0 });
+    b.operational = true;
+    b.powerDiag = 'disconnected';
+    b.waterDiag = 'shortage';
+    setFunds(world, CONNECTIVITY_COST.funds + 100);
+    getPlayer(world.city, 0)!.materials = CONNECTIVITY_COST.materials + 100;
+    const items = evaluateAdvisor(world, 0);
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) {
+      expect(`${item.title} ${item.detail}`.toLowerCase()).not.toContain('warehouse');
+    }
+  });
+
+  it('has no engineer-construction copy left in the advisor strings', () => {
+    expect(STRINGS.advisor).not.toHaveProperty('noEngineers');
+    expect(STRINGS.advisor).not.toHaveProperty('noEngineersDetail');
+    for (const value of Object.values(STRINGS.advisor)) {
+      expect(String(value).toLowerCase()).not.toContain('engineers to build');
+    }
   });
 });

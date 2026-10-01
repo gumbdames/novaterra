@@ -264,7 +264,7 @@ the counter. Advanced units need a production building (barracks, war
 factory, airfield, naval yard) before they can be trained.
 
 **Infantry**
-- **Engineer** — builds everything. Protect yours.
+- **Engineer** — cheap basic infantry; trains with no production building required.
 - **Rifles** — cheap infantry, good against other infantry.
 - **Sniper Team** — long-range precision; deletes infantry and
   raiders, dies to anything that touches it (needs a barracks).

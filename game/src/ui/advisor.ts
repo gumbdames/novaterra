@@ -142,18 +142,6 @@ export function evaluateAdvisor(world: World, playerId: number): AdvisorItem[] {
     });
   }
 
-  // No engineers means no construction capacity.
-  const engineers = world.units.filter(
-    (u) => u.owner === playerId && u.hp > 0 && u.kind === 'engineer',
-  ).length;
-  if (engineers === 0) {
-    items.push({
-      severity: 'warning',
-      title: s.noEngineers,
-      detail: s.noEngineersDetail,
-    });
-  }
-
   // Opportunity: the age advance is affordable (informational only).
   if (
     getAgeState(world, playerId).age === 'foundation' &&
