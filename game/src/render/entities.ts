@@ -126,6 +126,7 @@ import { GridView } from './gridView';
 // diagnostic overlay. ui/utilities.ts is a pure contract module (no DOM,
 // no three.js) — safe to import from the render layer.
 import { NetworkOverlay } from './networks';
+import { RailOverlay } from './rails';
 import { UtilityOverlay } from './utilityOverlay';
 import { UtilityIndicators } from './utilityIndicators';
 import { DesirabilityOverlay } from './desirabilityOverlay';
@@ -1217,6 +1218,8 @@ export class EntityRenderer {
    * overlay (coverage tints + diag markers, off by default).
    */
   private readonly networkOverlay: NetworkOverlay;
+  /** Grand-expansion Phase 4 (transport, S7): the always-on visible rail network. */
+  private readonly railOverlay: RailOverlay;
   /**
    * Phase 4 RENDER workstream A (item 1): underground/x-ray view — ghosts
    * the terrain + water and lights up the water-pipe network. Materials
@@ -1361,6 +1364,9 @@ export class EntityRenderer {
     // Phase 2 (utilities): network runs render always; the diagnostic
     // overlay starts hidden (top-bar toggle flips it).
     this.networkOverlay = new NetworkOverlay(scene);
+    // Grand-expansion Phase 4 (transport, S7): rail tracks render
+    // always-on, like roads and the utility network runs.
+    this.railOverlay = new RailOverlay(scene);
     // Phase 4 RENDER workstream A (item 1): the underground/x-ray view.
     // Terrain/water materials are late-bound via setXrayMaterials (the
     // TerrainView is built before this renderer exists).
@@ -1392,6 +1398,8 @@ export class EntityRenderer {
     this.syncCityLife(world);
     this.syncLivingNature(world);
     this.syncNetworks(world);
+    // Grand-expansion Phase 4 (transport, S7): the visible rail network.
+    this.syncRails(world);
     this.syncUtilityOverlay(world);
     // Phase 4 RENDER workstream A (item 5): per-building utility
     // indicators — always on, 0 draw calls when fully supplied.
@@ -1545,6 +1553,19 @@ export class EntityRenderer {
       CELL_WORLD_SIZE,
       heightFn,
     );
+  }
+
+  /**
+   * Grand-expansion Phase 4 (transport, S7): the always-on rail tracks.
+   * Reads the sim's `city.rails` directly (cell indices + track class),
+   * defensively (empty pre-sim) — the overlay rebuilds only when the
+   * (cell, class) digest changes.
+   */
+  private syncRails(world: World): void {
+    const t = this.terrain;
+    const heightFn =
+      t === null ? undefined : (x: number, z: number): number => heightAt(t, x, z);
+    this.railOverlay.sync(world.city.rails ?? [], CELL_WORLD_SIZE, heightFn);
   }
 
   /**
@@ -1855,6 +1876,7 @@ export class EntityRenderer {
     // Living nature.
     this.birds.dispose();
     this.networkOverlay.dispose();
+    this.railOverlay.dispose();
     this.utilityOverlay.dispose();
     this.utilityIndicators.dispose();
     this.logisticsOverlay.dispose();

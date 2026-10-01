@@ -36,14 +36,58 @@
  * per-corner sampling buys nothing); without it the geometry stays
  * flat (the headless-test path).
  *
- * Rendering: one draw call per layer (track mesh + catenary mesh),
- * created by the caller (`render/entities.ts`).
+ * Rendering: the `RailOverlay` class owns the two merged meshes (one
+ * draw call for track + sleepers, one for catenary on electrified
+ * classes, 0 when the map has no rails) and rebuilds only when the
+ * (cell, class) digest changes; `EntityRenderer` constructs it in its
+ * constructor, syncs it in `sync()` from `world.city.rails`, and
+ * disposes it in `dispose()`.
  *
  * Import-safe under Node/vitest (three.js has no DOM at import time);
- * fully unit-tested in tests/render.rails.test.ts.
+ * unit-tested in tests/render.rails.test.ts.
  */
 
 import * as THREE from 'three';
+
+import { cellCoords, cellCenterWorld } from '../sim/city';
+
+/**
+ * One sim rail cell (structural — mirrors sim/city.ts `RailCell` without
+ * importing sim values beyond the cell math, the same boundary
+ * networks.ts keeps).
+ */
+export interface SimRailCell {
+  cell: number;
+  cls: TrackClassId;
+}
+
+/**
+ * Pure: sim rail cells → world-space visuals for the builders.
+ * Deterministic: same cells in any order → same list order after the
+ * builders' own normalization.
+ */
+export function railCellsToVisual(rails: readonly SimRailCell[]): RailCellVisual[] {
+  const out: RailCellVisual[] = [];
+  for (const r of rails) {
+    const { cx, cz } = cellCoords(r.cell);
+    out.push({ x: cellCenterWorld(cx), z: cellCenterWorld(cz), cls: r.cls });
+  }
+  return out;
+}
+
+/** FNV-1a digest over (cell, class) pairs — the rebuild key. */
+export function railOverlayDigest(rails: readonly SimRailCell[]): number {
+  const sorted = [...rails].sort((a, b) => a.cell - b.cell);
+  let h = 0x811c9dc5;
+  for (const r of sorted) {
+    const s = `${r.cell}:${r.cls};`;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+  }
+  return h >>> 0;
+}
 
 /**
  * Track class ids (mirrors sim/city.ts `TrackClass`; plain strings so
@@ -354,4 +398,106 @@ export function buildRailCatenary(
     else list.box(c.x, wy, c.z, wireW, wireW, wl, RAIL_WIRE);
   }
   return list.build();
+}
+
+/**
+ * The rail-track overlay (C8, 0.1 Alpha): the always-on visible rail
+ * network. Reads the sim's `city.rails` (cell indices + track class)
+ * every sync and rebuilds its two merged meshes only when the
+ * (cell, class) digest changes — static almost every frame.
+ *
+ * Rendering: 1 draw call for the track mesh (sleepers + rails + slab)
+ * + 1 for the catenary mesh (posts + contact wire on electrified
+ * classes), 0 when the map has no rails. Owned by `EntityRenderer`:
+ * constructed in its constructor, synced in `sync()` from
+ * `world.city.rails`, disposed in `dispose()`. Import-safe under
+ * Node/vitest.
+ */
+export class RailOverlay {
+  private readonly group = new THREE.Group();
+  private trackMesh: THREE.Mesh | null = null;
+  private catenaryMesh: THREE.Mesh | null = null;
+  private lastDigest = -1;
+  /** Rebuild counter (test/debug hook). */
+  private rebuilds = 0;
+
+  constructor(scene: THREE.Scene) {
+    this.group.name = 'rail-tracks';
+    scene.add(this.group);
+  }
+
+  /**
+   * Rebuild the track + catenary meshes only when the rail digest
+   * changed since the last sync (the common path is one integer
+   * compare). `cellSize` is the sim's world units per cell;
+   * `heightFn` drapes the track on the terrain (flat at y=0 headless).
+   */
+  sync(
+    rails: readonly SimRailCell[],
+    cellSize: number,
+    heightFn?: (x: number, z: number) => number,
+  ): void {
+    const digest = railOverlayDigest(rails);
+    if (digest === this.lastDigest) return;
+    this.lastDigest = digest;
+    this.rebuild(rails, cellSize, heightFn);
+    this.rebuilds++;
+  }
+
+  private clear(mesh: THREE.Mesh | null): null {
+    if (mesh !== null) {
+      this.group.remove(mesh);
+      mesh.geometry.dispose();
+      (mesh.material as THREE.Material).dispose();
+    }
+    return null;
+  }
+
+  private rebuild(
+    rails: readonly SimRailCell[],
+    cellSize: number,
+    heightFn: ((x: number, z: number) => number) | undefined,
+  ): void {
+    this.trackMesh = this.clear(this.trackMesh);
+    this.catenaryMesh = this.clear(this.catenaryMesh);
+    if (rails.length === 0) return;
+    const visuals = railCellsToVisual(rails);
+    const trackGeo = buildRailGeometry(visuals, cellSize, heightFn);
+    this.trackMesh = new THREE.Mesh(
+      trackGeo,
+      new THREE.MeshLambertMaterial({ vertexColors: true }),
+    );
+    this.trackMesh.frustumCulled = false;
+    this.trackMesh.renderOrder = 1;
+    this.group.add(this.trackMesh);
+    // Catenary only on electrified classes (empty geometry ⇒ no mesh).
+    if (visuals.some((v) => v.cls === 'electric' || v.cls === 'high-speed')) {
+      const catGeo = buildRailCatenary(visuals, cellSize, heightFn);
+      this.catenaryMesh = new THREE.Mesh(
+        catGeo,
+        new THREE.MeshLambertMaterial({ vertexColors: true }),
+      );
+      this.catenaryMesh.frustumCulled = false;
+      this.catenaryMesh.renderOrder = 1;
+      this.group.add(this.catenaryMesh);
+    }
+  }
+
+  /** Visible meshes = draw calls this frame (0..2). */
+  drawCallCount(): number {
+    let n = 0;
+    if (this.trackMesh !== null) n++;
+    if (this.catenaryMesh !== null) n++;
+    return n;
+  }
+
+  /** Rebuild counter (test/debug hook). */
+  debugRebuilds(): number {
+    return this.rebuilds;
+  }
+
+  dispose(): void {
+    this.trackMesh = this.clear(this.trackMesh);
+    this.catenaryMesh = this.clear(this.catenaryMesh);
+  }
 }

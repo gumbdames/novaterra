@@ -185,6 +185,31 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   WebGPURenderer, do not use it). Pinned by
   `tests/render.entitySurfaces.test.ts` (13 tests).
 
+## Rail tracks (`render/rails.ts`, 0.1 Alpha)
+
+- Grand-expansion Phase 4 (transport, S7): the visible rail network —
+  trains used to run on invisible track (C8, 2026-10-01). Pure
+  builders, Node-testable: `buildRailGeometry(cells, …)` (wooden /
+  concrete sleepers + twin steel rails per cell, concrete slab bed for
+  high-speed) and `buildRailCatenary(cells, …)` (posts + contact wire
+  for electric / high-speed). Track orientation comes from orthogonal
+  neighbors (isolated cells default to x-run); corners drape on the
+  terrain via the same `heightAt` callback the roads use, or stay flat
+  headless. Same cells in any order → byte-identical geometry
+  (normalization sorts before emission).
+- `railCellsToVisual` maps the sim's cell indices + track class to
+  world-space visuals (structural `SimRailCell`, no sim value imports
+  beyond the cell math — same boundary `networks.ts` keeps);
+  `railOverlayDigest` is the FNV-1a rebuild key over (cell, class)
+  pairs (order-independent, class-sensitive — upgrades rebuild).
+- `RailOverlay` owns the two merged meshes (1 draw call track, +1
+  catenary on electrified classes, 0 when the map has no rails),
+  rebuilding only on digest change. Owned by `EntityRenderer`:
+  constructed in its constructor, synced in `sync()` from
+  `world.city.rails` (always-on, like roads), disposed in `dispose()`.
+  Tested in `tests/render.rails.test.ts` (9 tests: orientation, class
+  rendering, catenary gating, digest stability, overlay draw calls).
+
 ## Roads (`render/roads.ts`, 0.1 Alpha)
 
 - Pure deterministic builders: `buildRoadGeometry` (one asphalt quad per
