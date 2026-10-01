@@ -396,8 +396,13 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   works a coastal find (fishing fleet, patrol-boat screen, missile-boat
   packs); landlocked maps conclude after the ring is exhausted. Cadet
   trains only rifles and builds/researches/counters/attacks nothing.
-  Marshal advances ages (Heavy Industry → Cyber Command → Arsenal) and fires
-  superweapons at visible clusters / raises the Aegis when hurting. State
+  Marshal advances ages and fires
+  superweapons at visible clusters / raises the Aegis when hurting.
+  Roadmap B6 (2026-10-02): commander and general advance ages too
+  (`thinkMilitaryAges`, Heavy Industry → Cyber Command → Arsenal) —
+  below marshal ~40% of the roster was unreachable behind age gates;
+  the lower difficulties still advance later (smaller virtual-tax
+  stipends), keeping the curve honest. State
   (`AIPlayerState`: owner, difficulty, base, nextThinkTick, forwardBase,
   scoutIndex, builtCounts, superweapons, virtualBuildings, navalStatus,
   navalProbeIndex, navalWater, seenSubmarine, personality) is plain data —

@@ -26,8 +26,11 @@
  *  - commander: reacts every ~2s (60 ticks), adds a lab + upgrade
  *               research, scouts with drones, builds the full counter
  *               table, and expands to a forward position.
+ *  - commander:  reacts every ~2s (60 ticks), medium army, naval probe,
+ *               advances ages (roadmap B6, 2026-10-02).
  *  - general:   reacts every ~1.5s (45 ticks), larger army, basic navy
- *               (fishing economy + patrol boats) on coastal maps.
+ *               (fishing economy + patrol boats) on coastal maps, advances
+ *               ages.
  *  - marshal:   reacts every ~1s (30 ticks), largest army, advances ages,
  *               full navy on coastal maps, uses superweapons fairly.
  *
@@ -3613,6 +3616,39 @@ function thinkCommander(
       }
     }
   }
+
+  // --- Age advancement (roadmap B6, 2026-10-02): commander and general
+  //     advance ages too — below marshal ~40% of the roster was
+  //     unreachable (age-gated units/buildings). Called here so general
+  //     and marshal inherit it via thinkGeneral/thinkMarshal. Placed
+  //     last so production, research, and logistics have already drawn
+  //     from the think's ledger.
+  thinkMilitaryAges(world, queue, ai);
+}
+
+/**
+ * Military age advancement (roadmap B6, 2026-10-02): if the AI can
+ * afford the next age, it takes it. Was marshal-only; now shared by
+ * commander, general, and marshal. The lower difficulties advance
+ * later naturally — their virtual-tax stipend factors (commander 1.0,
+ * general 1.5, marshal 2.0) mean the same ledger gate takes longer to
+ * clear, which keeps the difficulty curve honest.
+ *
+ * Choose programs that boost military: Heavy Industry, Cyber Command,
+ * Arsenal. Affordability is ledger-aware: the age cost shares the
+ * think's budget with research and production (see thinkLedger).
+ */
+function thinkMilitaryAges(world: World, queue: CommandQueue, ai: AIPlayerState): void {
+  const prog = getAgeProgression(getAgeState(world, ai.owner).age);
+  if (prog.next && canAffordAgeLedger(world, ai, prog.cost)) {
+    let program: string;
+    if (prog.next === 'industry') program = 'heavyIndustry';
+    else if (prog.next === 'information') program = 'cyberCommand';
+    else if (prog.next === 'ascendance') program = 'arsenalProgram';
+    else program = prog.programs[0] ?? 'fiberGrid';
+    reserveAgeCost(ai, prog.cost);
+    advanceAge(world, queue, ai.owner, program);
+  }
 }
 
 /**
@@ -3630,8 +3666,10 @@ function thinkGeneral(
 }
 
 /**
- * Marshal (level 5): hardest fair AI. Combined arms, naval play,
- * age advancement. Thinks fastest, fields the largest army.
+ * Marshal (level 5): hardest fair AI. Combined arms, naval play.
+ * Thinks fastest, fields the largest army. (Age advancement is no
+ * longer marshal-only — commander and general advance ages too, see
+ * thinkMilitaryAges, roadmap B6, 2026-10-02.)
  */
 function thinkMarshal(
   world: World,
@@ -3648,21 +3686,6 @@ function thinkMarshal(
   // (thinkAbstractResupply) draw first; the ships load from the
   // virtual stocks' remainder.
   thinkNavalSupply(world, queue, ai);
-
-  // --- Age advancement: if we can afford the next age, take it.
-  // Choose programs that boost military: Heavy Industry, Cyber Command, Arsenal.
-  // Affordability is ledger-aware: the age cost shares the think's
-  // budget with research and production (see thinkLedger).
-  const prog = getAgeProgression(getAgeState(world, ai.owner).age);
-  if (prog.next && canAffordAgeLedger(world, ai, prog.cost)) {
-    let program: string;
-    if (prog.next === 'industry') program = 'heavyIndustry';
-    else if (prog.next === 'information') program = 'cyberCommand';
-    else if (prog.next === 'ascendance') program = 'arsenalProgram';
-    else program = prog.programs[0] ?? 'fiberGrid';
-    reserveAgeCost(ai, prog.cost);
-    advanceAge(world, queue, ai.owner, program);
-  }
 
   // --- Superweapons: build the facilities, then use them fairly.
   thinkSuperweapons(world, queue, ai);
