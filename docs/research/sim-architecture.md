@@ -525,6 +525,14 @@ no SharedArrayBuffer); emalenchek 3d-rendering-engine research (coi-serviceworke
 caveats); qnbs/cannaguide ADRs (SAB rejected on Pages, progressive
 enhancement fallback).
 
+### 7.3 Future WASM candidates (noted 2026-10-01 — revisit only if profiling proves a hotspot)
+
+In priority order, if the game ever needs WASM:
+
+1. **Pathfinding** (`sim/pathfinding.ts`) — if battles ever scale to hundreds of units pathing at once, a compiled A* would be ~3–5× faster.
+2. **Desirability/migration** (`sim/desirability.ts`, `sim/city.ts`) — the map-wide per-building scans on big cities could move off the main thread into a WASM worker.
+3. **AI think** (`sim/ai/`) — the rival AI's decision pass is the heaviest per-tick CPU cost.
+
 ---
 
 ## 8. Web Workers for sim work
