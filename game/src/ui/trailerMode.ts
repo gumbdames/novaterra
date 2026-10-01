@@ -21,7 +21,9 @@
  * Responsibilities:
  *  - Entry point for the scripted gameplay trailer: opened with
  *    `?trailer=1` (optional `&trailerseed=<n>` to re-shoot with a
- *    different seed — determinism still holds per seed). Builds the
+ *    different seed — determinism still holds per seed).
+ *    `?trailer=preview` plays the same movie watch-only: no recording,
+ *    no download — just the film. Builds the
  *    renderer, the shared menu scene, the trailer session, terrain +
  *    entity views, and runs the `TrailerDirector` with the scripted
  *    trailer camera — no menu, no HUD, no player input.
@@ -92,6 +94,8 @@ export async function runTrailerMode(search: string): Promise<void> {
   const params = new URLSearchParams(search);
   const seedParam = params.get('trailerseed');
   const seed = seedParam !== null && seedParam !== '' ? Number(seedParam) >>> 0 : TRAILER_SEED;
+  /** Preview mode: watch the movie, record nothing, download nothing. */
+  const preview = params.get('trailer') === 'preview';
 
   const app = document.getElementById('app');
   if (app === null) {
@@ -153,17 +157,26 @@ export async function runTrailerMode(search: string): Promise<void> {
   });
   root.appendChild(cardsEl);
 
-  // Recording starts automatically. When unsupported, the OBS note
-  // covers the fallback (docs/trailer.md has the full instructions).
+  // Recording starts automatically — unless this is preview mode, where
+  // the movie is watch-only. When unsupported, the OBS note covers the
+  // fallback (docs/trailer.md has the full instructions).
   let capture: TrailerCapture | null = null;
   let captureNote: HTMLElement | null = null;
-  capture = startTrailerCapture(canvas);
-  if (capture === null) {
+  if (preview) {
     captureNote = document.createElement('div');
     captureNote.id = 'trailer-capture-note';
     captureNote.textContent =
-      'Recording is not supported in this browser — capture this page with OBS instead (see docs/trailer.md).';
+      'Preview mode — nothing is recorded. Use ?trailer=1 to shoot the trailer.';
     root.appendChild(captureNote);
+  } else {
+    capture = startTrailerCapture(canvas);
+    if (capture === null) {
+      captureNote = document.createElement('div');
+      captureNote.id = 'trailer-capture-note';
+      captureNote.textContent =
+        'Recording is not supported in this browser — capture this page with OBS instead (see docs/trailer.md).';
+      root.appendChild(captureNote);
+    }
   }
 
   window.addEventListener('resize', () => {
@@ -216,7 +229,9 @@ export async function runTrailerMode(search: string): Promise<void> {
     if (captureNote !== null) {
       const note = document.createElement('div');
       note.className = 'trailer-outro-note';
-      note.textContent = 'No recording was captured (unsupported browser) — use OBS next time.';
+      note.textContent = preview
+        ? 'That was preview mode — nothing was recorded. Use ?trailer=1 to shoot the trailer.'
+        : 'No recording was captured (unsupported browser) — use OBS next time.';
       outro.appendChild(note);
     }
     root.appendChild(outro);

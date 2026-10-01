@@ -24,6 +24,9 @@ OBS works as a fallback).
 different world seed. The movie is fully deterministic per seed (same seed
 → same footage, verified by `tests/ui.trailer.test.ts`).
 
+**Preview mode:** `?trailer=preview` plays the same movie watch-only — no
+recording, no download. Just sit back and watch it.
+
 **No audio:** the capture is video-only by design. Add music/voiceover in
 post-production.
 

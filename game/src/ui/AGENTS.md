@@ -121,6 +121,8 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `novaterra-trailer-<seed>.webm` download triggers, with a manual link
   + replay button. `&trailerseed=<n>` re-shoots on another seed. No
   audio by design (video-only capture; music goes on in post).
+  `?trailer=preview` (2026-10-01) plays the identical movie watch-only:
+  no MediaRecorder, no download — the outro says nothing was recorded.
 - `menuScene.ts` — the shared menu scene base (gradient sky, fog, sun,
   environment lighting; extracted from `main.ts` in the trailer
   workstream so `?trailer=1` renders the same look). Callers attach

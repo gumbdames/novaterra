@@ -562,7 +562,8 @@ async function showMissions(
 // module simply exports boot() for the smoke tests — see tests/smoke.test.ts.
 if (typeof document !== 'undefined') {
   const params = new URLSearchParams(window.location.search);
-  const trailerRequested = params.get('trailer') === '1';
+  const trailerParam = params.get('trailer');
+  const trailerRequested = trailerParam === '1' || trailerParam === 'preview';
   const benchRequested = params.get('bench') === '1';
   if (trailerRequested) {
     // Scripted gameplay-trailer capture mode (trailer workstream,
