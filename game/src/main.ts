@@ -48,6 +48,7 @@ import { startGame } from './ui/game';
 import type { AIDifficulty } from './sim/ai';
 import { createSaveStore } from './net_save/store';
 import { validateSaveVersion, saveMapPreset } from './net_save/savefile';
+import { CorruptSaveError } from './sim/snapshot';
 import { SaveSlotsDialog } from './ui/saveslots';
 import { STRINGS } from './ui/strings';
 import { getMission, type MissionDef } from './campaign/missions';
@@ -501,7 +502,21 @@ async function showLoadGame(
             renderer.setAnimationLoop(menuLoop);
             menu.show();
           },
-        }).catch(showFatal);
+          // Final-review R6 (2026-10-01): a malformed-but-readable save
+          // throws CorruptSaveError out of restoreSnapshot. That is not
+          // a fatal boot failure — unwind the menu teardown above,
+          // explain in plain language, and stay in the menu.
+        }).catch((err: unknown) => {
+          if (err instanceof CorruptSaveError) {
+            canvas.style.display = '';
+            hooks.onReturnToMenu();
+            renderer.setAnimationLoop(menuLoop);
+            menu.show();
+            menuToast(app, STRINGS.save.corruptSave);
+            return;
+          }
+          showFatal(err);
+        });
       })();
     },
     onClose: () => undefined,

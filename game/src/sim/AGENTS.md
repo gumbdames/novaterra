@@ -156,6 +156,9 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `UnitRecord.buildingTargetId` are PURELY ADDITIVE on top of v8 —
   legacy snapshots decode hp to the def's full HP and
   buildingTargetId to 0 (no siege in progress), no version bump (AD9).
+  Final-review R6 (2026-10-01): malformed-but-readable snapshots throw
+  `CorruptSaveError` (not a raw TypeError) — the load-game UI catches it
+  for the graceful "save is broken" path back to the menu.
 - `terrain.ts` — seeded mapgen (not snapshotted); `spatial.ts` — hash grid.
 - `units.ts` — `UnitRecord` store (stable ids, owner/kind/speed/state),
   `spawnUnit` command. Final-review R2 (2026-10-01):

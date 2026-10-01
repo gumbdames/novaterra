@@ -1544,6 +1544,25 @@ class GameController {
     const s = STRINGS.save;
     const name = slotId === AUTOSAVE_SLOT ? 'Autosave' : `Slot ${slotId.replace('slot-', '')}`;
     const file = createSaveFile(this.session, slotId, name, new Date().toISOString());
+    // Final-review R6 (2026-10-01) save-hitch guard: the snapshot carries
+    // full flow-field internals (65k dirs per live field + the 6×65k
+    // active-build arrays). Measured 2026-10-01: a 400-building /
+    // 300-unit world with 20 live fields + a mid-flood build serializes
+    // to ~4.2MB and blocks the UI thread ~57ms (takeSnapshot ~17ms +
+    // structured-clone ~40ms) every 5 game-minutes; typical worlds are
+    // ~300KB / ~35ms. A rebuild-on-load format would fix it properly
+    // but needs a snapshot version bump — until then, warn loudly when
+    // an autosave crosses into multi-megabyte territory so the hitch is
+    // diagnosable instead of mysterious.
+    if (slotId === AUTOSAVE_SLOT) {
+      const fieldCount = file.snapshot.pathfinding?.fields.length ?? 0;
+      if (fieldCount > 10) {
+        console.warn(
+          `[novaterra] autosave is large: ${fieldCount} live flow fields — ` +
+            'expect a brief hitch (see saveGame).',
+        );
+      }
+    }
     const ok = await this.saveStore.write(slotId, file);
     if (ok) {
       if (slotId !== AUTOSAVE_SLOT) this.hud.toast(s.gameSaved);
@@ -2121,6 +2140,19 @@ class GameController {
     };
     document.addEventListener('mouseout', docMouseOut);
     this.removeListeners.push(() => document.removeEventListener('mouseout', docMouseOut));
+    // Final-review R6 (2026-10-01): tab-hidden auto-pause. A hidden tab
+    // keeps the frame loop alive against wall-clock catch-up; pausing on
+    // hide stops the sim from burning ticks the player never saw. The
+    // pause menu shows so the return is a deliberate resume.
+    // Determinism-safe: the accumulator drops whole ticks by design —
+    // no partial tick is ever applied.
+    const onVisibility = (): void => {
+      if (document.hidden) this.setPaused(true, true);
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    this.removeListeners.push(() =>
+      document.removeEventListener('visibilitychange', onVisibility),
+    );
     // A cancelled gesture (touch interruption, pointer capture loss) must
     // release exactly like a pointerup with no button pressed: without
     // this, dragStart/leftDragKind/orbitLast could linger until the next

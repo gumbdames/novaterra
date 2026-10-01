@@ -48,7 +48,7 @@ Sound section of docs/HOW_TO_PLAY.md).
 All sound effects are synthesized procedurally at runtime with the Web Audio
 API (game/src/audio/sfx.ts) — no third-party samples.
 
-## 3D model assets (shipped in game/public/models/ — 942 files, ~27.4 MiB)
+## 3D model assets (shipped in game/public/models/ — 989 files, ~38 MiB)
 
 Entity and nature-prop art. All files below are **CC0 1.0 Universal**
 (public domain — no attribution legally required; credited here anyway).

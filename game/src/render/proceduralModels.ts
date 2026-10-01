@@ -2632,6 +2632,11 @@ export const PROCEDURAL_KINDS = [
   'carrier',
   'quarry',
   'monument',
+  // Workstream W (2026-09-30): the civic amenities — the builder switch
+  // already handled these two; the registry just never listed them
+  // (final-review R6/L3, 2026-10-01).
+  'library',
+  'park',
   // Grand-expansion Phase 2 (utilities): the 13 new utility buildings.
   'coalPlant',
   'gasPlant',

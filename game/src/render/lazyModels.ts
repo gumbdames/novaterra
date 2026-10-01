@@ -313,7 +313,7 @@ export class LazyModelStore {
   request(key: string): Promise<LoadedModel | null> {
     const state = this.states.get(key) ?? 'idle';
     if (state === 'loaded') {
-      return Promise.resolve(super_get(this.map, key));
+      return Promise.resolve(superGet(this.map, key));
     }
     if (state === 'loading') {
       return this.inflight.get(key) ?? Promise.resolve(null);
@@ -448,6 +448,6 @@ export class LazyModelStore {
  * read). `LazyModelMap.get` fires the miss hook; the store must bypass
  * it when it already knows the state.
  */
-function super_get(map: LazyModelMap, key: string): LoadedModel | null {
+function superGet(map: LazyModelMap, key: string): LoadedModel | null {
   return Map.prototype.get.call(map, key) ?? null;
 }

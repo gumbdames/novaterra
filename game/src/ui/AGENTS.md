@@ -86,7 +86,21 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   not removed, and survives). `?inputdebug=1` turns on verbose
   pointer-event console logging for diagnosis.
   Step 11: owns the save store, the cheat console (backtick), the end
-  screen, and autosave (every 5 game-minutes, tick-based).
+  screen, and autosave (every 5 game-minutes, tick-based). Final-review
+  R6 (2026-10-01): (a) tab-hidden auto-pause — a `visibilitychange`
+  listener pauses (with the pause menu) when the tab hides, so the sim
+  never burns unseen ticks; determinism-safe, the accumulator drops
+  whole ticks by design. (b) Corrupt-save recovery — a save that parses
+  but has a malformed snapshot throws `CorruptSaveError` (sim/snapshot)
+  out of `restoreSnapshot`; the load-game flow catches it specifically,
+  unwinds the menu teardown, and shows "That save file is broken" with
+  a way back to the menu instead of the fatal screen. (c) Save-hitch
+  note: snapshots serialize full flow-field internals (65k dirs per
+  live field + 6×65k active-build arrays) synchronously on the UI
+  thread — measured ~4.2MB / ~57ms for a 400-building / 300-unit world
+  with 20 live fields (typical: ~300KB / ~35ms). Autosave warns loudly
+  past 10 live fields; a rebuild-on-load format would need a snapshot
+  version bump.
 - `cheatconsole.ts` — the cheat console overlay. `parseCheatCommand` is
   pure and tested (case/whitespace-tolerant); the `CheatConsole` class is
   DOM-only and emits parsed actions to the controller. Sim-affecting

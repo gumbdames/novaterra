@@ -17,6 +17,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   SNAPSHOT_VERSION,
+  CorruptSaveError,
   SnapshotVersionError,
   restoreSnapshot,
   takeSnapshot,
@@ -96,6 +97,30 @@ describe('sim/snapshot', () => {
   it('rejects non-object snapshots', () => {
     expect(() => restoreSnapshot(null as unknown as Snapshot)).toThrow(SnapshotVersionError);
     expect(() => restoreSnapshot('nope' as unknown as Snapshot)).toThrow(SnapshotVersionError);
+  });
+
+  // Final-review R6 (2026-10-01): malformed-but-readable saves must
+  // surface as CorruptSaveError — the UI catches that specifically for
+  // the graceful "save is broken" path. A raw TypeError escaping here
+  // used to land on the fatal screen with no way back to the menu.
+  it('malformed snapshot shapes throw CorruptSaveError, not raw TypeErrors', () => {
+    const good = takeSnapshot(livedWorld());
+    const corruptions: Array<[string, (s: Snapshot) => Snapshot]> = [
+      ['city deleted', (s) => ({ ...s, city: undefined }) as unknown as Snapshot],
+      ['city wrong type', (s) => ({ ...s, city: 42 }) as unknown as Snapshot],
+      ['units wrong type', (s) => ({ ...s, units: 'tanks' }) as unknown as Snapshot],
+      ['entities null', (s) => ({ ...s, entities: null }) as unknown as Snapshot],
+    ];
+    for (const [label, corrupt] of corruptions) {
+      let caught: unknown;
+      try {
+        restoreSnapshot(corrupt(good));
+      } catch (e) {
+        caught = e;
+      }
+      expect(caught, label).toBeInstanceOf(CorruptSaveError);
+      expect(caught, label).not.toBeInstanceOf(TypeError);
+    }
   });
 
   it('snapshot carries the current version stamp', () => {

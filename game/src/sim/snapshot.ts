@@ -149,6 +149,20 @@ export class SnapshotVersionError extends Error {
   }
 }
 
+/**
+ * Final-review R6 (2026-10-01): thrown when a snapshot parses (valid
+ * JSON, accepted version) but its shape is unusable — truncated writes,
+ * hand-edited files, or fields of the wrong type. The UI catches this
+ * specifically so a broken save shows a friendly "save is broken"
+ * message with a way back to the menu instead of the fatal screen.
+ */
+export class CorruptSaveError extends Error {
+  constructor(reason: string) {
+    super(`corrupt save snapshot: ${reason}`);
+    this.name = 'CorruptSaveError';
+  }
+}
+
 function copyEntities(entities: EntityRecord[]): EntityRecord[] {
   return entities.map((e) => ({ id: e.id, kind: e.kind, x: e.x, z: e.z }));
 }
@@ -463,6 +477,18 @@ export function restoreSnapshot(snap: Snapshot): World {
   if (snap.version !== SNAPSHOT_VERSION && snap.version !== 7 && snap.version !== 6 && snap.version !== 5) {
     throw new SnapshotVersionError(SNAPSHOT_VERSION, snap.version);
   }
+  // Final-review R6 (2026-10-01): a malformed-but-readable snapshot
+  // must surface as CorruptSaveError (graceful "save is broken" UI),
+  // never as a raw TypeError escaping into the fatal screen.
+  try {
+    return restoreSnapshotInner(snap);
+  } catch (err) {
+    if (err instanceof SnapshotVersionError || err instanceof CorruptSaveError) throw err;
+    throw new CorruptSaveError(err instanceof Error ? err.message : String(err));
+  }
+}
+
+function restoreSnapshotInner(snap: Snapshot): World {
   const world = createWorld(snap.seed);
   world.tick = snap.tick;
   world.time = snap.time;

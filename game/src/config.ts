@@ -20,12 +20,13 @@
  * This module is intentionally pure (no DOM, no three.js): it is imported by
  * headless tests and by every other module. Keep it that way.
  *
- * PHASE 2 SEAM: user settings — including the offline Muse persona
- * frequency and the honest "Live Muse (hopefully coming)" placeholder
- * (no API-key flow: removed entirely per the 2026-09-29 user
- * directive; zero third-party AI API surface) — live behind a Settings
- * interface defined here. Nothing is implemented in Phase 1; this comment
- * is the reservation, not the feature.
+ * PHASE 2 SEAM (fulfilled — final-review R6, 2026-10-01): user settings —
+ * including the offline Muse persona frequency and the honest
+ * "Live Muse (hopefully coming)" placeholder (no API-key flow: removed
+ * entirely per the 2026-09-29 user directive; zero third-party AI API
+ * surface) — live in `ui/menus.ts` (`Settings`, `loadSettings`,
+ * `saveSettings`). The reservation above is kept as history; the feature
+ * itself is implemented and shipped.
  */
 
 /** Human-facing game title. */

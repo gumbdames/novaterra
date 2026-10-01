@@ -264,6 +264,7 @@ export const STRINGS = {
     gameSaved: 'Game saved.',
     saveFailed: 'Could not save. Storage unavailable.',
     loadFailed: 'Could not load that save.',
+    corruptSave: 'That save file is broken and could not be loaded.',
     noSaves: 'No saved games yet.',
     cheatedTag: 'cheated',
     memoryBackendHint: 'Saves will not persist after closing (private mode).',
