@@ -238,6 +238,13 @@ state.
   (deterministic DataTextures, zero third-party IP); procedural equirect
   env map so metals shade correctly. Base models are low-poly by
   authorship — textures make materials read, not silhouettes.
+  **Entity portraits:** build-time 96px 2.5D thumbnails for all 195 kinds,
+  rendered by a deterministic CPU rasterizer over the game's own processed
+  geometry (`game/scripts/portrait-atlas.ts`, `npm run portraits`) and
+  packed into `game/public/img/entity-atlas.png` (189KB paletted PNG,
+  400KB budget) + `.json` manifest for the command-menu cards
+  (`src/ui/entityPortraits.ts`); lazy-loaded, zero boot-budget cost
+  (see `docs/research/menu-imagery.md`).
 - **Overlays** (all digest-keyed, rebuilt only on change): roads, rail
   tracks, power lines/pipes, utility diagnosis, logistics, airports +
   airline arcs, desirability/land-value, zone tints, x-ray, terrain grid.

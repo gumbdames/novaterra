@@ -5,6 +5,7 @@
   "description": "NOVATERRA — 3D city-builder × RTS hybrid (build cities, wage war, advance through ages). 0.1 Alpha: 96 units, 99 buildings, 21 upgrades, 8 missions, 5 AI difficulties, deterministic sim.",
   "devDependencies": {
     "@types/three": "0.186.0",
+    "pngjs": "^7.0.0",
     "typescript": "7.0.2",
     "vite": "8.3.1",
     "vitest": "3.2.7"
@@ -20,7 +21,8 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
-    "postbuild": "node scripts/stamp-license.mjs"
+    "postbuild": "node scripts/stamp-license.mjs",
+    "portraits": "node scripts/render-portraits.mjs"
   },
   "type": "module",
   "version": "0.1.0-alpha",

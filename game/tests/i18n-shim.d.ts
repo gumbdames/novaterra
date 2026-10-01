@@ -21,9 +21,10 @@
  * the tests use are declared here.
  */
 
-/** Minimal stand-in for the Buffer values the tests pass around. */
-interface TestBuffer {
-  length: number;
+/** Minimal stand-in for the Buffer values the tests pass around.
+ * A real Buffer is a Uint8Array, so this extends it — the byte-level
+ * operations (length, indexing, subarray) typecheck directly. */
+interface TestBuffer extends Uint8Array {
   toString(encoding?: string): string;
 }
 
