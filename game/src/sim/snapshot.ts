@@ -43,7 +43,7 @@ import { createWorld } from './world';
 import type { RngState } from './rng';
 import type { BuildingRecord, CityState, PlayerState } from './city';
 import type { RailCell, RoadCell } from './city';
-import { migrateRoadsV6ToV7, defaultHangarSlots, DEFAULT_TAX_RATE } from './city';
+import { migrateRoadsV6ToV7, defaultHangarSlots, DEFAULT_TAX_RATE, BUILDING_DEFS } from './city';
 import type { UnitRecord } from './units';
 import type { FieldBuild, FieldRequest, FlowField, PathfindingState, PathRequest } from './pathfinding';
 import { initPathfinding } from './pathfinding';
@@ -94,6 +94,10 @@ import { encodeUpgrades, decodeUpgrades } from './upgrades';
  *     (Phase 7 workstream 3, 2026-09-30: BuildingRecord.discovery is
  *     PURELY ADDITIVE on top of v8 — older saves decode to undefined,
  *     no version bump, the sabotagedUntil precedent.)
+ * Final-review R2 (2026-10-01): BuildingRecord.hp/maxHp and
+ * UnitRecord.buildingTargetId are PURELY ADDITIVE on top of v8 —
+ * legacy saves decode hp to the def's full HP and buildingTargetId
+ * to 0 (no siege in progress), no version bump (AD9).
  * Grand-expansion Phase 8 (peaceful mode, 2026-09-30): `peaceful` is
  * PURELY ADDITIVE on top of v8 — a plain boolean, no version bump.
  * Older saves (which predate the flag) decode to `false` via
@@ -179,6 +183,11 @@ function copyBuilding(b: BuildingRecord, legacy = false): BuildingRecord {
     id: b.id, kind: b.kind, owner: b.owner, cx: b.cx, cz: b.cz,
     facing: b.facing, progress: b.progress, level: b.level,
     operational: b.operational, powered: b.powered, watered: b.watered,
+    // Final-review R2 (2026-10-01): structural HP. ?? def.hp so legacy
+    // v5/v6/v7 saves (which lack these fields) decode to full HP — no
+    // version bump, stays v8 (the veterancy ?? 0 precedent).
+    hp: b.hp ?? BUILDING_DEFS[b.kind].hp,
+    maxHp: b.maxHp ?? BUILDING_DEFS[b.kind].hp,
     // Phase 2 utility diagnostics. ?? 'disconnected' so legacy v6 saves
     // (which lack these fields) decode to the honest pre-evaluation
     // state — no version bump, stays v6 (the veterancy ?? 0 precedent).
@@ -315,6 +324,10 @@ function copyUnit(u: UnitRecord): UnitRecord {
     id: u.id, kind: u.kind, owner: u.owner, x: u.x, z: u.z,
     domain: u.domain, hp: u.hp, cooldownLeft: u.cooldownLeft,
     targetId: u.targetId, chasing: u.chasing,
+    // Final-review R2 (2026-10-01): siege target linkage (0 = none).
+    // ?? 0 so legacy saves decode to no siege — no version bump,
+    // stays v8 (AD9 additive).
+    buildingTargetId: u.buildingTargetId ?? 0,
     speed: u.speed, state: u.state, failReason: u.failReason,
     destX: u.destX, destZ: u.destZ, arriveX: u.arriveX, arriveZ: u.arriveZ,
     path: [...u.path], pathAt: u.pathAt,

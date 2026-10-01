@@ -42,11 +42,13 @@ import * as THREE from 'three';
 import type { World } from '../sim/world';
 import type { UnitKind, UnitRecord } from '../sim/units';
 import { UNIT_DEFS } from '../sim/units';
-import { canTarget } from '../sim/combat';
+import { canTarget, canTargetBuilding } from '../sim/combat';
 import {
   BUILDING_DEFS,
+  buildingAtCell,
   cellCenterWorld,
   cellCoords,
+  cellIndex,
   CELL_WORLD_SIZE,
   CITY_GRID_CELLS,
   getPlayer,
@@ -139,6 +141,7 @@ import {
   buildAdvanceAgeOrder,
   buildAssignGeneralOrder,
   buildAssignMayorOrder,
+  buildAttackBuildingOrders,
   buildAttackOrders,
   buildCancelTradeRouteOrder,
   buildDismissGeneralOrder,
@@ -1654,6 +1657,33 @@ class GameController {
       }
       this.audio.playSfx('attackOrder');
       return;
+    }
+    // Final-review R2 (2026-10-01): right-click on an enemy building
+    // issues a siege order (`attackBuilding`). Enemy units take
+    // precedence (they were checked first); a click that lands on a
+    // building's footprint but not on an enemy unit orders the
+    // attackers that can actually hit buildings (ground/both weapons
+    // — same rule the sim and AI use). A toast when none can, and the
+    // move fallback when nothing clickable is under the cursor.
+    const cellX = Math.floor((worldX + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+    const cellZ = Math.floor((worldZ + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+    if (inBounds(cellX, cellZ)) {
+      const target = buildingAtCell(world.city, cellIndex(cellX, cellZ));
+      if (target && target.owner !== HUMAN_PLAYER_ID) {
+        const attackers = ownIds.filter((id) => {
+          const u = own.get(id)!;
+          return canTargetBuilding(UNIT_DEFS[u.kind as UnitKind]);
+        });
+        if (attackers.length === 0) {
+          this.hud.toast(STRINGS.orders.cannotTarget);
+          return;
+        }
+        for (const cmd of buildAttackBuildingOrders(attackers, HUMAN_PLAYER_ID, target.id)) {
+          this.enqueue(cmd);
+        }
+        this.audio.playSfx('attackOrder');
+        return;
+      }
     }
     this.enqueue(buildMoveOrder(ownIds, HUMAN_PLAYER_ID, worldX, worldZ));
     this.audio.playSfx('moveOrder');

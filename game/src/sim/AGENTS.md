@@ -49,9 +49,24 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   by sim.ai-soak). Demolish's resupply-reservation release is inlined in
   city.ts for exactly this reason — it mirrors `releaseDepotReservations`
   in commands.ts, keep the two in sync.
+  Final-review R2 (2026-10-01): buildings are destructible —
+  `BuildingDef.hp` (required, the HP scale comment documents the
+  150–1000 tiers) and `BuildingRecord.hp`/`maxHp` (optional, AD9 —
+  `?? def.hp` everywhere); `placeBuilding` spawns at full HP.
+  `destroyBuilding(world, b)` is the single destruction path (resupply
+  release + hangar-link cleanup + demolish the structure) — the
+  `demolish` command, combat kills, and the storm strike all funnel
+  through it; `buildingCenterWorld(b)` is the sim's canonical
+  footprint-center helper. No `commands.ts` value import was needed:
+  combat.ts and superweapons.ts call it as callers, keeping the
+  city→commands edge absent.
 - `superweapons.ts` — the Storm Engine strike and the Aegis shield:
   `constructSuperweaponFacility` (Marshal-AI virtual construction),
-  `fireStorm`, `fireAegis`. Grand-expansion Phase 8 (peaceful mode,
+  `fireStorm`, `fireAegis`. Final-review R2 (2026-10-01): the storm
+  strike now deals flat `STORM_DAMAGE` (120) to every enemy building in
+  the blast radius through `damageBuilding` (the one attack path — the
+  nuclear attack-meltdown roll lives there, so a strike on a nuclear
+  plant still rolls exactly as before); an active Aegis holds. Grand-expansion Phase 8 (peaceful mode,
   workstream A, 2026-09-30): all three validates reject loudly in
   peaceful worlds — the fire gates are defense in depth on top of the
   `placeBuilding` lockout (the Marshal's virtual path never touches
@@ -120,17 +135,29 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   Grand-expansion Phase 8 (peaceful mode, workstream A, 2026-09-30):
   the world prefix encodes `|peaceful=0/1|` (behavior-affecting ⇒
   digest-covered); `?? false` keeps pre-flag fixture worlds digesting
-  identically.
+  identically. Final-review R2 (2026-10-01): building lines carry
+  `hp,maxHp` and unit lines carry `buildingTargetId` — both are
+  behavior-affecting ⇒ digest-covered (PLAN §11); `?? def.hp` / `?? 0`
+  keep legacy-decoded worlds digesting stably.
 - `snapshot.ts` — versioned snapshots (v8: hangar slots on buildings
   + `hangarBuildingId`/`embarkedOn` on units; v7: road classes as
   `RoadCell[]` (v6 `number[]` migrates to `paved`), the rail layer,
   ferry routes on units; v6/v7 still load, v5 with empty upgrades).
   Grand-expansion Phase 8 (peaceful mode, workstream A, 2026-09-30):
   `peaceful` is PURELY ADDITIVE — stays v8, no bump; legacy snapshots
-  decode to `false` (the AD9 neutral-default precedent).
+  decode to `false` (the AD9 neutral-default precedent). Final-review
+  R2 (2026-10-01): `BuildingRecord.hp`/`maxHp` and
+  `UnitRecord.buildingTargetId` are PURELY ADDITIVE on top of v8 —
+  legacy snapshots decode hp to the def's full HP and
+  buildingTargetId to 0 (no siege in progress), no version bump (AD9).
 - `terrain.ts` — seeded mapgen (not snapshotted); `spatial.ts` — hash grid.
 - `units.ts` — `UnitRecord` store (stable ids, owner/kind/speed/state),
-  `spawnUnit` command. Grand-expansion Phase 8 (peaceful mode,
+  `spawnUnit` command. Final-review R2 (2026-10-01):
+  `UnitRecord.buildingTargetId?: number` (0/undefined = no siege target —
+  the siege-target linkage for `attackBuilding`; separate id space from
+  `targetId`, and `chasing` covers both). `movement.ts` `orderMoveTo` /
+  `stopUnit` clear it (a move supersedes a siege); the `attackUnit`
+  apply path clears it too. Grand-expansion Phase 8 (peaceful mode,
   workstream A, 2026-09-30): `UnitDef.military?: boolean` — true on the
   71 war-apparatus kinds (the full 96-kind classification is pinned in
   tests/sim.peaceful.test.ts); `spawnUnit` and `deployMine` validates
@@ -460,6 +487,23 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   min 1 tick, maxHp ×(1+0.15·max(0,L−1)), Elite +2 hp/s regen.
   `spawnUnit` graduates armed units to Regular with a completed
   Military Academy (unarmed units exempt). Death erases everything.
+  Final-review R2 (2026-10-01): building siege — `attackBuilding`
+  orders an explicit siege (validate rejects sheltered/units-that-cant-
+  hit-buildings/own-buildings loudly, incl. a peaceful-world reject as
+  defense in depth); the combat loop validates the building per tick,
+  chases its footprint center when out of range (same reposition rules
+  as `attackUnit`), and fires `fireWeaponAtBuilding` in range —
+  Aegis check, ammo burn, raw weapon damage scaled only by the
+  attacker's veterancy and supply state (buildings have no armor
+  class: no armor counters, no auras, no upgrade hooks). `damageBuilding`
+  is the one attack-damage path (unit shots + storm strike): it owns
+  the nuclear attack-meltdown roll (pure hash of seed/id/tick —
+  idempotent per tick, advancedNuclear quadruples the denominator) and
+  calls `destroyBuilding` (city.ts) at hp ≤ 0. No XP for structures
+  (`awardKillXp` needs a `UnitDef`); buildings never auto-acquire —
+  opportunistic fire stays unit-vs-unit (`acquireTarget` is
+  unit-only), so `canTargetBuilding` (armed + targets ground/both) is
+  consulted only for explicit orders and right-click/UI/AI gates.
 - `pathfinding.ts` — deterministic 8-direction A* (octile heuristic,
   corner-cut prevention, water blocking, roads ×0.5) + chunked Dijkstra
   flow fields with early exit + the time-sliced coordinator

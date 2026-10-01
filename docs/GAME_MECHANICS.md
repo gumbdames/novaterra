@@ -338,6 +338,37 @@ and a half of flight before it must refuel — and most carry a
 limited ammo load, so they must rearm and refuel at a friendly
 airfield. Nuclear-powered submarines and carriers never burn fuel.
 
+## Attacking buildings (siege)
+
+Every building is destructible — it has **structural HP** you can read
+by selecting it ("HP 73%"). Fragile civilian fabric (stops, houses,
+farms) sits around 150–250 HP, ordinary and industrial buildings
+300–450, hardened infrastructure (dams, nuclear plants, intel HQ)
+500–700, and military production buildings plus the superweapon
+bunkers 800–1000.
+
+- **Order the attack:** right-click an enemy building with combat units
+  selected — they march to it and shell it until it falls. Only units
+  whose weapons can hit ground targets (tanks, artillery, fighters on
+  a ground attack…) can attack buildings; anti-air batteries and other
+  specialized weapons cannot. Your units never fire at buildings on
+  their own — a siege is always an explicit order, from you or the AI.
+- **Damage is raw weapon damage.** Buildings have no armor class: no
+  armor counters, no command auras, no upgrade bonuses apply. Skilled
+  (veterancy) and well-supplied crews still hit harder; starving ones
+  hit softer.
+- **A destroyed building is gone completely** — its output, its parked
+  aircraft, its stocked supplies, all of it. (Your own buildings can
+  be demolished for free with the Demolish tool, but you get nothing
+  back — plan before you place.)
+- **Defense:** the **Aegis shield** blocks all damage to your buildings
+  while it is active; the **Storm Engine** strike damages every enemy
+  building in its blast radius — including a roll for a nuclear plant
+  meltdown on every hit.
+- Conquest victory needs every enemy unit **and** every enemy building
+  destroyed, so endgame wars are sieges: crack the war factories and
+  the superweapon bunkers, and nothing can be rebuilt.
+
 ## Hangars and carriers
 
 Aircraft don't have to stay airborne. Build **hangars** at your
@@ -649,10 +680,12 @@ The AI never cheats: it sees only what its own units see, finds water by
 scouting (never maphack), pays full price for everything it builds —
 including its production buildings — and gives the same orders a human
 player would. Destroy every enemy unit and building to win the
-**conquest victory** screen — but if you lose all of your own units and
-buildings first, the **defeat** screen ends your run. (If both sides fall
-on the same tick, defeat takes precedence: you must survive your victory
-to claim it.)
+**conquest victory** screen — right-click enemy buildings with your
+tanks and artillery to siege them to rubble (see "Attacking buildings
+(siege)" above) — but if you lose all of your own units and buildings
+first, the **defeat** screen ends your run. (If both sides fall on the
+same tick, defeat takes precedence: you must survive your victory to
+claim it.)
 
 ## Peaceful mode
 

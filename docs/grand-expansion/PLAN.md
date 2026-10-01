@@ -1147,8 +1147,10 @@ are deliberate per field (AGENTS.md rule).
 
 - **No bump:** veterancy fields, fuel/ammo, sabotagedUntil, ferry
   routes, intel asset counters, `world.peaceful`, utility network cell
-  sets — all decode to neutral defaults (step-7 AI-personality
-  precedent). **Exception:** `embarkedOn`, `hangarBuildingId`, and
+  sets, `BuildingRecord.hp`/`maxHp`, `UnitRecord.buildingTargetId`
+  (final-review R2, 2026-10-01 — buildings destructible: legacy
+  records decode to the def's full HP, siege linkage to 0) — all decode
+  to neutral defaults (step-7 AI-personality precedent). **Exception:** `embarkedOn`, `hangarBuildingId`, and
   hangar slots shipped as **v8** (Phase 5 workstream D, 2026-09-30) —
   PURELY ADDITIVE (no shape migration; v7 decodes hangars to
   `defaultHangarSlots(kind)`, embark fields to 0), bumped so the
@@ -1159,7 +1161,9 @@ are deliberate per field (AGENTS.md rule).
   (`migrateTaxRates` pads the 4th rate). When bumping, decide whether
   v5 support drops (today: 6 and 5 load; the if-chain extends).
 - **Digest:** every new behavior-affecting field is encoded
-  (sorted owners, id-ordered arrays, `canonicalNumber` for floats).
+  (sorted owners, id-ordered arrays, `canonicalNumber` for floats) —
+  incl. building `hp`/`maxHp` and the unit `buildingTargetId` siege
+  linkage (final-review R2, 2026-10-01).
   Digest changes are investigated, never blindly updated.
 - **RNG:** new named streams per system; stream state already
   snapshotted/digested verbatim.

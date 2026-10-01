@@ -80,6 +80,21 @@ export function buildAttackOrders(
   }));
 }
 
+/**
+ * Right-click on an enemy building: one attackBuilding (siege order)
+ * per selected unit. Final-review R2 (2026-10-01).
+ */
+export function buildAttackBuildingOrders(
+  unitIds: number[],
+  owner: number,
+  buildingId: number,
+): OrderIntent[] {
+  return unitIds.map((unitId) => ({
+    kind: 'attackBuilding',
+    payload: { unitId, buildingId, owner },
+  }));
+}
+
 /** Stop key / stop button: one stopUnit per selected unit. */
 export function buildStopOrders(unitIds: number[], owner: number): OrderIntent[] {
   return unitIds.map((unitId) => ({

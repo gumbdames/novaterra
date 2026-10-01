@@ -37,7 +37,7 @@
  */
 
 import type { World } from './world';
-import { POLICY_IDS } from './city';
+import { POLICY_IDS, BUILDING_DEFS } from './city';
 
 /** FNV-1a 32-bit hash of a string. Returns an unsigned uint32. */
 export function fnv1a32(input: string): number {
@@ -96,6 +96,12 @@ export function canonicalizeWorld(world: World): string {
     out += `b${b.id},${b.kind},${b.owner},${b.cx},${b.cz},${b.facing},`;
     out += `${canonicalNumber(b.progress)},${b.level},`;
     out += `${b.operational ? 1 : 0},${b.powered ? 1 : 0},${b.watered ? 1 : 0},`;
+    // Final-review R2 (2026-10-01): structural HP — destruction is
+    // behavior-affecting ⇒ digest-covered (PLAN §11). Buildings are in
+    // placement (id) order; floats use canonicalNumber. Legacy decode
+    // default is the def's full HP (snapshot.ts), so pre-R2 saves
+    // digest stably.
+    out += `${canonicalNumber(b.hp ?? BUILDING_DEFS[b.kind].hp)},${canonicalNumber(b.maxHp ?? BUILDING_DEFS[b.kind].hp)},`;
     // Phase 2 utility diagnostics (legacy decode default 'disconnected').
     out += `${b.powerDiag ?? 'disconnected'},${b.waterDiag ?? 'disconnected'},`;
     // Phase 3 logistics stocks (integers; legacy decode default 0).
@@ -159,6 +165,10 @@ export function canonicalizeWorld(world: World): string {
   for (const u of world.units) {
     out += `u${u.id},${u.kind},${u.owner},${canonicalNumber(u.x)},${canonicalNumber(u.z)},`;
     out += `${u.domain},${canonicalNumber(u.hp)},${u.cooldownLeft},${u.targetId},${u.chasing ? 1 : 0},`;
+    // Final-review R2 (2026-10-01): siege target linkage — which
+    // building this unit is ordered to destroy changes behavior ⇒
+    // digest-covered (PLAN §11). Legacy decode default 0.
+    out += `${u.buildingTargetId ?? 0},`;
     out += `${canonicalNumber(u.speed)},${u.state},${u.failReason ?? ''},`;
     out += `${canonicalNumber(u.destX)},${canonicalNumber(u.destZ)},`;
     out += `${canonicalNumber(u.arriveX)},${canonicalNumber(u.arriveZ)},`;

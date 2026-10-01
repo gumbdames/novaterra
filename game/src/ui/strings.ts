@@ -157,6 +157,10 @@ export const STRINGS = {
     build: 'Build',
     /** Selected building's crew training level (economy.ts levels 1→3). */
     levelLine: { en: 'Level {level}/3' },
+    // Final-review R2 (2026-10-01): building structural HP line for the
+    // selection panel — buildings are destructible now (C3), so the
+    // player reads how much damage a building has taken.
+    hpLine: { en: 'HP {hp}%' },
     // Phase 4 (transport): occupancy line for the selection panel, from
     // the sim's buildingOccupancy() (city.ts).
     occupancyLine: { en: 'Residents {residents}/{residentCap} · Workers {workers}/{workerCap}' },

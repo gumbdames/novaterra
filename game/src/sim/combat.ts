@@ -32,6 +32,17 @@
  *    per-kind vsLight/vsMedium/vsHeavy/vsAir multipliers make tanks beat
  *    rifles, artillery beat tanks at range, AA beat anything that flies,
  *    and so on. A nearby friendly Mobile HQ adds a damage aura.
+ *  - Buildings are destructible (final-review R2, 2026-10-01): every
+ *    `BuildingDef` carries `hp` (see the scale on `BuildingDef` in
+ *    city.ts) and records track `hp`/`maxHp`. The `attackBuilding`
+ *    command orders an explicit siege — the unit chases the building's
+ *    footprint center and fires raw weapon damage at it (no armor
+ *    counters: buildings have no armor class; veterancy and supply
+ *    state still scale the shot). Destroyed buildings go through
+ *    `destroyBuilding` (city.ts) — the same full cleanup as the
+ *    `demolish` command. Units never auto-acquire buildings:
+ *    opportunistic fire is unit-vs-unit only; siege is always an
+ *    explicit order (player right-click, AI siege doctrine).
  *  - Death: hp <= 0 removes the unit from `world.units` and cleans up
  *    its pathfinding requests, field membership, and everyone targeting
  *    it.
@@ -46,7 +57,7 @@
 
 import type { World } from './world';
 import type { SimSystem } from './tick';
-import { TICK_DT } from './tick';
+import { TICK_DT, TICK_HZ } from './tick';
 import type { CommandQueue } from './commands';
 // Phase 3 logistics: death releases the unit's in-flight depot
 // reservation (value import — the release logic lives in commands.ts).
@@ -83,8 +94,14 @@ import {
   VET_ELITE_REGEN_PER_SEC,
 } from './veterancy';
 import { orderMoveTo } from './movement';
-import { MAP_HALF_SIZE } from './city';
+import { MAP_HALF_SIZE, BUILDING_DEFS, destroyBuilding, buildingCenterWorld } from './city';
+import type { BuildingRecord } from './city';
 import { isDetected } from './intel';
+import {
+  attackMeltdownRoll,
+  MELTDOWN_ATTACK_DENOMINATOR,
+  MELTDOWN_OFFLINE_SECONDS,
+} from './utilityNetworks';
 
 /** Can this weapon be aimed at that target's domain? */
 export function canTarget(def: UnitDef, target: UnitRecord): boolean {
@@ -386,6 +403,93 @@ function fireWeapon(world: World, attacker: UnitRecord, def: UnitDef, target: Un
 }
 
 /**
+ * Can this weapon be aimed at buildings? The ground-target branch of
+ * `canTarget`: a weapon that can hit ground units can hit the
+ * (stationary, land-domain) buildings. AA-only, sea-only and
+ * seaAir weapons cannot — an anti-air battery has no ground-attack
+ * mode in 0.1 Alpha. Exported for the AI and the UI's right-click
+ * attack gate (same rule everywhere).
+ */
+export function canTargetBuilding(def: UnitDef): boolean {
+  if (def.targets === 'none' || def.damage <= 0) return false;
+  return def.targets === 'ground' || def.targets === 'both';
+}
+
+/**
+ * Apply attack damage to a building (final-review R2, 2026-10-01:
+ * buildings are destructible — C3). Returns true when the building
+ * was destroyed (removed via `destroyBuilding`, the shared demolish
+ * path). Deterministic — no RNG.
+ *
+ * The nuclear meltdown roll lives here, per the superweapons.ts
+ * contract: ANY attack damage on a completed nuclear plant rolls the
+ * seeded attack-meltdown check. `attackMeltdownRoll` is a pure hash
+ * of (seed, buildingId, tick), so several hits in one tick roll
+ * identically — effectively one roll per tick. A plant destroyed by
+ * the hit needs no meltdown: rubble produces nothing.
+ */
+export function damageBuilding(world: World, b: BuildingRecord, amount: number): boolean {
+  const def = BUILDING_DEFS[b.kind];
+  b.hp = (b.hp ?? def.hp) - amount;
+  // Workstream M (user correction 2026-09-30): attacks are the ONLY
+  // meltdown trigger. This path covers unit attacks; the storm strike
+  // in superweapons.ts routes through here too, so every attack
+  // funnels through the one roll.
+  if (b.kind === 'nuclearPlant' && (b.progress ?? 0) >= 1) {
+    const denom = hasUpgrade(world, b.owner, 'advancedNuclear')
+      ? MELTDOWN_ATTACK_DENOMINATOR * 4
+      : MELTDOWN_ATTACK_DENOMINATOR;
+    if (attackMeltdownRoll(world.seed, b.id, world.tick, denom)) {
+      b.meltdownUntilTick = world.tick + MELTDOWN_OFFLINE_SECONDS * TICK_HZ;
+    }
+  }
+  if ((b.hp ?? 0) <= 0) {
+    destroyBuilding(world, b);
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Apply one shot from attacker to a building. Mirrors `fireWeapon`'s
+ * gates (magazine, Aegis — an active shield protects the owner's
+ * buildings like its units) but the damage model is deliberately
+ * simpler: buildings have no armor class, so there are no armor
+ * counters, no command auras, no upgrade hooks — a tank does its base
+ * 50 to a house, always. Attacker-condition multipliers still apply
+ * (veterancy: skilled crews siege better; supply: starving crews siege
+ * worse), and ammo weapons still burn a shot per hit (logistics
+ * consistency). Returns true when the building was destroyed.
+ */
+function fireWeaponAtBuilding(
+  world: World,
+  attacker: UnitRecord,
+  def: UnitDef,
+  b: BuildingRecord,
+): boolean {
+  const perShot = def.ammoPerShot ?? 1;
+  if ((def.ammoCapacity ?? 0) > 0 && (attacker.ammo ?? 0) < perShot) {
+    return false;
+  }
+  const mult = vetDamageMult(attacker.vetLevel ?? 0) * supplyDamageFactor(def, attacker);
+  const cooldown = vetCooldownTicks(def, attacker.vetLevel ?? 0);
+  // An active Aegis shield blocks all damage to the owner's buildings
+  // (reads world.superweapons directly — importing superweapons.ts
+  // here would cycle, as the fireWeapon comment notes).
+  const sw = world.superweapons.players.find((p) => p.owner === b.owner);
+  if (sw && world.tick < sw.aegis.activeUntil) {
+    attacker.cooldownLeft = cooldown;
+    return false; // shield absorbs the shot
+  }
+  const destroyed = damageBuilding(world, b, def.damage * mult);
+  if ((def.ammoCapacity ?? 0) > 0) {
+    attacker.ammo = (attacker.ammo ?? 0) - perShot;
+  }
+  attacker.cooldownLeft = cooldown;
+  return destroyed;
+}
+
+/**
  * Position of `unit` in `world.units` without a linear scan (R1
  * final-review H1, 2026-10-01). `world.units` is spawn/id order — ids
  * are assigned ascending by `spawnUnit`, never reused, and every
@@ -605,9 +709,32 @@ export function createCombatSystem(): SimSystem {
       // handled by applyNavalMineDetonations above.
       if (!def || def.damage <= 0 || u.cooldownLeft > 0 || def.deployableOnly === true) continue;
 
+      // Final-review R2 (2026-10-01): explicit building targets
+      // (`attackBuilding` orders). Validated per tick like unit
+      // targets: the building may have been destroyed (or demolished)
+      // since the order was issued. While a valid siege target stands,
+      // the unit sieges it — no opportunistic unit fire (symmetric
+      // with attackUnit's chase contract: an explicit order owns the
+      // unit until it resolves or is superseded).
+      let siege: BuildingRecord | undefined;
+      const siegeId = u.buildingTargetId ?? 0;
+      if (siegeId !== 0) {
+        const b = world.city.buildings.find((x) => x.id === siegeId);
+        if (b && b.owner !== u.owner) {
+          siege = b;
+        } else {
+          u.buildingTargetId = 0;
+          u.chasing = false;
+          if (u.state === 'moving' && !canStillMove(u)) {
+            u.state = 'idle';
+            clearUnitOrder(u);
+          }
+        }
+      }
+
       // Validate the current target.
       let target: UnitRecord | undefined;
-      if (u.targetId !== 0) {
+      if (!siege && u.targetId !== 0) {
         const t = findUnit(world, u.targetId);
         // A target that parked/embarked mid-chase leaves the
         // battlespace — drop it like a dead one.
@@ -627,23 +754,45 @@ export function createCombatSystem(): SimSystem {
         }
       }
       // Opportunistic fire: nearest enemy inside weapon range.
-      if (!target) {
+      if (!siege && !target) {
         const acquired = acquireTarget(world, u, def);
         if (acquired) {
           u.targetId = acquired.id;
           target = acquired;
         }
       }
-      if (!target) continue;
+      if (!siege && !target) continue;
 
-      const d = Math.hypot(target.x - u.x, target.z - u.z);
+      // Aim point: the building's footprint center for siege targets,
+      // the unit's position otherwise. The fire/chase logic below is
+      // shared — only the shot itself differs. (The continue above
+      // guarantees exactly one of siege/target is defined here, so the
+      // casts below are total.)
+      const foe = target as UnitRecord;
+      let aimX: number;
+      let aimZ: number;
+      if (siege) {
+        const c = buildingCenterWorld(siege);
+        aimX = c.x;
+        aimZ = c.z;
+      } else {
+        aimX = foe.x;
+        aimZ = foe.z;
+      }
+      const d = Math.hypot(aimX - u.x, aimZ - u.z);
       const range = effectiveRange(world, u.owner, def);
-      if (d <= range && d >= def.minRange && canTarget(def, target)) {
-        if (fireWeapon(world, u, def, target) && !dead.includes(target)) {
+      const canFire = siege ? canTargetBuilding(def) : canTarget(def, foe);
+      if (d <= range && d >= def.minRange && canFire) {
+        if (siege) {
+          // Structures award no XP (awardKillXp needs a UnitDef) — the
+          // prize is the rubble. destroyBuilding removed the record
+          // synchronously, so no dead-list bookkeeping is needed.
+          fireWeaponAtBuilding(world, u, def, siege);
+        } else if (fireWeapon(world, u, def, foe) && !dead.includes(foe)) {
           // Kill crediting (Phase 1): award XP BEFORE killUnit removes the
           // target below — the target record still exists here.
-          awardKillXp(world, u, UNIT_DEFS[target.kind as UnitKind]);
-          dead.push(target);
+          awardKillXp(world, u, UNIT_DEFS[foe.kind as UnitKind]);
+          dead.push(foe);
         }
       } else if (u.chasing) {
         // Explicit attack order, target out of reach: reposition.
@@ -651,8 +800,8 @@ export function createCombatSystem(): SimSystem {
           // Too close for this weapon (e.g. artillery minimum range):
           // back off directly away from the target to reach minRange.
           // Deterministic: pure function of unit/target positions.
-          const dx = u.x - target.x;
-          const dz = u.z - target.z;
+          const dx = u.x - aimX;
+          const dz = u.z - aimZ;
           const dist = Math.hypot(dx, dz);
           if (dist > 1e-9) {
             const backOff = def.minRange - d + 2; // +2 buffer to clear minRange
@@ -669,9 +818,9 @@ export function createCombatSystem(): SimSystem {
           // Too far: chase toward the target. Re-issue only when idle
           // (arrived at a stale position) or the target has moved well
           // away from where we're headed — not every tick.
-          const destDist = Math.hypot(target.x - u.destX, target.z - u.destZ);
+          const destDist = Math.hypot(aimX - u.destX, aimZ - u.destZ);
           if (u.state === 'idle' || destDist > 10) {
-            orderMoveTo(world, u, target.x, target.z);
+            orderMoveTo(world, u, aimX, aimZ);
           }
         }
       }
@@ -734,6 +883,69 @@ export function registerCombatCommands(queue: CommandQueue): void {
       // so set the attack state after issuing the move.
       orderMoveTo(world, attacker, target.x, target.z);
       attacker.targetId = target.id;
+      attacker.chasing = true;
+      return attacker.id;
+    },
+  });
+
+  /**
+   * Final-review R2 (2026-10-01): the siege order — attack an enemy
+   * BUILDING (C3). Same command-queue + validate/apply contract as
+   * `attackUnit`: validate at enqueue AND at apply (the building may
+   * have been destroyed or demolished between the two), loud
+   * rejections, never silent. The combat loop chases the building's
+   * footprint center and fires `fireWeaponAtBuilding` when in range.
+   * Buildings are a separate id space from units, hence the separate
+   * `buildingId` payload and the unit's `buildingTargetId` field.
+   */
+  queue.register('attackBuilding', {
+    validate(cmd, world): string | null {
+      // Grand-expansion Phase 8 (peaceful mode): covert-op commands
+      // reject loudly in peaceful worlds as defense in depth — siege
+      // orders get the same gate (no armed unit can exist there, but
+      // the command layer never trusts that).
+      if (world.peaceful === true) return 'attackBuilding: not available in peaceful mode';
+      const unitId = cmd.payload['unitId'];
+      const buildingId = cmd.payload['buildingId'];
+      const owner = cmd.payload['owner'];
+      if (typeof unitId !== 'number' || !Number.isInteger(unitId) || unitId <= 0) {
+        return 'attackBuilding: payload.unitId must be a positive integer';
+      }
+      if (typeof buildingId !== 'number' || !Number.isInteger(buildingId) || buildingId <= 0) {
+        return 'attackBuilding: payload.buildingId must be a positive integer';
+      }
+      if (typeof owner !== 'number' || !Number.isInteger(owner)) {
+        return 'attackBuilding: payload.owner must be an integer';
+      }
+      const attacker = findUnit(world, unitId);
+      if (!attacker) return `attackBuilding: no unit with id ${unitId}`;
+      if (attacker.owner !== owner) return `attackBuilding: unit ${unitId} is not owned by player ${owner}`;
+      // Grand-expansion Phase 5 (S4): sheltered aircraft take no attack
+      // orders — launch them first. Loud, never silent.
+      if (isSheltered(attacker)) return `attackBuilding: unit ${unitId} is parked or embarked (launch it first)`;
+      const def = UNIT_DEFS[attacker.kind as UnitKind];
+      if (!def || def.damage <= 0) return `attackBuilding: unit ${unitId} (${attacker.kind}) is unarmed`;
+      if (!canTargetBuilding(def)) {
+        return `attackBuilding: ${attacker.kind} cannot target buildings`;
+      }
+      const b = world.city.buildings.find((x) => x.id === buildingId);
+      if (!b) return `attackBuilding: no building with id ${buildingId}`;
+      if (b.owner === owner) return 'attackBuilding: cannot attack your own building';
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const attacker = findUnit(world, cmd.payload['unitId'] as number) as UnitRecord;
+      const b = world.city.buildings.find(
+        (x) => x.id === (cmd.payload['buildingId'] as number),
+      ) as BuildingRecord;
+      attacker.failReason = null;
+      // orderMoveTo clears targeting (a plain move supersedes an
+      // attack), so set the siege state after issuing the move — the
+      // same pattern as attackUnit's apply above.
+      const c = buildingCenterWorld(b);
+      orderMoveTo(world, attacker, c.x, c.z);
+      attacker.targetId = 0;
+      attacker.buildingTargetId = b.id;
       attacker.chasing = true;
       return attacker.id;
     },

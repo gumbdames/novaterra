@@ -590,6 +590,26 @@ export interface BuildingDef {
   name: string;
   /** Zone the footprint must sit in, or 'utility' for anywhere-on-land. */
   zone: ZoneType | typeof UTILITY_ZONE;
+  /**
+   * Structural hit points (final-review R2, 2026-10-01: buildings are
+   * destructible — C3). The HP scale, calibrated so a lone tank
+   * (~30 dps) cracks a house in ~7 s and needs ~half a minute on a
+   * hardened military plant:
+   *  - 150–250: fragile civilian fabric — stops, parking lots, houses,
+   *    farms, substations, wells. Houses sit at 200 (low, per the
+   *    design brief).
+   *  - 300–450: ordinary civilian/industrial buildings — apartments,
+   *    shops, factories, power/water plants, ports, airport pieces,
+   *    intel outposts.
+   *  - 500–700: hardened infrastructure — stadiums, dams, nuclear and
+   *    fusion plants, naval bases, intel HQ.
+   *  - 800–1000: military production and superweapon bunkers — the
+   *    siege targets (high, per the design brief): barracks, war
+   *    factories, airfields, naval yards, missile plants, storm
+   *    arrays, aegis controls.
+   * Every def carries an explicit value (tsc-enforced required field).
+   */
+  hp: number;
   footprintW: number;
   footprintH: number;
   costFunds: number;
@@ -1012,6 +1032,7 @@ export function policyFunded(world: World, owner: number, id: PolicyId): boolean
 export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   house: {
     kind: 'house', name: 'House', zone: ZoneType.RESIDENTIAL,
+    hp: 200,
     footprintW: 2, footprintH: 2, costFunds: 120, costMaterials: 40,
     buildSeconds: 10, upkeepFundsPerSec: 0.15,
     powerDemand: 1, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1020,6 +1041,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   apartment: {
     kind: 'apartment', name: 'Apartment Block', zone: ZoneType.RESIDENTIAL,
+    hp: 300,
     footprintW: 3, footprintH: 3, costFunds: 450, costMaterials: 160,
     buildSeconds: 30, upkeepFundsPerSec: 0.7,
     powerDemand: 3, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -1028,6 +1050,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   shop: {
     kind: 'shop', name: 'Shop', zone: ZoneType.COMMERCIAL,
+    hp: 250,
     footprintW: 2, footprintH: 2, costFunds: 220, costMaterials: 70,
     buildSeconds: 15, upkeepFundsPerSec: 0.4,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1037,6 +1060,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   lab: {
     kind: 'lab', name: 'Research Lab', zone: ZoneType.COMMERCIAL,
+    hp: 400,
     footprintW: 2, footprintH: 2, costFunds: 650, costMaterials: 220,
     buildSeconds: 45, upkeepFundsPerSec: 1.2,
     powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1046,6 +1070,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   factory: {
     kind: 'factory', name: 'Factory', zone: ZoneType.INDUSTRIAL,
+    hp: 450,
     footprintW: 3, footprintH: 3, costFunds: 550, costMaterials: 220,
     buildSeconds: 40, upkeepFundsPerSec: 1.6,
     powerDemand: 5, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -1055,6 +1080,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   farm: {
     kind: 'farm', name: 'Farm', zone: ZoneType.INDUSTRIAL,
+    hp: 250,
     footprintW: 3, footprintH: 3, costFunds: 300, costMaterials: 80,
     buildSeconds: 15, upkeepFundsPerSec: 0.6,
     powerDemand: 1, powerSupply: 0, waterDemand: 4, waterSupply: 0,
@@ -1064,6 +1090,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   powerPlant: {
     kind: 'powerPlant', name: 'Power Plant', zone: UTILITY_ZONE,
+    hp: 400,
     footprintW: 3, footprintH: 3, costFunds: 900, costMaterials: 350,
     buildSeconds: 60, upkeepFundsPerSec: 0.8,
     powerDemand: 0, powerSupply: 25, waterDemand: 2, waterSupply: 0,
@@ -1075,6 +1102,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   waterPump: {
     kind: 'waterPump', name: 'Water Pump', zone: UTILITY_ZONE,
+    hp: 300,
     footprintW: 2, footprintH: 2, costFunds: 350, costMaterials: 120,
     buildSeconds: 20, upkeepFundsPerSec: 0.4,
     powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 25,
@@ -1086,6 +1114,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   mediaCenter: {
     kind: 'mediaCenter', name: 'Media Center', zone: ZoneType.COMMERCIAL,
+    hp: 400,
     footprintW: 2, footprintH: 2, costFunds: 800, costMaterials: 300,
     buildSeconds: 45, upkeepFundsPerSec: 1.0,
     powerDemand: 4, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1095,6 +1124,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   shipyard: {
     kind: 'shipyard', name: 'Shipyard', zone: UTILITY_ZONE,
+    hp: 800,
     footprintW: 4, footprintH: 3, costFunds: 1200, costMaterials: 500,
     buildSeconds: 60, upkeepFundsPerSec: 1.5,
     powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1105,6 +1135,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   aegisControl: {
     kind: 'aegisControl', name: 'Aegis Control', zone: UTILITY_ZONE,
+    hp: 1000,
     footprintW: 3, footprintH: 3, costFunds: 5000, costMaterials: 2000,
     buildSeconds: 120, upkeepFundsPerSec: 5.0,
     powerDemand: 10, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1115,6 +1146,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   stormArray: {
     kind: 'stormArray', name: 'Storm Array', zone: UTILITY_ZONE,
+    hp: 1000,
     footprintW: 4, footprintH: 4, costFunds: 6000, costMaterials: 2500,
     buildSeconds: 150, upkeepFundsPerSec: 6.0,
     powerDemand: 12, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1125,6 +1157,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   barracks: {
     kind: 'barracks', name: 'Barracks', zone: ZoneType.INDUSTRIAL,
+    hp: 900,
     footprintW: 3, footprintH: 3, costFunds: 700, costMaterials: 250,
     buildSeconds: 40, upkeepFundsPerSec: 1.0,
     powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1138,6 +1171,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   militaryAcademy: {
     kind: 'militaryAcademy', name: 'Military Academy', zone: ZoneType.INDUSTRIAL,
+    hp: 900,
     footprintW: 3, footprintH: 3, costFunds: 600, costMaterials: 200,
     buildSeconds: 30, upkeepFundsPerSec: 0.8,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1148,6 +1182,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   warFactory: {
     kind: 'warFactory', name: 'War Factory', zone: ZoneType.INDUSTRIAL,
+    hp: 1000,
     footprintW: 4, footprintH: 3, costFunds: 1100, costMaterials: 450,
     buildSeconds: 60, upkeepFundsPerSec: 1.8,
     powerDemand: 6, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -1160,6 +1195,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   airfield: {
     kind: 'airfield', name: 'Airfield', zone: UTILITY_ZONE,
+    hp: 900,
     footprintW: 5, footprintH: 4, costFunds: 1500, costMaterials: 600,
     buildSeconds: 75, upkeepFundsPerSec: 2.0,
     powerDemand: 5, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1179,6 +1215,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   navalYard: {
     kind: 'navalYard', name: 'Naval Yard', zone: UTILITY_ZONE,
+    hp: 1000,
     footprintW: 5, footprintH: 4, costFunds: 1800, costMaterials: 700,
     buildSeconds: 80, upkeepFundsPerSec: 2.2,
     powerDemand: 6, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -1192,6 +1229,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   // Phase 4 transport (S7, grand expansion): civilian transport hubs.
   railStation: {
     kind: 'railStation', name: 'Rail Station', zone: ZoneType.COMMERCIAL,
+    hp: 400,
     footprintW: 3, footprintH: 3, costFunds: 600, costMaterials: 200,
     buildSeconds: 45, upkeepFundsPerSec: 0.6,
     powerDemand: 3, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1206,6 +1244,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   busDepot: {
     kind: 'busDepot', name: 'Bus Depot', zone: ZoneType.INDUSTRIAL,
+    hp: 300,
     footprintW: 3, footprintH: 2, costFunds: 350, costMaterials: 120,
     buildSeconds: 35, upkeepFundsPerSec: 0.4,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1219,6 +1258,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   ferryTerminal: {
     kind: 'ferryTerminal', name: 'Ferry Terminal', zone: ZoneType.COMMERCIAL,
+    hp: 400,
     footprintW: 3, footprintH: 3, costFunds: 500, costMaterials: 180,
     buildSeconds: 40, upkeepFundsPerSec: 0.5,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1232,6 +1272,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   marina: {
     kind: 'marina', name: 'Marina', zone: ZoneType.COMMERCIAL,
+    hp: 300,
     footprintW: 2, footprintH: 2, costFunds: 300, costMaterials: 100,
     buildSeconds: 30, upkeepFundsPerSec: 0.3,
     powerDemand: 1, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1245,6 +1286,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   marinaLarge: {
     kind: 'marinaLarge', name: 'Grand Marina', zone: ZoneType.COMMERCIAL,
+    hp: 400,
     footprintW: 4, footprintH: 4, costFunds: 900, costMaterials: 350,
     buildSeconds: 60, upkeepFundsPerSec: 0.9,
     powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1263,6 +1305,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   // ridershipIncome (funds/sec, runRidershipIncome in economy.ts).
   busStop: {
     kind: 'busStop', name: 'Bus Stop', zone: UTILITY_ZONE,
+    hp: 150,
     footprintW: 1, footprintH: 1, costFunds: 40, costMaterials: 10,
     buildSeconds: 10, upkeepFundsPerSec: 0.05,
     powerDemand: 0, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1273,6 +1316,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   taxiStand: {
     kind: 'taxiStand', name: 'Taxi Stand', zone: UTILITY_ZONE,
+    hp: 150,
     footprintW: 1, footprintH: 1, costFunds: 40, costMaterials: 10,
     buildSeconds: 10, upkeepFundsPerSec: 0.05,
     powerDemand: 0, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1283,6 +1327,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   tramStop: {
     kind: 'tramStop', name: 'Tram Stop', zone: UTILITY_ZONE,
+    hp: 150,
     footprintW: 1, footprintH: 1, costFunds: 50, costMaterials: 15,
     buildSeconds: 12, upkeepFundsPerSec: 0.06,
     powerDemand: 0, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1293,6 +1338,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   ferryPier: {
     kind: 'ferryPier', name: 'Ferry Pier', zone: UTILITY_ZONE,
+    hp: 200,
     footprintW: 2, footprintH: 2, costFunds: 120, costMaterials: 40,
     buildSeconds: 20, upkeepFundsPerSec: 0.15,
     powerDemand: 0, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1304,6 +1350,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   neighborhoodStation: {
     kind: 'neighborhoodStation', name: 'Neighborhood Station', zone: ZoneType.COMMERCIAL,
+    hp: 300,
     footprintW: 2, footprintH: 2, costFunds: 250, costMaterials: 80,
     buildSeconds: 30, upkeepFundsPerSec: 0.3,
     powerDemand: 1, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1316,6 +1363,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   centralStation: {
     kind: 'centralStation', name: 'Central Station', zone: ZoneType.COMMERCIAL,
+    hp: 500,
     footprintW: 4, footprintH: 3, costFunds: 800, costMaterials: 300,
     buildSeconds: 60, upkeepFundsPerSec: 0.8,
     powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1329,6 +1377,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   airportInterchange: {
     kind: 'airportInterchange', name: 'Airport Interchange', zone: ZoneType.COMMERCIAL,
+    hp: 500,
     footprintW: 4, footprintH: 4, costFunds: 1200, costMaterials: 450,
     buildSeconds: 80, upkeepFundsPerSec: 1.2,
     powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1342,6 +1391,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   radarStation: {
     kind: 'radarStation', name: 'Radar Station', zone: UTILITY_ZONE,
+    hp: 500,
     footprintW: 2, footprintH: 2, costFunds: 600, costMaterials: 200,
     buildSeconds: 30, upkeepFundsPerSec: 0.8,
     powerDemand: 3, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1359,6 +1409,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   quarry: {
     kind: 'quarry', name: 'Quarry', zone: ZoneType.INDUSTRIAL,
+    hp: 400,
     footprintW: 3, footprintH: 3, costFunds: 350, costMaterials: 100,
     buildSeconds: 25, upkeepFundsPerSec: 0.7,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1368,6 +1419,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   oilRefinery: {
     kind: 'oilRefinery', name: 'Oil Refinery', zone: ZoneType.INDUSTRIAL,
+    hp: 500,
     footprintW: 4, footprintH: 3, costFunds: 900, costMaterials: 350,
     buildSeconds: 50, upkeepFundsPerSec: 1.4,
     powerDemand: 4, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -1377,6 +1429,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   recyclingCenter: {
     kind: 'recyclingCenter', name: 'Recycling Center', zone: ZoneType.INDUSTRIAL,
+    hp: 400,
     footprintW: 3, footprintH: 3, costFunds: 500, costMaterials: 180,
     buildSeconds: 35, upkeepFundsPerSec: 0.9,
     powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1386,6 +1439,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   market: {
     kind: 'market', name: 'Market', zone: ZoneType.COMMERCIAL,
+    hp: 350,
     footprintW: 3, footprintH: 3, costFunds: 600, costMaterials: 200,
     buildSeconds: 30, upkeepFundsPerSec: 1.0,
     powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1395,6 +1449,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   solarFarm: {
     kind: 'solarFarm', name: 'Solar Farm', zone: UTILITY_ZONE,
+    hp: 350,
     footprintW: 4, footprintH: 3, costFunds: 700, costMaterials: 250,
     buildSeconds: 35, upkeepFundsPerSec: 0.5,
     powerDemand: 0, powerSupply: 15, waterDemand: 1, waterSupply: 0,
@@ -1404,6 +1459,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   nuclearPlant: {
     kind: 'nuclearPlant', name: 'Nuclear Plant', zone: UTILITY_ZONE,
+    hp: 700,
     footprintW: 4, footprintH: 4, costFunds: 2500, costMaterials: 1000,
     buildSeconds: 100, upkeepFundsPerSec: 2.5,
     powerDemand: 0, powerSupply: 60, waterDemand: 6, waterSupply: 0,
@@ -1413,6 +1469,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   desalination: {
     kind: 'desalination', name: 'Desalination Plant', zone: UTILITY_ZONE,
+    hp: 450,
     footprintW: 3, footprintH: 3, costFunds: 800, costMaterials: 300,
     buildSeconds: 40, upkeepFundsPerSec: 1.0,
     powerDemand: 6, powerSupply: 0, waterDemand: 0, waterSupply: 40,
@@ -1422,6 +1479,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   hospital: {
     kind: 'hospital', name: 'Hospital', zone: ZoneType.COMMERCIAL,
+    hp: 400,
     footprintW: 3, footprintH: 3, costFunds: 800, costMaterials: 280,
     buildSeconds: 40, upkeepFundsPerSec: 1.2,
     powerDemand: 4, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -1431,6 +1489,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   university: {
     kind: 'university', name: 'University', zone: UTILITY_ZONE,
+    hp: 400,
     footprintW: 4, footprintH: 3, costFunds: 1400, costMaterials: 500,
     buildSeconds: 60, upkeepFundsPerSec: 1.8,
     powerDemand: 5, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -1440,6 +1499,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   school: {
     kind: 'school', name: 'School', zone: UTILITY_ZONE,
+    hp: 300,
     footprintW: 2, footprintH: 2, costFunds: 250, costMaterials: 80,
     buildSeconds: 20, upkeepFundsPerSec: 0.4,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1453,6 +1513,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   // (see `educationGrowthBonus`).
   kindergarten: {
     kind: 'kindergarten', name: 'Kindergarten', zone: UTILITY_ZONE,
+    hp: 250,
     footprintW: 2, footprintH: 2, costFunds: 150, costMaterials: 50,
     buildSeconds: 12, upkeepFundsPerSec: 0.2,
     powerDemand: 1, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1462,6 +1523,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   college: {
     kind: 'college', name: 'College', zone: UTILITY_ZONE,
+    hp: 350,
     footprintW: 2, footprintH: 2, costFunds: 400, costMaterials: 120,
     buildSeconds: 30, upkeepFundsPerSec: 0.8,
     powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1476,6 +1538,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   // see the amenity table in sim/desirability.ts).
   library: {
     kind: 'library', name: 'Library', zone: UTILITY_ZONE,
+    hp: 300,
     footprintW: 2, footprintH: 2, costFunds: 200, costMaterials: 60,
     buildSeconds: 20, upkeepFundsPerSec: 0.3,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1485,6 +1548,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   park: {
     kind: 'park', name: 'Park', zone: UTILITY_ZONE,
+    hp: 200,
     footprintW: 3, footprintH: 3, costFunds: 250, costMaterials: 80,
     buildSeconds: 15, upkeepFundsPerSec: 0.2,
     powerDemand: 0, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1502,6 +1566,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   // cars, hence the stronger/longer-reaching bonus.
   parkingLot: {
     kind: 'parkingLot', name: 'Parking Lot', zone: UTILITY_ZONE,
+    hp: 150,
     footprintW: 3, footprintH: 3, costFunds: 180, costMaterials: 60,
     buildSeconds: 15, upkeepFundsPerSec: 0.15,
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1511,6 +1576,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   parkingGarage: {
     kind: 'parkingGarage', name: 'Parking Garage', zone: UTILITY_ZONE,
+    hp: 250,
     footprintW: 3, footprintH: 3, costFunds: 450, costMaterials: 180,
     buildSeconds: 30, upkeepFundsPerSec: 0.5,
     powerDemand: 3, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1520,6 +1586,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   monument: {
     kind: 'monument', name: 'Monument', zone: UTILITY_ZONE,
+    hp: 300,
     footprintW: 3, footprintH: 3, costFunds: 3000, costMaterials: 1200,
     buildSeconds: 90, upkeepFundsPerSec: 2.0,
     powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1547,6 +1614,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   // ------------------------------------------------------------------
   museum: {
     kind: 'museum', name: 'Museum', zone: UTILITY_ZONE,
+    hp: 350,
     footprintW: 3, footprintH: 3, costFunds: 700, costMaterials: 250,
     buildSeconds: 40, upkeepFundsPerSec: 0.9,
     powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1557,6 +1625,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   theater: {
     kind: 'theater', name: 'Theater', zone: UTILITY_ZONE,
+    hp: 350,
     footprintW: 3, footprintH: 3, costFunds: 900, costMaterials: 300,
     buildSeconds: 45, upkeepFundsPerSec: 1.2,
     powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1567,6 +1636,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   sportsStadium: {
     kind: 'sportsStadium', name: 'Sports Stadium', zone: UTILITY_ZONE,
+    hp: 500,
     footprintW: 4, footprintH: 4, costFunds: 2200, costMaterials: 900,
     buildSeconds: 80, upkeepFundsPerSec: 2.5,
     powerDemand: 6, powerSupply: 0, waterDemand: 4, waterSupply: 0,
@@ -1577,6 +1647,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   botanicalGarden: {
     kind: 'botanicalGarden', name: 'Botanical Garden', zone: UTILITY_ZONE,
+    hp: 250,
     footprintW: 4, footprintH: 4, costFunds: 600, costMaterials: 200,
     buildSeconds: 30, upkeepFundsPerSec: 0.5,
     powerDemand: 0, powerSupply: 0, waterDemand: 4, waterSupply: 0,
@@ -1587,6 +1658,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   grandMarket: {
     kind: 'grandMarket', name: 'Grand Market', zone: ZoneType.COMMERCIAL,
+    hp: 450,
     footprintW: 4, footprintH: 4, costFunds: 1500, costMaterials: 600,
     buildSeconds: 60, upkeepFundsPerSec: 2.2,
     powerDemand: 6, powerSupply: 0, waterDemand: 4, waterSupply: 0,
@@ -1598,6 +1670,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   bank: {
     kind: 'bank', name: 'Bank', zone: ZoneType.COMMERCIAL,
+    hp: 400,
     footprintW: 2, footprintH: 2, costFunds: 500, costMaterials: 180,
     buildSeconds: 30, upkeepFundsPerSec: 0.8,
     powerDemand: 3, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1608,6 +1681,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   officeTower: {
     kind: 'officeTower', name: 'Office Tower', zone: ZoneType.COMMERCIAL,
+    hp: 450,
     footprintW: 3, footprintH: 3, costFunds: 1200, costMaterials: 450,
     buildSeconds: 55, upkeepFundsPerSec: 1.8,
     powerDemand: 6, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -1618,6 +1692,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   clinic: {
     kind: 'clinic', name: 'Clinic', zone: ZoneType.COMMERCIAL,
+    hp: 300,
     footprintW: 2, footprintH: 2, costFunds: 300, costMaterials: 100,
     buildSeconds: 20, upkeepFundsPerSec: 0.5,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1628,6 +1703,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   medicalCenter: {
     kind: 'medicalCenter', name: 'Medical Center', zone: ZoneType.COMMERCIAL,
+    hp: 400,
     footprintW: 4, footprintH: 4, costFunds: 2000, costMaterials: 800,
     buildSeconds: 75, upkeepFundsPerSec: 3.0,
     powerDemand: 8, powerSupply: 0, waterDemand: 5, waterSupply: 0,
@@ -1638,6 +1714,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   fireStation: {
     kind: 'fireStation', name: 'Fire Station', zone: UTILITY_ZONE,
+    hp: 300,
     footprintW: 2, footprintH: 2, costFunds: 350, costMaterials: 120,
     buildSeconds: 25, upkeepFundsPerSec: 0.4,
     powerDemand: 2, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1661,6 +1738,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   // ------------------------------------------------------------------
   coalPlant: {
     kind: 'coalPlant', name: 'Coal Plant', zone: UTILITY_ZONE,
+    hp: 450,
     footprintW: 3, footprintH: 3, costFunds: 500, costMaterials: 200,
     buildSeconds: 40, upkeepFundsPerSec: 0.9,
     powerDemand: 0, powerSupply: 30, waterDemand: 3, waterSupply: 0,
@@ -1670,6 +1748,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   gasPlant: {
     kind: 'gasPlant', name: 'Gas Plant', zone: UTILITY_ZONE,
+    hp: 450,
     footprintW: 3, footprintH: 3, costFunds: 700, costMaterials: 280,
     buildSeconds: 45, upkeepFundsPerSec: 1.0,
     powerDemand: 0, powerSupply: 35, waterDemand: 2, waterSupply: 0,
@@ -1679,6 +1758,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   windFarm: {
     kind: 'windFarm', name: 'Wind Farm', zone: UTILITY_ZONE,
+    hp: 300,
     footprintW: 3, footprintH: 3, costFunds: 450, costMaterials: 150,
     buildSeconds: 30, upkeepFundsPerSec: 0.4,
     powerDemand: 0, powerSupply: 8, waterDemand: 0, waterSupply: 0,
@@ -1688,6 +1768,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   hydroDam: {
     kind: 'hydroDam', name: 'Hydro Dam', zone: UTILITY_ZONE,
+    hp: 550,
     footprintW: 4, footprintH: 2, costFunds: 1200, costMaterials: 500,
     buildSeconds: 70, upkeepFundsPerSec: 1.0,
     powerDemand: 0, powerSupply: 45, waterDemand: 0, waterSupply: 0,
@@ -1697,6 +1778,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   geothermalPlant: {
     kind: 'geothermalPlant', name: 'Geothermal Plant', zone: UTILITY_ZONE,
+    hp: 500,
     footprintW: 3, footprintH: 3, costFunds: 1600, costMaterials: 600,
     buildSeconds: 80, upkeepFundsPerSec: 1.2,
     powerDemand: 0, powerSupply: 40, waterDemand: 2, waterSupply: 0,
@@ -1706,6 +1788,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   fusionPlant: {
     kind: 'fusionPlant', name: 'Fusion Plant', zone: UTILITY_ZONE,
+    hp: 700,
     footprintW: 4, footprintH: 4, costFunds: 4000, costMaterials: 1500,
     buildSeconds: 120, upkeepFundsPerSec: 3.0,
     powerDemand: 0, powerSupply: 120, waterDemand: 4, waterSupply: 0,
@@ -1715,6 +1798,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   waterWell: {
     kind: 'waterWell', name: 'Water Well', zone: UTILITY_ZONE,
+    hp: 250,
     footprintW: 2, footprintH: 2, costFunds: 200, costMaterials: 60,
     buildSeconds: 15, upkeepFundsPerSec: 0.2,
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 10,
@@ -1724,6 +1808,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   waterTower: {
     kind: 'waterTower', name: 'Water Tower', zone: UTILITY_ZONE,
+    hp: 300,
     footprintW: 2, footprintH: 2, costFunds: 350, costMaterials: 120,
     buildSeconds: 25, upkeepFundsPerSec: 0.3,
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1734,6 +1819,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   waterTreatment: {
     kind: 'waterTreatment', name: 'Water Treatment Plant', zone: UTILITY_ZONE,
+    hp: 400,
     footprintW: 3, footprintH: 3, costFunds: 900, costMaterials: 350,
     buildSeconds: 50, upkeepFundsPerSec: 1.2,
     powerDemand: 5, powerSupply: 0, waterDemand: 0, waterSupply: 20,
@@ -1743,6 +1829,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   reservoir: {
     kind: 'reservoir', name: 'Reservoir', zone: UTILITY_ZONE,
+    hp: 400,
     footprintW: 4, footprintH: 4, costFunds: 800, costMaterials: 300,
     buildSeconds: 45, upkeepFundsPerSec: 0.5,
     powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1753,6 +1840,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   powerSubstation: {
     kind: 'powerSubstation', name: 'Power Substation', zone: UTILITY_ZONE,
+    hp: 250,
     footprintW: 2, footprintH: 2, costFunds: 300, costMaterials: 100,
     buildSeconds: 20, upkeepFundsPerSec: 0.4,
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1762,6 +1850,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   pumpingStation: {
     kind: 'pumpingStation', name: 'Pumping Station', zone: UTILITY_ZONE,
+    hp: 250,
     footprintW: 2, footprintH: 2, costFunds: 300, costMaterials: 100,
     buildSeconds: 20, upkeepFundsPerSec: 0.4,
     powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1771,6 +1860,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   batteryStation: {
     kind: 'batteryStation', name: 'Battery Station', zone: UTILITY_ZONE,
+    hp: 300,
     footprintW: 2, footprintH: 2, costFunds: 500, costMaterials: 180,
     buildSeconds: 30, upkeepFundsPerSec: 0.4,
     powerDemand: 0, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1813,6 +1903,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   // ------------------------------------------------------------------
   oilWell: {
     kind: 'oilWell', name: 'Oil Well', zone: UTILITY_ZONE,
+    hp: 350,
     footprintW: 2, footprintH: 2, costFunds: 300, costMaterials: 120,
     buildSeconds: 25, upkeepFundsPerSec: 0.5,
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1822,6 +1913,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   oilRig: {
     kind: 'oilRig', name: 'Offshore Oil Rig', zone: UTILITY_ZONE,
+    hp: 450,
     footprintW: 3, footprintH: 3, costFunds: 1400, costMaterials: 600,
     buildSeconds: 60, upkeepFundsPerSec: 2.0,
     powerDemand: 4, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1832,6 +1924,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   munitionsFactory: {
     kind: 'munitionsFactory', name: 'Munitions Factory', zone: ZoneType.INDUSTRIAL,
+    hp: 800,
     footprintW: 4, footprintH: 3, costFunds: 1200, costMaterials: 500,
     buildSeconds: 55, upkeepFundsPerSec: 1.6,
     powerDemand: 6, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1844,6 +1937,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   missilePlant: {
     kind: 'missilePlant', name: 'Missile Plant', zone: ZoneType.INDUSTRIAL,
+    hp: 900,
     footprintW: 4, footprintH: 3, costFunds: 2200, costMaterials: 900,
     buildSeconds: 80, upkeepFundsPerSec: 2.5,
     powerDemand: 10, powerSupply: 0, waterDemand: 4, waterSupply: 0,
@@ -1856,6 +1950,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   missileSilo: {
     kind: 'missileSilo', name: 'Missile Silo', zone: UTILITY_ZONE,
+    hp: 800,
     footprintW: 3, footprintH: 3, costFunds: 900, costMaterials: 700,
     buildSeconds: 50, upkeepFundsPerSec: 1.2,
     powerDemand: 3, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1867,6 +1962,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   ordnanceDepot: {
     kind: 'ordnanceDepot', name: 'Ordnance Depot', zone: UTILITY_ZONE,
+    hp: 600,
     footprintW: 3, footprintH: 3, costFunds: 700, costMaterials: 400,
     buildSeconds: 40, upkeepFundsPerSec: 1.0,
     powerDemand: 3, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1878,6 +1974,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   fuelDepot: {
     kind: 'fuelDepot', name: 'Fuel Depot', zone: UTILITY_ZONE,
+    hp: 600,
     footprintW: 3, footprintH: 3, costFunds: 600, costMaterials: 300,
     buildSeconds: 40, upkeepFundsPerSec: 0.8,
     powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1916,6 +2013,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   // ------------------------------------------------------------------
   civilAirport: {
     kind: 'civilAirport', name: 'Civil Airport', zone: ZoneType.AIRPORT,
+    hp: 600,
     footprintW: 6, footprintH: 5, costFunds: 2000, costMaterials: 800,
     buildSeconds: 90, upkeepFundsPerSec: 2.5,
     powerDemand: 8, powerSupply: 0, waterDemand: 4, waterSupply: 0,
@@ -1928,6 +2026,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   militaryAirbase: {
     kind: 'militaryAirbase', name: 'Military Airbase', zone: ZoneType.AIRPORT,
+    hp: 800,
     footprintW: 6, footprintH: 5, costFunds: 1800, costMaterials: 700,
     buildSeconds: 80, upkeepFundsPerSec: 2.0,
     powerDemand: 7, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -1941,6 +2040,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   mixedAirport: {
     kind: 'mixedAirport', name: 'Mixed Airport', zone: ZoneType.AIRPORT,
+    hp: 700,
     footprintW: 7, footprintH: 6, costFunds: 2600, costMaterials: 1000,
     buildSeconds: 110, upkeepFundsPerSec: 3.0,
     powerDemand: 10, powerSupply: 0, waterDemand: 5, waterSupply: 0,
@@ -1955,6 +2055,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   passengerTerminal: {
     kind: 'passengerTerminal', name: 'Passenger Terminal', zone: ZoneType.AIRPORT,
+    hp: 400,
     footprintW: 3, footprintH: 3, costFunds: 900, costMaterials: 300,
     buildSeconds: 50, upkeepFundsPerSec: 0.9,
     powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1965,6 +2066,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   cargoTerminal: {
     kind: 'cargoTerminal', name: 'Cargo Terminal', zone: ZoneType.AIRPORT,
+    hp: 400,
     footprintW: 3, footprintH: 3, costFunds: 900, costMaterials: 350,
     buildSeconds: 50, upkeepFundsPerSec: 0.9,
     powerDemand: 4, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1975,6 +2077,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   controlTower: {
     kind: 'controlTower', name: 'Control Tower', zone: ZoneType.AIRPORT,
+    hp: 350,
     footprintW: 2, footprintH: 2, costFunds: 500, costMaterials: 200,
     buildSeconds: 30, upkeepFundsPerSec: 0.4,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1984,6 +2087,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   hangarS: {
     kind: 'hangarS', name: 'Hangar (Light)', zone: ZoneType.AIRPORT,
+    hp: 400,
     footprintW: 2, footprintH: 2, costFunds: 300, costMaterials: 120,
     buildSeconds: 25, upkeepFundsPerSec: 0.3,
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -1994,6 +2098,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   hangarM: {
     kind: 'hangarM', name: 'Hangar (Medium)', zone: ZoneType.AIRPORT,
+    hp: 500,
     footprintW: 3, footprintH: 2, costFunds: 450, costMaterials: 180,
     buildSeconds: 30, upkeepFundsPerSec: 0.4,
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -2004,6 +2109,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   hangarL: {
     kind: 'hangarL', name: 'Hangar (Heavy)', zone: ZoneType.AIRPORT,
+    hp: 600,
     footprintW: 3, footprintH: 3, costFunds: 700, costMaterials: 280,
     buildSeconds: 40, upkeepFundsPerSec: 0.6,
     powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -2014,6 +2120,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   fuelFarm: {
     kind: 'fuelFarm', name: 'Fuel Farm', zone: ZoneType.AIRPORT,
+    hp: 450,
     footprintW: 3, footprintH: 3, costFunds: 600, costMaterials: 250,
     buildSeconds: 40, upkeepFundsPerSec: 0.7,
     powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -2024,6 +2131,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   maintenanceHangar: {
     kind: 'maintenanceHangar', name: 'Maintenance Hangar', zone: ZoneType.AIRPORT,
+    hp: 450,
     footprintW: 3, footprintH: 2, costFunds: 500, costMaterials: 200,
     buildSeconds: 35, upkeepFundsPerSec: 0.5,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -2033,6 +2141,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   runwayS: {
     kind: 'runwayS', name: 'Runway (Light)', zone: ZoneType.AIRPORT,
+    hp: 300,
     footprintW: 5, footprintH: 1, costFunds: 400, costMaterials: 150,
     buildSeconds: 30, upkeepFundsPerSec: 0.3,
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -2043,6 +2152,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   runwayM: {
     kind: 'runwayM', name: 'Runway (Medium)', zone: ZoneType.AIRPORT,
+    hp: 350,
     footprintW: 7, footprintH: 1, costFunds: 700, costMaterials: 250,
     buildSeconds: 40, upkeepFundsPerSec: 0.5,
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -2053,6 +2163,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   runwayL: {
     kind: 'runwayL', name: 'Runway (Heavy)', zone: ZoneType.AIRPORT,
+    hp: 400,
     footprintW: 9, footprintH: 1, costFunds: 1100, costMaterials: 400,
     buildSeconds: 55, upkeepFundsPerSec: 0.8,
     powerDemand: 2, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -2074,6 +2185,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   // ------------------------------------------------------------------
   commercialPort: {
     kind: 'commercialPort', name: 'Commercial Port', zone: UTILITY_ZONE,
+    hp: 500,
     footprintW: 4, footprintH: 3, costFunds: 800, costMaterials: 300,
     buildSeconds: 45, upkeepFundsPerSec: 0.8,
     powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -2088,6 +2200,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   containerPort: {
     kind: 'containerPort', name: 'Container Port', zone: UTILITY_ZONE,
+    hp: 550,
     footprintW: 5, footprintH: 4, costFunds: 1500, costMaterials: 600,
     buildSeconds: 70, upkeepFundsPerSec: 1.5,
     powerDemand: 6, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -2099,6 +2212,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   fishingHarbor: {
     kind: 'fishingHarbor', name: 'Fishing Harbor', zone: UTILITY_ZONE,
+    hp: 400,
     footprintW: 3, footprintH: 2, costFunds: 350, costMaterials: 120,
     buildSeconds: 25, upkeepFundsPerSec: 0.35,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -2110,6 +2224,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   navalBase: {
     kind: 'navalBase', name: 'Naval Base', zone: UTILITY_ZONE,
+    hp: 700,
     footprintW: 5, footprintH: 4, costFunds: 2000, costMaterials: 800,
     buildSeconds: 90, upkeepFundsPerSec: 2.0,
     powerDemand: 6, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -2134,6 +2249,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   // ------------------------------------------------------------------
   intelHQ: {
     kind: 'intelHQ', name: 'Intelligence Headquarters', zone: UTILITY_ZONE,
+    hp: 600,
     footprintW: 3, footprintH: 3, costFunds: 1400, costMaterials: 450,
     buildSeconds: 55, upkeepFundsPerSec: 1.2,
     powerDemand: 4, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -2148,6 +2264,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   listeningPost: {
     kind: 'listeningPost', name: 'Listening Post', zone: UTILITY_ZONE,
+    hp: 400,
     footprintW: 2, footprintH: 2, costFunds: 500, costMaterials: 150,
     buildSeconds: 30, upkeepFundsPerSec: 0.6,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -2162,6 +2279,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   satelliteUplink: {
     kind: 'satelliteUplink', name: 'Satellite Uplink', zone: UTILITY_ZONE,
+    hp: 500,
     footprintW: 3, footprintH: 3, costFunds: 2500, costMaterials: 900,
     buildSeconds: 90, upkeepFundsPerSec: 2.0,
     powerDemand: 8, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -2177,6 +2295,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   },
   signalsStation: {
     kind: 'signalsStation', name: 'Signals Station', zone: UTILITY_ZONE,
+    hp: 500,
     footprintW: 2, footprintH: 2, costFunds: 900, costMaterials: 300,
     buildSeconds: 45, upkeepFundsPerSec: 1.0,
     powerDemand: 4, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -2382,6 +2501,18 @@ export interface BuildingRecord {
   operational: boolean;
   powered: boolean;
   watered: boolean;
+  /**
+   * Final-review R2 (2026-10-01): structural hit points. `maxHp` is the
+   * def's `hp` at placement (repairs/refits never raise it in 0.1
+   * Alpha); `hp` drops under attack and the building is destroyed at
+   * 0 via `destroyBuilding`. Optional so pre-R2 record literals keep
+   * compiling; every read uses `?? BUILDING_DEFS[b.kind].hp` (AD9 —
+   * the veterancy `?? 0` precedent). Snapshotted (v8, additive — no
+   * version bump) and digest-covered (destruction is
+   * behavior-affecting, PLAN §11).
+   */
+  hp?: number;
+  maxHp?: number;
   /**
    * Phase 2: per-utility diagnosis (see UtilityDiag). Optional so
    * pre-Phase-2 record literals keep compiling; every read uses
@@ -2874,6 +3005,10 @@ export function placeBuilding(city: CityState, p: Placement, seed = 0): Building
     progress: 0,
     level: 1,
     operational: false,
+    // Final-review R2 (2026-10-01): buildings are destructible — fresh
+    // buildings start at full structural HP (def.hp).
+    hp: def.hp,
+    maxHp: def.hp,
     // 1-tick bootstrap for the cross-utility hooks (economy.ts): a
     // hooked plant (nuclearPlant needs water, desalination needs power)
     // reads the PREVIOUS tick's flags, so a fresh building starts
@@ -2917,6 +3052,55 @@ export function demolishBuilding(city: CityState, id: number): boolean {
   city.buildings.splice(index, 1);
   bumpUtilityEpoch(city);
   return true;
+}
+
+/**
+ * Destroy a building in combat (final-review R2, 2026-10-01): the full
+ * demolish cleanup — resupply reservations against the building are
+ * released and parked aircraft's hangar links cleared — then the record
+ * is removed via `demolishBuilding`. This is the single destruction
+ * path: the `demolish` command and combat's `damageBuilding` both call
+ * it (the loops used to be inlined in the demolish command; the manual
+ * mirror was a sync hazard — see the AGENTS.md note on the
+ * city→commands import-cycle reason they can't live in commands.ts).
+ * Returns true when a building was removed.
+ */
+export function destroyBuilding(world: World, b: BuildingRecord): boolean {
+  // Phase 3 logistics: release in-flight resupply reservations against
+  // the destroyed depot. This loop mirrors releaseDepotReservations
+  // (commands.ts) inline on purpose: a static city→commands import
+  // would close a city→commands→movement→pathfinding cycle that
+  // evaluates pathfinding while city is still initializing (GRID_CELLS
+  // NaN under the SSR transform — caught by sim.ai-soak). If the
+  // release semantics ever change, update both.
+  for (const u of world.units) {
+    if ((u.resupplyDepotId ?? 0) === b.id) {
+      u.resupplyDepotId = 0;
+      u.resupplyReservedAmmo = 0;
+      u.resupplyReservedFuel = 0;
+    }
+  }
+  // Phase 5 hangars (S4): parked aircraft survive on the tarmac —
+  // clear their hangar link (the slots die with the building).
+  // Mirrored inline for the same city→commands import-cycle reason
+  // as the loop above.
+  for (const u of world.units) {
+    if ((u.hangarBuildingId ?? 0) === b.id) u.hangarBuildingId = 0;
+  }
+  return demolishBuilding(world.city, b.id);
+}
+
+/**
+ * World-space center of a building's footprint. Buildings live in cell
+ * coords; units (and weapon ranges) live in world coords — range checks
+ * against buildings go through here.
+ */
+export function buildingCenterWorld(b: BuildingRecord): { x: number; z: number } {
+  const def = BUILDING_DEFS[b.kind];
+  return {
+    x: (b.cx + def.footprintW / 2) * CELL_WORLD_SIZE - MAP_HALF_SIZE,
+    z: (b.cz + def.footprintH / 2) * CELL_WORLD_SIZE - MAP_HALF_SIZE,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -3921,29 +4105,10 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       const b = buildingAtCell(world.city, cell);
       // No refund (D11): demolition is pure loss, like the genre standard.
       if (b) {
-        // Phase 3 logistics: release in-flight resupply reservations
-        // against the demolished depot. This loop mirrors
-        // releaseDepotReservations (commands.ts) inline on purpose: a
-        // static city→commands import would close a
-        // city→commands→movement→pathfinding cycle that evaluates
-        // pathfinding while city is still initializing (GRID_CELLS NaN
-        // under the SSR transform — caught by sim.ai-soak). If the
-        // release semantics ever change, update both.
-        for (const u of world.units) {
-          if ((u.resupplyDepotId ?? 0) === b.id) {
-            u.resupplyDepotId = 0;
-            u.resupplyReservedAmmo = 0;
-            u.resupplyReservedFuel = 0;
-          }
-        }
-        // Phase 5 hangars (S4): parked aircraft survive on the tarmac —
-        // clear their hangar link (the slots die with the building).
-        // Mirrored inline for the same city→commands import-cycle reason
-        // as the loop above.
-        for (const u of world.units) {
-          if ((u.hangarBuildingId ?? 0) === b.id) u.hangarBuildingId = 0;
-        }
-        return { removed: 'building', id: demolishBuilding(world.city, b.id) ? b.id : -1 };
+        // Final-review R2: the full destroy path (resupply-release +
+        // hangar-link cleanup) lives in destroyBuilding now — the
+        // demolish command and combat destruction share it.
+        return { removed: 'building', id: destroyBuilding(world, b) ? b.id : -1 };
       }
       // demolishBuilding bumps the epoch for buildings; cell removal
       // below bumps it for conductors (Phase 2 structural changes).

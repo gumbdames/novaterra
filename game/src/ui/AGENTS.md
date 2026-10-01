@@ -262,6 +262,10 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   payloads exactly: `buildEmbarkOrder(unitId, carrierId, owner)` →
   `embarkAircraft`; `buildBaseOrder(unitId, buildingId, owner)` →
   `baseAircraft`; `buildLaunchOrder(unitId, owner)` → `launchAircraft`.
+  Final-review R2 (2026-10-01): `buildAttackBuildingOrders(unitIds,
+  owner, buildingId)` — one `attackBuilding` (siege order) per selected
+  unit for right-click on an enemy building; the sim validates at
+  enqueue + apply, rejections toast loudly.
 - `palettes.ts` — headless-safe palette data + availability logic for
   the tabbed TRAIN/BUILD palettes and the research panel: `TRAIN_TABS`
   (6 tabs, 96 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck;
@@ -492,7 +496,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 ## Rules
 
 - Right-click attacks are gated by `canTarget(def, target)` — the same
-  rule the Classic AI follows. Never order an impossible attack.
+  rule the Classic AI follows. Right-click on an enemy BUILDING is gated
+  by `canTargetBuilding(def)` (armed + targets ground/both — the same
+  rule the sim and AI use for sieges) and issues `attackBuilding` when
+  any selected unit can hit buildings; enemy units take precedence over
+  buildings when both are under the cursor. Never order an impossible attack.
 - Rejected commands toast loudly (`CommandRejectedError`); nothing fails
   silently.
 - `S` is Stop, never camera-back. Camera back is ArrowDown.

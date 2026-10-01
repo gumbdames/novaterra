@@ -114,6 +114,13 @@ land, sea and air — or play a fully peaceful game with war disabled.
   procedural SIGINT mast — lazy-loaded, ~0.58 MiB total, 0 boot impact
 - 5 Classic AI rivals with per-match personalities, 5 difficulties, skirmish
   maps, deterministic simulation (seeded replays and saves)
+- Destructible buildings and siege warfare: every building has
+  structural HP (fragile houses ~200, military plants and superweapon
+  bunkers ~1000) shown in the selection panel — right-click an enemy
+  building with tanks or artillery selected to shell it to rubble; the
+  Storm Engine strike damages buildings in its blast radius and the
+  Aegis shield holds damage off yours. Conquest victory needs every
+  enemy unit AND every enemy building destroyed
 
 ## Documentation map
 

@@ -60,6 +60,7 @@ import { getPlayer } from '../sim/city';
 import {
   ROAD_CLASS_ORDER,
   ROAD_CLASS_STATS,
+  BUILDING_DEFS,
   buildingOccupancy,
   type RoadClass,
 } from '../sim/city';
@@ -1710,6 +1711,18 @@ export class HUD {
       panel.append(
         el('div', 'sel-unit', b.operational ? 'Operational' : 'Not operational'),
       );
+      // Final-review R2 (2026-10-01): structural HP — buildings are
+      // destructible now (C3), so the selection panel shows how much
+      // damage the building has taken. Reuses the 'sel-unit' class so
+      // no new DOM class is introduced; digest-covered by the bw:
+      // segment (AD11). Always shown: an enemy army can siege any
+      // building, finished or not.
+      const bdef = BUILDING_DEFS[b.kind];
+      const hpPct = Math.max(
+        0,
+        Math.round(((b.hp ?? bdef.hp) / (b.maxHp ?? bdef.hp)) * 100),
+      );
+      panel.append(el('div', 'sel-unit', fillLoc(sel.hpLine, { hp: hpPct })));
       // Crew training level (economy.ts levels thriving buildings 1→3).
       panel.append(el('div', 'sel-unit', fillLoc(sel.levelLine, { level: b.level })));
       // Phase 2 (utilities): power/water diagnosis for the selected

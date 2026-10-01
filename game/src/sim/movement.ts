@@ -625,6 +625,9 @@ export function orderMoveTo(world: World, unit: UnitRecord, x: number, z: number
   dropUnitRequests(world, unit.id);
   clearUnitOrder(unit);
   unit.targetId = 0;
+  // Final-review R2: a plain move supersedes an attack-building order
+  // too (same contract as targetId above).
+  unit.buildingTargetId = 0;
   unit.chasing = false;
   unit.destX = x;
   unit.destZ = z;
@@ -942,6 +945,8 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
       dropUnitRequests(world, unit.id);
       clearUnitOrder(unit);
       unit.targetId = 0;
+      // Final-review R2: stop cancels a siege order as well.
+      unit.buildingTargetId = 0;
       unit.chasing = false;
       unit.state = 'idle';
       unit.failReason = null;

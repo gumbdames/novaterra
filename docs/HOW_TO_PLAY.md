@@ -70,7 +70,10 @@ progress.
 - **Screen edges** — rest the pointer at any screen edge to pan that way.
 - **Shift + left-click** — add/remove one unit.
 - **Right-click ground** — move your selected units there.
-- **Right-click enemy** — attack it (only if your units can hit it).
+- **Right-click enemy unit** — attack it (only if your units can hit it).
+- **Right-click enemy building** — siege it until it falls (only units
+  with ground-attack weapons, e.g. tanks and artillery; your units never
+  fire at buildings on their own).
 - **Mouse wheel** — zoom in/out.
 - **Q / E** — turn the camera.
 
@@ -339,7 +342,8 @@ version.
 - **Arrow keys / WASD** — pan the camera.
 - **Mouse wheel** — zoom.
 - **Left-click** — select units / place buildings.
-- **Right-click** — move (open ground) or attack (enemy unit).
+- **Right-click** — move (open ground), attack (enemy unit), or siege
+  (enemy building — tanks and artillery shell it until it falls).
 
 ## Accessibility
 

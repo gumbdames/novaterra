@@ -1449,6 +1449,17 @@ export interface UnitRecord {  /** Stable id from `world.nextId`. Never reused. 
    * fire) never chase — the unit holds position and fires when in range.
    */
   chasing: boolean;
+  /**
+   * Final-review R2 (2026-10-01): id of the BUILDING this unit is
+   * ordered to attack via the `attackBuilding` command (0/undefined =
+   * none). Buildings live in a separate id space from units, so this
+   * needs its own field — `targetId` stays unit-only. `chasing` covers
+   * both: a sieging unit repositions toward its building target like
+   * any chase. Optional so pre-R2 record literals keep compiling;
+   * reads use `?? 0` (AD9). Snapshotted (v8, additive — no version
+   * bump) and digest-covered.
+   */
+  buildingTargetId?: number;
   /** Order lifecycle state. */
   state: UnitState;
   /** Why the last order failed; null unless state === 'failed'. */

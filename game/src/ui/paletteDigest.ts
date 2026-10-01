@@ -229,6 +229,17 @@ export function selectionDigest(
       `bs:${b.kind}:${b.owner}:${b.operational ? 1 : 0}:${b.progress >= 1 ? 1 : 0}`,
     );
     parts.push(`bl:${b.level ?? 1}`);
+    // Final-review R2 (2026-10-01): the panel renders the structural HP
+    // line ("HP 73%") for every selected building, so the digest must
+    // move when the HP changes. Integer precision matches the display
+    // exactly — the digest moves if and only if the rendered number
+    // would. Always emitted.
+    const bdef = BUILDING_DEFS[b.kind];
+    const bwPct = Math.max(
+      0,
+      Math.round(((b.hp ?? bdef.hp) / (b.maxHp ?? bdef.hp)) * 100),
+    );
+    parts.push(`bw:${bwPct}`);
     // Phase 2 (utilities): the panel renders the power/water diagnosis
     // line for every selected building, so the digest must move when
     // either diagnosis does. Always emitted (pre-sim fallback is the
@@ -529,7 +540,9 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // Workers 8/20", from the sim's buildingOccupancy()).
     // bh: hangar occupancy as parked aircraft ids (Phase 5
     // hangar/carrier shelter; 'bh:x' when the building has no hangars).
-    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:', 'bv:', 'bo:', 'bh:'],
+    // bw: structural HP percent (final-review R2; the panel renders
+    // "HP 73%" for every selected building — always emitted).
+    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:', 'bv:', 'bo:', 'bh:', 'bw:'],
   },
   {
     id: 'train-palette',

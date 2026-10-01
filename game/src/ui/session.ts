@@ -265,6 +265,13 @@ export function checkSkirmishVictory(world: World): boolean {
   // unreachable when nothing military exists — the peaceful victory
   // (checkPeacefulVictory) owns the outcome instead. Loud-and-clear:
   // this returns false, never a conquest verdict.
+  //
+  // Final-review R2 (2026-10-01): this check needs zero rival units
+  // AND zero rival buildings — reachable now that buildings are
+  // destructible (C3): siege orders (`attackBuilding`) let an army
+  // raze a base instead of whack-a-moling retraining units forever.
+  // The AI's own production is virtual (no physical buildings), so vs
+  // the AI this still reduces to wiping its fielded army.
   if (world.peaceful === true) return false;
   for (const unit of world.units) {
     if (unit.owner === AI_PLAYER_ID) return false;
@@ -286,6 +293,12 @@ export function checkSkirmishDefeat(world: World): boolean {
   // — the peaceful DEFEAT is the rival winning the builder's race
   // first, owned by ui/peaceful.ts `peacefulOutcome`, not by this
   // conquest check.
+  //
+  // Final-review R2 (2026-10-01): this check needs zero human units
+  // AND zero human buildings — reachable now that buildings take
+  // damage (C3): an enemy army with siege orders can raze the
+  // player's base to the ground, so defeat is a live threat at every
+  // difficulty for the first time.
   if (world.peaceful === true) return false;
   for (const unit of world.units) {
     if (unit.owner === HUMAN_PLAYER_ID) return false;
