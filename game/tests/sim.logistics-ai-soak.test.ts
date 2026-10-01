@@ -166,9 +166,15 @@ describe('AI logistics — virtual depots and abstract resupply', () => {
     const ai = aiOf(ctx, 0);
     expect(ai.virtualBuildings.completed).not.toContain('fuelDepot');
 
-    // fuelDepot: 40 s build = 1200 ticks after the first think (tick 60).
-    // 6 tanks × 60 fuel = 360 needed; 24/think ⇒ full well before 3600.
-    runTicks(ctx, 3600);
+    // fuelDepot: 40 s build = 1200 ticks, completing on the first think
+    // at/after tick 1260. Then the honest fuel chain yields 3.0/think
+    // (commander cadence 60 ticks = 2 sim-seconds × the 1.5/s
+    // refinery-equivalent rate, paying the 0.3/s materials input).
+    // 6 tanks × 60 fuel = 360 needed ⇒ 120 thinks = 7200 ticks after
+    // the depot completes; 9000 ticks covers build + refill with
+    // margin. (The old 24/think flat trickle filled this in 3600 —
+    // that was the ~6x hidden cheat this now replaces.)
+    runTicks(ctx, 9000);
 
     expect(ai.virtualBuildings.completed).toContain('fuelDepot');
     const tanks = ctx.world.units.filter((u) => u.owner === 0 && u.kind === 'tank');

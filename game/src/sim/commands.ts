@@ -44,6 +44,7 @@ import type { TerrainData } from './terrain';
 import { isWater } from './terrain';
 import { findUnit, UNIT_DEFS } from './units';
 import type { UnitKind, UnitRecord } from './units';
+import type { AIPlayerState } from './ai';
 import { BUILDING_DEFS, cellCenterWorld, getPlayer, LOGISTICS_RADIUS } from './city';
 import type { BuildingRecord } from './city';
 import { effectiveAmmoStorage, effectiveFuelStorage } from './upgrades';
@@ -603,6 +604,63 @@ function computeCargoTransfer(
   return { unit, depot, fuel, ammo, materials };
 }
 
+/** A validated `loadCargoVirtual` transfer plan. */
+interface VirtualCargoPlan {
+  unit: UnitRecord;
+  /** The AI player record whose abstract stocks are drawn from. */
+  ai: AIPlayerState;
+  fuel: number;
+  ammo: number;
+}
+
+/**
+ * Pure shared validate+compute for `loadCargoVirtual` (A10).
+ *
+ * The AI's virtual docks: fuel/ammo move from the AI's abstract stocks
+ * into a supply unit's holds. Mirrors computeCargoTransfer's transfer
+ * economics (hold caps, stock limits, ammo floored, fuel fractional;
+ * partial transfers move whatever fits, loud only when nothing can).
+ * The owner must be an AI player with a completed virtual navalBase —
+ * the virtual counterpart of loadCargo's naval-supply-point rule.
+ */
+function computeVirtualCargoLoad(
+  world: World,
+  cmdName: 'loadCargoVirtual',
+  unitId: unknown,
+  owner: unknown,
+): VirtualCargoPlan | string {
+  if (world.peaceful === true) return `${cmdName}: not available in peaceful mode`;
+  if (typeof unitId !== 'number' || !Number.isInteger(unitId) || unitId <= 0) {
+    return `${cmdName}: payload.unitId must be a positive integer`;
+  }
+  if (typeof owner !== 'number' || !Number.isInteger(owner)) {
+    return `${cmdName}: payload.owner must be an integer`;
+  }
+  const unit = findUnit(world, unitId);
+  if (!unit) return `${cmdName}: no unit with id ${unitId}`;
+  if (unit.owner !== owner) return `${cmdName}: unit ${unitId} is not owned by player ${owner}`;
+  const udef = UNIT_DEFS[unit.kind as UnitKind];
+  const hasHold = (udef?.cargoFuelCapacity ?? 0) > 0 || (udef?.cargoAmmoCapacity ?? 0) > 0;
+  if (!udef || !hasHold) {
+    return `${cmdName}: unit ${unitId} (${unit.kind}) is not a supply unit (no cargo capacity)`;
+  }
+  const ai = world.ai.players.find((a) => a.owner === owner);
+  if (!ai) return `${cmdName}: player ${owner} is not an AI player`;
+  if (!ai.virtualBuildings.completed.includes('navalBase')) {
+    return `${cmdName}: player ${owner} has no completed virtual navalBase (the AI's docks)`;
+  }
+  const fuelNeed = Math.max(0, (udef.cargoFuelCapacity ?? 0) - unit.cargoFuel);
+  const ammoNeed = Math.max(0, Math.floor((udef.cargoAmmoCapacity ?? 0) - unit.cargoAmmo));
+  let fuel = 0;
+  let ammo = 0;
+  if (fuelNeed > 0) fuel = Math.min(fuelNeed, ai.virtualFuelStock ?? 0);
+  if (ammoNeed >= 1) ammo = Math.min(ammoNeed, Math.floor(ai.virtualAmmoStock ?? 0));
+  if (fuel <= 0 && ammo <= 0) {
+    return `${cmdName}: nothing to load — unit ${unitId} holds are full or player ${owner} virtual stocks are empty`;
+  }
+  return { unit, ai, fuel, ammo };
+}
+
 /** Register the Phase 3 logistics command kinds on a fresh queue. */
 export function registerLogisticsCommands(queue: CommandQueue, t: TerrainData): void {  // Self-scheduled cleanup, enqueued by the `resupply` apply. Never
   // rejects at enqueue (only the resupply apply enqueues it, always
@@ -807,6 +865,44 @@ export function registerLogisticsCommands(queue: CommandQueue, t: TerrainData): 
         unit.cargoMaterials -= materials;
       }
       return { unit: unit.id, depot: depot.id, fuel, ammo, materials };
+    },
+  });
+
+  // A10 (2026-10-01): `loadCargoVirtual` — the AI's counterpart to
+  // `loadCargo`. The Classic AI owns no physical buildings, so it can
+  // never park at a physical naval supply point; its completed virtual
+  // navalBase is its docks. Fuel/ammo move from the AI's abstract
+  // virtual stocks (credited at honest production economics — see
+  // creditVirtualDepotStocks in ai.ts) into the supply ship's holds,
+  // through the command queue like the player's: validated at enqueue
+  // AND at apply, deterministic, loud when nothing can transfer.
+  // AI-only by construction (the owner must be an AI player with a
+  // completed virtual navalBase); the human path stays the physical
+  // `loadCargo`. Same transfer economics as computeCargoTransfer:
+  // partial transfers move whatever fits, ammo is floored, fuel is
+  // fractional. Peaceful worlds reject like loadCargo.
+  queue.register('loadCargoVirtual', {
+    validate(cmd, world): string | null {
+      const plan = computeVirtualCargoLoad(
+        world, 'loadCargoVirtual', cmd.payload['unitId'], cmd.payload['owner'],
+      );
+      return typeof plan === 'string' ? plan : null;
+    },
+    apply(cmd, world): unknown {
+      const plan = computeVirtualCargoLoad(
+        world, 'loadCargoVirtual', cmd.payload['unitId'], cmd.payload['owner'],
+      );
+      if (typeof plan === 'string') throw new CommandRejectedError(plan);
+      const { unit, ai, fuel, ammo } = plan;
+      if (fuel > 0) {
+        ai.virtualFuelStock = (ai.virtualFuelStock ?? 0) - fuel;
+        unit.cargoFuel += fuel;
+      }
+      if (ammo > 0) {
+        ai.virtualAmmoStock = (ai.virtualAmmoStock ?? 0) - ammo;
+        unit.cargoAmmo += ammo;
+      }
+      return { unit: unit.id, fuel, ammo };
     },
   });
 }

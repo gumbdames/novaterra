@@ -237,11 +237,15 @@ the coast; a player might expect to load there). Decision: NO.
   the yards that build the fleet). The `thinkVirtualDepot` call in
   `thinkNavalSupply` is the top-up for thinks where the slot is free
   (the land-depot pattern from `thinkLogistics`).
-- A completed virtual navalBase credits `VIRTUAL_FUEL_PER_THINK` /
-  `VIRTUAL_AMMO_PER_THINK` each think — the forward-base flavor: the
-  fleet's cache is filled at the docks. The land abstract-resupply
-  draws first each think (documented order); the tail fills from the
-  remainder, then `runMobileSupply` discharges for real at sea.
+- A completed virtual navalBase feeds the fleet's fuel chain — the
+  honest refinery-equivalent yield (1.5 fuel/s, 0.3 materials/s input,
+  credited per think in `thinkLogistics`' `creditVirtualDepotStocks`;
+  A10, 2026-10-01 — the old flat `VIRTUAL_*_PER_THINK` trickle was a
+  ~6x hidden cheat and is gone). The land abstract-resupply draws
+  first each think (documented order); the tail fills from the
+  remainder through the `loadCargoVirtual` command (the AI's virtual
+  docks — validated at enqueue AND at apply, like the player's
+  `loadCargo`), then `runMobileSupply` discharges for real at sea.
 - All deterministic, no RNG, through the standard virtual-construction
   path. Verified safe: `hasProductionBuilding`'s virtual path checks
   the exact kind only (no `countsAs`), so the navalBase unlocks no
@@ -249,7 +253,8 @@ the coast; a player might expect to load there). Decision: NO.
 
 Soak test (`sim.sea-logistics-military.test.ts`): a mature marshal
 (priority queue worked down to the navalBase, construction just
-finishing) → base completes → credit lands → a fuelTanker is trained
-and its hold fills from the credit → with the AI frozen, the tanker
-discharges into a fuel-starved patrol boat via `runMobileSupply`
-(the freeze isolates the discharge leg from the abstract resupply).
+finishing) → base completes → the honest fuel chain yields → a
+fuelTanker is trained and its hold fills through `loadCargoVirtual`
+→ with the AI frozen, the tanker discharges into a fuel-starved
+patrol boat via `runMobileSupply` (the freeze isolates the discharge
+leg from the abstract resupply).

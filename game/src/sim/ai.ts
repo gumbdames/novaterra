@@ -142,6 +142,7 @@
 import type { World } from './world';
 import type { CommandQueue } from './commands';
 import type { SimSystem } from './tick';
+import { TICK_HZ } from './tick';
 import { findUnit, isSheltered, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
 import { chooseVariant, variantBaseOf } from './variants';
 import { rngBank } from './world';
@@ -149,6 +150,11 @@ import type { RngBank } from './rng';
 import { canTarget, canTargetBuilding } from './combat';
 import { isUnitAvailableForAge, getSightBonus, getAgeState, AGE_PROGRESSION } from './ages';
 import { effectiveSight, hasUpgrade, registerUpgradeCommands, UPGRADE_DEFS, type UpgradeId } from './upgrades';
+import {
+  effectiveAmmoProduction,
+  effectiveAmmoStorage,
+  effectiveFuelStorage,
+} from './upgrades';
 import {
   isDetected,
   isStealthAsset,
@@ -1258,8 +1264,9 @@ export const CONSTRUCTION_PRIORITY: Record<AIDifficulty, BuildingKind[]> = {
   // Naval-building model (2026-10-01): the marshal builds the naval
   // docks right after the yards that build the fleet — the navalBase
   // is the military shipping interface where its fuelTanker/ammoShip
-  // tail would load (thinkNavalSupply credits the completed base's
-  // abstract stocks). Coastal-gated like the yards, below.
+  // tail loads (a completed virtual navalBase feeds the fleet's fuel
+  // chain and is the AI's virtual docks for `loadCargoVirtual`).
+  // Coastal-gated like the yards, below.
   marshal: ['barracks', 'warFactory', 'lab', 'airfield', 'radarStation', 'shipyard', 'navalYard', 'navalBase', 'civilAirport', 'mediaCenter'],
 };
 
@@ -1357,7 +1364,10 @@ function thinkUtilityConnections(world: World, ai: AIPlayerState): void {
 // AI cannot issue physical `resupply` orders (there is no depot on the map
 // to route to) and its trucks never physically shuttle. Instead:
 //  - completed virtual ordnance/fuel depots yield ABSTRACT stocks
-//    (`virtualAmmoStock` / `virtualFuelStock`, credited per think);
+//    (`virtualAmmoStock` / `virtualFuelStock`, credited per think at
+//    honest production economics — the physical chain's rates and
+//    input costs, never minted from nothing; see
+//    creditVirtualDepotStocks);
 //  - the AI's consumer units draw top-ups from those stocks at think
 //    cadence (thinkAbstractResupply) — the same virtual-building
 //    abstraction as `creditVirtualEconomy`, which credits virtual
@@ -1384,15 +1394,72 @@ const SUPPLY_TRUCK_RATIO = 6;
 /** One fuel truck per this many fuel consumers (rounded up). */
 const FUEL_TRUCK_RATIO = 6;
 /**
- * Abstract stock yielded per think by one completed virtual depot.
- * Balance placeholders until the production workstream's physical depot
- * rates land, sized with slack for a full section at full burn: 6 MLRS
- * firing nonstop spend ~6 ammo per 60-tick think; 6 tanks moving nonstop
- * burn ~1.8 fuel per think (0.15/s) — 12/24 covers both with headroom
- * for larger armies without ever starving in the soak.
+ * Honest virtual-depot economics (A10, 2026-10-01). The old flat
+ * 12-ammo / 24-fuel per-think trickle was a ~6x hidden cheat: the
+ * player mints ammunition at a munitionsFactory's 2.0/s while paying
+ * materials 0.4/s + funds 0.6/s of input, and the physical fuelDepot /
+ * navalBase PRODUCE nothing — they only pull from the owner's fuel
+ * stockpile at FUEL_DEPOT_PULL_RATE_PER_SEC (economy.ts).
+ *
+ * A completed virtual depot is the AI's abstraction for the whole
+ * production chain behind it (the AI owns no physical buildings), so
+ * it yields that chain's physical rates and pays that chain's physical
+ * input costs — never minting from nothing:
+ *  - virtual ordnanceDepot ~= one virtual munitionsFactory: yields
+ *    effectiveAmmoProduction (2.0/s, Advanced Logistics x1.5 included)
+ *    and pays the factory's input (materials 0.4/s + funds 0.6/s);
+ *  - virtual fuelDepot / navalBase ~= one virtual oilRefinery: yields
+ *    1.5 fuel/s and pays the refinery's input (materials 0.3/s). One
+ *    chain per resource — a second depot is a second cache, not a
+ *    second refinery (the physical depots only pull from the stockpile).
+ *
+ * Credited per think, scaled by the think cadence (dtSec), all-or-
+ * nothing per think: a chain the AI can't pay for produces nothing
+ * that think, exactly like the physical factory's starved-input
+ * `continue`. Abstract stocks are capped at the depots' effective
+ * storage, like the physical buildings. No RNG; deterministic.
+ *
+ * Exported for testing (the economics pins call it directly).
  */
-const VIRTUAL_AMMO_PER_THINK = 12;
-const VIRTUAL_FUEL_PER_THINK = 24;
+export function creditVirtualDepotStocks(world: World, ai: AIPlayerState): void {
+  const player = getPlayer(world.city, ai.owner);
+  if (!player) return;
+  const completed = ai.virtualBuildings.completed;
+  const dtSec = AI_THINK_TICKS[ai.difficulty] / TICK_HZ;
+  // Ammo chain: the virtual ordnanceDepot stands in for the
+  // munitionsFactory + depot chain behind it.
+  if (completed.includes('ordnanceDepot')) {
+    const factoryDef = BUILDING_DEFS.munitionsFactory;
+    const ratePerSec = effectiveAmmoProduction(world, ai.owner, factoryDef);
+    const materialsCost = (factoryDef.input.materials ?? 0) * dtSec;
+    const fundsCost = (factoryDef.input.funds ?? 0) * dtSec;
+    if (ratePerSec > 0 && player.materials >= materialsCost && player.funds >= fundsCost) {
+      player.materials -= materialsCost;
+      player.funds -= fundsCost;
+      const cap = effectiveAmmoStorage(world, ai.owner, BUILDING_DEFS.ordnanceDepot);
+      ai.virtualAmmoStock = Math.min(cap, (ai.virtualAmmoStock ?? 0) + ratePerSec * dtSec);
+    }
+  }
+  // Fuel chain: the virtual fuelDepot / navalBase stands in for the
+  // oilRefinery + depot chain behind it.
+  if (completed.includes('fuelDepot') || completed.includes('navalBase')) {
+    const refineryDef = BUILDING_DEFS.oilRefinery;
+    const ratePerSec = refineryDef.output.fuel ?? 0;
+    const materialsCost = (refineryDef.input.materials ?? 0) * dtSec;
+    if (ratePerSec > 0 && player.materials >= materialsCost) {
+      player.materials -= materialsCost;
+      const caps: number[] = [];
+      if (completed.includes('fuelDepot')) {
+        caps.push(effectiveFuelStorage(world, ai.owner, BUILDING_DEFS.fuelDepot));
+      }
+      if (completed.includes('navalBase')) {
+        caps.push(effectiveFuelStorage(world, ai.owner, BUILDING_DEFS.navalBase));
+      }
+      const cap = Math.max(...caps);
+      ai.virtualFuelStock = Math.min(cap, (ai.virtualFuelStock ?? 0) + ratePerSec * dtSec);
+    }
+  }
+}
 
 /**
  * Virtually construct a logistics depot through the same one-at-a-time
@@ -1544,11 +1611,13 @@ const NAVAL_SUPPLY_RALLY_DISTANCE = 40;
  *   - role-specialize through the real `setSupplyToggles` command
  *     (fuelTanker: refuel only; ammoShip: rearm only — idempotent,
  *     skipped once set, like the truck tail);
- *   - abstract-load the holds from the virtual depot stocks, extending
- *     the thinkAbstractResupply sanctioned exception (the AI owns no
- *     physical depots to load at). Materials deliberately skipped:
- *     the AI's materials are a global stockpile, so a visible
- *     materials hold would be theater;
+ *   - load the holds from the virtual depot stocks through the real
+ *     `loadCargoVirtual` command (the AI's virtual docks — a completed
+ *     virtual navalBase; validated at enqueue AND at apply like the
+ *     player's `loadCargo`, per-ship takes reserved so a queued load
+ *     can never go stale). Materials deliberately skipped: the AI's
+ *     materials are a global stockpile, so a visible materials hold
+ *     would be theater;
  *   - sail idle supply ships toward the fleet centroid (or the probed
  *     water when no combat fleet exists yet) — the real
  *     `runMobileSupply` aura discharges their holds automatically in
@@ -1603,22 +1672,23 @@ function thinkNavalSupply(world: World, queue: CommandQueue, ai: AIPlayerState):
   // like the yards); this call is the top-up for thinks where the
   // slot is free and the priority pass hasn't reached it yet — the
   // same pattern as the land depots in thinkLogistics. A completed
-  // virtual navalBase yields the same abstract stocks as the land
-  // depots (the forward-base flavor: the fleet's fuel/ammo cache is
-  // filled at the docks, not at a land depot), which thinkNavalSupply
-  // then abstract-loads into the tanker/ammoShip holds below — and
-  // runMobileSupply discharges them for real at sea. Deterministic:
-  // no RNG, id-ordered, through the standard virtual-construction
-  // path (the AI never owns physical buildings, so physical
-  // loadCargo orders are impossible for it — this is the documented
-  // virtual-economy abstraction).
+  // virtual navalBase feeds the fleet's fuel chain (credited in
+  // thinkLogistics' creditVirtualDepotStocks, at honest refinery
+  // economics — never minted from nothing) and is the AI's virtual
+  // docks: supply ships load their holds through the `loadCargoVirtual`
+  // command below. Deterministic: no RNG, id-ordered, through the
+  // standard virtual-construction path (the AI never owns physical
+  // buildings, so physical loadCargo orders are impossible for it).
   if (seaCombat > 0) {
     thinkVirtualDepot(world, ai, 'navalBase');
   }
-  if (ai.virtualBuildings.completed.includes('navalBase')) {
-    ai.virtualAmmoStock = (ai.virtualAmmoStock ?? 0) + VIRTUAL_AMMO_PER_THINK;
-    ai.virtualFuelStock = (ai.virtualFuelStock ?? 0) + VIRTUAL_FUEL_PER_THINK;
-  }
+  // Service the tail. Per-ship hold takes are reserved against the
+  // virtual stocks as they are issued (below): a same-think sibling
+  // must not be able to drain the stock first and leave a queued
+  // `loadCargoVirtual` stale at apply — a stale command throws out of
+  // applyDue and crashes runTick.
+  let fuelReserved = 0;
+  let ammoReserved = 0;
   // Service the tail.
   let rallyX = ai.navalWater?.x ?? ai.baseX;
   let rallyZ = ai.navalWater?.z ?? ai.baseZ;
@@ -1641,21 +1711,29 @@ function thinkNavalSupply(world: World, queue: CommandQueue, ai: AIPlayerState):
         });
       }
     }
+    // A10: hold-loading goes through the `loadCargoVirtual` command
+    // (the AI's virtual docks) instead of direct mutation — validated
+    // at enqueue AND at apply, like the player's `loadCargo`, with the
+    // same economics (hold caps, stock limits, ammo floored). The take
+    // is reserved against the virtual stock on issue so the command
+    // cannot go stale at apply.
     if (u.kind === 'fuelTanker') {
       const holdCap = def?.cargoFuelCapacity ?? 0;
       const need = holdCap - u.cargoFuel;
-      if (need > 0 && (ai.virtualFuelStock ?? 0) > 0) {
-        const take = Math.min(need, ai.virtualFuelStock ?? 0);
-        u.cargoFuel += take;
-        ai.virtualFuelStock = (ai.virtualFuelStock ?? 0) - take;
+      const take = Math.min(Math.max(0, need), (ai.virtualFuelStock ?? 0) - fuelReserved);
+      if (take > 0) {
+        if (issue(world, queue, 'loadCargoVirtual', { unitId: u.id, owner: ai.owner })) {
+          fuelReserved += take;
+        }
       }
     } else {
       const holdCap = def?.cargoAmmoCapacity ?? 0;
       const need = Math.floor(holdCap - u.cargoAmmo);
-      if (need >= 1 && (ai.virtualAmmoStock ?? 0) >= 1) {
-        const take = Math.min(need, Math.floor(ai.virtualAmmoStock ?? 0));
-        u.cargoAmmo += take;
-        ai.virtualAmmoStock = (ai.virtualAmmoStock ?? 0) - take;
+      const take = Math.min(Math.max(0, need), Math.floor(ai.virtualAmmoStock ?? 0) - ammoReserved);
+      if (take >= 1) {
+        if (issue(world, queue, 'loadCargoVirtual', { unitId: u.id, owner: ai.owner })) {
+          ammoReserved += take;
+        }
       }
     }
     if (u.state === 'idle' && u.targetId === 0) {
@@ -1750,14 +1828,10 @@ function thinkLogistics(world: World, queue: CommandQueue, ai: AIPlayerState): v
   if (fuelConsumers >= LOGISTICS_CONSUMER_THRESHOLD) {
     thinkVirtualDepot(world, ai, 'fuelDepot');
   }
-  // Completed virtual depots yield abstract stocks each think.
-  const completed = ai.virtualBuildings.completed;
-  if (completed.includes('ordnanceDepot')) {
-    ai.virtualAmmoStock = (ai.virtualAmmoStock ?? 0) + VIRTUAL_AMMO_PER_THINK;
-  }
-  if (completed.includes('fuelDepot')) {
-    ai.virtualFuelStock = (ai.virtualFuelStock ?? 0) + VIRTUAL_FUEL_PER_THINK;
-  }
+  // Completed virtual depots yield abstract stocks each think, at
+  // honest production economics (creditVirtualDepotStocks): physical
+  // rates, physical input costs, storage-capped — never from nothing.
+  creditVirtualDepotStocks(world, ai);
   thinkSupplyTrucks(world, queue, ai, ammoConsumers, fuelConsumers);
   thinkAbstractResupply(world, ai);
   thinkAmmoRetreats(world, queue, ai);

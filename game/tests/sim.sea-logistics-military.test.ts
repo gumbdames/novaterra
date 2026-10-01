@@ -38,8 +38,9 @@
  *   legacy v8 decode → 0 (AD9, no version bump); digest distinguishes
  *   materials levels.
  * - thinkNavalSupply: marshal on coastal maps trains the tail
- *   (1 fuelTanker / 6 sea combat units), abstract-loads holds from the
- *   virtual stocks, and rallies idle ships to the fleet.
+ *   (1 fuelTanker / 6 sea combat units), loads holds from the virtual
+ *   stocks through the `loadCargoVirtual` command, and rallies idle
+ *   ships to the fleet.
  * - Naval-building model (2026-10-01): the civilian/military cargo
  *   split — loadCargo/unloadCargo reject cross-side transfers loudly
  *   (military hulls only at navalYard/navalBase, civilian hulls only
@@ -47,8 +48,9 @@
  *   for sea units (land/air keep the legacy side-blind behavior).
  *   The marshal builds a virtual navalBase on its construction
  *   priority (right after the navalYard, coastal-gated); the completed
- *   base credits the abstract fuel/ammo stocks the tail fills from —
- *   covered by a soak test through to real discharge at sea.
+ *   base feeds the fleet's fuel chain (honest refinery economics) and
+ *   is the AI's virtual docks for `loadCargoVirtual` — covered by a
+ *   soak test through to real discharge at sea.
  */
 import { describe, expect, it } from 'vitest';
 // NOTE (2026-09-30): pathfinding MUST be the first sim import in this file
@@ -784,18 +786,28 @@ describe('thinkNavalSupply', () => {
     expect(tankers.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('the marshal abstract-loads a freshly trained fuelTanker from the virtual stock', () => {
+  it('the marshal loads a trained fuelTanker from the virtual stock through the command queue', () => {
     const { world, driver } = setupAI();
     const ai = world.ai.players[0]!;
+    // The AI's virtual docks: without a completed virtual navalBase the
+    // `loadCargoVirtual` command (like the player's `loadCargo` without
+    // a physical naval supply point) rejects.
+    ai.virtualBuildings.completed.push('navalBase');
     ai.virtualFuelStock = 150;
     runAITicks(world, driver, 300);
     const tankers = world.units.filter(
       (u) => u.kind === 'fuelTanker' && u.owner === 0,
     );
     expect(tankers.length).toBeGreaterThanOrEqual(1);
-    // 150 virtual fuel → min(400-hold, 150) = 150 in the hold.
-    expect(tankers[0]!.cargoFuel).toBe(150);
-    expect(ai.virtualFuelStock).toBe(0);
+    // The preset stock plus the honest per-think fuel-chain yield all
+    // reached the hold through `loadCargoVirtual` — never by direct
+    // mutation. Upper bound: nothing can enter the hold except through
+    // the command, and the stocks are bounded (preset + 9 thinks × the
+    // honest 1.5/s refinery-equivalent yield).
+    const hold = tankers[0]!.cargoFuel;
+    expect(hold).toBeGreaterThan(0);
+    expect(hold).toBeLessThanOrEqual(150 + 9 * 1.5);
+    expect(ai.virtualFuelStock).toBeLessThanOrEqual(9 * 1.5);
   });
 
   it('idle supply ships rally to the fleet centroid', () => {
@@ -853,9 +865,10 @@ describe('thinkNavalSupply', () => {
       'navalYard',
     );
     ai.virtualBuildings.constructing = { kind: 'navalBase', readyTick: world.tick };
-    // A fuel-starved boat with the fleet — the discharge target.
+    // A boat with the fleet — the discharge target in Phase 2 (starved
+    // there; it sails full until then so Phase 1's honest fuel trickle
+    // isn't drunk by a 65-fuel deficit before the tanker can load).
     const boat = spawnUnit(world, 'patrolBoat', 0, water.x + 8, water.z + 4);
-    boat.fuel = 5; // patrolBoat capacity 70
     const driver = createTickDriver({
       queue,
       systems: [
@@ -866,10 +879,12 @@ describe('thinkNavalSupply', () => {
         createAISystem(queue),
       ],
     });
-    // Phase 1: the navalBase completes, the credit lands, the marshal
-    // trains a fuelTanker and abstract-fills its hold from the credit.
-    // (The land abstract-resupply draws first each think, per the
-    // documented order — the tail fills from the remainder.)
+    // Phase 1: the navalBase completes, the honest fuel chain yields
+    // (1.5/s at refinery economics — never minted from nothing), the
+    // marshal trains a fuelTanker and fills its hold through the
+    // `loadCargoVirtual` command. (The land abstract-resupply draws
+    // first each think, per the documented order — the tail fills from
+    // the remainder.)
     let tankerId = 0;
     for (let round = 0; round < 20 && tankerId === 0; round++) {
       for (let i = 0; i < 30; i++) driver.step(world, TICK_MS); // one marshal think
