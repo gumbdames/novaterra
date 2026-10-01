@@ -1,0 +1,28 @@
+Quaternius "LowPoly Textured Trees" textures — CC0 1.0 Universal
+=============================================================
+
+Files in textures/ (downloaded 2026-09-30, verified CC0 on each file's
+OpenGameArt page — "License(s): CC0", author quaternius):
+
+  tree_bark.jpg            768x768 JPEG, 241 KB
+  birch_bark.png           768x768 PNG,  207 KB
+  tree_leaves.png          512x512 RGBA PNG, 129 KB
+  birch_leaves_green.png   512x512 RGBA PNG, 126 KB
+  pine_leaves.png          512x512 RGBA PNG, 125 KB
+
+Source pack: "LowPoly Textured Trees" by Quaternius
+  OpenGameArt: https://opengameart.org/content/lowpoly-textured-trees
+    ("A set of stylized animal crossing style trees! in FBX, OBJ and Blend
+    formats." — the pack's texture files are served anonymously; the model
+    files need an OGA login, which is why only textures were taken.)
+  Author's page (same pack, CC0 1.0 Universal):
+    https://quaternius.itch.io/textured-lowpoly-trees
+    ("Free for everyone to use in any project, even comercially! (CC0)")
+
+License: Creative Commons CC0 1.0 Universal
+  https://creativecommons.org/publicdomain/zero/1.0/
+Public domain — no attribution legally required. Recorded here as a
+courtesy, following this repo's THIRD_PARTY_NOTICES.md convention.
+
+Used by: game/src/render/natureTrees.ts (procedural textured trees for the
+render-only nature scatter). The textures are NOT modified.
