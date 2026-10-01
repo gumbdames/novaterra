@@ -488,11 +488,19 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `STRINGS.palettes.peacefulLocked` ("Not available in peaceful mode"
   — the greyed-out palette reason).
 - Audio: `game.ts` owns an `AudioEngine` (see `src/audio/AGENTS.md`) —
-  unlocked on first pointer/key gesture, `updateMusic(world, playerId)`
-  polled ~2×/sec, SFX on select/orders/placement/age-advance/rejections/
-  deaths/buildings/advisor changes, pause = `audio.suspend()`.
+  unlocked on first pointer/key gesture, ambient bed started with the
+  session, `pollAudioEvents` diffs the world ~2×/sec through
+  `AudioEventTracker` (kills positional, friend/foe differentiated;
+  research/training/intel cues; throttled under-attack warning) and
+  drives the music mood through `MoodTracker` hysteresis (no flip-flop;
+  damage counts toward war), the listener follows the camera target
+  every frame. SFX on select/orders/placement/age-advance/rejections/
+  deaths/buildings/advisor changes; pause = `audio.suspend()` and the
+  frame loop never polls audio events while paused (no SFX pile-up).
+  Victory/defeat stingers fire through `EndScreen`'s `onShow`.
   `menus.ts` SettingsPanel has master/music/SFX sliders + mute (persisted,
-  live-applied in game).
+  live-applied in game). The menu itself has its own engine playing the
+  peace track (`main.ts` — disposed on game entry, recreated on return).
 
 ## Rules
 

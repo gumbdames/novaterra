@@ -43,6 +43,7 @@ import { generateTerrain, MERIDIAN_PLAINS } from './sim/terrain';
 import { buildTerrainView, type TerrainView } from './render/terrain';
 import { createRenderer, applyEnvironmentLighting } from './render/renderer';
 import { MainMenu, loadSettings, type QualityLevel } from './ui/menus';
+import { AudioEngine } from './audio/engine';
 import { startGame } from './ui/game';
 import type { AIDifficulty } from './sim/ai';
 import { createSaveStore } from './net_save/store';
@@ -226,6 +227,35 @@ export async function boot(): Promise<void> {
   const orbitHeight = 185;
   camera.position.set(0, orbitHeight, orbitRadius);
 
+  // Final-review R5 (2026-10-01): the menu owns its own AudioEngine so
+  // the peace track plays behind the menu (the game builds its own
+  // engine on start; the menu engine is disposed on every game entry
+  // and recreated on every return to the menu). Music starts on the
+  // first user gesture (autoplay policy); the ambient city bed is
+  // in-game only (no city behind the menu).
+  let menuAudio: AudioEngine | null = null;
+  const startMenuMusic = (): void => {
+    if (menuAudio !== null) return;
+    try {
+      menuAudio = new AudioEngine();
+      menuAudio.unlock();
+      menuAudio.setMusicMood('peace');
+    } catch {
+      menuAudio = null;
+    }
+  };
+  const stopMenuMusic = (): void => {
+    menuAudio?.dispose();
+    menuAudio = null;
+  };
+  const unlockMenuOnce = (): void => {
+    startMenuMusic();
+    window.removeEventListener('pointerdown', unlockMenuOnce);
+    window.removeEventListener('keydown', unlockMenuOnce);
+  };
+  window.addEventListener('pointerdown', unlockMenuOnce);
+  window.addEventListener('keydown', unlockMenuOnce);
+
   const menu = new MainMenu(app, {
     onStartSkirmish: (difficulty: AIDifficulty, mapPreset: string, peaceful: boolean) => {
       menu.hide();
@@ -236,6 +266,7 @@ export async function boot(): Promise<void> {
       // always builds a fresh session via createSession().
       stopDemo();
       dropDemoModels();
+      stopMenuMusic();
       const seed = (Math.random() * 0x7fffffff) | 0;
       startGame(app, {
         seed,
@@ -250,6 +281,9 @@ export async function boot(): Promise<void> {
           startDemo();
           renderer.setAnimationLoop(menuLoop);
           menu.show();
+          // Returning to the menu: music back on (this runs on a
+          // button click — a real user gesture, so unlock works).
+          startMenuMusic();
         },
       }).catch(showFatal);
     },
@@ -258,9 +292,11 @@ export async function boot(): Promise<void> {
         onLeaveMenu: () => {
           stopDemo();
           dropDemoModels();
+          stopMenuMusic();
         },
         onReturnToMenu: () => {
           startDemo();
+          startMenuMusic();
         },
       });
     },
@@ -269,9 +305,11 @@ export async function boot(): Promise<void> {
         onLeaveMenu: () => {
           stopDemo();
           dropDemoModels();
+          stopMenuMusic();
         },
         onReturnToMenu: () => {
           startDemo();
+          startMenuMusic();
         },
       });
     },

@@ -50,6 +50,89 @@ export function selectMood(input: MoodInput): MusicMood {
 }
 
 /**
+ * One poll's worth of war-mood evidence, gathered by the game loop
+ * (UI layer) from the sim world.
+ */
+export interface MoodObservation {
+  /** Poll timestamp in milliseconds (monotonic). */
+  nowMs: number;
+  /** Player units currently in combat (live targets). */
+  combatUnits: number;
+  /**
+   * Player units/buildings that took damage since the previous poll.
+   * This is the blind-spot fix: being bombed while holding no target
+   * still counts as war — the old selector only saw units *with*
+   * targets, so a one-sided bombardment stayed on the peace track.
+   */
+  damageEvents: number;
+}
+
+/**
+ * War-mood hysteresis (final-review M13/L5, 2026-10-01).
+ *
+ * The old behavior flipped to war on ANY single targeting event and
+ * back the moment it cleared — the music thrashed during skirmishes.
+ * The tracker requires SUSTAINED activity to enter war (two
+ * consecutive polls with combat or damage — a single stray targeting
+ * event never flips the mood) and only leaves war after a quiet
+ * window, so a fight that flickers across poll boundaries keeps one
+ * continuous war track.
+ *
+ * Pure logic, fully unit-tested; the game loop owns one instance and
+ * feeds it from `pollAudioEvents`.
+ */
+export class MoodTracker {
+  /** Consecutive polls with qualifying activity. */
+  private activePolls = 0;
+  /** Timestamp of the most recent qualifying poll. */
+  private lastActiveMs = 0;
+  private mood: MusicMood = 'peace';
+
+  /** Current mood (the last value returned by `update`). */
+  get current(): MusicMood {
+    return this.mood;
+  }
+
+  /**
+   * Feed one poll observation; returns the (possibly unchanged) mood.
+   * `nowMs` must be non-decreasing across calls.
+   */
+  update(obs: MoodObservation): MusicMood {
+    const active = obs.combatUnits > 0 || obs.damageEvents > 0;
+    if (active) {
+      this.lastActiveMs = obs.nowMs;
+      // Cap the counter: a 2000-unit brawl shouldn't need a longer
+      // quiet window to exit than a skirmish.
+      this.activePolls = Math.min(this.activePolls + 1, WAR_ENTER_POLLS);
+      if (this.mood === 'peace' && this.activePolls >= WAR_ENTER_POLLS) {
+        this.mood = 'war';
+      }
+    } else {
+      this.activePolls = 0;
+      if (
+        this.mood === 'war' &&
+        obs.nowMs - this.lastActiveMs >= WAR_EXIT_QUIET_MS
+      ) {
+        this.mood = 'peace';
+      }
+    }
+    return this.mood;
+  }
+}
+
+/**
+ * Consecutive active polls required to enter war (hysteresis: a single
+ * stray targeting event never flips the track).
+ */
+export const WAR_ENTER_POLLS = 2;
+
+/**
+ * Quiet window after the last combat/damage activity before the mood
+ * drops back to peace (no thrash when a fight flickers across polls).
+ */
+export const WAR_EXIT_QUIET_MS = 20_000;
+
+/**
  * Derive the mood input from a sim world. A unit counts as "in combat"
  * when it has a live target (explicit attack order or opportunistic
  * targeting) — the same observable the combat system uses.

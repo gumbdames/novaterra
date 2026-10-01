@@ -405,6 +405,54 @@ Key decisions and why:
 5. **Pause = `ctx.suspend()`** (freezes everything, zero CPU); save file
    stores music bar position for clean resume.
 
+#### 7.1a As shipped in 0.1 Alpha (2026-10-01) — corrections to the above
+
+The architecture above was the recommendation; the shipped engine is
+deliberately smaller. This section pins what actually shipped so the
+doc never promises what the game doesn't do:
+
+- **No 32-voice pool.** SFX synthesis is one-shot nodes per layer with
+  a **12-voice/frame cap** (`AudioEngine.playSfx` drops above it) —
+  cheaper than pre-allocated slots and sufficient for the cue cadence.
+- **Equal-power panners only — no HRTF.** `playSfx(id, pos?)` creates
+  a per-play `PannerNode` (`panningModel: 'equalpower'`,
+  `distanceModel: 'inverse'`) between the cue and the SFX bus when a
+  world position is passed; UI cues stay non-positional. The listener
+  follows the camera target every frame (`updateListener`).
+- **MP3 tracks, not Opus.** `public/audio/peace.mp3` + `war.mp3`
+  (Kevin MacLeod, CC-BY — see `THIRD_PARTY_NOTICES.md`), streamed via
+  looping `<audio>` elements in `MusicDirector` with an equal-power
+  crossfade; the files carry baked 2s fades so loop seams stay
+  inaudible.
+- **Procedural SFX primary.** Every cue in `sfx.ts` is synthesized
+  (`SFX_CUES` declarative data); there are no sampled barks and no
+  voice bus. The roster is 19 cues (`tests/audio.sfx.test.ts` pins
+  it): UI, orders, combat, economy/tech (`unitTrained`,
+  `researchComplete`), kill differentiation (`unitDown` loss vs
+  `foeDown` kill), `underAttack`, `intelOp`, and `victory`/`defeat`
+  stingers.
+- **Event differ, not a cue queue.** The sim never emits audio events;
+  `AudioEventTracker` (`src/audio/events.ts`) diffs a once-per-poll
+  snapshot by entity id (deaths/destroyed carry world positions for
+  positional SFX). The adaptive mood goes through `MoodTracker`
+  hysteresis (2 consecutive active polls to enter war — a single
+  stray targeting event never flips the track; 20s quiet window to
+  exit; damage events count so being bombed with no live targets
+  still reads as war).
+- **Ambient bed.** A procedural looped city hum (seeded, low brown
+  noise + soft low partials) runs under the music bus in-game,
+  ducking from 0.05 (peace) to 0.02 (war); pause-aware for free
+  (`ctx.suspend()` freezes it).
+- **Menu music.** `main.ts` owns a menu-level `AudioEngine` playing
+  the peace track behind the menu (disposed on every game entry,
+  recreated on every return — the game builds its own engine).
+- **Suspend-state drop.** `playSfx` is a no-op while the context isn't
+  running, and the game loop never polls audio events while paused —
+  pause-menu clicks no longer burst on resume.
+
+The 32-voice pool / HRTF / Opus / sampled-barks items above remain
+the standing plan for later phases if profiling ever asks for them.
+
 ### 7.2 Music sourcing plan
 
 - **Primary (build phase):** curate from **Tallbeard Abstraction CC0 bundle**

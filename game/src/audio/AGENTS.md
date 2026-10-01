@@ -10,19 +10,53 @@ state. Pause = ctx.suspend(); settings persist to localStorage.
   (created on first user gesture per autoplay policy). Buses:
   `sfxBus` / `musicBus` → `masterGain` → destination. Slider→gain is
   quadratic. `unlock()` / `suspend()` / `resume()` / `dispose()`;
-  `updateSettings()` persists. `playSfx()` capped at 12 voices/frame.
-  `updateMusic(world, playerId)` drives the director ~2×/sec.
+  `updateSettings()` persists. `playSfx(id, pos?)` capped at 12
+  voices/frame — positional via a per-play equal-power `PannerNode`
+  when a world position is passed (UI cues stay non-positional); a
+  hard drop while the context isn't running (paused-menu clicks never
+  burst on resume — final-review R5 L5, 2026-10-01). `setMusicMood(mood)`
+  drives the director (the game loop's `MoodTracker` owns the
+  hysteresis); `updateListener(x, z)` keeps the listener on the camera
+  target every frame; `startAmbientBed()` starts the procedural city
+  hum under the music bus (in-game only, pause-aware, ducks under war).
   `bindUiClicks(root)` plays the click cue for any button press.
+- `events.ts` — sim→audio event differ (pure, tested,
+  `tests/audio.events.test.ts`). The sim never emits audio events; the
+  game loop snapshots once per poll and `AudioEventTracker` diffs by
+  entity id: deaths/destroyed with world positions (positional SFX),
+  friend/foe flags, damage events, trained units, research completion,
+  embedded spies (`snapshotForAudio(world, playerId, cellToWorld)` —
+  the caller passes the cell converter so this module stays sim-free).
 - `music.ts` — adaptive music: `selectMood({playerUnitsInCombat})` is a pure
   function (`war` iff any player unit has a live target). `MusicDirector`
   owns two looping `<audio>` tracks (peace/war) routed through the music
   bus, with an equal-power crossfade on mood change. Files carry baked 2s
   fades so loop seams stay inaudible. Both tracks CC-BY Kevin MacLeod —
-  see THIRD_PARTY_NOTICES.md.
+  see THIRD_PARTY_NOTICES.md. `MoodTracker` (final-review R5, 2026-10-01)
+  is the shipped hysteresis: 2 consecutive active polls (combat units OR
+  damage events — being bombed with no live targets counts) to enter
+  war, 20s quiet window to exit. The game loop calls
+  `tracker.update({nowMs, combatUnits, damageEvents})` then
+  `engine.setMusicMood(mood)`.
 - `sfx.ts` — procedural SFX synth: every cue is declarative data
   (`SFX_CUES: Record<SfxId, SfxCue>`, tone/noise layers), `playSfxCue`
   renders it. Zero download cost; the game is never silent on audio
-  failure (all playback is try/caught).
+  failure (all playback is try/caught). 19 cues (0.1 Alpha, R5
+  2026-10-01): UI, orders, combat, economy/tech (`unitTrained`,
+  `researchComplete`), kill differentiation (`unitDown` loss vs
+  `foeDown` kill), `underAttack` (30s-throttled), `intelOp`,
+  `victory`/`defeat` stingers. Roster pinned by `tests/audio.sfx.test.ts`.
+
+## Who owns engines
+
+- `main.ts` (menu): one menu-level `AudioEngine` — peace track behind
+  the menu (final-review R5, 2026-10-01). Created on first gesture,
+  disposed on every game entry, recreated on every return to the menu.
+  The game builds its own engine; the two never coexist.
+- `ui/game.ts` (game): one in-game `AudioEngine` — unlocked on first
+  gesture, ambient bed started with the session. Pause =
+  `ctx.suspend()`; `runGameFrame` never polls audio events while
+  paused. Victory/defeat stingers fire through `EndScreen`'s `onShow`.
 
 ## Assets
 

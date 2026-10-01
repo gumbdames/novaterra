@@ -183,6 +183,7 @@ function makeDeps(world: World, entities: EntityRenderer): {
     },
     pollAudioEvents: () => {},
     pollCampaign: () => {},
+    updateAudioListener: () => {},
     renderFrame: () => {
       hooks.renders++;
     },

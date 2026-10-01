@@ -191,6 +191,8 @@ import { PauseMenu, loadSettings, type QualityLevel } from './menus';
 import { STRINGS, loc } from './strings';
 import { trainPlacementToast } from './palettes';
 import { AudioEngine } from '../audio/engine';
+import { AudioEventTracker, snapshotForAudio, type AudioWorldSnapshot } from '../audio/events';
+import { MoodTracker } from '../audio/music';
 import { CheatConsole, cheatHelpText, type CheatAction } from './cheatconsole';
 import { EndScreen } from './endscreen';
 import { SaveSlotsDialog } from './saveslots';
@@ -322,6 +324,8 @@ export interface GameFrameDeps {
   ): void;
   pollAudioEvents(world: World, nowMs: number): void;
   pollCampaign(world: World, nowMs: number): void;
+  /** Keep the audio listener on the camera target (positional SFX). */
+  updateAudioListener(): void;
   renderFrame(): void;
   getLastAdvisorRefresh(): number;
   setLastAdvisorRefresh(nowMs: number): void;
@@ -336,6 +340,7 @@ export interface GameFrameDeps {
 export function runGameFrame(deps: GameFrameDeps, nowMs: number, frameMs: number): void {
   const dtSec = frameMs / 1000;
   deps.updateCamera(dtSec);
+  deps.updateAudioListener();
   const world = deps.session.world;
   if (!deps.paused) {
     deps.session.driver.step(world, frameMs * deps.speed);
@@ -354,7 +359,10 @@ export function runGameFrame(deps: GameFrameDeps, nowMs: number, frameMs: number
   deps.setSelectedEntities(deps.selection.unitIds);
   deps.updateEntitySelectionRings(world);
   deps.updateHud(world, deps.selection, deps.advisorItems, deps.paused, deps.speed, deps.session.terrain);
-  deps.pollAudioEvents(world, nowMs);
+  // Audio events are paused-gated: no SFX pile-up while the pause menu
+  // is open (final-review R5 L5 — plus the engine itself drops while its
+  // context isn't running).
+  if (!deps.paused) deps.pollAudioEvents(world, nowMs);
   deps.pollCampaign(world, nowMs);
   deps.renderFrame();
 }
@@ -695,9 +703,9 @@ class GameController {
   /** Combat/building polling state for SFX + adaptive music. */
   private lastMusicUpdate = 0;
   private lastShotSfx = 0;
-  private prevPlayerUnitCount = -1;
-  private prevPlayerBuildingCount = -1;
-  private prevTotalBuildingCount = -1;
+  private audioTracker = new AudioEventTracker(HUMAN_PLAYER_ID);
+  private moodTracker = new MoodTracker();
+  private lastUnderAttackWarn = 0;
   private prevAdvisorTop: string | null = null;
   private dragRect: HTMLElement | null = null;
   /** Last known pointer position in client px (for edge pan). */
@@ -901,15 +909,22 @@ class GameController {
       // panel, and the covert-op orders. The sim validates each at
       // enqueue AND apply time; a rejection throws CommandRejectedError
       // and the player gets a loud toast — never a silent no-op.
+      // Final-review R5 (2026-10-01): a queued op plays the intel cue.
       onSelectUnit: (unitId) => {
         this.selection = selectUnits([unitId]);
       },
-      onInfiltrateBuilding: (spyId, buildingId) =>
-        this.enqueue(buildInfiltrateOrder(HUMAN_PLAYER_ID, spyId, buildingId)),
-      onSabotageBuilding: (spyId, buildingId) =>
-        this.enqueue(buildSabotageOrder(HUMAN_PLAYER_ID, spyId, buildingId)),
-      onStealTech: (spyId, buildingId) =>
-        this.enqueue(buildStealTechOrder(HUMAN_PLAYER_ID, spyId, buildingId)),
+      onInfiltrateBuilding: (spyId, buildingId) => {
+        this.enqueue(buildInfiltrateOrder(HUMAN_PLAYER_ID, spyId, buildingId));
+        this.audio.playSfx('intelOp');
+      },
+      onSabotageBuilding: (spyId, buildingId) => {
+        this.enqueue(buildSabotageOrder(HUMAN_PLAYER_ID, spyId, buildingId));
+        this.audio.playSfx('intelOp');
+      },
+      onStealTech: (spyId, buildingId) => {
+        this.enqueue(buildStealTechOrder(HUMAN_PLAYER_ID, spyId, buildingId));
+        this.audio.playSfx('intelOp');
+      },
       // Phase 3: superweapons, specialization, trade, delegation.
       onFireAegis: () => this.issueOrder(buildFireAegisOrder(HUMAN_PLAYER_ID)),
       onStormTarget: () => {
@@ -961,6 +976,8 @@ class GameController {
     this.endScreen = new EndScreen(container, {
       onKeepPlaying: () => undefined,
       onExitToMenu: () => this.exitToMenu(),
+      // Final-review R5 (2026-10-01): victory/defeat stingers.
+      onShow: (kind) => this.audio.playSfx(kind === 'victory' ? 'victory' : 'defeat'),
     });
 
     // Phase 2: campaign mission + Muse persona. The mission run is
@@ -1004,6 +1021,9 @@ class GameController {
     this.unbindUiClicks = this.audio.bindUiClicks(container);
     const unlockOnce = (): void => {
       this.audio.unlock();
+      // Final-review R5 (2026-10-01): start the ambient city bed with the
+      // game session — subtle procedural city hum under the music.
+      this.audio.startAmbientBed();
       window.removeEventListener('pointerdown', unlockOnce);
       window.removeEventListener('keydown', unlockOnce);
     };
@@ -1076,6 +1096,8 @@ class GameController {
         this.hud.update(world, selection, advisorItems, paused, speed, terrain),
       pollAudioEvents: (world, nowMs) => this.pollAudioEvents(world, nowMs),
       pollCampaign: (world, nowMs) => this.pollCampaign(world, nowMs),
+      updateAudioListener: () =>
+        this.audio.updateListener(this.cameraState.targetX, this.cameraState.targetZ),
       renderFrame: () => this.renderer.render(this.scene, this.camera),
       getLastAdvisorRefresh: () => this.lastAdvisorRefresh,
       setLastAdvisorRefresh: (nowMs) => {
@@ -1189,49 +1211,68 @@ class GameController {
 
   /**
    * Poll sim state for audio events (UI-layer only; never mutates the sim):
-   * adaptive music mood ~2×/sec, death/explosion/building-complete cues,
-   * throttled distant weapon-fire while anyone is fighting.
+   * deaths/destruction/training/research cues, throttled distant
+   * weapon-fire while anyone is fighting, and the adaptive music mood.
+   * Runs ~2×/sec and is gated on `!paused` in the frame loop so SFX
+   * never pile up while paused (the engine also drops while its
+   * context isn't running).
+   *
+   * Final-review R5 (2026-10-01): this replaces the old count-delta
+   * polling. Events are diffed by entity id (AudioEventTracker), deaths
+   * carry world positions for positional SFX, friend/foe kills are
+   * distinguished, and the music mood flows through MoodTracker
+   * (hysteresis — no rapid peace/war flip-flop; damage events count so
+   * being bombed with no live targets still reads as war).
    */
   private pollAudioEvents(world: World, nowMs: number): void {
-    // Adaptive music.
+    // Adaptive music + event cues.
     if (nowMs - this.lastMusicUpdate > 500) {
       this.lastMusicUpdate = nowMs;
-      this.audio.updateMusic(world, HUMAN_PLAYER_ID);
+      const events = this.audioTracker.observe(
+        snapshotForAudio(world, HUMAN_PLAYER_ID, cellCenterWorld),
+      );
+      const cap = <T extends { x: number; z: number }>(list: T[]): T[] => list.slice(0, 8);
+
+      // Positional combat cues (also throttled by the engine's
+      // per-frame voice cap + the 500ms poll cadence).
+      for (const d of cap(events.deaths)) {
+        this.audio.playSfx(d.friendly ? 'unitDown' : 'foeDown', { x: d.x, z: d.z });
+      }
+      for (const d of cap(events.destroyed)) {
+        this.audio.playSfx('explosion', { x: d.x, z: d.z });
+      }
+      // Economy / tech cues (one per poll at most).
+      if (events.trained > 0) this.audio.playSfx('unitTrained');
+      if (events.researchDone) this.audio.playSfx('researchComplete');
+      if (events.intelOpComplete) this.audio.playSfx('intelOp');
+      // Under attack: throttled (30s), non-positional — the player's own
+      // units/buildings are the target and the selection ping carries the
+      // location.
+      if (events.damageEvents > 0 && nowMs - this.lastUnderAttackWarn > 30_000) {
+        this.lastUnderAttackWarn = nowMs;
+        this.audio.playSfx('underAttack');
+      }
+
+      // Adaptive music via hysteresis tracker (final-review L7).
+      const mood = this.moodTracker.update({
+        nowMs,
+        combatUnits: events.combatUnits,
+        damageEvents: events.damageEvents,
+      });
+      this.audio.setMusicMood(mood);
     }
 
-    let playerUnits = 0;
-    let playerBuildings = 0;
-    let totalBuildings = 0;
+    // Distant battle ambience: throttled shots while fighting.
     let anyFighting = false;
     const liveIds = new Set<number>();
     for (const u of world.units) if (u.hp > 0) liveIds.add(u.id);
     for (const u of world.units) {
       if (u.hp <= 0) continue;
-      if (u.owner === HUMAN_PLAYER_ID) {
-        playerUnits++;
-        if (u.targetId !== 0 && liveIds.has(u.targetId)) anyFighting = true;
+      if (u.targetId !== 0 && liveIds.has(u.targetId)) {
+        anyFighting = true;
+        break;
       }
     }
-    for (const b of world.city.buildings) {
-      totalBuildings++;
-      if (b.owner === HUMAN_PLAYER_ID) playerBuildings++;
-    }
-
-    // First poll just records baselines (no cues on game start).
-    if (this.prevPlayerUnitCount === -1) {
-      this.prevPlayerUnitCount = playerUnits;
-      this.prevPlayerBuildingCount = playerBuildings;
-      this.prevTotalBuildingCount = totalBuildings;
-      return;
-    }
-    if (playerUnits < this.prevPlayerUnitCount) this.audio.playSfx('unitDown');
-    if (playerBuildings > this.prevPlayerBuildingCount) this.audio.playSfx('buildComplete');
-    if (totalBuildings < this.prevTotalBuildingCount) this.audio.playSfx('explosion');
-    this.prevPlayerUnitCount = playerUnits;
-    this.prevPlayerBuildingCount = playerBuildings;
-    this.prevTotalBuildingCount = totalBuildings;
-
-    // Distant battle ambience: throttled shots while fighting.
     if (anyFighting && nowMs - this.lastShotSfx > 450) {
       this.lastShotSfx = nowMs;
       this.audio.playSfx('shot');

@@ -39,6 +39,15 @@ const EXPECTED_IDS: SfxId[] = [
   'ageFanfare',
   'error',
   'advisorPing',
+  // Final-review R5 (2026-10-01): kill differentiation, economy/tech
+  // cues, intel ops, under-attack warning, end-of-game stingers.
+  'researchComplete',
+  'unitTrained',
+  'foeDown',
+  'underAttack',
+  'intelOp',
+  'victory',
+  'defeat',
 ];
 
 const VALID_WAVES = new Set(['sine', 'square', 'sawtooth', 'triangle']);

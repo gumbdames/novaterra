@@ -30,11 +30,16 @@
  *
  * UI-layer only: never imported by sim code, never affects determinism.
  * Headless tests import only the settings helpers + pure logic modules.
+ *
+ * Final-review R5 (2026-10-01): positional SFX via per-play equal-power
+ * panners (the research doc's "3D positional" promise), a procedural
+ * ambient city bed under the music bus, war-mood hysteresis driven by
+ * the game loop's MoodTracker, and a hard drop (never queue) while the
+ * context isn't running — paused-menu clicks no longer burst on resume.
  */
 
 import { createNoiseBuffer, playSfxCue, type SfxId } from './sfx';
-import { MusicDirector, moodInputFromWorld, selectMood } from './music';
-import type { World } from '../sim/world';
+import { MusicDirector, type MusicMood } from './music';
 
 /** Persisted audio settings (localStorage, never leaves the browser). */
 export interface AudioSettings {
@@ -96,6 +101,51 @@ export function sliderToGain(slider: number): number {
   return c * c;
 }
 
+/** Ambient bed loop length in seconds (baked crossfade at the seam). */
+const AMBIENT_BED_SECONDS = 8;
+/** Bed level under the peace track (subtle — garnish, not foreground). */
+const AMBIENT_BED_PEACE = 0.05;
+/** Bed level under the war track (ducks so combat reads). */
+const AMBIENT_BED_WAR = 0.02;
+
+/**
+ * Build the ambient city bed buffer: low brown-ish noise with slow
+ * swells (distant traffic/wind) plus two soft low sine partials (city
+ * hum). The last second crossfades into the first so the loop seam is
+ * inaudible. Deterministic fill (fixed seed) — UI-layer only, but
+ * stable behavior is free.
+ */
+function createAmbientBedBuffer(ctx: AudioContext): AudioBuffer {
+  const rate = ctx.sampleRate;
+  const len = Math.floor(rate * AMBIENT_BED_SECONDS);
+  const buffer = ctx.createBuffer(1, len, rate);
+  const data = buffer.getChannelData(0);
+  let seed = 0x51ab3c7d;
+  const rand = (): number => {
+    seed = (seed * 1664525 + 1013904223) >>> 0;
+    return (seed / 0xffffffff) * 2 - 1;
+  };
+  // Brown-ish noise via a leaky integrator, plus slow amplitude swells.
+  let last = 0;
+  for (let i = 0; i < len; i++) {
+    const t = i / rate;
+    last = (last + 0.02 * rand()) / 1.02;
+    const swell = 0.6 + 0.4 * Math.sin((2 * Math.PI * t) / AMBIENT_BED_SECONDS * 2);
+    const hum =
+      0.15 * Math.sin(2 * Math.PI * 55 * t) + 0.08 * Math.sin(2 * Math.PI * 110 * t + 1.3);
+    data[i] = last * 2.2 * swell + hum * 0.35;
+  }
+  // Seam crossfade: blend the last second into the first.
+  const fade = Math.min(rate, len);
+  for (let i = 0; i < fade; i++) {
+    const a = i / fade;
+    const j = len - fade + i;
+    const blended = data[i]! * a + data[j]! * (1 - a);
+    data[j] = blended;
+  }
+  return buffer;
+}
+
 /** Base URL for audio assets (Vite `base` aware, e.g. `/novaterra/`). */
 function audioBaseUrl(): string {
   try {
@@ -123,6 +173,9 @@ export class AudioEngine {
   /** Simple voice cap: drop SFX when too many play in one frame. */
   private voicesThisFrame = 0;
   private lastFrameTime = 0;
+  /** Ambient city bed nodes (started on demand, in-game only). */
+  private bedSource: AudioBufferSourceNode | null = null;
+  private bedGain: GainNode | null = null;
 
   /** Current settings (a copy). */
   getSettings(): AudioSettings {
@@ -197,9 +250,14 @@ export class AudioEngine {
   }
 
   /** Play one SFX cue. No-op until unlock(). */
-  playSfx(id: SfxId): void {
+  playSfx(id: SfxId, pos?: { x: number; z: number }): void {
     if (this.disposed || !this.ctx || !this.sfxBus || !this.noiseBuffer) return;
     if (this.settings.muted) return;
+    // Final-review L5 (2026-10-01): never queue playback while the
+    // context isn't running (paused menu clicks, background tab) —
+    // scheduled sources would pile up on the frozen clock and burst
+    // late on resume. Drop instead.
+    if (this.ctx.state !== 'running') return;
     // Per-frame voice cap keeps pathological bursts (e.g. 50 deaths in one
     // tick) from spawning hundreds of nodes.
     const now = this.ctx.currentTime;
@@ -209,20 +267,109 @@ export class AudioEngine {
     }
     if (this.voicesThisFrame >= 12) return;
     this.voicesThisFrame++;
+    // Positional (docs/research/audio.md §3.1): an equal-power panner
+    // between the cue and the sfx bus gives cheap stereo panning +
+    // distance attenuation. UI cues (click/select/orders) stay
+    // non-positional by passing no position.
+    if (pos !== undefined) {
+      const panner = this.ctx.createPanner();
+      panner.panningModel = 'equalpower';
+      panner.distanceModel = 'inverse';
+      panner.refDistance = 60;
+      panner.maxDistance = 500;
+      panner.rolloffFactor = 1;
+      try {
+        panner.positionX.value = pos.x;
+        panner.positionY.value = 0;
+        panner.positionZ.value = pos.z;
+      } catch {
+        // Older implementations: ignore, keep the cue non-positional.
+        playSfxCue(this.ctx, this.sfxBus, this.noiseBuffer, id);
+        return;
+      }
+      panner.connect(this.sfxBus);
+      playSfxCue(this.ctx, panner, this.noiseBuffer, id);
+      // The one-shot sources release themselves; the panner is garbage
+      // once its inputs end (no explicit disconnect needed — the graph
+      // is dropped with the ended sources).
+      return;
+    }
     playSfxCue(this.ctx, this.sfxBus, this.noiseBuffer, id);
   }
 
   /**
-   * Drive the adaptive music from sim state. Call ~2×/second from the
-   * game loop; cheap (one scan of the unit list).
+   * Set the adaptive-music mood (driven by the game loop's MoodTracker,
+   * which owns the hysteresis). The ambient bed's level follows the
+   * mood: the city hum sits under peace and ducks under war.
    */
-  updateMusic(world: World, playerId: number): void {
-    if (this.disposed || !this.director) return;
+  setMusicMood(mood: MusicMood): void {
+    if (this.disposed) return;
     try {
-      const mood = selectMood(moodInputFromWorld(world, playerId));
-      this.director.setMood(mood);
+      this.director?.setMood(mood);
+      if (this.bedGain && this.ctx) {
+        const level = mood === 'peace' ? AMBIENT_BED_PEACE : AMBIENT_BED_WAR;
+        this.bedGain.gain.setTargetAtTime(level, this.ctx.currentTime, 1.0);
+      }
     } catch {
       // Ignore.
+    }
+  }
+
+  /**
+   * Move the audio listener to the camera target (world x/z). Called
+   * per frame by the game loop; positional SFX pan/attenuate relative
+   * to where the player is looking.
+   */
+  updateListener(x: number, z: number): void {
+    if (this.disposed || !this.ctx) return;
+    if (this.ctx.state !== 'running') return;
+    try {
+      const l = this.ctx.listener;
+      // Slight height so the listener sits above the battlefield plane.
+      if (l.positionX !== undefined) {
+        l.positionX.value = x;
+        l.positionY.value = 20;
+        l.positionZ.value = z;
+      } else {
+        // Legacy setPosition fallback.
+        (l as unknown as { setPosition(x: number, y: number, z: number): void }).setPosition(x, 20, z);
+      }
+    } catch {
+      // Ignore.
+    }
+  }
+
+  /**
+   * Start the ambient city bed: a subtle looped procedural hum (shaped
+   * noise + soft low partials) under the music bus, so master/music
+   * volume and mute apply. Pause-aware for free — ctx.suspend() freezes
+   * the loop like everything else. Call once per game session after
+   * unlock(); the main menu never starts it (no city there yet).
+   */
+  startAmbientBed(): void {
+    if (this.disposed || !this.ctx || !this.musicBus || this.bedSource !== null) return;
+    try {
+      const ctx = this.ctx;
+      const buffer = createAmbientBedBuffer(ctx);
+      const src = ctx.createBufferSource();
+      src.buffer = buffer;
+      src.loop = true;
+      const filter = ctx.createBiquadFilter();
+      filter.type = 'lowpass';
+      filter.frequency.value = 320;
+      const gain = ctx.createGain();
+      gain.gain.value = 0; // faded in below
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(this.musicBus);
+      src.start();
+      this.bedSource = src;
+      this.bedGain = gain;
+      gain.gain.setTargetAtTime(AMBIENT_BED_PEACE, ctx.currentTime, 2.0);
+    } catch {
+      // The bed is garnish — silence is acceptable.
+      this.bedSource = null;
+      this.bedGain = null;
     }
   }
 
@@ -266,6 +413,13 @@ export class AudioEngine {
     try {
       this.director?.dispose();
       this.director = null;
+      try {
+        this.bedSource?.stop();
+      } catch {
+        // Already stopped — ignore.
+      }
+      this.bedSource = null;
+      this.bedGain = null;
       if (this.ctx) {
         void this.ctx.close().catch(() => undefined);
         this.ctx = null;

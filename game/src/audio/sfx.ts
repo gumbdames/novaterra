@@ -34,9 +34,16 @@ export type SfxId =
   | 'attackOrder' // attack order acknowledged
   | 'place' // building/road/zone placed
   | 'buildComplete' // construction finished
+  | 'researchComplete' // an upgrade finished researching
+  | 'unitTrained' // a unit finished training
   | 'shot' // distant weapon fire
   | 'explosion' // building/unit destroyed
-  | 'unitDown' // a player unit dies
+  | 'unitDown' // a player unit dies (loss — somber fall)
+  | 'foeDown' // an enemy unit dies (kill — crisp pop, distinct from unitDown)
+  | 'underAttack' // player assets are taking damage (urgent two-tone)
+  | 'intelOp' // a covert op completed (subtle double ping)
+  | 'victory' // victory stinger
+  | 'defeat' // defeat stinger
   | 'ageFanfare' // age advancement
   | 'error' // invalid action / rejection
   | 'advisorPing'; // advisor has a new top problem
@@ -109,11 +116,36 @@ export const SFX_CUES: Record<SfxId, SfxCue> = {
       { kind: 'tone', wave: 'sine', freqStart: 1318, freqEnd: 1318, gain: 0.2, duration: 0.35, delay: 0.1 },
     ],
   },
+  researchComplete: {
+    id: 'researchComplete',
+    layers: [
+      // Bright rising chime — distinct from buildComplete's two-note
+      // knock (triangle shimmer, higher register).
+      { kind: 'tone', wave: 'triangle', freqStart: 1046, freqEnd: 1046, gain: 0.22, duration: 0.18, delay: 0 },
+      { kind: 'tone', wave: 'triangle', freqStart: 1318, freqEnd: 1318, gain: 0.22, duration: 0.18, delay: 0.12 },
+      { kind: 'tone', wave: 'triangle', freqStart: 1568, freqEnd: 1568, gain: 0.24, duration: 0.3, delay: 0.24 },
+    ],
+  },
+  unitTrained: {
+    id: 'unitTrained',
+    layers: [
+      // Crisp double-beep: a unit reporting for duty.
+      { kind: 'tone', wave: 'square', freqStart: 660, freqEnd: 660, gain: 0.14, duration: 0.07, delay: 0 },
+      { kind: 'tone', wave: 'square', freqStart: 880, freqEnd: 880, gain: 0.14, duration: 0.1, delay: 0.09 },
+    ],
+  },
   shot: {
     id: 'shot',
     layers: [
       { kind: 'noise', filter: 'highpass', freqStart: 1800, freqEnd: 1200, gain: 0.22, duration: 0.09, delay: 0 },
       { kind: 'tone', wave: 'square', freqStart: 180, freqEnd: 90, gain: 0.12, duration: 0.06, delay: 0 },
+    ],
+  },
+  foeDown: {
+    id: 'foeDown',
+    layers: [
+      { kind: 'noise', filter: 'lowpass', freqStart: 1200, freqEnd: 300, gain: 0.25, duration: 0.22, delay: 0 },
+      { kind: 'tone', wave: 'triangle', freqStart: 220, freqEnd: 90, gain: 0.22, duration: 0.2, delay: 0 },
     ],
   },
   explosion: {
@@ -127,6 +159,44 @@ export const SFX_CUES: Record<SfxId, SfxCue> = {
     id: 'unitDown',
     layers: [
       { kind: 'tone', wave: 'sawtooth', freqStart: 420, freqEnd: 110, gain: 0.2, duration: 0.32, delay: 0 },
+    ],
+  },
+  underAttack: {
+    id: 'underAttack',
+    layers: [
+      // Urgent two-tone alarm — your forces or buildings are taking fire.
+      { kind: 'tone', wave: 'square', freqStart: 740, freqEnd: 740, gain: 0.16, duration: 0.14, delay: 0 },
+      { kind: 'tone', wave: 'square', freqStart: 554, freqEnd: 554, gain: 0.16, duration: 0.14, delay: 0.16 },
+      { kind: 'tone', wave: 'square', freqStart: 740, freqEnd: 740, gain: 0.16, duration: 0.14, delay: 0.32 },
+    ],
+  },
+  intelOp: {
+    id: 'intelOp',
+    layers: [
+      // Covert-op complete: soft high double ping, deliberately understated.
+      { kind: 'tone', wave: 'sine', freqStart: 1568, freqEnd: 1568, gain: 0.16, duration: 0.12, delay: 0 },
+      { kind: 'tone', wave: 'sine', freqStart: 2093, freqEnd: 2093, gain: 0.14, duration: 0.18, delay: 0.14 },
+    ],
+  },
+  victory: {
+    id: 'victory',
+    layers: [
+      // Victory stinger: ascending major fanfare with a noise swell.
+      { kind: 'noise', filter: 'highpass', freqStart: 800, freqEnd: 4000, gain: 0.1, duration: 1.4, delay: 0 },
+      { kind: 'tone', wave: 'sawtooth', freqStart: 523, freqEnd: 523, gain: 0.18, duration: 0.22, delay: 0 },
+      { kind: 'tone', wave: 'sawtooth', freqStart: 659, freqEnd: 659, gain: 0.18, duration: 0.22, delay: 0.2 },
+      { kind: 'tone', wave: 'sawtooth', freqStart: 784, freqEnd: 784, gain: 0.18, duration: 0.22, delay: 0.4 },
+      { kind: 'tone', wave: 'sawtooth', freqStart: 1046, freqEnd: 1046, gain: 0.22, duration: 0.7, delay: 0.6 },
+    ],
+  },
+  defeat: {
+    id: 'defeat',
+    layers: [
+      // Defeat stinger: somber descending minor phrase.
+      { kind: 'tone', wave: 'triangle', freqStart: 440, freqEnd: 440, gain: 0.24, duration: 0.3, delay: 0 },
+      { kind: 'tone', wave: 'triangle', freqStart: 349, freqEnd: 349, gain: 0.24, duration: 0.3, delay: 0.3 },
+      { kind: 'tone', wave: 'triangle', freqStart: 293, freqEnd: 293, gain: 0.24, duration: 0.3, delay: 0.6 },
+      { kind: 'tone', wave: 'triangle', freqStart: 220, freqEnd: 208, gain: 0.26, duration: 0.9, delay: 0.9 },
     ],
   },
   ageFanfare: {
@@ -156,15 +226,16 @@ export const SFX_CUES: Record<SfxId, SfxCue> = {
 export const ALL_SFX_IDS = Object.keys(SFX_CUES) as SfxId[];
 
 /**
- * Play one cue through `bus`. Creates one-shot nodes per layer; everything
- * is released automatically when the envelopes finish. Defensive: any
- * Web Audio failure is swallowed — the game must never break on audio.
+ * Play one cue through `destination` (a bus gain or a per-play panner).
+ * Creates one-shot nodes per layer; everything is released automatically
+ * when the envelopes finish. Defensive: any Web Audio failure is
+ * swallowed — the game must never break on audio.
  *
  * `noiseBuffer` is a shared 1-second white-noise buffer owned by the engine.
  */
 export function playSfxCue(
   ctx: AudioContext,
-  bus: GainNode,
+  destination: AudioNode,
   noiseBuffer: AudioBuffer,
   id: SfxId,
 ): void {
@@ -179,7 +250,7 @@ export function playSfxCue(
       env.gain.setValueAtTime(0.0001, when);
       env.gain.exponentialRampToValueAtTime(Math.max(layer.gain, 0.0001), when + 0.008);
       env.gain.exponentialRampToValueAtTime(0.0001, when + layer.duration);
-      env.connect(bus);
+      env.connect(destination);
 
       if (layer.kind === 'tone') {
         const osc = ctx.createOscillator();

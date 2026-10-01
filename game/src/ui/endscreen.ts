@@ -39,6 +39,12 @@ export interface EndScreenActions {
   onKeepPlaying(): void;
   /** Leave the game and return to the main menu. */
   onExitToMenu(): void;
+  /**
+   * Fired when the overlay becomes visible (victory or defeat).
+   * The game controller uses it to play the victory/defeat stinger
+   * (final-review R5, 2026-10-01).
+   */
+  onShow?(kind: 'victory' | 'defeat'): void;
 }
 
 export class EndScreen {
@@ -70,6 +76,7 @@ export class EndScreen {
 
   private show(kind: 'victory' | 'defeat', title?: string, detail?: string): void {
     this.hide();
+    this.actions.onShow?.(kind);
     const s = STRINGS.end;
     const overlay = document.createElement('div');
     overlay.className = `end-screen end-${kind}`;
