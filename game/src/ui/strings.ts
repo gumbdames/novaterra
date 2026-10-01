@@ -240,7 +240,8 @@ export const STRINGS = {
   help: {
     keys: [
       ['Left click', 'Select unit / building'],
-      ['Drag', 'Select many units'],
+      ['Shift + left click', 'Add / remove unit from selection'],
+      ['Left drag (no tool)', 'Pan the map'],
       ['Right click', 'Move / attack'],
       ['S', 'Stop selected units'],
       ['Space', 'Pause / resume'],

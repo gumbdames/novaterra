@@ -195,8 +195,12 @@ export const MISSIONS: readonly MissionDef[] = [
         id: 'm1-welcome',
         trigger: { kind: 'atTick', tick: 30 },
         message:
-          'Welcome, President. Select your engineers (drag a box ' +
-          'with the left mouse button), then right-click to move them.',
+          // C9 (2026-10-01): the real selection model — left-drag with no
+          // tool armed is grab-pan (game.ts pressDragKind), never
+          // box-select, so the tutorial must not teach a drag-box.
+          'Welcome, President. Left-click an engineer to select it ' +
+          '(Shift + left-click selects more), then right-click to move ' +
+          'them. Left-drag pans the map — it never selects.',
       },
       {
         id: 'm1-build',
