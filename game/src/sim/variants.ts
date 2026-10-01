@@ -40,10 +40,13 @@
  *    requiredBuilding). The UI palette workstream calls this to decide
  *    whether a variant button is shown/enabled. Valid for base kinds
  *    too (a base kind is "unlocked" when it is trainable).
- *  - `preferHighestVariant(world, owner, kind, ledger?)` — the AI's
- *    substitution: the highest tier the owner has unlocked AND can
- *    afford (stockpile minus the per-think ledger reservations), else
- *    the input kind unchanged. Deterministic: pure reads, fixed tier
+ *  - `chooseVariant(world, owner, kind, ledger?)` — the AI's
+ *    substitution: variants are tactical tradeoffs, not ladders (M15,
+ *    docs/research/mk-variants.md), so the AI picks situationally.
+ *    When the owner is rich (`funds >= VARIANT_RICH_FUNDS`) it takes
+ *    the top affordable tier; otherwise it takes the best
+ *    combatValue/cost among the unlocked + affordable tiers at or
+ *    above the input tier. Deterministic: pure reads, fixed tier
  *    order, no RNG.
  *  - `variantArtBase(kind)` — the kind whose art a unit renders with
  *    (identity for base kinds). The render layer's mapping entry point.
@@ -76,7 +79,7 @@ export type VariantUnitKind = Extract<UnitKind, `${string}Mk${2 | 3}`>;
  *
  * Lazily derived (the pathfinding.ts `gridCells()` precedent): this
  * module sits inside the units→city→world→ai import cycle (ai.ts
- * consumes `preferHighestVariant`), so reading UNIT_DEFS at module-eval
+ * consumes `chooseVariant`), so reading UNIT_DEFS at module-eval
  * time sees undefined when first reached through ai. The computation is
  * cached; the first call always lands after the module graph is fully
  * evaluated (no sim module calls it during evaluation).
@@ -183,13 +186,65 @@ export interface VariantLedger {
 }
 
 /**
+ * Funds at or above which the AI is "rich" and `chooseVariant` takes
+ * the top affordable tier instead of the best value/cost. Set well
+ * above any single unit's price (the most expensive variant trains
+ * for under 5,000 funds) but within reach of a developed economy, so
+ * the value branch actually runs in real games.
+ */
+export const VARIANT_RICH_FUNDS = 8000;
+
+/**
+ * Rough "how much fight does this def buy": hp × DPS × a range
+ * factor. Deliberately coarse — it only needs to rank tiers of the
+ * SAME variant line, where the numbers are close by design (the M15
+ * tradeoffs keep every tier competitive). Documented with the full
+ * rationale in docs/research/mk-variants.md §3.
+ */
+export function combatValueOf(kind: UnitKind): number {
+  const def = UNIT_DEFS[kind];
+  if (!def) return 0;
+  if (def.damage > 0 && def.cooldownTicks > 0) {
+    return def.hp * (def.damage / def.cooldownTicks) * (1 + def.range / 50);
+  }
+  // Non-combat (damage 0: haulers, transports): logistics value —
+  // survivability × speed × cargo moved.
+  const cargo = (def.cargoFuelCapacity ?? 0) + (def.cargoAmmoCapacity ?? 0);
+  return def.hp * def.speed * (1 + cargo / 100);
+}
+
+/** Training price of a kind: funds + materials (same scale). */
+export function trainCostOf(kind: UnitKind): number {
+  const def = UNIT_DEFS[kind];
+  if (!def) return Infinity;
+  return def.trainFunds + def.trainMaterials;
+}
+
+/** Combat value per unit of cost — the situational pick's score. */
+export function valuePerCost(kind: UnitKind): number {
+  return combatValueOf(kind) / Math.max(1, trainCostOf(kind));
+}
+
+/**
  * The Classic AI's variant substitution (PLAN §3.9 / §6: "no AI
- * capability cliff" — the AI must actually use the new content). Given
- * the kind the AI's composition logic chose, return the HIGHEST tier
- * that is both unlocked for the owner (`isVariantUnlocked`) AND
- * affordable right now (stockpile minus the per-think ledger
- * reservations), or the input kind unchanged when no higher tier
- * qualifies. Base kinds without variants return unchanged.
+ * capability cliff" — the AI must actually use the new content).
+ *
+ * Mk II/III variants are GENUINE TACTICAL TRADEOFFS, not stat ladders
+ * (M15 tradeoff redesign, 2026-10-01 — see docs/research/mk-variants.md):
+ * every tier is better at something and worse at something, so "highest
+ * tier" is not always the right pick. Given the kind the AI's
+ * composition logic chose, this returns the tier it should actually
+ * train:
+ *
+ *  - candidates: the variant line at or above the input tier, filtered
+ *    to unlocked-for-the-owner (`isVariantUnlocked`) AND affordable
+ *    right now (stockpile minus the per-think ledger reservations);
+ *    the input kind unchanged when nothing qualifies;
+ *  - rich owners (`funds >= VARIANT_RICH_FUNDS`): the TOP tier — when
+ *    money is no object, take the sharpest tool;
+ *  - everyone else: the best combatValue/cost ratio — the situational
+ *    pick (a slow siege gun is wasted escort money; a cheap fast base
+ *    tank can be the right buy).
  *
  * Called once per train in `thinkProduction` — a substitution, not a
  * rewrite: the counter/base-mix logic above it is untouched, and the
@@ -197,7 +252,7 @@ export interface VariantLedger {
  * before issuing, so a stale read can never produce a bad command.
  * Deterministic: pure reads, fixed tier order, no RNG.
  */
-export function preferHighestVariant(
+export function chooseVariant(
   world: World,
   owner: number,
   kind: UnitKind,
@@ -209,17 +264,31 @@ export function preferHighestVariant(
   const funds = player.funds - (ledger?.funds ?? 0);
   const materials = player.materials - (ledger?.materials ?? 0);
   const manpower = player.manpower - (ledger?.manpower ?? 0);
-  let best = kind;
-  let bestTier = variantTierOf(kind);
-  for (const candidate of variantLine(base)) {
-    const tier = variantTierOf(candidate);
-    if (tier <= bestTier) continue;
-    if (!isVariantUnlocked(world, owner, candidate)) continue;
-    const def = UNIT_DEFS[candidate];
-    if (def.manpowerCost > manpower) continue;
-    if (def.trainFunds > funds || def.trainMaterials > materials) continue;
-    best = candidate;
-    bestTier = tier;
+  const inputTier = variantTierOf(kind);
+  // Never downgrade below the input tier: a substitution may only
+  // upgrade the AI's pick (an explicit Mk II request stays Mk II+).
+  const candidates = variantLine(base).filter((c) => {
+    if (variantTierOf(c) < inputTier) return false;
+    if (!isVariantUnlocked(world, owner, c)) return false;
+    const def = UNIT_DEFS[c];
+    if (def.manpowerCost > manpower) return false;
+    if (def.trainFunds > funds || def.trainMaterials > materials) return false;
+    return true;
+  });
+  if (candidates.length === 0) return kind;
+  if (funds >= VARIANT_RICH_FUNDS) {
+    // Rich: the top tier — money is no object, take the sharpest tool.
+    return candidates.reduce((a, b) => (variantTierOf(b) > variantTierOf(a) ? b : a));
+  }
+  // Otherwise: best combat value per cost — the situational pick.
+  let best = candidates[0]!;
+  let bestScore = valuePerCost(best);
+  for (const c of candidates.slice(1)) {
+    const score = valuePerCost(c);
+    if (score > bestScore + 1e-9) {
+      best = c;
+      bestScore = score;
+    }
   }
   return best;
 }

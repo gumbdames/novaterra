@@ -28,14 +28,20 @@
  *    are real upgrades — hp/damage/speed improve tier over tier, never
  *    a placebo reskin.
  *  - Cost scaling: Mk II ≈ ×1.6 funds/materials, Mk III ≈ ×2.5, and
- *    manpower never decreases.
+ *    manpower never decreases (tech costs more, even when it trades off).
+ *  - Tradeoffs (M15, 2026-10-01): Mk II/III are NOT stat ladders — every
+ *    variant regresses on ≥1 combat stat vs its base AND improves on
+ *    ≥1, so the base stays situationally right; a pin table locks the
+ *    defining tradeoff stat of each of the 28 variants.
  *  - Gating: `isVariantUnlocked` mirrors the spawnUnit validator
  *    exactly — locked without the age or the production building,
  *    unlocked with both (a data-driven matrix over representative
  *    variants); the peaceful lockout rejects military variants and
  *    still trains the civilian hauler/transportShip variants.
- *  - `preferHighestVariant`: highest unlocked + affordable tier wins;
- *    the per-think ledger reservations count; deterministic.
+ *  - `chooseVariant`: rich owners (funds ≥ VARIANT_RICH_FUNDS) take the
+ *    top affordable tier; everyone else takes the best combatValue/cost
+ *    among unlocked + affordable tiers — the situational pick; the
+ *    per-think ledger reservations count; deterministic.
  *  - AI substitution: a citizen AI with warFactory + industry age
  *    actually trains tankMk2 (the "no AI capability cliff" rule).
  *  - Save/load: variant records round-trip through snapshots; same
@@ -67,7 +73,10 @@ import {
   variantTierOf,
   variantLine,
   isVariantUnlocked,
-  preferHighestVariant,
+  chooseVariant,
+  combatValueOf,
+  valuePerCost,
+  VARIANT_RICH_FUNDS,
   type VariantUnitKind,
 } from '../src/sim/variants';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
@@ -282,45 +291,156 @@ describe('variant roster shape', () => {
 // Stat progression — variants must be real upgrades, never placebo reskins
 // ---------------------------------------------------------------------------
 
-describe('variant stat progression', () => {
-  it('hp, damage and speed improve tier over tier for every variant', () => {
-    for (const base of VARIANT_BASES) {
-      const [b, mk2, mk3] = lineDefs(base);
-      expect(mk2.hp).toBeGreaterThan(b.hp);
-      expect(mk3.hp).toBeGreaterThan(mk2.hp);
-      // Combat kinds hit harder each tier (hauler/transportShip deal no damage — the exception).
-      if (b.damage > 0) {
-        expect(mk2.damage).toBeGreaterThan(b.damage);
-        expect(mk3.damage).toBeGreaterThan(mk2.damage);
-      } else {
-        expect(mk2.damage).toBe(0);
-        expect(mk3.damage).toBe(0);
-      }
-      expect(mk2.speed).toBeGreaterThanOrEqual(b.speed);
-      expect(mk3.speed).toBeGreaterThanOrEqual(mk2.speed);
+// ---------------------------------------------------------------------------
+// Tradeoffs (M15, 2026-10-01) — Mk II/III are genuine tactical choices,
+// NOT stat ladders: every variant is better at something and worse at
+// something, so the base kind stays situationally right. The full
+// design table lives in docs/research/mk-variants.md.
+// ---------------------------------------------------------------------------
+
+describe('variant tradeoffs (M15: no stat ladders)', () => {
+  /** Stats where a LOWER number is a regression. */
+  const WORSE_IS_LOWER: (keyof UnitDef)[] = ['hp', 'speed', 'damage', 'range', 'sight'];
+  /** Stats where a HIGHER number is a regression. */
+  const WORSE_IS_HIGHER: (keyof UnitDef)[] = ['cooldownTicks', 'minRange', 'fuelPerSecond'];
+
+  function num(def: UnitDef, key: keyof UnitDef): number {
+    return (def[key] as number | undefined) ?? 0;
+  }
+
+  /** Stats on which `variant` is strictly worse than `base`. */
+  function regressions(variant: UnitDef, base: UnitDef): string[] {
+    const out: string[] = [];
+    for (const k of WORSE_IS_LOWER) if (num(variant, k) < num(base, k)) out.push(k);
+    for (const k of WORSE_IS_HIGHER) if (num(variant, k) > num(base, k)) out.push(k);
+    return out;
+  }
+
+  /** Stats on which `variant` is strictly better than `base`. */
+  function improvements(variant: UnitDef, base: UnitDef): string[] {
+    const out: string[] = [];
+    for (const k of WORSE_IS_LOWER) if (num(variant, k) > num(base, k)) out.push(k);
+    for (const k of WORSE_IS_HIGHER) if (num(variant, k) < num(base, k)) out.push(k);
+    // vs-multipliers and cargo/ammo capacity count as improvements too.
+    for (const k of ['vsLight', 'vsMedium', 'vsHeavy', 'vsAir', 'cargoFuelCapacity', 'cargoAmmoCapacity', 'ammoCapacity'] as (keyof UnitDef)[]) {
+      if (num(variant, k) > num(base, k)) out.push(k);
+    }
+    return out;
+  }
+
+  it('every variant regresses on ≥1 combat stat vs its base (no strict upgrades)', () => {
+    for (const v of getVariantKinds()) {
+      const def = UNIT_DEFS[v];
+      const base = UNIT_DEFS[variantBaseOf(v)];
+      expect(
+        regressions(def, base),
+        `${v} must trade something off vs ${variantBaseOf(v)}`,
+      ).not.toHaveLength(0);
     }
   });
 
-  it('sight never regresses across tiers', () => {
-    for (const base of VARIANT_BASES) {
-      const [b, mk2, mk3] = lineDefs(base);
-      expect(mk2.sight).toBeGreaterThanOrEqual(b.sight);
-      expect(mk3.sight).toBeGreaterThanOrEqual(mk2.sight);
+  it('every variant improves on ≥1 stat vs its base (no strict downgrades)', () => {
+    for (const v of getVariantKinds()) {
+      const def = UNIT_DEFS[v];
+      const base = UNIT_DEFS[variantBaseOf(v)];
+      expect(
+        improvements(def, base),
+        `${v} must be better at something than ${variantBaseOf(v)}`,
+      ).not.toHaveLength(0);
     }
   });
 
-  it('hauler cargo holds grow each tier (the civilian payoff)', () => {
-    const [b, mk2, mk3] = lineDefs('hauler');
-    expect(mk2.cargoFuelCapacity).toBeGreaterThan(b.cargoFuelCapacity ?? 0);
-    expect(mk3.cargoFuelCapacity).toBeGreaterThan(mk2.cargoFuelCapacity ?? 0);
-    expect(mk2.cargoAmmoCapacity).toBeGreaterThan(b.cargoAmmoCapacity ?? 0);
-    expect(mk3.cargoAmmoCapacity).toBeGreaterThan(mk2.cargoAmmoCapacity ?? 0);
+  it('every Mk III differs from its Mk II on ≥1 stat (no reskins)', () => {
+    for (const base of VARIANT_BASES) {
+      const [, mk2, mk3] = lineDefs(base);
+      const all = [...WORSE_IS_LOWER, ...WORSE_IS_HIGHER];
+      const diffs = all.filter((k) => num(mk3, k) !== num(mk2, k));
+      expect(diffs, `${base} Mk III must differ from Mk II`).not.toHaveLength(0);
+    }
   });
 
-  it('transportShip variants gain legs each tier (fuel capacity — the troopship payoff)', () => {
-    const [b, mk2, mk3] = lineDefs('transportShip');
-    expect(mk2.fuelCapacity).toBeGreaterThan(b.fuelCapacity ?? 0);
-    expect(mk3.fuelCapacity).toBeGreaterThan(mk2.fuelCapacity ?? 0);
+  it('every Mk III also trades off vs its Mk II (the ladder stays broken at the top)', () => {
+    for (const base of VARIANT_BASES) {
+      const [, mk2, mk3] = lineDefs(base);
+      // BOTH directions: the Mk III is worse at something AND better
+      // at something than the Mk II — never a strict upgrade.
+      expect(regressions(mk3, mk2), `${base} Mk III must regress vs Mk II`).not.toHaveLength(0);
+      expect(regressions(mk2, mk3), `${base} Mk III must improve vs Mk II`).not.toHaveLength(0);
+    }
+  });
+
+  // The defining tradeoff stat of each variant, pinned: the number
+  // that makes the role what it is (docs/research/mk-variants.md §2).
+  it('pins the defining tradeoff stat of all 28 variants', () => {
+    const pins: [VariantUnitKind, keyof UnitDef, number][] = [
+      ['tankMk2', 'speed', 8],
+      ['tankMk3', 'speed', 7],
+      ['tankMk3', 'range', 23],
+      ['artilleryMk2', 'minRange', 16],
+      ['artilleryMk2', 'range', 56],
+      ['artilleryMk3', 'hp', 120],
+      ['artilleryMk3', 'damage', 150],
+      ['aaMk2', 'speed', 8],
+      ['aaMk2', 'vsAir', 2.6],
+      ['aaMk3', 'minRange', 6],
+      ['aaMk3', 'ammoCapacity', 12],
+      ['apcMk2', 'damage', 30],
+      ['apcMk2', 'speed', 10],
+      ['apcMk3', 'sight', 36],
+      ['apcMk3', 'damage', 12],
+      ['haulerMk2', 'speed', 7],
+      ['haulerMk2', 'cargoFuelCapacity', 80],
+      ['haulerMk3', 'speed', 12],
+      ['haulerMk3', 'fuelPerSecond', 0.15],
+      ['fighterMk2', 'speed', 31],
+      ['fighterMk2', 'damage', 28],
+      ['fighterMk3', 'speed', 24],
+      ['fighterMk3', 'damage', 45],
+      ['fighterBomberMk2', 'damage', 160],
+      ['fighterBomberMk2', 'speed', 24],
+      ['fighterBomberMk3', 'speed', 33],
+      ['fighterBomberMk3', 'hp', 160],
+      ['attackHeliMk2', 'vsHeavy', 2.0],
+      ['attackHeliMk2', 'speed', 26],
+      ['attackHeliMk3', 'speed', 35],
+      ['attackHeliMk3', 'hp', 130],
+      ['gunshipMk2', 'speed', 18],
+      ['gunshipMk2', 'minRange', 4],
+      ['gunshipMk3', 'cooldownTicks', 45],
+      ['gunshipMk3', 'range', 18],
+      ['destroyerMk2', 'vsAir', 2.6],
+      ['destroyerMk2', 'vsHeavy', 0.7],
+      ['destroyerMk3', 'range', 32],
+      ['destroyerMk3', 'ammoCapacity', 20],
+      ['frigateMk2', 'vsMedium', 2.0],
+      ['frigateMk2', 'damage', 26],
+      ['frigateMk3', 'speed', 17],
+      ['frigateMk3', 'hp', 360],
+      ['submarineMk2', 'speed', 13],
+      ['submarineMk2', 'hp', 260],
+      ['submarineMk3', 'damage', 140],
+      ['submarineMk3', 'range', 36],
+      ['submarineMk3', 'speed', 9],
+      ['missileBoatMk2', 'damage', 100],
+      ['missileBoatMk2', 'speed', 16],
+      ['missileBoatMk3', 'speed', 24],
+      ['missileBoatMk3', 'ammoCapacity', 8],
+      ['transportShipMk2', 'hp', 520],
+      ['transportShipMk2', 'speed', 8],
+      ['transportShipMk3', 'cargoFuelCapacity', 200],
+      ['transportShipMk3', 'cargoAmmoCapacity', 60],
+      ['transportShipMk3', 'sight', 20],
+    ];
+    for (const [kind, key, expected] of pins) {
+      expect((UNIT_DEFS[kind][key] as number | undefined) ?? 0, `${kind}.${key}`).toBe(expected);
+    }
+  });
+
+  it('transportShipMk3 is a supply unit (the mobile sea depot role)', () => {
+    const def = UNIT_DEFS['transportShipMk3'];
+    expect((def.cargoFuelCapacity ?? 0) + (def.cargoAmmoCapacity ?? 0)).toBeGreaterThan(0);
+    // …and the Mk II is NOT (it is the survivable hauler).
+    expect(UNIT_DEFS['transportShipMk2'].cargoFuelCapacity ?? 0).toBe(0);
   });
 });
 
@@ -436,7 +556,11 @@ describe('variant gating', () => {
 // preferHighestVariant — the AI's substitution
 // ---------------------------------------------------------------------------
 
-describe('preferHighestVariant', () => {
+// ---------------------------------------------------------------------------
+// chooseVariant — the AI's situational substitution (M15)
+// ---------------------------------------------------------------------------
+
+describe('chooseVariant', () => {
   function unlockedCtx(): Ctx {
     const ctx = setup();
     ctx.world.ages.age = 'ascendance';
@@ -448,37 +572,58 @@ describe('preferHighestVariant', () => {
 
   it('returns the base kind unchanged when nothing higher is unlocked', () => {
     const ctx = setup(); // foundation, no buildings
-    expect(preferHighestVariant(ctx.world, 0, 'tank')).toBe('tank');
+    expect(chooseVariant(ctx.world, 0, 'tank')).toBe('tank');
   });
 
   it('returns the input kind unchanged for kinds without variants', () => {
     const ctx = unlockedCtx();
-    expect(preferHighestVariant(ctx.world, 0, 'rifles')).toBe('rifles');
-    expect(preferHighestVariant(ctx.world, 0, 'infantry' as UnitKind)).toBe('infantry');
+    expect(chooseVariant(ctx.world, 0, 'rifles')).toBe('rifles');
+    expect(chooseVariant(ctx.world, 0, 'infantry' as UnitKind)).toBe('infantry');
   });
 
-  it('prefers Mk III when unlocked and affordable', () => {
+  it('rich owners take the top affordable tier', () => {
     const ctx = unlockedCtx();
-    expect(preferHighestVariant(ctx.world, 0, 'tank')).toBe('tankMk3');
+    const p = ctx.world.city.players[0]!;
+    p.funds = VARIANT_RICH_FUNDS + 5000;
+    p.materials = 10000;
+    p.manpower = 10000;
+    expect(chooseVariant(ctx.world, 0, 'tank')).toBe('tankMk3');
+    expect(chooseVariant(ctx.world, 0, 'hauler')).toBe('haulerMk3');
   });
 
-  it('falls back to Mk II when Mk III is age-locked', () => {
+  it('poor owners take the best value/cost — not always the top tier', () => {
     const ctx = unlockedCtx();
-    ctx.world.ages.age = 'industry'; // tankMk2 yes, tankMk3 (information) no
-    expect(preferHighestVariant(ctx.world, 0, 'tank')).toBe('tankMk2');
+    const p = ctx.world.city.players[0]!;
+    // Tight but workable treasury: below VARIANT_RICH_FUNDS.
+    p.funds = 4000;
+    p.materials = 1500;
+    p.manpower = 10000;
+    // tank line: tankMk2 has the best combatValue/cost (assault gun is
+    // cheap for what it brings; the railgun is overpriced per point).
+    expect(chooseVariant(ctx.world, 0, 'tank')).toBe('tankMk2');
+    // hauler line: the base hauler wins on logistics value per cost —
+    // the AI buys cheap trucks when money is tight.
+    expect(chooseVariant(ctx.world, 0, 'hauler')).toBe('hauler');
+  });
+
+  it('combatValueOf / valuePerCost rank the tank line Mk II > base > Mk III', () => {
+    expect(valuePerCost('tankMk2')).toBeGreaterThan(valuePerCost('tank'));
+    expect(valuePerCost('tank')).toBeGreaterThan(valuePerCost('tankMk3'));
+    expect(combatValueOf('tankMk3')).toBeGreaterThan(combatValueOf('tankMk2'));
   });
 
   it('falls back when the higher tier is unaffordable', () => {
     const ctx = unlockedCtx();
     const p = ctx.world.city.players[0]!;
-    // Enough for Mk II (640/100) but not Mk III (1000/150).
+    // Enough for the base tank (400/60) but not the Mk II (640/100).
+    p.funds = 500;
+    p.materials = 80;
+    p.manpower = 10000;
+    expect(chooseVariant(ctx.world, 0, 'tank')).toBe('tank');
+    // Mk II affordable (640/100) but not Mk III (1050/160).
     p.funds = 700;
     p.materials = 120;
-    p.manpower = 10000;
-    expect(preferHighestVariant(ctx.world, 0, 'tank')).toBe('tankMk2');
-    // Not even Mk II affordable → the base kind.
-    p.funds = 500;
-    expect(preferHighestVariant(ctx.world, 0, 'tank')).toBe('tank');
+    expect(chooseVariant(ctx.world, 0, 'tank')).toBe('tankMk2');
   });
 
   it('the per-think ledger reservations count against affordability', () => {
@@ -487,27 +632,29 @@ describe('preferHighestVariant', () => {
     p.funds = 1200;
     p.materials = 200;
     p.manpower = 10000;
-    expect(preferHighestVariant(ctx.world, 0, 'tank')).toBe('tankMk3');
-    // 500 funds already reserved this think → Mk III (1000) no longer fits,
-    // but Mk II (640) still does.
-    expect(preferHighestVariant(ctx.world, 0, 'tank', { funds: 500, materials: 0, manpower: 0 })).toBe(
-      'tankMk2',
-    );
+    expect(chooseVariant(ctx.world, 0, 'tank')).toBe('tankMk2');
+    // 700 funds already reserved this think → Mk II (640) no longer
+    // fits, only the base tank does.
+    expect(chooseVariant(ctx.world, 0, 'tank', { funds: 700, materials: 0, manpower: 0 })).toBe('tank');
   });
 
   it('never downgrades below the input tier', () => {
     const ctx = unlockedCtx();
+    const p = ctx.world.city.players[0]!;
+    p.funds = VARIANT_RICH_FUNDS + 5000;
+    p.materials = 10000;
+    p.manpower = 10000;
     // Asking for Mk II directly keeps at least Mk II (here Mk III wins).
-    expect(preferHighestVariant(ctx.world, 0, 'tankMk2')).toBe('tankMk3');
+    expect(chooseVariant(ctx.world, 0, 'tankMk2')).toBe('tankMk3');
     // With Mk III age-locked, an explicit Mk II request stays Mk II.
     ctx.world.ages.age = 'industry';
-    expect(preferHighestVariant(ctx.world, 0, 'tankMk2')).toBe('tankMk2');
+    expect(chooseVariant(ctx.world, 0, 'tankMk2')).toBe('tankMk2');
   });
 
   it('is deterministic: same state ⇒ same answer', () => {
     const a = unlockedCtx();
     const b = unlockedCtx();
-    expect(preferHighestVariant(a.world, 0, 'fighter')).toBe(preferHighestVariant(b.world, 0, 'fighter'));
+    expect(chooseVariant(a.world, 0, 'fighter')).toBe(chooseVariant(b.world, 0, 'fighter'));
   });
 });
 

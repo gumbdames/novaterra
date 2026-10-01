@@ -1167,243 +1167,357 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
   // `military: true` (peaceful lockout); hauler/transportShip variants
   // are civilian — the peaceful-mode tech progression path.
   // ------------------------------------------------------------------
+  // ------------------------------------------------------------------
+  // Tech-level variants (M15 tradeoff redesign, 2026-10-01): Mk II and
+  // Mk III are GENUINE TACTICAL CHOICES, not stat ladders — every tier
+  // is better at something and WORSE at something, so the base kind
+  // and the Mk II stay situationally right. Roles are documented per
+  // kind below and in docs/research/mk-variants.md.
+  //
+  // Land: assault tank (punch, slow) vs railgun tank (range, blind);
+  // siege artillery (outranges all, fragile + dead zone) vs rocket
+  // artillery (alpha, glass + slow reload); AA platform (denial, slow)
+  // vs missile AA (kill, dead zone + ammo); IFV (fights, slow taxi)
+  // vs command APC (fast scout, pea-shooter); heavy hauler (cargo,
+  // slow) vs express hauler (fast, fragile + thirsty).
+  // ------------------------------------------------------------------
   tankMk2: {
-    kind: 'tankMk2', name: 'Main Battle Tank Mk II', domain: 'land', hp: 650, speed: 11, armor: 'heavy',
-    damage: 63, range: 19, minRange: 0, cooldownTicks: 50, targets: 'ground',
-    vsLight: 1.3, vsMedium: 1.0, vsHeavy: 0.9, vsAir: 1.0, sight: 28, minAge: 'industry',
+    kind: 'tankMk2', name: 'Assault Tank Mk II', domain: 'land', hp: 620, speed: 8, armor: 'heavy',
+    damage: 65, range: 19, minRange: 0, cooldownTicks: 50, targets: 'ground',
+    vsLight: 1.3, vsMedium: 1.1, vsHeavy: 0.9, vsAir: 1.0, sight: 24, minAge: 'industry',
     manpowerCost: 6, trainFunds: 640, trainMaterials: 100, requiredBuilding: 'warFactory',
-    fuelCapacity: 72, fuelPerSecond: 0.15, fuelType: 'fossil',
+    fuelCapacity: 60, fuelPerSecond: 0.16, fuelType: 'fossil', // heavier gun sips more
     military: true, variantOf: 'tank', variantTier: 2,
+    // Tradeoff vs tank: +damage/+hp/+vsMedium, but SLOWER (8 vs 10) and
+    // blinder (24 vs 26) — a breakthrough brawler, not an exploiter.
   },
   tankMk3: {
-    kind: 'tankMk3', name: 'Main Battle Tank Mk III', domain: 'land', hp: 800, speed: 12, armor: 'heavy',
-    damage: 75, range: 20, minRange: 0, cooldownTicks: 50, targets: 'ground',
-    vsLight: 1.3, vsMedium: 1.0, vsHeavy: 0.9, vsAir: 1.0, sight: 30, minAge: 'information',
-    manpowerCost: 7, trainFunds: 1000, trainMaterials: 150, requiredBuilding: 'warFactory',
-    fuelCapacity: 84, fuelPerSecond: 0.15, fuelType: 'fossil',
+    kind: 'tankMk3', name: 'Railgun Tank Mk III', domain: 'land', hp: 700, speed: 7, armor: 'heavy',
+    damage: 85, range: 23, minRange: 0, cooldownTicks: 60, targets: 'ground',
+    vsLight: 1.0, vsMedium: 1.2, vsHeavy: 1.1, vsAir: 1.0, sight: 22, minAge: 'information',
+    manpowerCost: 7, trainFunds: 1050, trainMaterials: 160, requiredBuilding: 'warFactory',
+    fuelCapacity: 60, fuelPerSecond: 0.18, fuelType: 'fossil', // railgun capacitors drink
     military: true, variantOf: 'tank', variantTier: 3,
+    // Tradeoff vs Mk II: +range/+damage, but slowest of the line (7),
+    // slower-firing (60 ticks) and near-blind (22) — a sniper that
+    // NEEDS spotters. The base tank is still the fastest, cheapest pick.
   },
   artilleryMk2: {
-    kind: 'artilleryMk2', name: 'Artillery Mk II', domain: 'land', hp: 210, speed: 7, armor: 'medium',
-    damage: 120, range: 50, minRange: 12, cooldownTicks: 100, targets: 'ground',
-    vsLight: 1.0, vsMedium: 1.4, vsHeavy: 1.6, vsAir: 1.0, sight: 32, minAge: 'industry',
+    kind: 'artilleryMk2', name: 'Siege Artillery Mk II', domain: 'land', hp: 140, speed: 5, armor: 'medium',
+    damage: 110, range: 56, minRange: 16, cooldownTicks: 100, targets: 'ground',
+    vsLight: 1.0, vsMedium: 1.4, vsHeavy: 1.7, vsAir: 1.0, sight: 28, minAge: 'industry',
     manpowerCost: 5, trainFunds: 720, trainMaterials: 130, requiredBuilding: 'warFactory',
-    fuelCapacity: 48, fuelPerSecond: 0.10, fuelType: 'fossil',
+    fuelCapacity: 40, fuelPerSecond: 0.10, fuelType: 'fossil',
     military: true, variantOf: 'artillery', variantTier: 2,
+    // Tradeoff vs artillery: outranges EVERYTHING (56), but thinner
+    // armor (140 vs 160) and a bigger dead zone (16 vs 12) — raiders
+    // that get close kill it unanswered. Needs an escort screen.
   },
   artilleryMk3: {
-    kind: 'artilleryMk3', name: 'Artillery Mk III', domain: 'land', hp: 260, speed: 7, armor: 'medium',
-    damage: 145, range: 52, minRange: 12, cooldownTicks: 100, targets: 'ground',
-    vsLight: 1.0, vsMedium: 1.4, vsHeavy: 1.6, vsAir: 1.0, sight: 34, minAge: 'information',
-    manpowerCost: 6, trainFunds: 1150, trainMaterials: 200, requiredBuilding: 'warFactory',
-    fuelCapacity: 56, fuelPerSecond: 0.10, fuelType: 'fossil',
+    kind: 'artilleryMk3', name: 'Rocket Artillery Mk III', domain: 'land', hp: 120, speed: 6, armor: 'medium',
+    damage: 150, range: 60, minRange: 20, cooldownTicks: 120, targets: 'ground',
+    vsLight: 1.2, vsMedium: 1.5, vsHeavy: 1.8, vsAir: 1.0, sight: 26, minAge: 'information',
+    manpowerCost: 6, trainFunds: 1200, trainMaterials: 210, requiredBuilding: 'warFactory',
+    fuelCapacity: 40, fuelPerSecond: 0.12, fuelType: 'fossil',
     military: true, variantOf: 'artillery', variantTier: 3,
+    // Tradeoff vs Mk II: devastating alpha (150) at 60 range, but a
+    // GLASS cannon (120 hp), slower reload (120 ticks) and a 20-cell
+    // dead zone. The base artillery stays the safe, all-round pick.
   },
   aaMk2: {
-    kind: 'aaMk2', name: 'Mobile AA Mk II', domain: 'land', hp: 260, speed: 11, armor: 'medium',
-    damage: 50, range: 30, minRange: 0, cooldownTicks: 25, targets: 'air',
-    vsLight: 0.3, vsMedium: 0.3, vsHeavy: 0.3, vsAir: 2.4, sight: 36, minAge: 'industry',
+    kind: 'aaMk2', name: 'AA Gun Platform Mk II', domain: 'land', hp: 260, speed: 8, armor: 'medium',
+    damage: 55, range: 32, minRange: 0, cooldownTicks: 25, targets: 'air',
+    vsLight: 0.3, vsMedium: 0.3, vsHeavy: 0.3, vsAir: 2.6, sight: 30, minAge: 'industry',
     manpowerCost: 5, trainFunds: 560, trainMaterials: 100, requiredBuilding: 'warFactory',
-    fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil',
+    fuelCapacity: 50, fuelPerSecond: 0.15, fuelType: 'fossil',
     military: true, variantOf: 'aa', variantTier: 2,
+    // Tradeoff vs aa: bigger air-denial bubble (+dmg, +range, +vsAir),
+    // but SLOW to reposition (8 vs 10) and shorter sensors (30 vs 34) —
+    // a static umbrella, not a mobile screen.
   },
   aaMk3: {
-    kind: 'aaMk3', name: 'Mobile AA Mk III', domain: 'land', hp: 320, speed: 12, armor: 'medium',
-    damage: 60, range: 32, minRange: 0, cooldownTicks: 25, targets: 'air',
-    vsLight: 0.3, vsMedium: 0.3, vsHeavy: 0.3, vsAir: 2.6, sight: 38, minAge: 'information',
-    manpowerCost: 6, trainFunds: 900, trainMaterials: 150, requiredBuilding: 'warFactory',
-    fuelCapacity: 70, fuelPerSecond: 0.15, fuelType: 'fossil',
+    kind: 'aaMk3', name: 'Missile AA Mk III', domain: 'land', hp: 180, speed: 9, armor: 'medium',
+    damage: 70, range: 38, minRange: 6, cooldownTicks: 30, targets: 'air',
+    vsLight: 0.3, vsMedium: 0.3, vsHeavy: 0.3, vsAir: 3.2, sight: 36, minAge: 'information',
+    manpowerCost: 6, trainFunds: 950, trainMaterials: 160, requiredBuilding: 'warFactory',
+    fuelCapacity: 50, fuelPerSecond: 0.15, fuelType: 'fossil',
+    ammoCapacity: 12, ammoPerShot: 1, // twelve missiles, then it reloads at a depot
     military: true, variantOf: 'aa', variantTier: 3,
+    // Tradeoff vs Mk II: the best air kill in the game at the longest
+    // reach — but fragile (180 hp), a 6-cell DEAD ZONE overhead, and an
+    // ammo logistics tail. The base AA still works ammo-free forever.
   },
   apcMk2: {
-    kind: 'apcMk2', name: 'Armored Personnel Carrier Mk II', domain: 'land', hp: 420, speed: 13, armor: 'medium',
-    damage: 18, range: 16, minRange: 0, cooldownTicks: 25, targets: 'ground',
-    vsLight: 1.3, vsMedium: 0.8, vsHeavy: 0.5, vsAir: 1.0, sight: 26, minAge: 'industry',
-    manpowerCost: 5, trainFunds: 400, trainMaterials: 65, requiredBuilding: 'warFactory',
-    fuelCapacity: 58, fuelPerSecond: 0.16, fuelType: 'fossil',
+    kind: 'apcMk2', name: 'IFV Mk II', domain: 'land', hp: 420, speed: 10, armor: 'medium',
+    damage: 30, range: 17, minRange: 0, cooldownTicks: 25, targets: 'ground',
+    vsLight: 1.4, vsMedium: 1.0, vsHeavy: 0.8, vsAir: 1.0, sight: 24, minAge: 'industry',
+    manpowerCost: 5, trainFunds: 420, trainMaterials: 70, requiredBuilding: 'warFactory',
+    fuelCapacity: 48, fuelPerSecond: 0.17, fuelType: 'fossil',
     military: true, variantOf: 'apc', variantTier: 2,
+    // Tradeoff vs apc: a real gun (30 dmg, fights infantry and light
+    // armor), but SLOWER (10 vs 12) — it fights instead of running, so
+    // it is a worse battle-taxi. The base APC stays the fastest ride.
   },
   apcMk3: {
-    kind: 'apcMk3', name: 'Armored Personnel Carrier Mk III', domain: 'land', hp: 510, speed: 14, armor: 'medium',
-    damage: 21, range: 17, minRange: 0, cooldownTicks: 25, targets: 'ground',
-    vsLight: 1.3, vsMedium: 0.8, vsHeavy: 0.5, vsAir: 1.0, sight: 28, minAge: 'information',
-    manpowerCost: 6, trainFunds: 650, trainMaterials: 100, requiredBuilding: 'warFactory',
-    fuelCapacity: 67, fuelPerSecond: 0.16, fuelType: 'fossil',
+    kind: 'apcMk3', name: 'Command APC Mk III', domain: 'land', hp: 480, speed: 14, armor: 'medium',
+    damage: 12, range: 16, minRange: 0, cooldownTicks: 25, targets: 'ground',
+    vsLight: 1.2, vsMedium: 0.8, vsHeavy: 0.5, vsAir: 1.0, sight: 36, minAge: 'information',
+    manpowerCost: 6, trainFunds: 700, trainMaterials: 110, requiredBuilding: 'warFactory',
+    fuelCapacity: 48, fuelPerSecond: 0.16, fuelType: 'fossil',
     military: true, variantOf: 'apc', variantTier: 3,
+    // Tradeoff vs Mk II: the fastest armored hull (14) with huge
+    // sensors (36) — a scout/command post — but the gun is a
+    // pea-shooter (12 dmg). It sees everything and kills nothing.
   },
   haulerMk2: {
-    kind: 'haulerMk2', name: 'Hauler Mk II', domain: 'land', hp: 210, speed: 10, armor: 'medium',
+    kind: 'haulerMk2', name: 'Heavy Hauler Mk II', domain: 'land', hp: 220, speed: 7, armor: 'medium',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
-    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 18, minAge: 'industry',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 16, minAge: 'industry',
     manpowerCost: 0, trainFunds: 200, trainMaterials: 35,
-    fuelCapacity: 72, fuelPerSecond: 0.12, fuelType: 'fossil',
-    cargoFuelCapacity: 70, cargoAmmoCapacity: 35, // bigger field holds
+    fuelCapacity: 60, fuelPerSecond: 0.12, fuelType: 'fossil',
+    cargoFuelCapacity: 80, cargoAmmoCapacity: 40, // double the base's field holds
     variantOf: 'hauler', variantTier: 2, // civilian: the peaceful tech path
+    // Tradeoff vs hauler: DOUBLE cargo (80/40) and tougher (220 hp),
+    // but SLOW (7 vs 9) — fewer trips per hour on long routes.
   },
   haulerMk3: {
-    kind: 'haulerMk3', name: 'Hauler Mk III', domain: 'land', hp: 260, speed: 11, armor: 'medium',
+    kind: 'haulerMk3', name: 'Express Hauler Mk III', domain: 'land', hp: 140, speed: 12, armor: 'medium',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
-    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'information',
-    manpowerCost: 0, trainFunds: 320, trainMaterials: 60,
-    fuelCapacity: 84, fuelPerSecond: 0.12, fuelType: 'fossil',
-    cargoFuelCapacity: 100, cargoAmmoCapacity: 50,
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 18, minAge: 'information',
+    manpowerCost: 0, trainFunds: 340, trainMaterials: 60,
+    fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil', // speed drinks
+    cargoFuelCapacity: 60, cargoAmmoCapacity: 30,
     variantOf: 'hauler', variantTier: 3, // civilian: the peaceful tech path
+    // Tradeoff vs Mk II: the fastest supply wheels (12) — but fragile
+    // (140 hp), THIRSTY (0.15/s), and LESS cargo than the Mk II (60/30
+    // vs 80/40). Speed costs throughput. The base stays cheapest.
   },
+  // Air: interceptor (air duelist, weak ground, short legs) vs
+  // multirole (heavy hitter, slow); strike bomber (alpha, slow) vs
+  // stealth bomber (deep strike, fragile); tank hunter (armor shred,
+  // slow) vs hunter-killer (fast scout, fragile); siege gunship
+  // (flying artillery, ponderous) vs rapid gunship (responsive CAS,
+  // fragile + short reach).
   fighterMk2: {
-    kind: 'fighterMk2', name: 'Fighter Mk II', domain: 'air', hp: 220, speed: 29, armor: 'light',
-    damage: 40, range: 24, minRange: 0, cooldownTicks: 28, targets: 'both',
-    vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 1.8, sight: 42, minAge: 'industry',
+    kind: 'fighterMk2', name: 'Interceptor Mk II', domain: 'air', hp: 150, speed: 31, armor: 'light',
+    damage: 28, range: 24, minRange: 0, cooldownTicks: 28, targets: 'both',
+    vsLight: 0.8, vsMedium: 0.6, vsHeavy: 0.4, vsAir: 2.2, sight: 46, minAge: 'industry',
     manpowerCost: 4, trainFunds: 1300, trainMaterials: 190, requiredBuilding: 'airfield',
-    fuelCapacity: 54, fuelPerSecond: 0.5, fuelType: 'fossil',
+    fuelCapacity: 40, fuelPerSecond: 0.55, fuelType: 'fossil', // shorter legs than the base
     hangarClass: 'medium',
     military: true, variantOf: 'fighter', variantTier: 2,
+    // Tradeoff vs fighter: the air-superiority duelist (fastest,
+    // best vsAir, huge sensors) — but a WEAKER gun vs ground (28 dmg,
+    // gutted vs-multipliers) and shorter legs. Owning the sky is all
+    // it does.
   },
   fighterMk3: {
-    kind: 'fighterMk3', name: 'Fighter Mk III', domain: 'air', hp: 270, speed: 31, armor: 'light',
-    damage: 48, range: 26, minRange: 0, cooldownTicks: 28, targets: 'both',
-    vsLight: 1.0, vsMedium: 0.7, vsHeavy: 0.5, vsAir: 2.0, sight: 44, minAge: 'information',
-    manpowerCost: 5, trainFunds: 2000, trainMaterials: 300, requiredBuilding: 'airfield',
-    fuelCapacity: 63, fuelPerSecond: 0.5, fuelType: 'fossil',
+    kind: 'fighterMk3', name: 'Multirole Mk III', domain: 'air', hp: 230, speed: 24, armor: 'light',
+    damage: 45, range: 26, minRange: 0, cooldownTicks: 28, targets: 'both',
+    vsLight: 1.1, vsMedium: 0.8, vsHeavy: 0.6, vsAir: 2.4, sight: 38, minAge: 'information',
+    manpowerCost: 5, trainFunds: 2100, trainMaterials: 320, requiredBuilding: 'airfield',
+    fuelCapacity: 55, fuelPerSecond: 0.5, fuelType: 'fossil',
     hangarClass: 'medium',
     military: true, variantOf: 'fighter', variantTier: 3,
+    // Tradeoff vs Mk II: hits everything harder (45 dmg, +vsAir too)
+    // and takes a beating (230 hp) — but SLOWER (24 vs 31) than the
+    // base fighter. Interceptors eat it in a turning fight.
   },
   fighterBomberMk2: {
-    kind: 'fighterBomberMk2', name: 'Fighter-Bomber Mk II', domain: 'air', hp: 260, speed: 31, armor: 'medium',
-    damage: 150, range: 22, minRange: 0, cooldownTicks: 90, targets: 'ground',
-    vsLight: 0.8, vsMedium: 1.0, vsHeavy: 1.8, vsAir: 1.0, sight: 34, minAge: 'information',
-    manpowerCost: 5, trainFunds: 1600, trainMaterials: 240, requiredBuilding: 'airfield',
-    fuelCapacity: 66, fuelPerSecond: 0.55, fuelType: 'fossil',
+    kind: 'fighterBomberMk2', name: 'Strike Bomber Mk II', domain: 'air', hp: 180, speed: 24, armor: 'medium',
+    damage: 160, range: 22, minRange: 0, cooldownTicks: 90, targets: 'ground',
+    vsLight: 0.7, vsMedium: 1.1, vsHeavy: 2.0, vsAir: 1.0, sight: 28, minAge: 'information',
+    manpowerCost: 5, trainFunds: 1650, trainMaterials: 250, requiredBuilding: 'airfield',
+    fuelCapacity: 55, fuelPerSecond: 0.55, fuelType: 'fossil',
     hangarClass: 'medium',
     military: true, variantOf: 'fighterBomber', variantTier: 2,
+    // Tradeoff vs fighterBomber: bunker-buster alpha (160 dmg, 2.0
+    // vsHeavy) — but SLOW (24 vs 28), thinner (180 hp) and blinder
+    // (28 sight). Needs an escort; the base stays the balanced pick.
   },
   fighterBomberMk3: {
-    kind: 'fighterBomberMk3', name: 'Fighter-Bomber Mk III', domain: 'air', hp: 320, speed: 34, armor: 'medium',
-    damage: 180, range: 24, minRange: 0, cooldownTicks: 90, targets: 'ground',
-    vsLight: 0.8, vsMedium: 1.0, vsHeavy: 2.0, vsAir: 1.0, sight: 36, minAge: 'ascendance',
-    manpowerCost: 6, trainFunds: 2500, trainMaterials: 375, requiredBuilding: 'airfield',
-    fuelCapacity: 77, fuelPerSecond: 0.55, fuelType: 'fossil',
+    kind: 'fighterBomberMk3', name: 'Stealth Bomber Mk III', domain: 'air', hp: 160, speed: 33, armor: 'medium',
+    damage: 140, range: 22, minRange: 0, cooldownTicks: 90, targets: 'ground',
+    vsLight: 0.5, vsMedium: 1.0, vsHeavy: 1.8, vsAir: 1.0, sight: 40, minAge: 'ascendance',
+    manpowerCost: 6, trainFunds: 2600, trainMaterials: 390, requiredBuilding: 'airfield',
+    fuelCapacity: 66, fuelPerSecond: 0.55, fuelType: 'fossil',
     hangarClass: 'medium',
     military: true, variantOf: 'fighterBomber', variantTier: 3,
+    // Tradeoff vs Mk II: fast (33) deep-strike with great sensors
+    // (40) — but FRAGILE (160 hp) and weak vs light targets (0.5).
+    // Speed and reach, paid for in armor.
   },
   attackHeliMk2: {
-    kind: 'attackHeliMk2', name: 'Attack Helicopter Mk II', domain: 'air', hp: 195, speed: 33, armor: 'light',
-    damage: 75, range: 22, minRange: 0, cooldownTicks: 55, targets: 'ground',
-    vsLight: 0.9, vsMedium: 1.1, vsHeavy: 1.6, vsAir: 1.0, sight: 32, minAge: 'industry',
-    manpowerCost: 5, trainFunds: 1150, trainMaterials: 160, requiredBuilding: 'airfield',
-    fuelCapacity: 48, fuelPerSecond: 0.5, fuelType: 'fossil',
+    kind: 'attackHeliMk2', name: 'Tank Hunter Mk II', domain: 'air', hp: 170, speed: 26, armor: 'light',
+    damage: 90, range: 24, minRange: 0, cooldownTicks: 55, targets: 'ground',
+    vsLight: 0.7, vsMedium: 1.2, vsHeavy: 2.0, vsAir: 1.0, sight: 26, minAge: 'industry',
+    manpowerCost: 5, trainFunds: 1150, trainMaterials: 170, requiredBuilding: 'airfield',
+    fuelCapacity: 40, fuelPerSecond: 0.5, fuelType: 'fossil',
     hangarClass: 'light',
     military: true, variantOf: 'attackHeli', variantTier: 2,
+    // Tradeoff vs attackHeli: armor shredder (90 dmg, 2.0 vsHeavy, +2
+    // range) — but SLOWER (26 vs 30) and blinder (26 vs 30). It kills
+    // what it is pointed at; pointing it takes help.
   },
   attackHeliMk3: {
-    kind: 'attackHeliMk3', name: 'Attack Helicopter Mk III', domain: 'air', hp: 240, speed: 36, armor: 'light',
-    damage: 90, range: 24, minRange: 0, cooldownTicks: 55, targets: 'ground',
-    vsLight: 0.9, vsMedium: 1.1, vsHeavy: 1.8, vsAir: 1.0, sight: 34, minAge: 'information',
-    manpowerCost: 6, trainFunds: 1750, trainMaterials: 250, requiredBuilding: 'airfield',
-    fuelCapacity: 56, fuelPerSecond: 0.5, fuelType: 'fossil',
+    kind: 'attackHeliMk3', name: 'Hunter-Killer Mk III', domain: 'air', hp: 130, speed: 35, armor: 'light',
+    damage: 75, range: 22, minRange: 0, cooldownTicks: 50, targets: 'ground',
+    vsLight: 1.0, vsMedium: 1.2, vsHeavy: 1.7, vsAir: 1.0, sight: 38, minAge: 'information',
+    manpowerCost: 6, trainFunds: 1800, trainMaterials: 270, requiredBuilding: 'airfield',
+    fuelCapacity: 48, fuelPerSecond: 0.55, fuelType: 'fossil', // speed drinks
     hangarClass: 'light',
     military: true, variantOf: 'attackHeli', variantTier: 3,
+    // Tradeoff vs Mk II: the fastest rotor (35) with scout sensors
+    // (38) and a faster gun (50 ticks) — but FRAGILE (130 hp) and
+    // THIRSTY (0.55/s). A killer-scout that cannot loiter.
   },
   gunshipMk2: {
-    kind: 'gunshipMk2', name: 'Gunship Mk II', domain: 'air', hp: 365, speed: 24, armor: 'medium',
-    damage: 115, range: 22, minRange: 0, cooldownTicks: 55, targets: 'ground',
-    vsLight: 1.5, vsMedium: 1.1, vsHeavy: 0.7, vsAir: 1.0, sight: 32, minAge: 'information',
-    manpowerCost: 5, trainFunds: 2250, trainMaterials: 340, requiredBuilding: 'airfield',
-    fuelCapacity: 78, fuelPerSecond: 0.5, fuelType: 'fossil',
+    kind: 'gunshipMk2', name: 'Siege Gunship Mk II', domain: 'air', hp: 360, speed: 18, armor: 'medium',
+    damage: 130, range: 24, minRange: 4, cooldownTicks: 60, targets: 'ground',
+    vsLight: 1.6, vsMedium: 1.2, vsHeavy: 0.8, vsAir: 1.0, sight: 28, minAge: 'information',
+    manpowerCost: 5, trainFunds: 2300, trainMaterials: 350, requiredBuilding: 'airfield',
+    fuelCapacity: 65, fuelPerSecond: 0.5, fuelType: 'fossil',
     hangarClass: 'medium',
     military: true, variantOf: 'gunship', variantTier: 2,
+    // Tradeoff vs gunship: flying artillery (130 dmg at 24 range,
+    // toughest hull of the line) — but PONDEROUS (18 speed), a 4-cell
+    // dead zone, and a slower gun (60 ticks). Needs escorts.
   },
   gunshipMk3: {
-    kind: 'gunshipMk3', name: 'Gunship Mk III', domain: 'air', hp: 450, speed: 26, armor: 'medium',
-    damage: 135, range: 24, minRange: 0, cooldownTicks: 55, targets: 'ground',
-    vsLight: 1.5, vsMedium: 1.1, vsHeavy: 0.7, vsAir: 1.0, sight: 34, minAge: 'ascendance',
-    manpowerCost: 6, trainFunds: 3500, trainMaterials: 525, requiredBuilding: 'airfield',
-    fuelCapacity: 91, fuelPerSecond: 0.5, fuelType: 'fossil',
+    kind: 'gunshipMk3', name: 'Rapid Gunship Mk III', domain: 'air', hp: 240, speed: 28, armor: 'medium',
+    damage: 110, range: 18, minRange: 0, cooldownTicks: 45, targets: 'ground',
+    vsLight: 1.6, vsMedium: 1.2, vsHeavy: 0.7, vsAir: 1.0, sight: 32, minAge: 'ascendance',
+    manpowerCost: 6, trainFunds: 3600, trainMaterials: 540, requiredBuilding: 'airfield',
+    fuelCapacity: 78, fuelPerSecond: 0.55, fuelType: 'fossil', // responsiveness drinks
     hangarClass: 'medium',
     military: true, variantOf: 'gunship', variantTier: 3,
+    // Tradeoff vs Mk II: responsive CAS (28 speed, 45-tick gun) —
+    // but thinner (240 hp), SHORTER reach (18 vs 24) and thirsty. It
+    // answers fast and dies fast if left over the target.
   },
+  // Sea: AA destroyer (air shield, weak vs capitals) vs missile
+  // destroyer (capital killer, thin hull + ammo); ASW frigate (sub
+  // hunter, weak guns) vs fast frigate (interceptor, fragile);
+  // hunter-killer sub (fast boat hunter, thin) vs missile sub
+  // (capital sniper, slow); strike boat (punch, slow) vs fast attack
+  // (speed, fragile); heavy transport (survivable, slow) vs depot
+  // ship (mobile sea depot, expensive + needs protection).
   destroyerMk2: {
-    kind: 'destroyerMk2', name: 'Destroyer Mk II', domain: 'sea', hp: 780, speed: 12, armor: 'heavy',
-    damage: 56, range: 28, minRange: 0, cooldownTicks: 40, targets: 'seaAir',
-    vsLight: 1.3, vsMedium: 1.1, vsHeavy: 1.0, vsAir: 2.0, sight: 36, minAge: 'information',
-    manpowerCost: 7, trainFunds: 2400, trainMaterials: 640, requiredBuilding: 'navalYard',
-    fuelCapacity: 144, fuelPerSecond: 0.25, fuelType: 'fossil',
+    kind: 'destroyerMk2', name: 'AA Destroyer Mk II', domain: 'sea', hp: 650, speed: 10, armor: 'heavy',
+    damage: 55, range: 28, minRange: 0, cooldownTicks: 40, targets: 'seaAir',
+    vsLight: 1.2, vsMedium: 1.0, vsHeavy: 0.7, vsAir: 2.6, sight: 36, minAge: 'information',
+    manpowerCost: 7, trainFunds: 2450, trainMaterials: 650, requiredBuilding: 'navalYard',
+    fuelCapacity: 120, fuelPerSecond: 0.25, fuelType: 'fossil',
     military: true, variantOf: 'destroyer', variantTier: 2,
+    // Tradeoff vs destroyer: the fleet's air shield (+dmg, +range,
+    // +sight, 2.6 vsAir) — but SLOWER (10 vs 11) and weak vs capital
+    // ships (0.7 vsHeavy). Bombers fear it; battleships do not.
   },
   destroyerMk3: {
-    kind: 'destroyerMk3', name: 'Destroyer Mk III', domain: 'sea', hp: 960, speed: 13, armor: 'heavy',
-    damage: 68, range: 30, minRange: 0, cooldownTicks: 40, targets: 'seaAir',
-    vsLight: 1.3, vsMedium: 1.1, vsHeavy: 1.0, vsAir: 2.2, sight: 38, minAge: 'ascendance',
-    manpowerCost: 8, trainFunds: 3750, trainMaterials: 1000, requiredBuilding: 'navalYard',
-    fuelCapacity: 168, fuelPerSecond: 0.25, fuelType: 'fossil',
+    kind: 'destroyerMk3', name: 'Missile Destroyer Mk III', domain: 'sea', hp: 520, speed: 10, armor: 'heavy',
+    damage: 70, range: 32, minRange: 0, cooldownTicks: 45, targets: 'seaAir',
+    vsLight: 1.2, vsMedium: 1.2, vsHeavy: 1.4, vsAir: 2.0, sight: 34, minAge: 'ascendance',
+    manpowerCost: 8, trainFunds: 3850, trainMaterials: 1030, requiredBuilding: 'navalYard',
+    fuelCapacity: 120, fuelPerSecond: 0.25, fuelType: 'fossil',
+    ammoCapacity: 20, ammoPerShot: 1, // twenty missiles, then a depot run
     military: true, variantOf: 'destroyer', variantTier: 3,
+    // Tradeoff vs Mk II: a capital killer at 32 range (70 dmg, 1.4
+    // vsHeavy) — but a THIN hull (520 hp) and an ammo logistics tail.
+    // It outranges what it cannot outlast.
   },
   frigateMk2: {
-    kind: 'frigateMk2', name: 'Frigate Mk II', domain: 'sea', hp: 550, speed: 14, armor: 'medium',
-    damage: 38, range: 26, minRange: 0, cooldownTicks: 35, targets: 'seaAir',
-    vsLight: 1.2, vsMedium: 1.7, vsHeavy: 0.8, vsAir: 1.2, sight: 34, minAge: 'information',
-    manpowerCost: 6, trainFunds: 1450, trainMaterials: 350, requiredBuilding: 'navalYard',
-    fuelCapacity: 132, fuelPerSecond: 0.25, fuelType: 'fossil',
+    kind: 'frigateMk2', name: 'ASW Frigate Mk II', domain: 'sea', hp: 460, speed: 12, armor: 'medium',
+    damage: 26, range: 24, minRange: 0, cooldownTicks: 35, targets: 'seaAir',
+    vsLight: 1.1, vsMedium: 2.0, vsHeavy: 0.7, vsAir: 1.2, sight: 38, minAge: 'information',
+    manpowerCost: 6, trainFunds: 1480, trainMaterials: 360, requiredBuilding: 'navalYard',
+    fuelCapacity: 110, fuelPerSecond: 0.25, fuelType: 'fossil',
     military: true, variantOf: 'frigate', variantTier: 2,
+    // Tradeoff vs frigate: the sub hunter (2.0 vsMedium — submarines
+    // are medium armor — and 38 sight) — but WEAKER guns (26 dmg) and
+    // slower (12 vs 13). It finds subs; it does not win gunfights.
   },
   frigateMk3: {
-    kind: 'frigateMk3', name: 'Frigate Mk III', domain: 'sea', hp: 670, speed: 16, armor: 'medium',
-    damage: 45, range: 28, minRange: 0, cooldownTicks: 35, targets: 'seaAir',
-    vsLight: 1.2, vsMedium: 1.8, vsHeavy: 0.8, vsAir: 1.2, sight: 36, minAge: 'ascendance',
-    manpowerCost: 7, trainFunds: 2250, trainMaterials: 550, requiredBuilding: 'navalYard',
-    fuelCapacity: 154, fuelPerSecond: 0.25, fuelType: 'fossil',
+    kind: 'frigateMk3', name: 'Fast Frigate Mk III', domain: 'sea', hp: 360, speed: 17, armor: 'medium',
+    damage: 40, range: 26, minRange: 0, cooldownTicks: 35, targets: 'seaAir',
+    vsLight: 1.3, vsMedium: 1.7, vsHeavy: 0.6, vsAir: 1.2, sight: 34, minAge: 'ascendance',
+    manpowerCost: 7, trainFunds: 2300, trainMaterials: 560, requiredBuilding: 'navalYard',
+    fuelCapacity: 132, fuelPerSecond: 0.28, fuelType: 'fossil', // speed drinks
     military: true, variantOf: 'frigate', variantTier: 3,
+    // Tradeoff vs Mk II: the fastest surface combatant (17) with a
+    // real gun (40 dmg) — but FRAGILE (360 hp), weak vs heavies (0.6)
+    // and thirsty. It catches anything; it should not fight heavies.
   },
   submarineMk2: {
-    kind: 'submarineMk2', name: 'Submarine Mk II', domain: 'sea', hp: 390, speed: 11, armor: 'medium',
-    damage: 115, range: 32, minRange: 0, cooldownTicks: 80, targets: 'sea',
-    vsLight: 0.8, vsMedium: 1.5, vsHeavy: 2.1, vsAir: 1.0, sight: 28, minAge: 'information',
-    manpowerCost: 7, trainFunds: 1900, trainMaterials: 480, requiredBuilding: 'navalYard',
-    ammoCapacity: 16, ammoPerShot: 1, // deeper torpedo room
+    kind: 'submarineMk2', name: 'Hunter-Killer Mk II', domain: 'sea', hp: 260, speed: 13, armor: 'medium',
+    damage: 100, range: 30, minRange: 0, cooldownTicks: 80, targets: 'sea',
+    vsLight: 0.8, vsMedium: 1.8, vsHeavy: 1.8, vsAir: 1.0, sight: 32, minAge: 'information',
+    manpowerCost: 7, trainFunds: 1950, trainMaterials: 490, requiredBuilding: 'navalYard',
+    ammoCapacity: 12, ammoPerShot: 1,
     fuelType: 'nuclear', // nuclear exemption inherited — user directive 2026-09-30
     military: true, variantOf: 'submarine', variantTier: 2,
+    // Tradeoff vs submarine: FAST (13 vs 10) with better sensors (32)
+    // and a harder punch (100 dmg) — but a THINNER hull (260 hp) and
+    // weaker vs heavies (1.8 vs 2.0). It hunts boats, not battleships.
   },
   submarineMk3: {
-    kind: 'submarineMk3', name: 'Submarine Mk III', domain: 'sea', hp: 480, speed: 12, armor: 'medium',
-    damage: 135, range: 34, minRange: 0, cooldownTicks: 80, targets: 'sea',
-    vsLight: 0.8, vsMedium: 1.5, vsHeavy: 2.2, vsAir: 1.0, sight: 30, minAge: 'ascendance',
-    manpowerCost: 8, trainFunds: 3000, trainMaterials: 750, requiredBuilding: 'navalYard',
-    ammoCapacity: 20, ammoPerShot: 1,
+    kind: 'submarineMk3', name: 'Missile Sub Mk III', domain: 'sea', hp: 280, speed: 9, armor: 'medium',
+    damage: 140, range: 36, minRange: 0, cooldownTicks: 90, targets: 'sea',
+    vsLight: 0.7, vsMedium: 1.5, vsHeavy: 2.4, vsAir: 1.0, sight: 26, minAge: 'ascendance',
+    manpowerCost: 8, trainFunds: 3050, trainMaterials: 770, requiredBuilding: 'navalYard',
+    ammoCapacity: 24, ammoPerShot: 1, // a deep torpedo room
     fuelType: 'nuclear',
     military: true, variantOf: 'submarine', variantTier: 3,
+    // Tradeoff vs Mk II: a capital sniper (140 dmg at 36 range, 2.4
+    // vsHeavy, 24 torpedoes) — but SLOW (9) and a slower gun (90
+    // ticks). It kills what it reaches; reaching takes planning.
   },
   missileBoatMk2: {
-    kind: 'missileBoatMk2', name: 'Missile Boat Mk II', domain: 'sea', hp: 235, speed: 20, armor: 'light',
-    damage: 88, range: 24, minRange: 0, cooldownTicks: 70, targets: 'sea',
-    vsLight: 1.0, vsMedium: 1.1, vsHeavy: 1.5, vsAir: 1.0, sight: 30, minAge: 'industry',
-    manpowerCost: 5, trainFunds: 800, trainMaterials: 190, requiredBuilding: 'shipyard',
+    kind: 'missileBoatMk2', name: 'Strike Boat Mk II', domain: 'sea', hp: 160, speed: 16, armor: 'light',
+    damage: 100, range: 24, minRange: 0, cooldownTicks: 70, targets: 'sea',
+    vsLight: 1.0, vsMedium: 1.2, vsHeavy: 1.8, vsAir: 1.0, sight: 28, minAge: 'industry',
+    manpowerCost: 5, trainFunds: 820, trainMaterials: 195, requiredBuilding: 'shipyard',
     ammoCapacity: 12, ammoPerShot: 1, // three 4-packs
-    fuelCapacity: 96, fuelPerSecond: 0.25, fuelType: 'fossil',
+    fuelCapacity: 80, fuelPerSecond: 0.25, fuelType: 'fossil',
     military: true, variantOf: 'missileBoat', variantTier: 2,
+    // Tradeoff vs missileBoat: a heavy punch (100 dmg, 1.8 vsHeavy,
+    // 12 missiles) — but SLOWER (16 vs 20) and thinner (160 hp). The
+    // base boat stays the fastest way to deliver a missile.
   },
   missileBoatMk3: {
-    kind: 'missileBoatMk3', name: 'Missile Boat Mk III', domain: 'sea', hp: 290, speed: 22, armor: 'light',
-    damage: 105, range: 26, minRange: 0, cooldownTicks: 70, targets: 'sea',
-    vsLight: 1.0, vsMedium: 1.1, vsHeavy: 1.5, vsAir: 1.0, sight: 32, minAge: 'information',
-    manpowerCost: 6, trainFunds: 1250, trainMaterials: 300, requiredBuilding: 'shipyard',
-    ammoCapacity: 16, ammoPerShot: 1,
-    fuelCapacity: 112, fuelPerSecond: 0.25, fuelType: 'fossil',
+    kind: 'missileBoatMk3', name: 'Fast Attack Mk III', domain: 'sea', hp: 150, speed: 24, armor: 'light',
+    damage: 85, range: 26, minRange: 0, cooldownTicks: 70, targets: 'sea',
+    vsLight: 1.0, vsMedium: 1.2, vsHeavy: 1.6, vsAir: 1.0, sight: 30, minAge: 'information',
+    manpowerCost: 6, trainFunds: 1300, trainMaterials: 310, requiredBuilding: 'shipyard',
+    ammoCapacity: 8, ammoPerShot: 1,
+    fuelCapacity: 96, fuelPerSecond: 0.28, fuelType: 'fossil', // speed drinks
     military: true, variantOf: 'missileBoat', variantTier: 3,
+    // Tradeoff vs Mk II: the fastest strike craft afloat (24) with
+    // +2 range and better sensors — but FRAGILE (150 hp), a short
+    // magazine (8) and thirsty. Hit and run; never linger.
   },
   transportShipMk2: {
-    kind: 'transportShipMk2', name: 'Transport Ship Mk II', domain: 'sea', hp: 455, speed: 10, armor: 'medium',
+    kind: 'transportShipMk2', name: 'Heavy Transport Mk II', domain: 'sea', hp: 520, speed: 8, armor: 'medium',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
-    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 24, minAge: 'information',
-    manpowerCost: 2, trainFunds: 650, trainMaterials: 160,
-    fuelCapacity: 144, fuelPerSecond: 0.25, fuelType: 'fossil',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 22, minAge: 'information',
+    manpowerCost: 2, trainFunds: 660, trainMaterials: 165,
+    fuelCapacity: 180, fuelPerSecond: 0.25, fuelType: 'fossil', // a deeper tank
     variantOf: 'transportShip', variantTier: 2, // civilian: the peaceful tech path
+    // Tradeoff vs transportShip: survives the crossing (520 hp, deep
+    // fuel tank) — but SLOW (8 vs 9). It arrives; eventually.
   },
   transportShipMk3: {
-    kind: 'transportShipMk3', name: 'Transport Ship Mk III', domain: 'sea', hp: 560, speed: 11, armor: 'medium',
+    kind: 'transportShipMk3', name: 'Depot Ship Mk III', domain: 'sea', hp: 480, speed: 9, armor: 'medium',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
-    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 26, minAge: 'ascendance',
-    manpowerCost: 3, trainFunds: 1000, trainMaterials: 250,
-    fuelCapacity: 168, fuelPerSecond: 0.25, fuelType: 'fossil',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'ascendance',
+    manpowerCost: 3, trainFunds: 1050, trainMaterials: 260,
+    fuelCapacity: 180, fuelPerSecond: 0.25, fuelType: 'fossil',
+    cargoFuelCapacity: 200, cargoAmmoCapacity: 60, // a MOBILE SEA DEPOT (def-driven supply unit)
     variantOf: 'transportShip', variantTier: 3, // civilian: the peaceful tech path
+    // Tradeoff vs Mk II: a floating resupply hub (200 fuel / 60 ammo
+    // cargo — the supply system treats any def with cargo capacity as
+    // a supply unit) — but EXPENSIVE, unarmed, civilian-grade sensors
+    // (20 sight, worse than the base transport's 22), and needs a
+    // protection screen. It feeds a fleet; it cannot fight one.
   },
 };
 

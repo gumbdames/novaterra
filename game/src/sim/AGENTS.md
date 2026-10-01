@@ -215,22 +215,35 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   base kind's `MODEL_SOURCES` entry, zero new `MODEL_PATHS` keys),
   `variantTierOf`, `variantLine`, `isVariantUnlocked` (pure mirror of the
   spawnUnit validator: peaceful/military → minAge → requiredBuilding),
-  `preferHighestVariant` (highest unlocked + affordable tier, pure,
-  deterministic, never downgrades). The AI (`ai.ts` `thinkProduction`)
-  substitutes it for `chooseUnitKind`'s result — the AI trains the best
-  tier it has unlocked and can afford. 24 variants are `military: true`
+  `chooseVariant` (the AI's situational substitution — M15 tradeoff
+  redesign, 2026-10-01: rich owners, `funds >= VARIANT_RICH_FUNDS`
+  (8000), take the top affordable tier; everyone else takes the best
+  `combatValueOf`/cost — `hp × (damage/cooldown) × (1 + range/50)` for
+  combat kinds, `hp × speed × (1 + cargo/100)` for logistics — pure,
+  deterministic, never downgrades below the input tier). The AI
+  (`ai.ts` `thinkProduction`) substitutes it for `chooseUnitKind`'s
+  result. 24 variants are `military: true`
   (peaceful lockout); the 4 civilian variants (haulerMk2/3,
-  transportShipMk2/3) are the peaceful tech path. Stat ladder: Mk II ≈
-  hp×1.3/damage×1.25/cost×1.6, Mk III ≈ hp×1.6/damage×1.5/cost×2.5, plus
-  role bumps (aa/fighter vsAir, artillery/sub range, ammo mags, hauler
-  cargo, transportShip fuel-legs). Judgment calls are recorded in
-  docs/research/phase8-civilian-peaceful.md §D.
+  transportShipMk2/3) are the peaceful tech path. TRADEOFFS, not a
+  stat ladder (M15, 2026-10-01): every variant regresses on ≥1 combat
+  stat vs its base and improves on ≥1 — the base stays situationally
+  right (e.g. assault tank hits harder but is slower than the base
+  tank; missile AA outranges everything but has a dead zone and an
+  ammo tail; the depot ship feeds fleets but is blind and unarmed).
+  Full design table: docs/research/mk-variants.md. Judgment calls are
+  recorded in docs/research/phase8-civilian-peaceful.md §D.
 - `combat.ts` — deterministic combat resolution: `canTarget` (domain
   checks), `damageMultiplier` (armor counters, vsAir, command auras,
   upgrade hooks), nearest-target acquisition with stable-id tiebreaks
   (upgrade-aware weapon range) on a per-tick dense grid (R1
   final-review H1, 2026-10-01: O(n) rebuild per tick, O(nearby) per
-  query — results are exactly the legacy full scan's), weapon firing with
+  query — results are exactly the legacy full scan's; R3 final-review,
+  2026-10-01: cell 64→16 plus nearest-cell-first exact pruning, so a
+  2000-unit dense engagement sweeps in ~17ms instead of 100ms+;
+  mass-kill target cleanup is batched — `killUnit` records dead ids
+  and `flushDeadTargetRefs` clears attackers' stale `targetId`/`chasing`
+  in one O(units) sweep at the end of the combat / superweapon systems,
+  so a 500-kill storm tick costs ~4.5ms instead of ~53ms), weapon firing with
   cooldowns, opportunistic fire, explicit `attackUnit` chase orders, death
   cleanup. Command auras: HQ (+25%, radius 20, all attacker domains) and
   Command Ship (+25%, radius 24, sea attackers only) — definition-driven,
@@ -383,7 +396,12 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   exists (2 escorts), trains carrier-capable aircraft into the wing,
   and converges idle carrier-capable aircraft onto the carrier via
   `embarkAircraft`/`moveTo`; `isEmptyWingCarrier` is enforced in BOTH
-  attack loops so an empty-wing carrier never chases. `thinkAirlineRoutes`
+  attack loops so an empty-wing carrier never chases. Wing composition
+  (final-review R5 H3, 2026-10-01): `pickWingAircraftKind` picks the
+  next wing slot armed-first (damage > 0 kinds before unarmed) with at
+  most ONE recon spotter per wing (embarked + converging aircraft
+  count), null when composition-blocked — the AI no longer fills wings
+  with recon-only aircraft. `thinkAirlineRoutes`
   and `thinkNavalMines` are documented no-ops (airline income flows
   through the def.harvest credit; minelaying needs a player-driven
   field doctrine first) — pinned by digest-unchanged tests. Marshal

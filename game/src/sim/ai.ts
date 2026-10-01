@@ -143,7 +143,7 @@ import type { World } from './world';
 import type { CommandQueue } from './commands';
 import type { SimSystem } from './tick';
 import { findUnit, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
-import { preferHighestVariant } from './variants';
+import { chooseVariant } from './variants';
 import { rngBank } from './world';
 import type { RngBank } from './rng';
 import { canTarget, canTargetBuilding } from './combat';
@@ -1906,15 +1906,17 @@ function thinkProduction(
   visible: UnitRecord[],
 ): void {
   if (n >= AI_MAX_UNITS[ai.difficulty]) return;
-  // Grand-expansion Phase 8 (tech levels, workstream D, 2026-09-30):
-  // substitute the highest UNLOCKED + AFFORDABLE variant of the chosen
-  // kind (the AI must actually use the new content — PLAN §6 "no AI
-  // capability cliff"). The ledger is passed so affordability is judged
-  // on the same reservations `spawn` enforces below; when nothing
-  // higher qualifies the chosen kind returns unchanged (base kinds
-  // without variants included). The counter/base-mix logic above is
-  // untouched — this is a substitution, not a rewrite.
-  const kind = preferHighestVariant(world, ai.owner, chooseUnitKind(world, ai, counts, visible), thinkLedger(ai));
+  // Grand-expansion Phase 8 (tech levels, workstream D, 2026-09-30),
+  // M15 tradeoff redesign (2026-10-01): substitute the SITUATIONAL pick
+  // for the chosen kind — variants are tactical tradeoffs, not ladders,
+  // so `chooseVariant` takes the top tier when rich and the best
+  // value/cost otherwise (the AI must actually use the new content —
+  // PLAN §6 "no AI capability cliff"). The ledger is passed so
+  // affordability is judged on the same reservations `spawn` enforces
+  // below; when nothing qualifies the chosen kind returns unchanged
+  // (base kinds without variants included). The counter/base-mix logic
+  // above is untouched — this is a substitution, not a rewrite.
+  const kind = chooseVariant(world, ai.owner, chooseUnitKind(world, ai, counts, visible), thinkLedger(ai));
   const p = spawnPoint(ai, kind, n);
   if (spawn(world, queue, ai, kind, p.x, p.z)) {
     ai.builtCounts[kind] = (ai.builtCounts[kind] ?? 0) + 1;
