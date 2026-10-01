@@ -129,6 +129,9 @@ describe('water motion', () => {
     const view = buildTerrainView(t);
     const mat = view.water.material as THREE.MeshStandardMaterial;
     expect(mat.colorNode).not.toBeNull();
+    // The traveling ripple perturbs the surface normal for a moving
+    // specular shimmer.
+    expect(mat.normalNode).not.toBeNull();
     // The authored water color survives: the node modulates it, it does
     // not replace it.
     expect(mat.color.getHex()).toBe(0x2e6f9e);

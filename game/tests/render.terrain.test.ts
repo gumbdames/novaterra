@@ -27,6 +27,9 @@ import {
   biomeLinearColor,
   buildChunkMeshData,
   buildTerrainView,
+  WATER_FLOW,
+  waterFlowBrightness,
+  waterRippleTilt,
 } from '../src/render/terrain';
 import {
   Biome,
@@ -124,5 +127,122 @@ describe('render/terrain', () => {
     // 16 chunks × (64×64 cells × 2 tris) + 2 water tris.
     expect(view.triangles).toBe(16 * 64 * 64 * 2 + 2);
     expect(view.water.position.y).toBeCloseTo(t.waterLevel, 9);
+  });
+});
+
+/**
+ * Water-flow regression pins (0.1 Alpha). The actual pixels run in the
+ * fragment shader, which no unit test can see — so these pin the
+ * CPU-side contract instead: the JS mirrors of the shader math stay in
+ * their designed ranges, the pattern provably moves over time and
+ * space (the bug was invisible water: ±5% bands drifting ~22 s/cycle),
+ * and the tuning constants stay in the sane regime documented in
+ * `WATER_FLOW` (visible structure at map scale, no strobing).
+ */
+describe('water flow', () => {
+  const F = WATER_FLOW;
+  const TAU = Math.PI * 2;
+
+  it('brightness stays in [1-contrast, 1+contrast] over the whole plane and time', () => {
+    for (let x = -256; x <= 256; x += 16) {
+      for (let z = -256; z <= 256; z += 16) {
+        for (let t = 0; t <= 20; t += 1) {
+          const b = waterFlowBrightness(x, z, t);
+          expect(b).toBeGreaterThanOrEqual(1 - F.contrast - 1e-12);
+          expect(b).toBeLessThanOrEqual(1 + F.contrast + 1e-12);
+        }
+      }
+    }
+  });
+
+  it('the bands actually travel: brightness at a fixed point swings over seconds', () => {
+    // Sample a few points over two full drift cycles; a visible effect
+    // needs a large fraction of the ±contrast swing within ~10 s.
+    let maxSwing = 0;
+    for (const [x, z] of [[0, 0], [120, -80], [-200, 150]] as const) {
+      let lo = Infinity;
+      let hi = -Infinity;
+      for (let t = 0; t <= 20; t += 0.25) {
+        const b = waterFlowBrightness(x, z, t);
+        lo = Math.min(lo, b);
+        hi = Math.max(hi, b);
+      }
+      maxSwing = Math.max(maxSwing, hi - lo);
+    }
+    expect(maxSwing).toBeGreaterThan(F.contrast * 1.5); // ≥ ±15% swing
+  });
+
+  it('the bands have spatial structure (not a whole-plane wash)', () => {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let x = -256; x <= 256; x += 8) {
+      for (let z = -256; z <= 256; z += 8) {
+        const b = waterFlowBrightness(x, z, 0);
+        lo = Math.min(lo, b);
+        hi = Math.max(hi, b);
+      }
+    }
+    expect(hi - lo).toBeGreaterThan(F.contrast * 1.5);
+  });
+
+  it('ripple tilt is modest everywhere and nonzero somewhere', () => {
+    let maxMag = 0;
+    for (let x = -256; x <= 256; x += 16) {
+      for (let z = -256; z <= 256; z += 16) {
+        for (let t = 0; t <= 10; t += 0.5) {
+          const [tx, tz] = waterRippleTilt(x, z, t);
+          expect(Number.isFinite(tx)).toBe(true);
+          expect(Number.isFinite(tz)).toBe(true);
+          const mag = Math.hypot(tx, tz);
+          // atan(0.2) ≈ 11°: the shimmer must never tilt past that.
+          expect(mag).toBeLessThanOrEqual(0.2);
+          maxMag = Math.max(maxMag, mag);
+        }
+      }
+    }
+    expect(maxMag).toBeGreaterThan(0.05); // not a degenerate flat plane
+  });
+
+  it('the ripple travels over time', () => {
+    let maxSwing = 0;
+    for (const [x, z] of [[30, 40], [-150, 90]] as const) {
+      let loX = Infinity;
+      let hiX = -Infinity;
+      for (let t = 0; t <= 10; t += 0.25) {
+        const [tx] = waterRippleTilt(x, z, t);
+        loX = Math.min(loX, tx);
+        hiX = Math.max(hiX, tx);
+      }
+      maxSwing = Math.max(maxSwing, hiX - loX);
+    }
+    expect(maxSwing).toBeGreaterThan(0.05);
+  });
+
+  it('tuning constants stay in the designed visible-but-not-strobing regime', () => {
+    expect(F.contrast).toBeGreaterThanOrEqual(0.1); // visible at a glance
+    expect(F.contrast).toBeLessThanOrEqual(0.3); // not garish
+    const waves = [
+      { kx: F.bandAKx, kz: F.bandAKz, w: F.bandAW },
+      { kx: F.bandBKx, kz: F.bandBKz, w: F.bandBW },
+      { kx: F.ripple1K, kz: 0, w: F.ripple1W },
+      { kx: F.ripple2Kx, kz: F.ripple2Kz, w: F.ripple2W },
+    ];
+    for (const wave of waves) {
+      const wavelength = TAU / Math.hypot(wave.kx, wave.kz);
+      const period = TAU / wave.w;
+      // 15–120 world units on a 512-unit plane: several waves across it.
+      expect(wavelength).toBeGreaterThanOrEqual(15);
+      expect(wavelength).toBeLessThanOrEqual(120);
+      // 2–20 s cycles: clearly moving, far from 60 fps strobing.
+      expect(period).toBeGreaterThanOrEqual(2);
+      expect(period).toBeLessThanOrEqual(20);
+    }
+    // Peak slope from the constants must match the tilt bound above:
+    // c1 and c2 can hit ±1 together, so tiltX ≤ 0.1+0.063, tiltZ ≤ 0.084.
+    const peakSlope = Math.hypot(
+      Math.abs(F.ripple1Slope) + Math.abs(F.ripple2SlopeX),
+      Math.abs(F.ripple2SlopeZ),
+    );
+    expect(peakSlope).toBeLessThanOrEqual(0.2);
   });
 });

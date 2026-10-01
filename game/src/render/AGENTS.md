@@ -418,15 +418,21 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   would re-upload 18 instance buffers per frame — rejected). Trunks
   stay rigid. Instanced-only contract: these materials feed only the
   `InstancedMesh` layers in `render/nature.ts`.
-- Water (`render/terrain.ts` `attachWaterFlow` + `waterBobY`): two slow
-  brightness bands drift across the plane in the FRAGMENT shader via
-  `colorNode = materialColor × (0.95…1.05)` — a few ALU per water pixel
-  on 2 triangles, the cheapest moving water there is. Shore foam was
-  deliberately skipped: without a shoreline distance field it would
-  need a texture or a per-frame CPU pass, neither cheap. Plus a gentle
-  whole-plane swell: `water.position.y = waterBobY(waterLevel, tickSec)`
-  (±0.09, ~12.6 s period). The x-ray view still ghosts the water by
-  material opacity — no conflict.
+- Water (`render/terrain.ts` `attachWaterFlow` + `waterBobY`): two angled
+  brightness-band families drift across the plane in the FRAGMENT shader
+  via `colorNode = materialColor × (0.80…1.20)` — wavelengths ~39–54
+  units, periods ~5.7/7.8 s, a traveling interference pattern that reads
+  as flowing water at a glance — plus a traveling normal ripple
+  (`normalNode` from analytic −dh/dx, −dh/dz of two moving sine waves,
+  wavelengths ~31/21 units, peak tilt ~10°, transformed to view space
+  with `transformNormalByViewMatrix`) so the specular highlight shimmers
+  and travels. A few ALU per water pixel on 2 triangles, zero CPU, zero
+  sim state. Shore foam was deliberately skipped: without a shoreline
+  distance field it would need a texture or a per-frame CPU pass,
+  neither cheap. Plus a gentle whole-plane swell:
+  `water.position.y = waterBobY(waterLevel, tickSec)` (±0.09, ~12.6 s
+  period). The x-ray view still ghosts the water by material opacity —
+  no conflict.
 - Birds (`render/birds.ts`): 10 procedural variants (~22 tris each:
   stretched-octahedron body, tail fan, 3 tapered swept quads per wing;
   vertex-colored plumage, `aFlap` 0→1 root→tip attribute), one shared

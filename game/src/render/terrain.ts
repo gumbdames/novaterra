@@ -42,7 +42,14 @@
 
 import * as THREE from 'three';
 import type { TerrainData } from '../sim/terrain';
-import { materialColor, positionLocal, sin } from 'three/tsl';
+import {
+  cameraViewMatrix,
+  cos,
+  materialColor,
+  positionLocal,
+  sin,
+  vec3,
+} from 'three/tsl';
 import {
   Biome,
   MERIDIAN_PLAINS,
@@ -60,22 +67,117 @@ export function waterBobY(waterLevel: number, tickSeconds: number): number {
 }
 
 /**
- * Attach the living-water flow to the water material: two slow
- * brightness bands drift across the plane in the fragment shader
- * (vertex colors would need a subdivided plane; this costs a few ALU
- * per water pixel on 2 triangles — the cheapest moving water there is).
- * Shore foam is deliberately skipped: without a shoreline distance
- * field it would need a texture or per-frame CPU pass, neither of
- * which is cheap.
+ * Water-flow tuning (0.1 Alpha). The water plane is 512×512 world units,
+ * so wavelengths live in the tens of units: several waves across the
+ * visible plane (neither sub-pixel nor whole-plane), drifting a few world
+ * units per second — readable as motion at a glance, far below any
+ * strobing rate at 60 fps. All motion reads `ambientTimeSeconds`
+ * (sim-tick driven): it pauses with the game, is deterministic across
+ * machines, and costs zero CPU per frame. No wall clock, no Math.random.
+ *
+ * Chosen values:
+ *  - brightness bands: two angled sine families, wavelengths ~54 / ~39
+ *    units, drift speeds ~9.4 / ~5.0 u/s (periods ~5.7 / ~7.8 s), ±20%
+ *    brightness — the product is a traveling interference pattern that
+ *    reads as flowing water at a glance.
+ *  - ripple: two moving height waves, wavelengths ~31 / ~21 units,
+ *    periods ~4.5 / ~6.3 s, peak normal tilt ~10° — a traveling specular
+ *    shimmer, unmistakable but not garish.
+ */
+export const WATER_FLOW = {
+  /** Band A wave-vector (rad/world-unit) + drift speed (rad/s). */
+  bandAKx: 0.11,
+  bandAKz: 0.04,
+  bandAW: 1.1,
+  /** Band B wave-vector (rad/world-unit) + drift speed (rad/s). */
+  bandBKx: 0.06,
+  bandBKz: 0.15,
+  bandBW: 0.8,
+  /** Brightness amplitude: 0.20 ⇒ bands swing ±20% brightness. */
+  contrast: 0.2,
+  /** Ripple wave 1 wave-number/drift (−dh/dx amplitude = ripple1Slope). */
+  ripple1K: 0.2,
+  ripple1W: 1.4,
+  ripple1Slope: 0.1,
+  /** Ripple wave 2 wave-vector/drift (−dh/dx, −dh/dz amplitudes below). */
+  ripple2Kx: 0.18,
+  ripple2Kz: 0.24,
+  ripple2W: 1.0,
+  ripple2SlopeX: 0.063,
+  ripple2SlopeZ: 0.084,
+} as const;
+
+/**
+ * JS mirror of the fragment band math: the diffuse brightness multiplier
+ * the shader applies at world position (x, z) at ambient time t
+ * (seconds). Shader pixels cannot be unit-tested; this mirrors
+ * `attachWaterFlow` exactly so tests can pin the intended range
+ * [1−contrast, 1+contrast] and prove the pattern actually moves.
+ */
+export function waterFlowBrightness(x: number, z: number, t: number): number {
+  const F = WATER_FLOW;
+  const bandA = Math.sin(x * F.bandAKx + z * F.bandAKz - t * F.bandAW);
+  const bandB = Math.sin(z * F.bandBKz - x * F.bandBKx + t * F.bandBW);
+  return bandA * bandB * F.contrast + 1;
+}
+
+/**
+ * JS mirror of the ripple normal tilt: the (−dh/dx, −dh/dz) slope pair
+ * the shader bakes into `normalNode` at (x, z, t). Slope magnitude bounds
+ * the specular shimmer angle: atan(|tilt|) ≤ ~10° everywhere by design.
+ */
+export function waterRippleTilt(x: number, z: number, t: number): [number, number] {
+  const F = WATER_FLOW;
+  const c1 = Math.cos(x * F.ripple1K - t * F.ripple1W);
+  const c2 = Math.cos(x * F.ripple2Kx + z * F.ripple2Kz - t * F.ripple2W);
+  return [-F.ripple1Slope * c1 - F.ripple2SlopeX * c2, -F.ripple2SlopeZ * c2];
+}
+
+/**
+ * Attach the living-water flow to the water material — all shader-side,
+ * zero CPU, zero sim involvement.
+ *
+ * Two effects, both driven by `ambientTimeSeconds` (sim-tick time, so the
+ * water freezes exactly when the game pauses and is deterministic):
+ *
+ * 1. Drifting brightness bands: two angled sine families cross the plane
+ *    at different wavelengths, directions and speeds; their product is a
+ *    traveling interference pattern (see `waterFlowBrightness`) that
+ *    reads as flowing water at a glance.
+ * 2. Traveling ripple: two moving sine waves perturb the surface normal
+ *    via analytic −dh/dx, −dh/dz (see `waterRippleTilt`), transformed
+ *    from world space to view space with `transformNormalByViewMatrix`
+ *    (the lighting pipeline consumes view-space normals), so the
+ *    specular highlight shimmers and travels across the water.
+ *
+ * The water plane is 512×512 world units: band wavelengths of ~39–54
+ * units put ~10–13 waves across the plane (visible structure, no
+ * sub-pixel shimmer, no whole-plane wash) and drift speeds of ~0.8–1.4
+ * rad/s move them a few units per second — clearly moving, far from
+ * strobing (periods of several seconds at 60 fps).
+ *
+ * Shore foam is deliberately skipped: without a shoreline distance field
+ * it would need a texture or a per-frame CPU pass, neither of which is
+ * cheap.
  */
 function attachWaterFlow(mat: THREE.MeshStandardMaterial): void {
   const t = ambientTimeSeconds;
-  const bandA = sin(positionLocal.x.mul(0.045).sub(t.mul(0.28)));
-  const bandB = sin(
-    positionLocal.z.mul(0.06).add(positionLocal.x.mul(0.023)).add(t.mul(0.21)),
-  );
-  const brighten = bandA.mul(bandB).mul(0.05).add(1);
+  const x = positionLocal.x;
+  const z = positionLocal.z;
+  const F = WATER_FLOW;
+
+  const bandA = sin(x.mul(F.bandAKx).add(z.mul(F.bandAKz)).sub(t.mul(F.bandAW)));
+  const bandB = sin(z.mul(F.bandBKz).sub(x.mul(F.bandBKx)).add(t.mul(F.bandBW)));
+  const brighten = bandA.mul(bandB).mul(F.contrast).add(1);
   mat.colorNode = materialColor.mul(brighten);
+
+  const c1 = cos(x.mul(F.ripple1K).sub(t.mul(F.ripple1W)));
+  const c2 = cos(x.mul(F.ripple2Kx).add(z.mul(F.ripple2Kz)).sub(t.mul(F.ripple2W)));
+  const tiltX = c1.mul(-F.ripple1Slope).add(c2.mul(-F.ripple2SlopeX)); // −dh/dx
+  const tiltZ = c2.mul(-F.ripple2SlopeZ); // −dh/dz
+  mat.normalNode = vec3(tiltX, 1, tiltZ)
+    .normalize()
+    .transformNormalByViewMatrix(cameraViewMatrix);
 }
 
 /** Plain-array chunk mesh: positions/colors/indices, no three.js types. */
@@ -243,7 +345,8 @@ export function buildTerrainView(t: TerrainData): TerrainView {
     roughness: 0.3,
     metalness: 0,
   });
-  // Living nature: the water visibly flows (fragment-shader drift bands)
+  // Living nature: the water visibly flows (fragment-shader drift bands
+  // + a traveling normal ripple that shimmers the specular highlight)
   // and breathes (the caller bobs `water.position.y` via `waterBobY`).
   attachWaterFlow(waterMat);
   const water = new THREE.Mesh(waterGeo, waterMat);
