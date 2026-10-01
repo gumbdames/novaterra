@@ -559,7 +559,7 @@ export function unitAvailability(
   if (def.deployableOnly === true) {
     return { ok: false, reason: loc(p.deployedByMinelayer) };
   }
-  if (!isUnitAvailableForAge(world, def.minAge)) {
+  if (!isUnitAvailableForAge(world, owner, def.minAge)) { // per-side ages: the viewer's own age
     return {
       ok: false,
       reason: fillLoc(p.requiresAge, { age: loc(STRINGS.ageNames[def.minAge]) }),
@@ -605,7 +605,7 @@ export function buildingAvailability(
   if (world.peaceful === true && def.military === true) {
     return { ok: false, reason: loc(p.peacefulLocked) };
   }
-  if (!isUnitAvailableForAge(world, def.minAge)) {
+  if (!isUnitAvailableForAge(world, owner, def.minAge)) { // per-side ages: the viewer's own age
     return {
       ok: false,
       reason: fillLoc(p.requiresAge, { age: loc(STRINGS.ageNames[def.minAge]) }),
@@ -656,7 +656,7 @@ export function upgradeAvailability(
   if (!hasCompletedBuilding(world, owner, 'lab')) {
     return { state: 'locked', reason: loc(p.needsLab) };
   }
-  if (!isUnitAvailableForAge(world, def.minAge)) {
+  if (!isUnitAvailableForAge(world, owner, def.minAge)) { // per-side ages: the viewer's own age
     return {
       state: 'locked',
       reason: fillLoc(p.requiresAge, { age: loc(STRINGS.ageNames[def.minAge]) }),

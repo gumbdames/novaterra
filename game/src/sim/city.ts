@@ -4235,9 +4235,10 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       }
       // Age gating: each building kind has a minimum age (spec §6). The old
       // aegisControl/stormArray Ascendance special-case is subsumed by their
-      // minAge: 'ascendance' defs. (Reads world.ages directly instead of
+      // minAge: 'ascendance' defs. (Reads world.ages inline below instead of
       // importing ages.ts — that module imports getPlayer from here, so an
-      // import would be a cycle.)
+      // import would be a cycle. Per-side ages: the issuing owner's own
+      // age state, missing = Foundation.)
       const bdef = BUILDING_DEFS[kind];
       // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): military
       // defs cannot be placed in a peaceful world — loud rejection
@@ -4247,7 +4248,11 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
       if (world.peaceful === true && bdef.military === true) {
         return `placeBuilding: ${bdef.name} is a military building and cannot be placed in peaceful mode`;
       }
-      if (!isBuildingAgeMet(world.ages.age, bdef.minAge)) {
+      // Per-side ages (2026-10-01, roadmap A1): the issuing owner's own
+      // age state. city.ts must NOT import ages.ts (ages.ts imports
+      // getPlayer from this module — an import would cycle), so read
+      // the state inline: missing entry = Foundation.
+      if (!isBuildingAgeMet((world.ages[owner as number]?.age ?? 'foundation'), bdef.minAge)) {
         return `placeBuilding: ${bdef.name} requires the ${bdef.minAge} age`;
       }
       // Prerequisite building (e.g. Military Academy requires a completed

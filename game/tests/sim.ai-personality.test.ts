@@ -54,7 +54,7 @@ import {
   registerMovementCommands,
 } from '../src/sim/movement';
 import { createCombatSystem, registerCombatCommands } from '../src/sim/combat';
-import { registerAgeCommands } from '../src/sim/ages';
+import { registerAgeCommands , getAgeState } from '../src/sim/ages';
 import {
   addAIPlayer,
   createAISystem,
@@ -321,7 +321,7 @@ describe('difficulty bounds hold across seeds', () => {
     const base = findLandNear(ctx.terrain, -100, -100);
     addAIPlayer(ctx.world, 1, 'marshal', base.x, base.z);
     runTicks(ctx, 30 * 12 + 2);
-    expect(ctx.world.ages.age).not.toBe('foundation');
+    expect(getAgeState(ctx.world, 1).age).not.toBe('foundation');
   });
 });
 

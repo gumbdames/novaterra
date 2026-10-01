@@ -46,8 +46,7 @@ import type { PathfindingState } from './pathfinding';
 import { initPathfinding } from './pathfinding';
 import type { AIState } from './ai';
 import { initAI } from './ai';
-import type { AgeState } from './ages';
-import { initAges } from './ages';
+import type { PerSideAges } from './ages';
 import type { DelegationState } from './delegation';
 import { initDelegation } from './delegation';
 import type { SuperweaponState } from './superweapons';
@@ -87,8 +86,14 @@ export interface World {
   pathfinding: PathfindingState;
   /** Classic AI state (per-player difficulty, timers, strategy). Snapshotted + digested. */
   ai: AIState;
-  /** Age state (Foundation → Connectivity + National Program). Snapshotted + digested. */
-  ages: AgeState;
+  /**
+   * Per-side age states (Foundation → Ascendance + National Program),
+   * keyed by owner id. Per-side since 2026-10-01 (roadmap A1): each
+   * nation advances and pays independently — the age race is real.
+   * Missing owner = Foundation (see getAgeState in ages.ts).
+   * Snapshotted + digested.
+   */
+  ages: PerSideAges;
   /** Chain-of-command delegations (mayors, generals). Snapshotted + digested. */
   delegation: DelegationState;
   /** Superweapon slots, scheduled strikes, fx. Snapshotted + digested. */
@@ -127,7 +132,7 @@ export function createWorld(seed: number): World {
     units: [],
     pathfinding: initPathfinding(),
     ai: initAI(),
-    ages: initAges(),
+    ages: {} as PerSideAges,
     delegation: initDelegation(),
     superweapons: initSuperweapons(),
     upgrades: initUpgrades(),

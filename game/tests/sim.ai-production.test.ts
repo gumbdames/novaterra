@@ -51,7 +51,7 @@ import {
   registerMovementCommands,
 } from '../src/sim/movement';
 import { createCombatSystem, registerCombatCommands } from '../src/sim/combat';
-import { registerAgeCommands } from '../src/sim/ages';
+import { registerAgeCommands , getAgeState } from '../src/sim/ages';
 import {
   addAIPlayer,
   createAISystem,
@@ -244,12 +244,17 @@ function countOwnerUnits(world: World, owner: number): number {
   return world.units.filter((u) => u.owner === owner && u.hp > 0).length;
 }
 
-/** Advance the world age via the real advanceAge command. */
+/** Advance both sides' ages via the real advanceAge command. The fixture
+ * stages a scenario (not the age race): per-side ages (roadmap A1,
+ * 2026-10-01) mean both the AI side and the staged enemy side need the
+ * age for their gates (research, unit spawns). */
 function advanceAge(ctx: Ctx, program: string): void {
   // Later ages cost influence; the fixture tops it up (test control).
-  const p = getPlayer(ctx.world.city, 0)!;
-  p.influence = Math.max(p.influence, 100000);
-  enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program } }]);
+  for (const owner of [0, 1]) {
+    const p = getPlayer(ctx.world.city, owner)!;
+    p.influence = Math.max(p.influence, 100000);
+    enqueue(ctx, [{ kind: 'advanceAge', payload: { owner, program } }]);
+  }
   runTicks(ctx, 2);
 }
 
@@ -384,7 +389,8 @@ describe('research priorities', () => {
     getPlayer(ctx.world.city, 1)!.research = 100000;
     advanceAge(ctx, 'fiberGrid');
     advanceAge(ctx, 'heavyIndustry');
-    expect(ctx.world.ages.age).toBe('industry');
+    expect(getAgeState(ctx.world, 0).age).toBe('industry');
+    expect(getAgeState(ctx.world, 1).age).toBe('industry');
     const base = findLandNear(ctx.terrain, -100, -100);
     addAIPlayer(ctx.world, 1, 'commander', base.x, base.z);
     runTicks(ctx, 60 * 2 + 2);
@@ -399,7 +405,8 @@ describe('research priorities', () => {
     completeBuildings(ctx.world, 1, ['barracks', 'warFactory', 'lab']);
     getPlayer(ctx.world.city, 1)!.research = 100000;
     advanceAge(ctx, 'fiberGrid');
-    expect(ctx.world.ages.age).toBe('connectivity');
+    expect(getAgeState(ctx.world, 0).age).toBe('connectivity');
+    expect(getAgeState(ctx.world, 1).age).toBe('connectivity');
     const base = findLandNear(ctx.terrain, -100, -100);
     addAIPlayer(ctx.world, 1, 'commander', base.x, base.z);
     // At connectivity with no vehicles: droneOptics researches (always),
@@ -427,7 +434,8 @@ describe('research priorities', () => {
     getPlayer(ctx.world.city, 1)!.research = 100000;
     advanceAge(ctx, 'fiberGrid');
     advanceAge(ctx, 'heavyIndustry');
-    expect(ctx.world.ages.age).toBe('industry');
+    expect(getAgeState(ctx.world, 0).age).toBe('industry');
+    expect(getAgeState(ctx.world, 1).age).toBe('industry');
     const coast = findCoast(ctx.terrain, 12);
     // Enemy submarine in the water, inside rifles sight of the AI base.
     const id = ctx.world.nextId;
@@ -547,7 +555,7 @@ describe('marshal', () => {
     const base = findLandNear(ctx.terrain, -100, -100);
     addAIPlayer(ctx.world, 1, 'marshal', base.x, base.z);
     runTicks(ctx, 30 * 12 + 2);
-    expect(ctx.world.ages.age).not.toBe('foundation');
+    expect(getAgeState(ctx.world, 1).age).not.toBe('foundation');
   });
 
   it('marshal constructs production buildings in priority order', () => {

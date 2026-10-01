@@ -26,6 +26,10 @@
  *  - Effects apply: Fiber Grid boosts tax income, Signals Grid boosts sight
  *  - Age-gated units (fighter) are blocked in Foundation, allowed in Connectivity
  *  - Snapshot/restore preserves age state; digest is deterministic
+ *  - Per-side ages (roadmap A1, 2026-10-01): every owner advances and pays
+ *    independently — the free-rider exploit (whoever paid, everyone
+ *    benefited) is killed. Same-owner double-advance fizzles; two
+ *    different owners advancing on one tick both land.
  */
 import { describe, expect, it } from 'vitest';
 import { createWorld, type World } from '../src/sim/world';
@@ -58,6 +62,7 @@ import {
   SIGNALS_GRID_SIGHT_BONUS,
   getTaxMultiplier,
   getSightBonus,
+  getAgeState,
   initAges,
 } from '../src/sim/ages';
 import { getVisibleEnemies } from '../src/sim/ai';
@@ -153,8 +158,11 @@ function fundPlayer(ctx: Ctx, owner = 0): void {
 describe('initial state', () => {
   it('starts in Foundation with no program chosen', () => {
     const ctx = setup();
-    expect(ctx.world.ages.age).toBe('foundation');
-    expect(ctx.world.ages.program).toBeNull();
+    // The age map starts empty — every owner reads as Foundation lazily
+    // (per-side ages, roadmap A1).
+    expect(ctx.world.ages).toEqual({});
+    expect(getAgeState(ctx.world, 0).age).toBe('foundation');
+    expect(getAgeState(ctx.world, 0).program).toBeNull();
   });
 
   it('initAges returns Foundation with null program', () => {
@@ -216,17 +224,46 @@ describe('advanceAge validation', () => {
   });
 });
 
-describe('same-tick double advance (Phase 9 soak finding 6.1)', () => {
-  it('two issuers advancing on the same tick: the second fizzles, no crash, single charge', () => {
+describe('same-tick double advance (Phase 9 soak finding 6.1, per-side since roadmap A1)', () => {
+  it('two DIFFERENT owners advancing on the same tick both land (normal play, not a duplicate)', () => {
+    const ctx = setup();
+    fundPlayer(ctx, 0);
+    fundPlayer(ctx, 1);
+    const p0 = getPlayer(ctx.world.city, 0)!;
+    const p1 = getPlayer(ctx.world.city, 1)!;
+    const funds0 = p0.funds;
+    const funds1 = p1.funds;
+    // Both sides saw Foundation at enqueue; per-side ages mean neither
+    // is a duplicate of the other — the age race is real again.
+    ctx.queue.enqueue(ctx.world, {
+      issuer: 'ai',
+      kind: 'advanceAge',
+      payload: { owner: 1, program: 'signalsGrid', fromAge: 'foundation' },
+    });
+    ctx.queue.enqueue(ctx.world, {
+      issuer: 'player',
+      kind: 'advanceAge',
+      payload: { owner: 0, program: 'fiberGrid', fromAge: 'foundation' },
+    });
+    expect(() => runTicks(ctx, 1)).not.toThrow();
+    expect(getAgeState(ctx.world, 0).age).toBe('connectivity');
+    expect(getAgeState(ctx.world, 0).program).toBe('fiberGrid');
+    expect(getAgeState(ctx.world, 1).age).toBe('connectivity');
+    expect(getAgeState(ctx.world, 1).program).toBe('signalsGrid');
+    // Each side paid its own cost.
+    expect(p0.funds).toBeCloseTo(funds0 - CONNECTIVITY_COST.funds, 6);
+    expect(p1.funds).toBeCloseTo(funds1 - CONNECTIVITY_COST.funds, 6);
+  });
+
+  it('the SAME owner advancing twice on one tick: the second fizzles, single charge', () => {
     const ctx = setup();
     fundPlayer(ctx);
     const player = getPlayer(ctx.world.city, 0)!;
     const fundsBefore = player.funds;
     const matsBefore = player.materials;
-    // Two AIs (or a human and an AI) thinking on the same tick both see
-    // Foundation and both enqueue the world-global advanceAge. The
-    // payload carries the age each issuer saw (fromAge), so the second
-    // apply fizzles instead of going stale and crashing the tick.
+    // The same owner's think can enqueue twice (human order + AI think,
+    // or two thinks). The payload carries the age the issuer saw
+    // (fromAge), so the second apply fizzles instead of going stale.
     ctx.queue.enqueue(ctx.world, {
       issuer: 'ai',
       kind: 'advanceAge',
@@ -238,10 +275,10 @@ describe('same-tick double advance (Phase 9 soak finding 6.1)', () => {
       payload: { owner: 0, program: 'signalsGrid', fromAge: 'foundation' },
     });
     expect(() => runTicks(ctx, 1)).not.toThrow();
-    expect(ctx.world.ages.age).toBe('connectivity');
+    expect(getAgeState(ctx.world, 0).age).toBe('connectivity');
     // The first applier (issuer 'ai' sorts before 'player') wins the
     // program choice; the cost is deducted exactly once.
-    expect(ctx.world.ages.program).toBe('fiberGrid');
+    expect(getAgeState(ctx.world, 0).program).toBe('fiberGrid');
     expect(player.funds).toBeCloseTo(fundsBefore - CONNECTIVITY_COST.funds, 6);
     expect(player.materials).toBeCloseTo(matsBefore - CONNECTIVITY_COST.materials, 6);
   });
@@ -259,7 +296,7 @@ describe('same-tick double advance (Phase 9 soak finding 6.1)', () => {
       payload: { owner: 0, program: 'fiberGrid', fromAge: 'foundation' },
     });
     runTicks(ctx, 1);
-    expect(ctx.world.ages.age).toBe('connectivity');
+    expect(getAgeState(ctx.world, 0).age).toBe('connectivity');
     const fundsBefore = player.funds;
     // A late duplicate that saw foundation (e.g. enqueued long ago)
     // fizzles without charging or crashing.
@@ -269,7 +306,7 @@ describe('same-tick double advance (Phase 9 soak finding 6.1)', () => {
       payload: { owner: 0, program: 'fiberGrid', fromAge: 'foundation' },
     });
     expect(() => runTicks(ctx, 1)).not.toThrow();
-    expect(ctx.world.ages.age).toBe('connectivity');
+    expect(getAgeState(ctx.world, 0).age).toBe('connectivity');
     expect(player.funds).toBeCloseTo(fundsBefore, 6);
   });
 
@@ -299,8 +336,8 @@ describe('advancing to Connectivity', () => {
     const matsBefore = player.materials;
     enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'fiberGrid' } }]);
     runTicks(ctx, 1);
-    expect(ctx.world.ages.age).toBe('connectivity');
-    expect(ctx.world.ages.program).toBe('fiberGrid');
+    expect(getAgeState(ctx.world, 0).age).toBe('connectivity');
+    expect(getAgeState(ctx.world, 0).program).toBe('fiberGrid');
     expect(player.funds).toBeCloseTo(fundsBefore - CONNECTIVITY_COST.funds, 6);
     expect(player.materials).toBeCloseTo(matsBefore - CONNECTIVITY_COST.materials, 6);
   });
@@ -310,8 +347,8 @@ describe('advancing to Connectivity', () => {
     fundPlayer(ctx);
     enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'signalsGrid' } }]);
     runTicks(ctx, 1);
-    expect(ctx.world.ages.age).toBe('connectivity');
-    expect(ctx.world.ages.program).toBe('signalsGrid');
+    expect(getAgeState(ctx.world, 0).age).toBe('connectivity');
+    expect(getAgeState(ctx.world, 0).program).toBe('signalsGrid');
   });
 
   it('the choice is permanent: cannot switch programs within an age', () => {
@@ -319,14 +356,14 @@ describe('advancing to Connectivity', () => {
     fundPlayer(ctx);
     enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'fiberGrid' } }]);
     runTicks(ctx, 1);
-    expect(ctx.world.ages.age).toBe('connectivity');
+    expect(getAgeState(ctx.world, 0).age).toBe('connectivity');
     // Cannot re-choose a Connectivity program (must pick an Industry program to advance).
     const reason = rejectionReason(() =>
       enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'signalsGrid' } }]),
     );
     expect(reason).toMatch(/program must be one of heavyIndustry, greenTech/);
     // Program did not change.
-    expect(ctx.world.ages.program).toBe('fiberGrid');
+    expect(getAgeState(ctx.world, 0).program).toBe('fiberGrid');
   });
 });
 
@@ -334,11 +371,11 @@ describe('National Program effects', () => {
   it('Fiber Grid gives a 25% tax income multiplier', () => {
     expect(FIBER_GRID_TAX_MULTIPLIER).toBe(1.25);
     const ctx = setup();
-    expect(getTaxMultiplier(ctx.world)).toBe(1.0);
+    expect(getTaxMultiplier(ctx.world, 0)).toBe(1.0);
     fundPlayer(ctx);
     enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'fiberGrid' } }]);
     runTicks(ctx, 1);
-    expect(getTaxMultiplier(ctx.world)).toBe(1.25);
+    expect(getTaxMultiplier(ctx.world, 0)).toBe(1.25);
   });
 
   it('Signals Grid does not boost taxes', () => {
@@ -346,17 +383,17 @@ describe('National Program effects', () => {
     fundPlayer(ctx);
     enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'signalsGrid' } }]);
     runTicks(ctx, 1);
-    expect(getTaxMultiplier(ctx.world)).toBe(1.0);
+    expect(getTaxMultiplier(ctx.world, 0)).toBe(1.0);
   });
 
   it('Signals Grid gives +8 sight bonus', () => {
     expect(SIGNALS_GRID_SIGHT_BONUS).toBe(8);
     const ctx = setup();
-    expect(getSightBonus(ctx.world)).toBe(0);
+    expect(getSightBonus(ctx.world, 0)).toBe(0);
     fundPlayer(ctx);
     enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'signalsGrid' } }]);
     runTicks(ctx, 1);
-    expect(getSightBonus(ctx.world)).toBe(8);
+    expect(getSightBonus(ctx.world, 0)).toBe(8);
   });
 
   it('Fiber Grid does not boost sight', () => {
@@ -364,7 +401,7 @@ describe('National Program effects', () => {
     fundPlayer(ctx);
     enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'fiberGrid' } }]);
     runTicks(ctx, 1);
-    expect(getSightBonus(ctx.world)).toBe(0);
+    expect(getSightBonus(ctx.world, 0)).toBe(0);
   });
 
   it('Signals Grid extends visibility range in practice', () => {
@@ -385,12 +422,115 @@ describe('National Program effects', () => {
     expect(findUnit(ctx.world, enemyId)).toBeDefined();
     // Without Signals Grid: not visible.
     expect(getVisibleEnemies(ctx.world, 1).map((u) => u.id)).not.toContain(enemyId);
-    // Advance to Signals Grid.
-    fundPlayer(ctx);
-    enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'signalsGrid' } }]);
+    // Advance OWNER 1 (the observer's side) to Signals Grid. Per-side
+    // ages (roadmap A1): owner 0's advancement would never sharpen
+    // owner 1's scouts — the bonus belongs to the advancing side.
+    fundPlayer(ctx, 1);
+    enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 1, program: 'signalsGrid' } }]);
     runTicks(ctx, 1);
     // Now visible thanks to the +8 bonus.
     expect(getVisibleEnemies(ctx.world, 1).map((u) => u.id)).toContain(enemyId);
+  });
+
+  it('a rival advancing does not sharpen your own sight (no free-rider)', () => {
+    const ctx = setup();
+    const base = findLandNear(ctx.terrain, -100, -100);
+    const observerPos = findLandNear(ctx.terrain, base.x, base.z);
+    const obsId = ctx.world.nextId;
+    enqueue(ctx, [{ kind: 'spawnUnit', payload: { kind: 'rifles', owner: 1, x: observerPos.x, z: observerPos.z } }]);
+    runTicks(ctx, 1);
+    expect(findUnit(ctx.world, obsId)).toBeDefined();
+    const sight = UNIT_DEFS.rifles.sight;
+    const enemyPos = findLandNear(ctx.terrain, observerPos.x + sight + 4, observerPos.z);
+    const enemyId = ctx.world.nextId;
+    enqueue(ctx, [{ kind: 'spawnUnit', payload: { kind: 'tank', owner: 0, x: enemyPos.x, z: enemyPos.z } }]);
+    runTicks(ctx, 1);
+    expect(findUnit(ctx.world, enemyId)).toBeDefined();
+    // OWNER 0 (the tank's side) advances to Signals Grid.
+    fundPlayer(ctx, 0);
+    enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'signalsGrid' } }]);
+    runTicks(ctx, 1);
+    expect(getAgeState(ctx.world, 0).age).toBe('connectivity');
+    // Owner 1's observer gains nothing: the enemy stays unseen.
+    expect(getVisibleEnemies(ctx.world, 1).map((u) => u.id)).not.toContain(enemyId);
+  });
+});
+
+describe('per-side ages (roadmap A1, 2026-10-01)', () => {
+  it('free-rider killed: the AI advances while the player stays in Foundation', () => {
+    const ctx = setup();
+    // The AI (owner 1) advances to Connectivity with Fiber Grid.
+    fundPlayer(ctx, 1);
+    enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 1, program: 'fiberGrid' } }]);
+    runTicks(ctx, 1);
+    expect(getAgeState(ctx.world, 1).age).toBe('connectivity');
+    expect(getAgeState(ctx.world, 1).program).toBe('fiberGrid');
+    // The player is still in Foundation — no shared tax bonus.
+    expect(getAgeState(ctx.world, 0).age).toBe('foundation');
+    expect(getTaxMultiplier(ctx.world, 0)).toBe(1.0);
+    expect(getTaxMultiplier(ctx.world, 1)).toBe(1.25);
+  });
+
+  it('vice versa: the player advances while the AI stays in Foundation', () => {
+    const ctx = setup();
+    fundPlayer(ctx, 0);
+    enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'signalsGrid' } }]);
+    runTicks(ctx, 1);
+    expect(getAgeState(ctx.world, 0).age).toBe('connectivity');
+    expect(getAgeState(ctx.world, 1).age).toBe('foundation');
+    expect(getSightBonus(ctx.world, 0)).toBe(8);
+    expect(getSightBonus(ctx.world, 1)).toBe(0);
+  });
+
+  it('each owner pays their own advancement cost', () => {
+    const ctx = setup();
+    fundPlayer(ctx, 0);
+    fundPlayer(ctx, 1);
+    const p0 = getPlayer(ctx.world.city, 0)!;
+    const p1 = getPlayer(ctx.world.city, 1)!;
+    const funds0 = p0.funds;
+    const funds1 = p1.funds;
+    const mats1 = p1.materials;
+    enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 1, program: 'fiberGrid' } }]);
+    runTicks(ctx, 1);
+    // Owner 1 paid; owner 0's treasury is untouched.
+    expect(p1.funds).toBeCloseTo(funds1 - CONNECTIVITY_COST.funds, 6);
+    expect(p1.materials).toBeCloseTo(mats1 - CONNECTIVITY_COST.materials, 6);
+    expect(p0.funds).toBe(funds0);
+  });
+
+  it('age gates are per-side: an advanced rival does not unlock the player', () => {
+    const ctx = setup();
+    // AI advances; the player does not.
+    fundPlayer(ctx, 1);
+    enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 1, program: 'fiberGrid' } }]);
+    runTicks(ctx, 1);
+    const pos = findLandNear(ctx.terrain, 0, 0);
+    // The player still cannot train a Connectivity fighter...
+    const reason = rejectionReason(() =>
+      enqueue(ctx, [{ kind: 'spawnUnit', payload: { kind: 'fighter', owner: 0, x: pos.x, z: pos.z } }]),
+    );
+    expect(reason).toMatch(/requires the connectivity age/);
+    // ...but the AI can.
+    const id = ctx.world.nextId;
+    enqueue(ctx, [{ kind: 'spawnUnit', payload: { kind: 'fighter', owner: 1, x: pos.x, z: pos.z } }]);
+    runTicks(ctx, 1);
+    expect(findUnit(ctx.world, id)).toBeDefined();
+  });
+
+  it('snapshot/restore preserves each side separately', () => {
+    const ctx = setup();
+    fundPlayer(ctx, 0);
+    fundPlayer(ctx, 1);
+    enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'fiberGrid' } }]);
+    enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 1, program: 'signalsGrid' } }]);
+    runTicks(ctx, 1);
+    const restored = restoreSnapshot(takeSnapshot(ctx.world));
+    expect(getAgeState(restored, 0).age).toBe('connectivity');
+    expect(getAgeState(restored, 0).program).toBe('fiberGrid');
+    expect(getAgeState(restored, 1).age).toBe('connectivity');
+    expect(getAgeState(restored, 1).program).toBe('signalsGrid');
+    expect(digestWorld(restored)).toBe(digestWorld(ctx.world));
   });
 });
 
@@ -508,8 +648,8 @@ describe('snapshot and digest', () => {
     const snap = takeSnapshot(ctx.world);
     expect(snap.version).toBe(SNAPSHOT_VERSION);
     const restored = restoreSnapshot(snap);
-    expect(restored.ages.age).toBe('connectivity');
-    expect(restored.ages.program).toBe('signalsGrid');
+    expect(getAgeState(restored, 0).age).toBe('connectivity');
+    expect(getAgeState(restored, 0).program).toBe('signalsGrid');
     expect(digestWorld(restored)).toBe(digestWorld(ctx.world));
   });
 

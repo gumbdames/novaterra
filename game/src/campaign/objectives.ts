@@ -29,6 +29,7 @@
 
 import type { World } from '../sim/world';
 import { getPlayer } from '../sim/city';
+import { getAgeState } from '../sim/ages';
 import type { ObjectiveDef, MissionPath } from './missions';
 
 /** Result of evaluating one objective. */
@@ -87,8 +88,12 @@ export function checkObjective(
       return { complete: remaining === 0, progress: remaining === 0 ? 'done' : `${remaining} left` };
     }
     case 'reachAge': {
-      const reached = world.ages.age === objective.age;
-      return { complete: reached, progress: reached ? 'done' : `now: ${world.ages.age}` };
+      // Per-side ages (2026-10-01, roadmap A1): the mission player
+      // reaches the age with THEIR OWN advancement — a rival's age
+      // never completes the player's objective.
+      const myAge = getAgeState(world, playerId).age;
+      const reached = myAge === objective.age;
+      return { complete: reached, progress: reached ? 'done' : `now: ${myAge}` };
     }
     case 'survive': {
       const alive = playerAlive(world, playerId);

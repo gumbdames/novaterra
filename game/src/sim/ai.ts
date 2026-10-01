@@ -147,7 +147,7 @@ import { chooseVariant } from './variants';
 import { rngBank } from './world';
 import type { RngBank } from './rng';
 import { canTarget, canTargetBuilding } from './combat';
-import { isUnitAvailableForAge, getSightBonus, AGE_PROGRESSION } from './ages';
+import { isUnitAvailableForAge, getSightBonus, getAgeState, AGE_PROGRESSION } from './ages';
 import { effectiveSight, hasUpgrade, registerUpgradeCommands, UPGRADE_DEFS, type UpgradeId } from './upgrades';
 import {
   isDetected,
@@ -573,7 +573,7 @@ export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
   // effects (Drone Optics, Advanced Avionics, Sonar Suite) stack on top.
   // Veterancy (Phase 1) multiplies the unit's own sight — the Signals
   // Grid bonus is a network effect and stays flat.
-  const sightBonus = getSightBonus(world);
+  const sightBonus = getSightBonus(world, owner); // per-side ages: the AI's OWN Signals Grid bonus
   // Final-review R3 (2026-10-01): hoist the per-own-unit sight radius out
   // of the enemy loop — effectiveSight depends only on (world, owner,
   // kind) and vetSightMult only on the own unit, so the radius is
@@ -1129,7 +1129,7 @@ export function canTrain(world: World, owner: number, kind: UnitKind): boolean {
   // the peaceful AI has no scouts. It needs none: with no combat and
   // no forward base, no think branch requires vision.)
   if (world.peaceful === true && def.military === true) return false;
-  if (!isUnitAvailableForAge(world, def.minAge)) return false;
+  if (!isUnitAvailableForAge(world, owner, def.minAge)) return false;
   if (def.requiredBuilding && !hasProductionBuilding(world, owner, def.requiredBuilding)) return false;
   // Hangar-aware (grand-expansion Phase 5, S4): aircraft that need a
   // hangar slot only train while the AI has a free one. The Classic AI
@@ -1258,7 +1258,7 @@ function thinkConstruction(world: World, ai: AIPlayerState): void {
     // stays safe-but-inactive on unlanded buildings (PLAN §6).
     if (!def) continue;
     // Age-gated kinds wait for the age (marshal may get there).
-    if (!isBuildingAgeMet(world.ages.age, def.minAge)) continue;
+    if (!isBuildingAgeMet(getAgeState(world, ai.owner).age, def.minAge)) continue;
     // Naval production only makes sense with a coast to use it from.
     // Naval-building model (2026-10-01): the navalBase is the yards'
     // shipping interface — same coastal gate.
@@ -1380,7 +1380,7 @@ function thinkVirtualDepot(world: World, ai: AIPlayerState, kind: BuildingKind):
   if (vb.constructing) return;
   const def = BUILDING_DEFS[kind];
   if (!def) return;
-  if (!isBuildingAgeMet(world.ages.age, def.minAge)) return;
+  if (!isBuildingAgeMet(getAgeState(world, ai.owner).age, def.minAge)) return;
   const player = getPlayer(world.city, ai.owner);
   if (!player) return;
   // Ledger-aware (see canPayImmediate): the facility payment must not
@@ -2181,7 +2181,7 @@ function thinkResearch(world: World, queue: CommandQueue, ai: AIPlayerState, cou
     // checked against the per-think ledger inside researchForAI, and a
     // rejection just means "not this tick".
     const def = UPGRADE_DEFS[id];
-    if (!isUnitAvailableForAge(world, def.minAge)) continue;
+    if (!isUnitAvailableForAge(world, ai.owner, def.minAge)) continue;
     let prereqsMet = true;
     for (const kind of def.requiredBuildings) {
       if (!hasProductionBuilding(world, ai.owner, kind)) {
@@ -2291,7 +2291,7 @@ function thinkIntelConstruction(world: World, ai: AIPlayerState): void {
     if (hasProductionBuilding(world, ai.owner, kind)) continue;
     const def = BUILDING_DEFS[kind];
     if (!def) continue;
-    if (!isBuildingAgeMet(world.ages.age, def.minAge)) continue;
+    if (!isBuildingAgeMet(getAgeState(world, ai.owner).age, def.minAge)) continue;
     // The funds buffer: keep 2× the cost on hand (materials 1× — the
     // buffer guards the war chest, which is funds-denominated).
     // Ledger-aware: the buffer is measured against funds not already
@@ -2610,7 +2610,7 @@ function thinkIntelResearch(world: World, queue: CommandQueue, ai: AIPlayerState
     if (hasUpgrade(world, ai.owner, id)) continue;
     if (!hasProductionBuilding(world, ai.owner, prereq)) continue;
     const def = UPGRADE_DEFS[id];
-    if (!isUnitAvailableForAge(world, def.minAge)) continue;
+    if (!isUnitAvailableForAge(world, ai.owner, def.minAge)) continue;
     // Affordability runs through the per-think ledger (researchForAI):
     // the intel upgrades share the think's budget with the main
     // research line and production.
@@ -3462,7 +3462,7 @@ function thinkMarshal(
   // Choose programs that boost military: Heavy Industry, Cyber Command, Arsenal.
   // Affordability is ledger-aware: the age cost shares the think's
   // budget with research and production (see thinkLedger).
-  const prog = getAgeProgression(world.ages.age);
+  const prog = getAgeProgression(getAgeState(world, ai.owner).age);
   if (prog.next && canAffordAgeLedger(world, ai, prog.cost)) {
     let program: string;
     if (prog.next === 'industry') program = 'heavyIndustry';
@@ -3541,7 +3541,7 @@ function thinkSuperweapons(
   // facilities, no launches (defense in depth; the peaceful dispatch
   // in createAISystem never reaches this branch).
   if (world.peaceful === true) return;
-  if (world.ages.age !== 'ascendance') return;
+  if (getAgeState(world, ai.owner).age !== 'ascendance') return; // per-side ages: the AI's own age
   // Firing is costless (no ledger needed); the facility construction
   // above is ledger-guarded.
   const enqueue = (kind: string, payload: Record<string, unknown>): void => {
@@ -3629,10 +3629,11 @@ function reserveAgeCost(ai: AIPlayerState, cost: Record<string, number>): void {
 
 /** Issue an age advancement command. */
 function advanceAge(world: World, queue: CommandQueue, owner: number, program: string): void {
-  // fromAge makes the world-global advancement idempotent: a second
-  // issuer on the same tick fizzles instead of going stale at apply
-  // (the Phase 9 soak 6.1 race — it also bites human-vs-AI games).
-  issue(world, queue, 'advanceAge', { owner, program, fromAge: world.ages.age });
+  // fromAge makes a same-owner double-advance idempotent: a second
+  // enqueue by the same owner on the same tick fizzles instead of going
+  // stale at apply (the Phase 9 soak 6.1 race). Per-side ages: the age
+  // the OWNER saw — another side's advancement is never a duplicate.
+  issue(world, queue, 'advanceAge', { owner, program, fromAge: getAgeState(world, owner).age });
 }
 
 // ---------------------------------------------------------------------------
@@ -4132,7 +4133,7 @@ function peacefulNeedKinds(world: World, ai: AIPlayerState, counts: Map<Building
 function peacefulKindAvailable(world: World, ai: AIPlayerState, kind: BuildingKind): boolean {
   const def = BUILDING_DEFS[kind];
   if (world.peaceful === true && def.military === true) return false;
-  if (!isBuildingAgeMet(world.ages.age, def.minAge)) return false;
+  if (!isBuildingAgeMet(getAgeState(world, ai.owner).age, def.minAge)) return false;
   if (def.requiredBuilding && !hasProductionBuilding(world, ai.owner, def.requiredBuilding)) return false;
   if (def.requiredUpgrade && !hasUpgrade(world, ai.owner, def.requiredUpgrade)) return false;
   return true;
@@ -4438,7 +4439,7 @@ function thinkPeacefulResearch(world: World, queue: CommandQueue, ai: AIPlayerSt
     const def = UPGRADE_DEFS[id];
     if (!def || def.military === true) continue;
     if (hasUpgrade(world, ai.owner, id)) continue;
-    if (!isUnitAvailableForAge(world, def.minAge)) continue;
+    if (!isUnitAvailableForAge(world, ai.owner, def.minAge)) continue;
     if (player.funds - l.funds < def.costFunds) continue;
     if (player.research - l.research < def.costResearch) continue;
     researchForAI(world, queue, ai, id);
@@ -4455,13 +4456,15 @@ const PEACEFUL_AGE_PROGRAMS: Record<string, string> = {
 };
 
 function thinkPeacefulAges(world: World, queue: CommandQueue, ai: AIPlayerState): void {
-  const prog = AGE_PROGRESSION[world.ages.age];
+  // Per-side ages (2026-10-01, roadmap A1): every side advances (and
+  // pays) independently — the peaceful AI advances its own age state,
+  // racing nobody. The command validates (wrong program for the
+  // current age, unaffordable → loud rejection, swallowed by issue),
+  // so a same-owner double-enqueue is harmless.
+  const prog = AGE_PROGRESSION[getAgeState(world, ai.owner).age];
   if (!prog || !prog.next) return;
   const program = PEACEFUL_AGE_PROGRAMS[prog.next];
   if (!program) return;
-  // Ages are world-global: only one AI's advancement can land. The
-  // command validates (wrong program for the current age, unaffordable
-  // → loud rejection, swallowed by issue), so racing is harmless.
   if (!canAffordAgeLedger(world, ai, prog.cost)) return;
   reserveAgeCost(ai, prog.cost);
   advanceAge(world, queue, ai.owner, program);

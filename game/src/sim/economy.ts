@@ -572,15 +572,18 @@ export function specializationMult(player: PlayerState, zone: number | string): 
 
 /** Run production/consumption for operational buildings, in id order. */
 function runProduction(world: World, city: CityState): void {
-  const factoryMult = getFactoryOutputMult(world);
-  const influenceMult = getInfluenceMult(world);
-  const goodsMult = getGoodsOutputMult(world);
   const ordered = [...city.buildings].sort((a, b) => a.id - b.id);
   for (const b of ordered) {
     if (!b.operational || b.progress < 1) continue;
     const def = BUILDING_DEFS[b.kind];
     const player = getPlayer(city, b.owner);
     if (!player) continue;
+    // Per-side ages (2026-10-01, roadmap A1): program multipliers belong
+    // to the BUILDING'S owner — a rival's Heavy Industry never boosts
+    // your factories. Resolved per building (cheap map lookup).
+    const factoryMult = getFactoryOutputMult(world, b.owner);
+    const influenceMult = getInfluenceMult(world, b.owner);
+    const goodsMult = getGoodsOutputMult(world, b.owner);
     const penalty = (b.powered ? 1 : UTILITY_PENALTY) * (b.watered ? 1 : UTILITY_PENALTY);
     let mult = penalty * levelMult(b);
     // Heavy Industry boosts factory output.
@@ -1114,7 +1117,8 @@ function runTaxes(world: World, economyTickIndex: number, t: TerrainData): void 
   // Prosperity Program adds a further 50% — the stacked multiplier
   // (1.25 × 1.5 = 1.875) is what the program advertises. Using the
   // fiber-only multiplier here silently dropped the Prosperity bonus.
-  const mult = getTaxMultiplierFull(world);
+  // Per-side ages (2026-10-01, roadmap A1): the multiplier belongs to
+  // the BUILDING'S owner — resolved per building below.
   // Workstream W: land value — the derived desirability model (rebuilt
   // only on structural change; the cached instance is free here).
   // Workstream W: land value — the derived desirability model (rebuilt
@@ -1132,6 +1136,9 @@ function runTaxes(world: World, economyTickIndex: number, t: TerrainData): void 
     const player = getPlayer(city, b.owner);
     if (!player) continue;
     const rate = player.taxRates[def.zone] as number;
+    // Per-side ages (roadmap A1): the tax multiplier is the building
+    // owner's own program stack.
+    const mult = getTaxMultiplierFull(world, b.owner);
     // Workstream W: residential buildings pay tax on their land value —
     // low ×0.8, modest ×1.0, nice ×1.3, prime ×1.7 (see
     // LAND_VALUE_TIERS in sim/desirability.ts). Commercial/industrial

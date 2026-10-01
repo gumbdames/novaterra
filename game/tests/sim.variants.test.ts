@@ -64,7 +64,7 @@ import {
   CITY_GRID_CELLS,
   type BuildingKind,
 } from '../src/sim/city';
-import { AGE_ORDER, type Age } from '../src/sim/ages';
+import { AGE_ORDER, type Age , getAgeState } from '../src/sim/ages';
 import {
   getVariantKinds,
   isVariant,
@@ -503,7 +503,7 @@ describe('variant gating', () => {
       const { x, z } = spawnPointFor(ctx, variant);
 
       // Below minAge: the gate is shut even with the building present.
-      ctx.world.ages.age = prevAge(def.minAge);
+      getAgeState(ctx.world, 0).age = prevAge(def.minAge);
       if (requiredBuilding) {
         completeBuilding(ctx.world, requiredBuilding as BuildingKind, 0);
       }
@@ -513,7 +513,7 @@ describe('variant gating', () => {
 
       // Right age but no production building: still shut (when one is required).
       const ctx2 = setup();
-      ctx2.world.ages.age = def.minAge;
+      getAgeState(ctx2.world, 0).age = def.minAge;
       const p2 = spawnPointFor(ctx2, variant);
       if (requiredBuilding) {
         expect(isVariantUnlocked(ctx2.world, 0, variant)).toBe(false);
@@ -523,7 +523,7 @@ describe('variant gating', () => {
 
       // Both satisfied: unlocked, and the command enqueues cleanly.
       const ctx3 = setup();
-      ctx3.world.ages.age = def.minAge;
+      getAgeState(ctx3.world, 0).age = def.minAge;
       if (requiredBuilding) {
         completeBuilding(ctx3.world, requiredBuilding as BuildingKind, 0);
       }
@@ -563,7 +563,7 @@ describe('variant gating', () => {
 describe('chooseVariant', () => {
   function unlockedCtx(): Ctx {
     const ctx = setup();
-    ctx.world.ages.age = 'ascendance';
+    getAgeState(ctx.world, 0).age = 'ascendance';
     completeBuilding(ctx.world, 'warFactory', 0);
     completeBuilding(ctx.world, 'airfield', 0);
     completeBuilding(ctx.world, 'navalYard', 0);
@@ -647,7 +647,7 @@ describe('chooseVariant', () => {
     // Asking for Mk II directly keeps at least Mk II (here Mk III wins).
     expect(chooseVariant(ctx.world, 0, 'tankMk2')).toBe('tankMk3');
     // With Mk III age-locked, an explicit Mk II request stays Mk II.
-    ctx.world.ages.age = 'industry';
+    getAgeState(ctx.world, 0).age = 'industry';
     expect(chooseVariant(ctx.world, 0, 'tankMk2')).toBe('tankMk2');
   });
 
@@ -671,7 +671,7 @@ describe('AI variant substitution', () => {
       completeBuilding(world, 'barracks', p.id);
       completeBuilding(world, 'warFactory', p.id);
     }
-    world.ages.age = 'industry'; // tankMk2 unlocked; tankMk3 (information) not
+    getAgeState(world, 1).age = 'industry'; // tankMk2 unlocked for the citizen AI (owner 1); tankMk3 (information) not
     const queue = createCommandQueue();
     registerCoreCommands(queue);
     registerUnitCommands(queue, terrain);
@@ -719,7 +719,7 @@ describe('variant peaceful lockout', () => {
   function peacefulCtx(): Ctx {
     const ctx = setup();
     ctx.world.peaceful = true;
-    ctx.world.ages.age = 'ascendance';
+    getAgeState(ctx.world, 0).age = 'ascendance';
     completeBuilding(ctx.world, 'warFactory', 0);
     completeBuilding(ctx.world, 'airfield', 0);
     completeBuilding(ctx.world, 'navalYard', 0);
@@ -753,7 +753,7 @@ describe('variant peaceful lockout', () => {
 describe('variant persistence', () => {
   it('variant records round-trip through snapshot/restore', () => {
     const ctx = setup();
-    ctx.world.ages.age = 'information';
+    getAgeState(ctx.world, 0).age = 'information';
     completeBuilding(ctx.world, 'warFactory', 0);
     const { cx, cz } = findLandRect(ctx.terrain, 4, 4);
     const x = cellCenterWorld(cx);
@@ -773,7 +773,7 @@ describe('variant persistence', () => {
   it('same seed + same variant commands ⇒ identical digest', () => {
     const script = (seed: number): number => {
       const ctx = setup(seed);
-      ctx.world.ages.age = 'information';
+      getAgeState(ctx.world, 0).age = 'information';
       completeBuilding(ctx.world, 'warFactory', 0);
       const { cx, cz } = findLandRect(ctx.terrain, 4, 4);
       const x = cellCenterWorld(cx);

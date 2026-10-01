@@ -99,7 +99,7 @@ import {
 import { createCombatSystem, registerCombatCommands } from '../src/sim/combat';
 import { createIntelSystem, registerIntelCommands } from '../src/sim/intel';
 import { registerUpgradeCommands } from '../src/sim/upgrades';
-import { registerAgeCommands } from '../src/sim/ages';
+import { registerAgeCommands , getAgeState } from '../src/sim/ages';
 import {
   createSuperweaponSystem,
   registerSuperweaponCommands,
@@ -483,7 +483,7 @@ function runLongGame(opts: LongGameOptions): LongGameResult {
     roadsBuilt: world.city.roads.length,
     railsBuilt: world.city.rails.length,
     plantsByRung,
-    finalAge: world.ages.age,
+    finalAge: getAgeState(world, 0).age,
   };
   allResults.push(result);
   printGameReport(result);

@@ -70,7 +70,7 @@ import { type BuildingKind } from '../sim/city';
 import type { TerrainData } from '../sim/terrain';
 import { getDesirabilityModel } from '../sim/desirability';
 import { landValueLine } from './desirability';
-import { AGE_PROGRESSION } from '../sim/ages';
+import { AGE_PROGRESSION, getAgeState } from '../sim/ages';
 import {
   TRADE_ROUTE_INCOME_PER_SEC,
   TRADE_ROUTE_SETUP_COST,
@@ -1911,15 +1911,18 @@ export class HUD {
       arsenalProgram: s.programArsenal,
       prosperityProgram: s.programProsperity,
     };
+    // Per-side ages (2026-10-01, roadmap A1): the HUD shows the HUMAN
+    // player's own age and programs — rivals advance independently.
+    const myAge = getAgeState(world, HUMAN_PLAYER_ID);
     const ageName =
-      world.ages.age === 'foundation'
+      myAge.age === 'foundation'
         ? s.ageFoundation
-        : `${ageNames[world.ages.age]} · ${programNames[world.ages.program ?? ''] ?? ''}`;
+        : `${ageNames[myAge.age]} · ${programNames[myAge.program ?? ''] ?? ''}`;
     this.setText('age', ageName, this.ageEl);
-    this.currentAge = world.ages.age;
+    this.currentAge = myAge.age;
 
     // Advance-age button: visible when a next age exists; shows cost and programs.
-    const prog = AGE_PROGRESSION[world.ages.age];
+    const prog = AGE_PROGRESSION[myAge.age];
     if (prog.next && player) {
       const cost = prog.cost;
       const affordable = Object.entries(cost).every(([res, amt]) => {

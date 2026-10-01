@@ -38,6 +38,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createWorld, type World } from '../src/sim/world';
+import { getAgeState } from '../src/sim/ages';
 import {
   createCommandQueue,
   registerCoreCommands,
@@ -91,7 +92,10 @@ function setupIntelSoak(seed: number): SoakCtx {
   const terrain: TerrainData = generateTerrain(MERIDIAN_PLAINS.seed);
   const world = createWorld(seed);
   grantAllTrainingResources(world);
-  world.ages.age = 'information';
+  // Per-side ages (roadmap A1, 2026-10-01): both marshals need Information
+  // for their spy play (spies are information-gated per owner).
+  getAgeState(world, 0).age = 'information';
+  getAgeState(world, 1).age = 'information';
   // Two bases on opposite sides of the map.
   addAIPlayer(world, 0, 'marshal' as AIDifficulty, -120, 0);
   addAIPlayer(world, 1, 'marshal' as AIDifficulty, 120, 0);

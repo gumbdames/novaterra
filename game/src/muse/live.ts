@@ -37,6 +37,7 @@
 
 import type { World } from '../sim/world';
 import { getPlayer } from '../sim/city';
+import { getAgeState } from '../sim/ages';
 import { computeThreat, militaryValue } from './director';
 
 const LIVE_ENABLED_STORAGE = 'novaterra.muse.liveEnabled';
@@ -81,7 +82,7 @@ export function buildDigest(
   return {
     game: 'novaterra',
     tick: world.tick,
-    age: world.ages.age,
+    age: getAgeState(world, playerId).age, // per-side ages: the viewer's own age
     funds: Math.floor(player?.funds ?? 0),
     population: Math.floor(player?.population ?? 0),
     food: Math.floor(player?.food ?? 0),

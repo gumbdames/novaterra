@@ -60,6 +60,7 @@ import {
 } from '../sim/city';
 import type { AIDifficulty } from '../sim/ai';
 import { CommandRejectedError } from '../sim/commands';
+import { getAgeState } from '../sim/ages';
 import type { TerrainData } from '../sim/terrain';
 import { buildTerrainView, type TerrainView } from '../render/terrain';
 import { EntityRenderer } from '../render/entities';
@@ -1683,7 +1684,7 @@ class GameController {
 
   private issueAdvanceAge(program: string): void {
     this.enqueue(
-      buildAdvanceAgeOrder(HUMAN_PLAYER_ID, program, this.session.world.ages.age),
+      buildAdvanceAgeOrder(HUMAN_PLAYER_ID, program, getAgeState(this.session.world, HUMAN_PLAYER_ID).age),
     );
     this.hud.toast(STRINGS.orders.ageAdvanced);
     this.audio.playSfx('ageFanfare');

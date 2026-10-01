@@ -27,6 +27,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createWorld, type World } from '../src/sim/world';
+import { getAgeState } from '../src/sim/ages';
 import {
   createCommandQueue,
   registerCoreCommands,
@@ -460,7 +461,7 @@ describe('siegeStandCell (final-review R2 follow-up)', () => {
 describe('storm strike vs buildings', () => {
   it('damages every enemy building in the blast radius', () => {
     const ctx = setup();
-    ctx.world.ages.age = 'ascendance';
+    getAgeState(ctx.world, 0).age = 'ascendance';
     completeBuilding(ctx.world, 'stormArray', 0, 10, 10);
     const plantId = enemyBuilding(ctx, 'warFactory', 14, 12);
     const plant = ctx.world.city.buildings.find((x) => x.id === plantId)!;
@@ -477,7 +478,7 @@ describe('storm strike vs buildings', () => {
 
   it('razes fragile buildings and still rolls the nuclear meltdown', () => {
     const ctx = setup();
-    ctx.world.ages.age = 'ascendance';
+    getAgeState(ctx.world, 0).age = 'ascendance';
     completeBuilding(ctx.world, 'stormArray', 0, 10, 10);
     const houseId = enemyBuilding(ctx, 'house', 14, 12);
     const plantId = enemyBuilding(ctx, 'nuclearPlant', 15, 12);
@@ -503,7 +504,7 @@ describe('storm strike vs buildings', () => {
 
   it('an active Aegis shield holds the strike off buildings', () => {
     const ctx = setup();
-    ctx.world.ages.age = 'ascendance';
+    getAgeState(ctx.world, 0).age = 'ascendance';
     completeBuilding(ctx.world, 'stormArray', 0, 10, 10);
     const houseId = enemyBuilding(ctx, 'house', 14, 12);
     const house = ctx.world.city.buildings.find((x) => x.id === houseId)!;

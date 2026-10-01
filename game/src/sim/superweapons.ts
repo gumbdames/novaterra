@@ -53,6 +53,7 @@ import type { CommandQueue, CommandSpec } from './commands';
 import type { SimSystem } from './tick';
 import { BUILDING_DEFS, getPlayer, buildingCenterWorld, cellCenterWorld } from './city';
 import { killUnit, damageBuilding, flushDeadTargetRefs } from './combat';
+import { getAgeState } from './ages';
 
 /** Aegis shield duration: 60 seconds at 30 Hz. */
 export const AEGIS_DURATION_TICKS = 1800;
@@ -169,7 +170,7 @@ export function hasStormFacility(world: World, owner: number): boolean {
 
 /** Aegis can fire: Ascendance + facility + cooldown elapsed + no shield up. */
 export function isAegisReady(world: World, owner: number): boolean {
-  if (world.ages.age !== 'ascendance') return false;
+  if (getAgeState(world, owner).age !== 'ascendance') return false; // per-side ages: the owner's own age
   if (!hasAegisFacility(world, owner)) return false;
   const p = findPlayerSuperweapons(world, owner);
   if (!p) return true; // no slot yet = never fired
@@ -178,7 +179,7 @@ export function isAegisReady(world: World, owner: number): boolean {
 
 /** Storm Engine can fire: Ascendance + facility + cooldown elapsed. */
 export function isStormReady(world: World, owner: number): boolean {
-  if (world.ages.age !== 'ascendance') return false;
+  if (getAgeState(world, owner).age !== 'ascendance') return false; // per-side ages: the owner's own age
   if (!hasStormFacility(world, owner)) return false;
   const p = findPlayerSuperweapons(world, owner);
   if (!p) return true;
@@ -237,7 +238,7 @@ const fireAegisSpec: CommandSpec = {
     // in a peaceful world, but this gate closes the fire path even if
     // one somehow existed (e.g. a future save migration edge).
     if (world.peaceful === true) return 'fireAegis: superweapons are not available in peaceful mode';
-    if (world.ages.age !== 'ascendance') return 'fireAegis: requires the Ascendance age';
+    if (getAgeState(world, owner).age !== 'ascendance') return 'fireAegis: requires the Ascendance age';
     if (!hasAegisFacility(world, owner)) {
       return 'fireAegis: requires a completed Aegis Control building';
     }
@@ -275,7 +276,7 @@ const fireStormSpec: CommandSpec = {
     // virtual-construction path, whose `constructSuperweaponFacility`
     // validate carries the same gate below.
     if (world.peaceful === true) return 'fireStorm: superweapons are not available in peaceful mode';
-    if (world.ages.age !== 'ascendance') return 'fireStorm: requires the Ascendance age';
+    if (getAgeState(world, owner).age !== 'ascendance') return 'fireStorm: requires the Ascendance age';
     if (!hasStormFacility(world, owner)) {
       return 'fireStorm: requires a completed Storm Array building';
     }
@@ -330,7 +331,7 @@ const constructFacilitySpec: CommandSpec = {
     if (!ai || ai.difficulty !== 'marshal') {
       return 'constructSuperweaponFacility: only a Marshal AI builds this way';
     }
-    if (world.ages.age !== 'ascendance') {
+    if (getAgeState(world, ai.owner).age !== 'ascendance') { // per-side ages: the AI's own age
       return 'constructSuperweaponFacility: requires the Ascendance age';
     }
     const sw = ai.superweapons;

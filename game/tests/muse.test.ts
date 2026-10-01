@@ -25,6 +25,7 @@ import {
   LiveMuseError,
 } from '../src/muse/live';
 import { createWorld } from '../src/sim/world';
+import { getAgeState } from '../src/sim/ages';
 import { getPlayer, placeBuilding } from '../src/sim/city';
 import { spawnUnit } from '../src/sim/units';
 
@@ -141,7 +142,7 @@ describe('muse/controller', () => {
     const world = createWorld(5);
     controller.update(world, HUMAN, AI);
     advance(20000);
-    world.ages.age = 'connectivity';
+    getAgeState(world, HUMAN).age = 'connectivity';
     controller.update(world, HUMAN, AI);
     expect(said.length).toBeGreaterThanOrEqual(2);
     expect(said[said.length - 1]).toContain('connectivity');

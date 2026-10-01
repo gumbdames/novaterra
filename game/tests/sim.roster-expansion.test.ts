@@ -50,7 +50,7 @@ import {
   damageMultiplier,
   acquireTarget,
 } from '../src/sim/combat';
-import { registerAgeCommands } from '../src/sim/ages';
+import { registerAgeCommands , getAgeState } from '../src/sim/ages';
 import {
   UPGRADE_DEFS,
   UPGRADE_IDS,
@@ -498,9 +498,9 @@ describe('building definitions (§3 + Phase 1 + Workstream Z)', () => {
   it('age-gates placeBuilding (airfield needs connectivity)', () => {
     const ctx = setupRich();
     const p = { kind: 'airfield', owner: 0, cx: 0, cz: 0, facing: 0 };
-    ctx.world.ages.age = 'foundation';
+    getAgeState(ctx.world, 0).age = 'foundation';
     expect(rejectionReason(ctx, 'placeBuilding', p)).toMatch(/connectivity/i);
-    ctx.world.ages.age = 'connectivity';
+    getAgeState(ctx.world, 0).age = 'connectivity';
     // The age gate passed: the placement now either lands or fails on a
     // non-age rule (terrain/zone/etc.) — never on the age gate. (Since
     // 2026-09-30 there is no road-adjacency rule left to reject it, so a
@@ -554,7 +554,7 @@ describe('production gating — mechanic 2 (§5.2)', () => {
   it('rejects units whose production building is missing', () => {
     const ctx = setup();
     grantAllTrainingResources(ctx.world);
-    ctx.world.ages.age = 'connectivity';
+    getAgeState(ctx.world, 0).age = 'connectivity';
     const at = findLandNear(ctx.terrain, 0, 0);
     expect(
       rejectionReason(ctx, 'spawnUnit', { kind: 'tank', owner: 0, x: at.x, z: at.z }),
@@ -566,7 +566,7 @@ describe('production gating — mechanic 2 (§5.2)', () => {
 
   it('spawns gated units once the building is complete', () => {
     const ctx = setupRich();
-    ctx.world.ages.age = 'connectivity';
+    getAgeState(ctx.world, 0).age = 'connectivity';
     const at = findLandNear(ctx.terrain, 0, 0);
     const u = spawnNow(ctx, 'sniperTeam', 0, at.x, at.z);
     expect(u.kind).toBe('sniperTeam');
@@ -592,14 +592,14 @@ describe('production gating — mechanic 2 (§5.2)', () => {
   it('gates the naval lineup behind the naval yard, not the shipyard', () => {
     const ctx = setup();
     grantAllTrainingResources(ctx.world);
-    ctx.world.ages.age = 'industry';
+    getAgeState(ctx.world, 0).age = 'industry';
     completeBuildings(ctx.world, 0, ['shipyard']);
     const w = findWaterNear(ctx.terrain, 0, 0);
     expect(
       rejectionReason(ctx, 'spawnUnit', { kind: 'destroyer', owner: 0, x: w.x, z: w.z }),
     ).toMatch(/requires a completed Naval Yard/);
     // But the shipyard alone unlocks the missile boat.
-    ctx.world.ages.age = 'connectivity';
+    getAgeState(ctx.world, 0).age = 'connectivity';
     const mb = spawnNow(ctx, 'missileBoat', 0, w.x, w.z);
     expect(mb.kind).toBe('missileBoat');
   });
@@ -608,7 +608,7 @@ describe('production gating — mechanic 2 (§5.2)', () => {
 describe('naval yard coastal placement — mechanic 3 (§5.3)', () => {
   it('rejects a naval yard with no water-adjacent footprint cell', () => {
     const ctx = setupRich();
-    ctx.world.ages.age = 'industry';
+    getAgeState(ctx.world, 0).age = 'industry';
     const spot = findInlandFootprint(ctx.terrain, 5, 4);
     expect(spot, 'expected an inland 5x4 footprint on the test map').not.toBeNull();
     expect(
@@ -620,7 +620,7 @@ describe('naval yard coastal placement — mechanic 3 (§5.3)', () => {
 
   it('places a naval yard on the coast', () => {
     const ctx = setupRich();
-    ctx.world.ages.age = 'industry';
+    getAgeState(ctx.world, 0).age = 'industry';
     const spot = findCoastalFootprint(ctx.terrain, 5, 4);
     expect(spot, 'expected a coastal 5x4 footprint on the test map').not.toBeNull();
     const reason = rejectionReason(ctx, 'placeBuilding', {
@@ -636,7 +636,10 @@ describe('naval yard coastal placement — mechanic 3 (§5.3)', () => {
 describe('combat-medic heal aura — mechanic 4 (§5.4)', () => {
   function medicSetup(withFieldMedicine: boolean): { ctx: Ctx; medic: UnitRecord; patient: UnitRecord } {
     const ctx = setupRich();
-    ctx.world.ages.age = 'connectivity';
+    // Per-side ages (roadmap A1, 2026-10-01): the enemy medic spawns for
+    // owner 1, so both sides need Connectivity staged.
+    getAgeState(ctx.world, 0).age = 'connectivity';
+    getAgeState(ctx.world, 1).age = 'connectivity';
     const at = findLandNear(ctx.terrain, 0, 0);
     const medic = spawnNow(ctx, 'combatMedic', 0, at.x, at.z);
     const patient = spawnNow(ctx, 'rifles', 0, at.x + 5, at.z);
@@ -791,7 +794,7 @@ describe('upgrade research command — mechanic 7 (§4)', () => {
     const ctx = setup();
     grantAllTrainingResources(ctx.world);
     completeBuildings(ctx.world, 0, ['lab']);
-    ctx.world.ages.age = 'industry';
+    getAgeState(ctx.world, 0).age = 'industry';
     return ctx;
   }
 
@@ -804,7 +807,7 @@ describe('upgrade research command — mechanic 7 (§4)', () => {
   it('rejects without a completed lab', () => {
     const ctx = setup();
     grantAllTrainingResources(ctx.world);
-    ctx.world.ages.age = 'industry';
+    getAgeState(ctx.world, 0).age = 'industry';
     fundResearch(ctx);
     expect(
       rejectionReason(ctx, 'researchUpgrade', { owner: 0, upgrade: 'engineTuning' }),
@@ -823,7 +826,7 @@ describe('upgrade research command — mechanic 7 (§4)', () => {
     const ctx = researchSetup();
     fundResearch(ctx);
     completeBuildings(ctx.world, 0, ['warFactory']);
-    ctx.world.ages.age = 'connectivity';
+    getAgeState(ctx.world, 0).age = 'connectivity';
     expect(
       rejectionReason(ctx, 'researchUpgrade', { owner: 0, upgrade: 'apRounds' }),
     ).toMatch(/requires the industry age/);
@@ -871,7 +874,7 @@ describe('upgrade research command — mechanic 7 (§4)', () => {
   it('enforces upgrade prerequisite chains (fieldMedicine needs hospital + barracks)', () => {
     const ctx = researchSetup();
     fundResearch(ctx);
-    ctx.world.ages.age = 'connectivity';
+    getAgeState(ctx.world, 0).age = 'connectivity';
     expect(
       rejectionReason(ctx, 'researchUpgrade', { owner: 0, upgrade: 'fieldMedicine' }),
     ).toMatch(/requires a completed Hospital/);
@@ -945,7 +948,7 @@ describe('upgrade effects (§4)', () => {
 
   it('Advanced Avionics: +25% fighter sight, +20% vsAir, awacs +15 sight', () => {
     const ctx = setupRich();
-    ctx.world.ages.age = 'information';
+    getAgeState(ctx.world, 0).age = 'information';
     const at = findLandNear(ctx.terrain, 0, 0);
     const fighter = spawnNow(ctx, 'fighter', 0, at.x, at.z);
     expect(effectiveSight(ctx.world, 0, UNIT_DEFS.fighter)).toBe(40);
@@ -962,7 +965,10 @@ describe('upgrade effects (§4)', () => {
 
   it('Sonar Suite: frigate +30% vsMedium, sea units +8 sight', () => {
     const ctx = setupRich();
-    ctx.world.ages.age = 'industry';
+    // Per-side ages (roadmap A1, 2026-10-01): the enemy submarine spawns
+    // for owner 1, so both sides need Industry staged.
+    getAgeState(ctx.world, 0).age = 'industry';
+    getAgeState(ctx.world, 1).age = 'industry';
     const w = findWaterNear(ctx.terrain, 0, 0);
     const frigate = spawnNow(ctx, 'frigate', 0, w.x, w.z);
     expect(effectiveSight(ctx.world, 0, UNIT_DEFS.frigate)).toBe(32);
@@ -1152,7 +1158,7 @@ describe('determinism of the new systems', () => {
   it('two identical runs produce identical digests', () => {
     function runOnce(seed: number): number {
       const ctx = setupRich(seed);
-      ctx.world.ages.age = 'industry';
+      getAgeState(ctx.world, 0).age = 'industry';
       const at = findLandNear(ctx.terrain, 0, 0);
       const w = findWaterNear(ctx.terrain, 0, 0);
       spawnNow(ctx, 'tank', 0, at.x, at.z);

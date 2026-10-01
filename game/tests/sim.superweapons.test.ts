@@ -37,7 +37,7 @@ import { spawnUnit, registerUnitCommands, UNIT_DEFS } from '../src/sim/units';
 import { createCombatSystem, registerCombatCommands } from '../src/sim/combat';
 import { createEconomySystem } from '../src/sim/economy';
 import { registerMovementCommands } from '../src/sim/movement';
-import { registerAgeCommands } from '../src/sim/ages';
+import { registerAgeCommands , getAgeState } from '../src/sim/ages';
 import { addAIPlayer, createAISystem } from '../src/sim/ai';
 import {
   registerSuperweaponCommands,
@@ -103,7 +103,11 @@ function runTicks(ctx: Ctx, n: number): void {
 
 /** Give the player everything: Ascendance age + a completed facility + solvency. */
 function godAscendance(ctx: Ctx, kind: 'aegisControl' | 'stormArray'): void {
-  ctx.world.ages.age = 'ascendance';
+  // God-mode fixture: the staged world is at Ascendance. Per-side ages
+  // (roadmap A1, 2026-10-01): both staged sides get it — some tests hand
+  // the shield to owner 1 or fire as the AI side.
+  getAgeState(ctx.world, 0).age = 'ascendance';
+  getAgeState(ctx.world, 1).age = 'ascendance';
   const city = ctx.world.city;
   const b = placeBuildingForTest(city, kind, 0);
   b.progress = 1;
@@ -143,14 +147,14 @@ function placeBuildingForTest(city: CityState, kind: 'aegisControl' | 'stormArra
 describe('sim/superweapons — buildings', () => {
   it('aegisControl/stormArray need the Ascendance age to place', () => {
     const ctx = setup();
-    ctx.world.ages.age = 'industry';
+    getAgeState(ctx.world, 0).age = 'industry';
     expect(() =>
       ctx.queue.enqueue(ctx.world, {
         issuer: 'player', kind: 'placeBuilding',
         payload: { kind: 'aegisControl', owner: 0, cx: 10, cz: 10, facing: 0 },
       }),
     ).toThrow(/ascendance/i);
-    ctx.world.ages.age = 'ascendance';
+    getAgeState(ctx.world, 0).age = 'ascendance';
     // Still needs a road etc. — the age gate specifically is what we test;
     // with no road it fails on road adjacency, not age.
     try {
@@ -228,7 +232,7 @@ describe('sim/superweapons — Aegis', () => {
     expect(() =>
       ctx.queue.enqueue(ctx.world, { issuer: 'player', kind: 'fireAegis', payload: { owner: 0 } }),
     ).toThrow(/Ascendance/);
-    ctx.world.ages.age = 'ascendance';
+    getAgeState(ctx.world, 0).age = 'ascendance';
     expect(() =>
       ctx.queue.enqueue(ctx.world, { issuer: 'player', kind: 'fireAegis', payload: { owner: 0 } }),
     ).toThrow(/Aegis Control/);
@@ -337,7 +341,7 @@ describe('sim/superweapons — Storm Engine', () => {
         issuer: 'player', kind: 'fireStorm', payload: { owner: 0, x: 1, z: 1 },
       }),
     ).toThrow(/Ascendance/);
-    ctx.world.ages.age = 'ascendance';
+    getAgeState(ctx.world, 0).age = 'ascendance';
     expect(() =>
       ctx.queue.enqueue(ctx.world, {
         issuer: 'player', kind: 'fireStorm', payload: { owner: 0, x: 1, z: 1 },
@@ -362,7 +366,7 @@ describe('sim/superweapons — Storm Engine', () => {
 describe('sim/superweapons — Marshal AI', () => {
   it('a Marshal AI constructs and fires the Storm at visible enemies', () => {
     const ctx = setup(909);
-    ctx.world.ages.age = 'ascendance';
+    getAgeState(ctx.world, 1).age = 'ascendance';
     addAIPlayer(ctx.world, 1, 'marshal', 0, 0);
     const player = getPlayer(ctx.world.city, 1) as { funds: number; materials: number };
     player.funds = 1e7;
@@ -391,7 +395,7 @@ describe('sim/superweapons — Marshal AI', () => {
     // all-visible centroid would land near x≈-14 (empty ground); the
     // new targeting fires at a member of the 5-unit cluster.
     const ctx = setup(911);
-    ctx.world.ages.age = 'ascendance';
+    getAgeState(ctx.world, 1).age = 'ascendance';
     addAIPlayer(ctx.world, 1, 'marshal', 0, 0);
     const ai = ctx.world.ai.players.find((p) => p.owner === 1);
     if (!ai) throw new Error('AI player missing');
@@ -412,7 +416,8 @@ describe('sim/superweapons — Marshal AI', () => {
 
   it('non-marshal AI cannot use the construction command', () => {
     const ctx = setup();
-    ctx.world.ages.age = 'ascendance';
+    // The general (owner 1) is at Ascendance: the only gate left is personality.
+    getAgeState(ctx.world, 1).age = 'ascendance';
     addAIPlayer(ctx.world, 1, 'general', 400, 400);
     expect(() =>
       ctx.queue.enqueue(ctx.world, {
@@ -444,7 +449,7 @@ describe('sim/superweapons — AI ledger guard (R1 H2)', () => {
   }
 
   function marshalAtAscendance(ctx: Ctx, owner: number): void {
-    ctx.world.ages.age = 'ascendance';
+    getAgeState(ctx.world, owner).age = 'ascendance';
     addAIPlayer(ctx.world, owner, 'marshal', 0, 0);
     const ai = ctx.world.ai.players.find((p) => p.owner === owner);
     if (!ai) throw new Error('H2: AI player missing');

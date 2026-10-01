@@ -54,6 +54,7 @@
 
 import type { GameSession } from '../ui/session';
 import { takeSnapshot, SNAPSHOT_VERSION, OLDEST_SUPPORTED_SNAPSHOT_VERSION, type Snapshot } from '../sim/snapshot';
+import { getAgeState } from '../sim/ages';
 import type { AIDifficulty } from '../sim/ai';
 
 /** SaveFile envelope version. Bump on a BREAKING SaveMetadata shape change. */
@@ -130,8 +131,10 @@ export function createSaveFile(
       tick: world.tick,
       seed: session.seed,
       aiDifficulty: session.aiDifficulty,
-      age: world.ages.age,
-      program: world.ages.program,
+      // Per-side ages (2026-10-01, roadmap A1): the save summary shows
+      // the human player's own age (owner 0) — rivals advance alone.
+      age: getAgeState(world, 0).age,
+      program: getAgeState(world, 0).program,
       // R1-C/C4: the session records the RESOLVED preset name (never
       // the raw option) and the mission id, so the load path can
       // regenerate the exact terrain this save was played on.

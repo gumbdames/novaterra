@@ -168,8 +168,8 @@ export function isVariantUnlocked(world: World, owner: number, kind: UnitKind): 
   // validator so the palette never offers what the command layer would
   // reject loudly.
   if (world.peaceful === true && def.military === true) return false;
-  // Age gating: the def's minAge (or later).
-  if (!isUnitAvailableForAge(world, def.minAge)) return false;
+  // Age gating: the owner's minAge (or later) — per-side ages (roadmap A1, 2026-10-01).
+  if (!isUnitAvailableForAge(world, owner, def.minAge)) return false;
   // Production gating: the base's requiredBuilding is kept on variants,
   // so a variant trains from the same production line once unlocked.
   if (def.requiredBuilding && !hasProductionBuilding(world, owner, def.requiredBuilding)) {

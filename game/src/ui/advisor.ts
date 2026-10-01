@@ -37,7 +37,7 @@
 import type { World } from '../sim/world';
 import { getPlayer } from '../sim/city';
 import { UNIT_DEFS, type UnitKind } from '../sim/units';
-import { CONNECTIVITY_COST } from '../sim/ages';
+import { CONNECTIVITY_COST, getAgeState } from '../sim/ages';
 import { STRINGS } from './strings';
 
 /** How urgently the player should look at this. */
@@ -128,7 +128,7 @@ export function evaluateAdvisor(world: World, playerId: number): AdvisorItem[] {
 
   // Opportunity: the age advance is affordable (informational only).
   if (
-    world.ages.age === 'foundation' &&
+    getAgeState(world, playerId).age === 'foundation' &&
     player.funds >= CONNECTIVITY_COST.funds &&
     player.materials >= CONNECTIVITY_COST.materials
   ) {

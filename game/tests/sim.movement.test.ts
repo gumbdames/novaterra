@@ -26,6 +26,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createWorld, type World } from '../src/sim/world';
+import { getAgeState } from '../src/sim/ages';
 import {
   createCommandQueue,
   registerCoreCommands,
@@ -805,7 +806,7 @@ describe('ferry route recovery (final-review R1 M9)', () => {
   function ferrySetup(seed = 909001): Ctx {
     const terrain = waterTerrain(getTerrain());
     const world = createWorld(seed);
-    world.ages.age = 'connectivity'; // ferries unlock at the connectivity age
+    getAgeState(world, 0).age = 'connectivity'; // ferries unlock at the connectivity age
     const queue = createCommandQueue();
     registerCoreCommands(queue);
     registerCityCommands(queue, terrain);

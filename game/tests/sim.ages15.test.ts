@@ -29,7 +29,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWorld } from '../src/sim/world';
 import { createCommandQueue, registerCoreCommands } from '../src/sim/commands';
-import { registerAgeCommands, AGE_PROGRESSION, getFactoryOutputMult, getUpkeepMult, getUtilityDemandMult, getInfluenceMult, getSpectreDamageMult, getManpowerCostMult, getMilitaryDamageMult, getGoodsOutputMult, getTaxMultiplierFull, isUnitAvailableForAge, AGE_ORDER } from '../src/sim/ages';
+import { registerAgeCommands, AGE_PROGRESSION, getAgeState, getFactoryOutputMult, getUpkeepMult, getUtilityDemandMult, getInfluenceMult, getSpectreDamageMult, getManpowerCostMult, getMilitaryDamageMult, getGoodsOutputMult, getTaxMultiplierFull, isUnitAvailableForAge, AGE_ORDER } from '../src/sim/ages';
 import { getPlayer } from '../src/sim/city';
 
 function setup() {
@@ -86,21 +86,21 @@ describe('phase 1.5 ages 3-5', () => {
     // Foundation → Connectivity
     fundPlayer(world, 10000, 5000, 0);
     advance(world, queue, 'fiberGrid');
-    expect(world.ages.age).toBe('connectivity');
+    expect(getAgeState(world, 0).age).toBe('connectivity');
     // Connectivity → Industry (needs influence)
     fundPlayer(world, 10000, 5000, 500);
     advance(world, queue, 'heavyIndustry');
-    expect(world.ages.age).toBe('industry');
-    expect(world.ages.program).toBe('heavyIndustry');
+    expect(getAgeState(world, 0).age).toBe('industry');
+    expect(getAgeState(world, 0).program).toBe('heavyIndustry');
     // Industry → Information
     fundPlayer(world, 20000, 10000, 1000);
     advance(world, queue, 'cyberCommand');
-    expect(world.ages.age).toBe('information');
+    expect(getAgeState(world, 0).age).toBe('information');
     // Information → Ascendance
     fundPlayer(world, 50000, 20000, 2000);
     advance(world, queue, 'arsenalProgram');
-    expect(world.ages.age).toBe('ascendance');
-    expect(world.ages.program).toBe('arsenalProgram');
+    expect(getAgeState(world, 0).age).toBe('ascendance');
+    expect(getAgeState(world, 0).program).toBe('arsenalProgram');
   });
 
   it('cannot advance without enough influence', () => {
@@ -124,8 +124,8 @@ describe('phase 1.5 ages 3-5', () => {
     advance(world, queue, 'fiberGrid');
     fundPlayer(world, 10000, 5000, 500);
     advance(world, queue, 'heavyIndustry');
-    expect(getFactoryOutputMult(world)).toBe(1.5);
-    expect(getUpkeepMult(world)).toBe(1.25);
+    expect(getFactoryOutputMult(world, 0)).toBe(1.5);
+    expect(getUpkeepMult(world, 0)).toBe(1.25);
   });
 
   it('Green Tech reduces utility demand and boosts influence', () => {
@@ -134,8 +134,8 @@ describe('phase 1.5 ages 3-5', () => {
     advance(world, queue, 'signalsGrid');
     fundPlayer(world, 10000, 5000, 500);
     advance(world, queue, 'greenTech');
-    expect(getUtilityDemandMult(world)).toBe(0.7);
-    expect(getInfluenceMult(world)).toBe(1.5);
+    expect(getUtilityDemandMult(world, 0)).toBe(0.7);
+    expect(getInfluenceMult(world, 0)).toBe(1.5);
   });
 
   it('Global Media doubles influence (stacks with Green Tech)', () => {
@@ -147,7 +147,7 @@ describe('phase 1.5 ages 3-5', () => {
     fundPlayer(world, 20000, 10000, 1000);
     advance(world, queue, 'globalMedia');
     // 1.5 (Green Tech) * 2.0 (Global Media) = 3.0
-    expect(getInfluenceMult(world)).toBe(3.0);
+    expect(getInfluenceMult(world, 0)).toBe(3.0);
   });
 
   it('Cyber Command boosts spectre damage', () => {
@@ -158,7 +158,7 @@ describe('phase 1.5 ages 3-5', () => {
     advance(world, queue, 'heavyIndustry');
     fundPlayer(world, 20000, 10000, 1000);
     advance(world, queue, 'cyberCommand');
-    expect(getSpectreDamageMult(world)).toBe(1.5);
+    expect(getSpectreDamageMult(world, 0)).toBe(1.5);
   });
 
   it('Arsenal Program reduces manpower costs and boosts damage', () => {
@@ -171,8 +171,8 @@ describe('phase 1.5 ages 3-5', () => {
     advance(world, queue, 'cyberCommand');
     fundPlayer(world, 50000, 20000, 2000);
     advance(world, queue, 'arsenalProgram');
-    expect(getManpowerCostMult(world)).toBe(0.7);
-    expect(getMilitaryDamageMult(world)).toBe(1.25);
+    expect(getManpowerCostMult(world, 0)).toBe(0.7);
+    expect(getMilitaryDamageMult(world, 0)).toBe(1.25);
   });
 
   it('Prosperity Program boosts taxes and goods', () => {
@@ -186,29 +186,29 @@ describe('phase 1.5 ages 3-5', () => {
     fundPlayer(world, 50000, 20000, 2000);
     advance(world, queue, 'prosperityProgram');
     // 1.25 (Fiber) * 1.5 (Prosperity) = 1.875
-    expect(getTaxMultiplierFull(world)).toBeCloseTo(1.875, 6);
-    expect(getGoodsOutputMult(world)).toBe(1.5);
+    expect(getTaxMultiplierFull(world, 0)).toBeCloseTo(1.875, 6);
+    expect(getGoodsOutputMult(world, 0)).toBe(1.5);
   });
 
   it('age gating: later ages unlock earlier content', () => {
     const { world } = setup();
     // Foundation: only foundation units
-    expect(isUnitAvailableForAge(world, 'foundation')).toBe(true);
-    expect(isUnitAvailableForAge(world, 'connectivity')).toBe(false);
-    expect(isUnitAvailableForAge(world, 'industry')).toBe(false);
+    expect(isUnitAvailableForAge(world, 0, 'foundation')).toBe(true);
+    expect(isUnitAvailableForAge(world, 0, 'connectivity')).toBe(false);
+    expect(isUnitAvailableForAge(world, 0, 'industry')).toBe(false);
     // Advance to Ascendance
-    world.ages.age = 'ascendance';
-    expect(isUnitAvailableForAge(world, 'foundation')).toBe(true);
-    expect(isUnitAvailableForAge(world, 'connectivity')).toBe(true);
-    expect(isUnitAvailableForAge(world, 'industry')).toBe(true);
-    expect(isUnitAvailableForAge(world, 'information')).toBe(true);
-    expect(isUnitAvailableForAge(world, 'ascendance')).toBe(true);
+    getAgeState(world, 0).age = 'ascendance';
+    expect(isUnitAvailableForAge(world, 0, 'foundation')).toBe(true);
+    expect(isUnitAvailableForAge(world, 0, 'connectivity')).toBe(true);
+    expect(isUnitAvailableForAge(world, 0, 'industry')).toBe(true);
+    expect(isUnitAvailableForAge(world, 0, 'information')).toBe(true);
+    expect(isUnitAvailableForAge(world, 0, 'ascendance')).toBe(true);
   });
 
   it('cannot advance past Ascendance', () => {
     const { world, queue } = setup();
-    world.ages.age = 'ascendance';
-    world.ages.program = 'arsenalProgram';
+    getAgeState(world, 0).age = 'ascendance';
+    getAgeState(world, 0).program = 'arsenalProgram';
     expect(() =>
       queue.enqueue(world, {
         kind: 'advanceAge',

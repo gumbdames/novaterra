@@ -230,7 +230,9 @@ zones can take the noise.
 
 Your nation develops through five ages. You start in the **Foundation**
 age. Each age advance costs resources and asks you to pick one
-**National Program** — a permanent choice:
+**National Program** — a permanent choice. Every nation advances on its
+own: your rivals pay for and enjoy their own ages, and you pay for
+yours — nobody free-rides on anyone else's age-up.
 
 - **Connectivity** (3,000 Funds + 1,200 Materials):
   - **Fiber Grid** (economy): +25% income from taxes.

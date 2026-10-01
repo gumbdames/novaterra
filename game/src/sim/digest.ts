@@ -307,15 +307,22 @@ export function canonicalizeWorld(world: World): string {
     const keys = Object.keys(p.builtCounts).sort();
     out += keys.map((k) => `${k}:${p.builtCounts[k]}`).join(',') + ';';
   }
-  // Ages: current age + chosen National Program.
-  out += `|ages=${world.ages.age},${world.ages.program ?? '-'}|`;
-  // Programs chosen for past ages (sorted for determinism).
-  const progEntries = Object.entries(world.ages.programs).sort(([a], [b]) => a < b ? -1 : 1);
-  out += '|agePrograms=';
-  for (const [age, prog] of progEntries) {
-    out += `${age}:${prog};`;
+  // Ages: per-side (roadmap A1, 2026-10-01) — current age + chosen
+  // National Program for every owner that has age state, owner-id
+  // sorted for determinism. Owners with no entry are Foundation.
+  const ageOwners = Object.keys(world.ages).map(Number).sort((a, b) => a - b);
+  for (const o of ageOwners) {
+    const st = world.ages[o];
+    if (!st) continue;
+    out += `|ages=${o}:${st.age},${st.program ?? '-'}|`;
+    // Programs chosen for past ages (sorted for determinism).
+    const progEntries = Object.entries(st.programs).sort(([a], [b]) => a < b ? -1 : 1);
+    out += `|agePrograms=${o}:`;
+    for (const [age, prog] of progEntries) {
+      out += `${age}:${prog};`;
+    }
+    out += '|';
   }
-  out += '|';
   // Delegation: mayors then generals, in assignment order.
   out += '|deleg=';
   for (const m of world.delegation.mayors) {

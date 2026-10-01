@@ -52,6 +52,7 @@ import {
 } from '../src/ui/trailerCapture';
 import { digestWorld } from '../src/sim/digest';
 import { ZoneType } from '../src/sim/city';
+import { getAgeState } from '../src/sim/ages';
 
 /** Run the whole trailer headless (the capture mode drives it per tick). */
 function runTrailer(): TrailerDirector {
@@ -146,7 +147,7 @@ describe('trailerDirector — scripted gameplay trailer', () => {
     expect(world.city.airlineRoutes.filter((r) => r.owner === 0).length).toBe(1);
 
     // Ages: the full time-lapse to ascendance.
-    expect(world.ages.age).toBe('ascendance');
+    expect(getAgeState(world, 0).age).toBe('ascendance');
 
     // The battle: real attack orders were issued against the AI.
     expect(kinds.filter((k) => k === 'attackUnit').length).toBeGreaterThan(0);

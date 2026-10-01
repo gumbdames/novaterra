@@ -26,6 +26,7 @@
 import { describe, expect, it, afterEach } from 'vitest';
 import { UNIT_DEFS, type UnitKind } from '../src/sim/units';
 import { BUILDING_DEFS, type BuildingKind, getPlayer } from '../src/sim/city';
+import { getAgeState } from '../src/sim/ages';
 import { UPGRADE_IDS, type UpgradeId } from '../src/sim/upgrades';
 import { CommandRejectedError } from '../src/sim/commands';
 import {
@@ -430,7 +431,7 @@ describe('buildingAvailability (grey-out logic)', () => {
 
   it('locked with a localized age reason when the building needs a later age', () => {
     const session = createSession({ seed: 7 });
-    session.world.ages.age = 'foundation';
+    getAgeState(session.world, 0).age = 'foundation';
     const st = buildingAvailability(session.world, HUMAN_PLAYER_ID, 'navalYard');
     expect(st.ok).toBe(false);
     // The industry age name appears in the reason.
@@ -452,7 +453,7 @@ describe('buildingAvailability (grey-out logic)', () => {
 
   it('the age gate wins over affordability', () => {
     const session = createSession({ seed: 7 });
-    session.world.ages.age = 'foundation';
+    getAgeState(session.world, 0).age = 'foundation';
     const human = getPlayer(session.world.city, HUMAN_PLAYER_ID)!;
     human.funds = 0;
     human.materials = 0;
@@ -480,7 +481,7 @@ describe('upgradeAvailability (grey-out logic)', () => {
       powered: true,
       watered: true,
     });
-    world.ages.age = 'industry';
+    getAgeState(world, 0).age = 'industry';
     const human = getPlayer(world.city, HUMAN_PLAYER_ID)!;
     human.funds = 100000;
     human.research = 10000;
@@ -522,7 +523,7 @@ describe('upgradeAvailability (grey-out logic)', () => {
     // advancedAvionics needs airfield + radarStation (and information age,
     // but the building check comes first per validate order — set the age
     // so the test isolates the building reason).
-    world.ages.age = 'information';
+    getAgeState(world, 0).age = 'information';
     const av = upgradeAvailability(world, HUMAN_PLAYER_ID, 'advancedAvionics');
     expect(av.state).toBe('locked');
     setUiLanguage('en');
@@ -602,7 +603,7 @@ describe('researchUpgrade through the session queue', () => {
       powered: true,
       watered: true,
     });
-    world.ages.age = 'industry';
+    getAgeState(world, 0).age = 'industry';
     const human = getPlayer(world.city, HUMAN_PLAYER_ID)!;
     human.funds = 100000;
     human.research = 10000;

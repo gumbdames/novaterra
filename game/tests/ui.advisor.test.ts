@@ -31,7 +31,7 @@ import {
   ADVISOR_MATERIALS_LOW,
   evaluateAdvisor,
 } from '../src/ui/advisor';
-import { CONNECTIVITY_COST } from '../src/sim/ages';
+import { CONNECTIVITY_COST , getAgeState } from '../src/sim/ages';
 import { UNIT_DEFS } from '../src/sim/units';
 
 function setup(): World {
@@ -104,8 +104,8 @@ describe('advisor', () => {
 
   it('does not suggest the age advance once in Connectivity', () => {
     const world = setup();
-    world.ages.age = 'connectivity';
-    world.ages.program = 'fiberGrid';
+    getAgeState(world, 0).age = 'connectivity';
+    getAgeState(world, 0).program = 'fiberGrid';
     setFunds(world, CONNECTIVITY_COST.funds + 100);
     const items = evaluateAdvisor(world, 0);
     expect(items.some((i) => i.severity === 'info')).toBe(false);

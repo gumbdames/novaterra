@@ -348,7 +348,7 @@ export function utilityBuildingAvailability(
     return { ok: false, reason: utilityNotYetAvailableReason() };
   }
   const p = STRINGS.palettes;
-  if (!isUnitAvailableForAge(world, def.minAge)) {
+  if (!isUnitAvailableForAge(world, owner, def.minAge)) { // per-side ages: the viewer's own age
     return {
       ok: false,
       reason: fillLoc(p.requiresAge, { age: loc(STRINGS.ageNames[def.minAge]) }),

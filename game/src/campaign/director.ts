@@ -41,6 +41,7 @@ import type { World } from '../sim/world';
 import type { CommandQueue, NewCommand } from '../sim/commands';
 import type { TerrainData } from '../sim/terrain';
 import { isWater } from '../sim/terrain';
+import { getAgeState } from '../sim/ages';
 import { MAP_HALF_SIZE, getPlayer, type BuildingKind } from '../sim/city';
 import { UNIT_DEFS, type UnitKind } from '../sim/units';
 import {
@@ -108,7 +109,7 @@ export function createMissionRun(mission: MissionDef, world: World): MissionRunS
     kills: 0,
     unitsLost: 0,
     eventsFired: new Set(),
-    lastAge: world.ages.age,
+    lastAge: getAgeState(world, MISSION_HUMAN_ID).age, // per-side ages: the mission player's own age
     initialBuildingCounts,
     pendingRaids: [],
     finished: false,
@@ -184,7 +185,7 @@ export function updateMissionRun(
     }
   }
 
-  run.lastAge = world.ages.age;
+  run.lastAge = getAgeState(world, MISSION_HUMAN_ID).age;
   return directives;
 }
 
@@ -227,7 +228,7 @@ function eventTriggered(
     case 'onFirstCombat':
       return run.kills + run.unitsLost > 0;
     case 'onAgeAdvanced':
-      return world.ages.age === t.age && run.lastAge !== t.age;
+      return getAgeState(world, MISSION_HUMAN_ID).age === t.age && run.lastAge !== t.age;
     case 'onLowFunds': {
       const player = getPlayer(world.city, MISSION_HUMAN_ID);
       return (player?.funds ?? 0) < 200;

@@ -66,7 +66,7 @@ import {
 import { createCombatSystem, registerCombatCommands } from '../src/sim/combat';
 import { createIntelSystem, registerIntelCommands } from '../src/sim/intel';
 import { registerUpgradeCommands } from '../src/sim/upgrades';
-import { registerAgeCommands } from '../src/sim/ages';
+import { registerAgeCommands , getAgeState } from '../src/sim/ages';
 import {
   createSuperweaponSystem,
   registerSuperweaponCommands,
@@ -215,6 +215,6 @@ describe('industry-age soak (R1 C2 acceptance)', () => {
     }
     // Industry, information, and ascendance all prove the age ladder
     // is no longer stuck at connectivity (the Phase 9 finding).
-    expect(['industry', 'information', 'ascendance']).toContain(world.ages.age);
+    expect(['industry', 'information', 'ascendance']).toContain(getAgeState(world, 0).age);
   }, 600000);
 });

@@ -25,6 +25,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createWorld, type World } from '../src/sim/world';
+import { getAgeState } from '../src/sim/ages';
 import {
   createCommandQueue,
   registerCoreCommands,
@@ -106,7 +107,7 @@ function setupIntelCtx(seed = 20260930, difficulty: AIDifficulty = 'marshal'): C
   const terrain = getTerrain();
   const world = createWorld(seed);
   grantAllTrainingResources(world);
-  world.ages.age = 'information';
+  getAgeState(world, 0).age = 'information';
   const base = findLandNear(terrain, -100, 0);
   addAIPlayer(world, 0, difficulty, base.x, base.z);
   const ai = world.ai.players[0]!;

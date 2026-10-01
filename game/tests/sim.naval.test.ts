@@ -28,6 +28,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createWorld, type World } from '../src/sim/world';
+import { getAgeState } from '../src/sim/ages';
 import {
   createCommandQueue,
   registerCoreCommands,
@@ -559,7 +560,7 @@ describe('ports', () => {
   /** Ports are age-gated (up to industry); the tests below are about
    * placement, so jump straight there (deterministic plain-state set). */
   function atIndustryAge(ctx: Ctx): void {
-    ctx.world.ages.age = 'industry';
+    getAgeState(ctx.world, 0).age = 'industry';
   }
 
   it('require the coast: inland placement is rejected', () => {

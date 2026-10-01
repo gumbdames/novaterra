@@ -2056,8 +2056,9 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
       if (world.peaceful === true && def.military === true) {
         return `spawnUnit: ${def.name} is a military unit and cannot be trained in peaceful mode`;
       }
-      // Age gating: units require their minimum age (or later).
-      if (!isUnitAvailableForAge(world, def.minAge)) {
+      // Age gating: units require the owner's minimum age (or later) —
+      // per-side ages (2026-10-01, roadmap A1).
+      if (!isUnitAvailableForAge(world, owner, def.minAge)) {
         return `spawnUnit: ${kind} requires the ${def.minAge} age`;
       }
       // Manpower: military units cost manpower from the player's stockpile.

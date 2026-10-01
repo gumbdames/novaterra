@@ -261,10 +261,12 @@ export function buildRailOrder(
 export function buildAdvanceAgeOrder(
   owner: number,
   program: string,
-  /** The age the issuer sees right now — makes the world-global advance
-   * idempotent when the AI advances on the same tick (the Phase 9 soak
-   * 6.1 race also bites human-vs-AI games). Omit only where no second
-   * issuer can race (scripted demos). */
+  /** The age the issuer sees right now — makes the issuer's advance
+   * idempotent when the same owner enqueues twice on the same tick
+   * (the Phase 9 soak 6.1 race also bites human-vs-AI games). Per-side
+   * ages (2026-10-01, roadmap A1): a rival's advancement is never a
+   * duplicate of yours. Omit only where no second issuer can race
+   * (scripted demos). */
   fromAge?: string,
 ): OrderIntent {
   return {

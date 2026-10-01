@@ -49,8 +49,7 @@ import type { FieldBuild, FieldRequest, FlowField, PathfindingState, PathRequest
 import { initPathfinding } from './pathfinding';
 import type { AIState } from './ai';
 import { encodeAIState, decodeAIState, initAI } from './ai';
-import type { AgeState } from './ages';
-import { encodeAgeState, decodeAgeState, initAges } from './ages';
+import { encodeAgeState, decodeAgeState } from './ages';
 import type { DelegationState } from './delegation';
 import { encodeDelegationState, decodeDelegationState, initDelegation } from './delegation';
 import type { SuperweaponState } from './superweapons';
@@ -123,7 +122,7 @@ export interface Snapshot {
   units: UnitRecord[];
   pathfinding: PathfindingState;
   ai: AIState;
-  ages: AgeState;
+  ages: Record<string, unknown>;
   delegation: DelegationState;
   superweapons: SuperweaponState;
   upgrades: Record<number, string[]>;
@@ -468,7 +467,7 @@ export function takeSnapshot(world: World): Snapshot {
     units: world.units.map(copyUnit),
     pathfinding: copyPathfinding(world.pathfinding),
     ai: encodeAIState(world.ai) as AIState,
-    ages: encodeAgeState(world.ages) as AgeState,
+    ages: encodeAgeState(world.ages) as Record<string, unknown>,
     delegation: encodeDelegationState(world.delegation) as DelegationState,
     superweapons: encodeSuperweaponState(world.superweapons) as SuperweaponState,
     upgrades: encodeUpgrades(world.upgrades),
@@ -527,7 +526,11 @@ function restoreSnapshotInner(snap: Snapshot): World {
   // Defensive: older snapshots lack AI state — init instead of crashing.
   world.ai = snap.ai ? decodeAIState(snap.ai) : initAI();
   // Defensive: older snapshots lack age state — init instead of crashing.
-  world.ages = snap.ages ? decodeAgeState(snap.ages) : initAges();
+  // Per-side ages (2026-10-01, roadmap A1): the owner ids come from the
+  // already-decoded city — legacy world-global snapshots assign their
+  // one age state to every current owner (AD9 additive, no version bump).
+  const ageOwners = world.city.players.map((pl) => pl.id);
+  world.ages = snap.ages ? decodeAgeState(snap.ages, ageOwners) : {};
   // Defensive: older snapshots lack delegation state — init instead of crashing.
   world.delegation = snap.delegation ? decodeDelegationState(snap.delegation) : initDelegation();
   // Defensive: older snapshots lack superweapon state — init instead of crashing.

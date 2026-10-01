@@ -42,6 +42,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createWorld, type World } from '../src/sim/world';
+import { getAgeState } from '../src/sim/ages';
 import {
   createCommandQueue,
   registerCoreCommands,
@@ -329,7 +330,7 @@ describe('legacy hangar decode', () => {
 describe('carrier training', () => {
   it('a trained carrier enters the world with an empty wing', () => {
     const ctx = setup();
-    ctx.world.ages.age = 'information'; // carrier minAge
+    getAgeState(ctx.world, 0).age = 'information'; // carrier minAge
     grantTrainingResources(ctx.world, 0);
     const cell = findWaterCell(ctx.terrain, 60, 60);
     completeBuilding(ctx.world, 'navalYard', 0, cell.cx, cell.cz);

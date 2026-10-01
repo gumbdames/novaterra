@@ -70,6 +70,7 @@ import { attackMeltdownRoll } from '../src/sim/utilityNetworks';
 import { createSuperweaponSystem } from '../src/sim/superweapons';
 import { TICK_DT } from '../src/sim/tick';
 import type { Age } from '../src/sim/ages';
+import { getAgeState } from '../src/sim/ages';
 
 let cachedTerrain: TerrainData | null = null;
 function getTerrain(): TerrainData {
@@ -295,7 +296,7 @@ describe('research gating', () => {
     // Industry age so the age gate passes and the upgrade gate is the
     // blocker (coalPlant is minAge industry, waterWell foundation,
     // batteryStation connectivity).
-    ctx.world.ages.age = 'industry' as Age;
+    getAgeState(ctx.world, 0).age = 'industry' as Age;
     // No upgrades researched: gated kinds reject with the upgrade id.
     expect(() =>
       enqueue(ctx, [
@@ -342,7 +343,7 @@ describe('research gating', () => {
     const { cx, cz } = findLandRect(ctx.terrain, 20, 10);
     completed(ctx.world, 'lab', 0, cx, cz);
     ctx.world.city.players[0]!.research = 1e9;
-    ctx.world.ages.age = 'industry' as Age;
+    getAgeState(ctx.world, 0).age = 'industry' as Age;
     expect(() =>
       enqueue(ctx, [
         { kind: 'researchUpgrade', issuer: 'p', payload: { owner: 0, upgrade: 'advancedNuclear' } },
@@ -401,7 +402,7 @@ describe('upgrade effect hooks', () => {
 describe('hydroDam placement', () => {
   it('requires water adjacency', () => {
     const ctx = setup();
-    ctx.world.ages.age = 'industry' as Age;
+    getAgeState(ctx.world, 0).age = 'industry' as Age;
     const land = findShoreRect(ctx.terrain, 4, 2, false);
     expect(() =>
       enqueue(ctx, [
@@ -412,7 +413,7 @@ describe('hydroDam placement', () => {
 
   it('accepts a coastal site', () => {
     const ctx = setup();
-    ctx.world.ages.age = 'industry' as Age;
+    getAgeState(ctx.world, 0).age = 'industry' as Age;
     const shore = findShoreRect(ctx.terrain, 4, 2, true);
     enqueue(ctx, [
       { kind: 'placeBuilding', issuer: 'p', payload: { kind: 'hydroDam', owner: 0, cx: shore.cx, cz: shore.cz, facing: 0 } },

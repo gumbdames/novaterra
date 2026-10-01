@@ -41,6 +41,7 @@
 
 import type { World } from '../sim/world';
 import { getPlayer } from '../sim/city';
+import { getAgeState } from '../sim/ages';
 import { personaLine, type PersonaEvent } from './persona';
 import { computeThreat, narrateTrick } from './director';
 
@@ -103,8 +104,8 @@ function snapshot(world: World, playerId: number, aiId: number): MuseSnapshot {
   return {
     buildingCount,
     unitCount,
-    age: world.ages.age,
-    program: world.ages.program ?? '',
+    age: getAgeState(world, playerId).age,
+    program: getAgeState(world, playerId).program ?? '',
     funds: player?.funds ?? 0,
     enemyUnitCount,
     anyFighting,

@@ -16,6 +16,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { createWorld, type World } from '../src/sim/world';
+import { getAgeState } from '../src/sim/ages';
 import { createCommandQueue, registerCoreCommands, type CommandQueue, type NewCommand } from '../src/sim/commands';
 import { createTickDriver, TICK_MS, type TickDriver } from '../src/sim/tick';
 import { generateTerrain, MERIDIAN_PLAINS, type TerrainData } from '../src/sim/terrain';
@@ -247,12 +248,12 @@ describe('taxes', () => {
     // The zero-rate world isolates the tax term from every other flow.
     const zero = houseWorld(21, 0.0);
     const fiber = houseWorld(21, 0.5);
-    fiber.world.ages.age = 'connectivity';
-    fiber.world.ages.program = 'fiberGrid';
+    getAgeState(fiber.world, 0).age = 'connectivity';
+    getAgeState(fiber.world, 0).program = 'fiberGrid';
     const both = houseWorld(21, 0.5);
-    both.world.ages.age = 'ascendance';
-    both.world.ages.program = 'prosperityProgram';
-    both.world.ages.programs = { connectivity: 'fiberGrid' };
+    getAgeState(both.world, 0).age = 'ascendance';
+    getAgeState(both.world, 0).program = 'prosperityProgram';
+    getAgeState(both.world, 0).programs = { connectivity: 'fiberGrid' };
     for (const ctx of [zero, fiber, both]) runEconomySeconds(ctx, 61);
     const taxOf = (ctx: Ctx) => ctx.world.city.players[0]!.funds - zero.world.city.players[0]!.funds;
     // Fiber Grid alone: the advertised 25% boost...

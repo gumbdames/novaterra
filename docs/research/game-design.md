@@ -397,6 +397,12 @@ pick 1 of 2, both viable, framed positively). Age-up costs funds +
 research + a construction effort, so it competes with army-building for
 the same resources (the AoE2 tension, A3).
 
+**Per-side ages (2026-10-01, roadmap A1):** ages are per nation, not
+world-global. Every owner advances independently and pays their own
+costs — a rival's age-up unlocks and boosts only the rival. The old
+global age was a free-rider exploit (whoever paid, everyone benefited);
+now the age race is real.
+
 | # | Age | National Program choice (pick 1) | Unlocks (civil / military) |
 |---|---|---|---|
 | 1 | **Foundation** | — (start here) | roads, zoning, power/water, infantry, patrol boats |

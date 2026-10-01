@@ -56,7 +56,7 @@ import {
   hasUpgrade,
   registerUpgradeCommands,
 } from '../src/sim/upgrades';
-import { registerAgeCommands } from '../src/sim/ages';
+import { registerAgeCommands , getAgeState } from '../src/sim/ages';
 import {
   runIntelAccrual,
   detectionRadiusAt,
@@ -126,7 +126,7 @@ function setupIntel(seed = 20260930): Ctx {
   // Age gate for spy training + intelHQ placement (def tests bypass the
   // construction game; the age mechanic itself is covered in
   // sim.ages.test.ts).
-  ctx.world.ages.age = 'information';
+  getAgeState(ctx.world, 0).age = 'information';
   return ctx;
 }
 
@@ -299,7 +299,7 @@ describe('intel unit training gates', () => {
   it('trains the spy only from a completed intelHQ', () => {
     const ctx = setup();
     grantAllTrainingResources(ctx.world);
-    ctx.world.ages.age = 'information';
+    getAgeState(ctx.world, 0).age = 'information';
     const at = findLandNear(ctx.terrain, 0, 0);
     // No intelHQ anywhere: the gate rejects with the building's name.
     const reason = rejectionReason(ctx, 'spawnUnit', {
@@ -332,7 +332,7 @@ describe('intel unit training gates', () => {
   it('trains the reconTeam from the barracks (no intel gate)', () => {
     const ctx = setup();
     grantAllTrainingResources(ctx.world);
-    ctx.world.ages.age = 'connectivity';
+    getAgeState(ctx.world, 0).age = 'connectivity';
     completeBuilding(ctx.world, 'barracks', 0);
     const at = findLandNear(ctx.terrain, 0, 0);
     expect(

@@ -454,9 +454,29 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   The armed scout `drone` is military (gated); the peaceful AI has
   no scouts and needs none. `createAISystem(queue, terrain?)` takes
   the optional terrain; `ui/session.ts:381` passes it.
-- `ages.ts` — Ages (Foundation → Connectivity) + National Program choice
-  (Step 8). `AgeState` (`age`, `program`) lives on `World.ages`, plain
-  data — snapshotted (v6) and digested. `advanceAge` command validates:
+- `ages.ts` — Ages (Foundation → Ascendance) + National Program choice
+  (Step 8). **Per-side ages (roadmap A1, 2026-10-01):** `World.ages` is a
+  per-owner map (`PerSideAges = Record<number, AgeState>`), NOT one shared
+  state — every side advances and pays independently; the age race is
+  real (the old global age was a free-rider exploit: whoever paid,
+  everyone benefited). `getAgeState(world, owner)` is the lazy-creating
+  accessor (missing owner = Foundation); read-only paths (digest,
+  snapshot encode) read `world.ages` directly and never create entries.
+  Every effect function takes the owner (`getTaxMultiplier(world,
+  owner)`, `getSightBonus(world, owner)`, …). `advanceAge` validates and
+  applies against the issuing owner's state; the `fromAge` idempotency
+  (Phase 9 soak 6.1) compares against the SAME owner's age — two different
+  owners advancing on one tick is normal play, not a duplicate.
+  `city.ts` reads the owner's age inline (`world.ages[owner]?.age ??
+  'foundation'`) and must NEVER value-import ages.ts (ages.ts imports
+  `getPlayer` from city.ts — an import would cycle).
+  `economy.ts` resolves program multipliers per BUILDING inside the loops
+  (`runProduction`, `runTaxes`) — a rival's Heavy Industry never boosts
+  your factories. Snapshot: `encodeAgeState` writes the per-owner map;
+  `decodeAgeState(data, owners)` restores it — legacy world-global
+  snapshots assign their one age state to every current owner (AD9
+  additive, stays v8). Digest: per-owner `|ages=<owner>:<age>,<prog>|`
+  segments, owner-sorted. `advanceAge` command validates:
   current age is Foundation, program is fiberGrid/signalsGrid, and the
   player can afford the cost (3000 funds + 1200 materials). The choice is
   permanent. Effects: Fiber Grid ×1.25 tax income, stacked with the

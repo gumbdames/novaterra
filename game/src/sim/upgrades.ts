@@ -571,8 +571,8 @@ export function registerUpgradeCommands(queue: CommandQueue): void {
       if (world.peaceful === true && def.military === true) {
         return `researchUpgrade: ${def.name} is a military upgrade and cannot be researched in peaceful mode`;
       }
-      // Age gate.
-      if (!isUnitAvailableForAge(world, def.minAge)) {
+      // Age gate: the owner's own age (per-side ages, roadmap A1 2026-10-01).
+      if (!isUnitAvailableForAge(world, owner, def.minAge)) {
         return `researchUpgrade: ${def.name} requires the ${def.minAge} age`;
       }
       // Building prerequisites.

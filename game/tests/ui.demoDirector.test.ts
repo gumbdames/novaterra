@@ -35,6 +35,7 @@ import {
 import { createSession } from '../src/ui/session';
 import { digestWorld } from '../src/sim/digest';
 import { ZoneType } from '../src/sim/city';
+import { getAgeState } from '../src/sim/ages';
 
 /** Run the whole movie headless (the menu drives it via stepDemo). */
 function runMovie(): DemoDirector {
@@ -122,7 +123,7 @@ describe('demoDirector — living menu demo', () => {
     expect(unitKinds).toContain('fuelTruck');
 
     // Act 4: the ages, then the storm.
-    expect(world.ages.age).toBe('ascendance');
+    expect(getAgeState(world, 0).age).toBe('ascendance');
     expect(built('stormArray')).toBe(1);
     // The strikes themselves are consumed by the superweapons system as
     // they land (the movie runs past the finale); the spent cooldown

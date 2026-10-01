@@ -53,7 +53,7 @@ import {
 } from '../src/sim/combat';
 import { digestWorld } from '../src/sim/digest';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
-import { registerAgeCommands, CONNECTIVITY_COST } from '../src/sim/ages';
+import { registerAgeCommands, CONNECTIVITY_COST , getAgeState } from '../src/sim/ages';
 import { getPlayer } from '../src/sim/city';
 import {
   grantAllTrainingResources,
@@ -151,7 +151,7 @@ function advanceToConnectivity(ctx: Ctx, owner = 0): void {
   player.materials = CONNECTIVITY_COST.materials + 1000;
   enqueue(ctx, [{ kind: 'advanceAge', payload: { owner, program: 'fiberGrid' } }]);
   runTicks(ctx, 1);
-  expect(ctx.world.ages.age).toBe('connectivity');
+  expect(getAgeState(ctx.world, owner).age).toBe('connectivity');
 }
 
 describe('roster', () => {
@@ -377,8 +377,10 @@ describe('combat resolution', () => {
 
   it('mobile AA only damages air (canTarget), fighter hits both', () => {
     const ctx = setup();
-    // Fighter requires Connectivity (age is per-world).
+    // Fighter requires Connectivity (ages are per-side: the enemy's
+    // fighter needs the enemy's age advanced too).
     advanceToConnectivity(ctx, 0);
+    advanceToConnectivity(ctx, 1);
     const a = findLandNear(ctx.terrain, 0, 0);
     spawnAt(ctx, a.x, a.z, 'aa', 0);
     const ground = spawnAt(ctx, a.x + 10, a.z, 'rifles', 1);

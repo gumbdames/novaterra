@@ -159,6 +159,11 @@ export function createDemoSession(): GameSession {
   for (const [key, value] of Object.entries(DEMO_OPENING_STOCKPILE)) {
     (player as unknown as Record<string, number>)[key] = value;
   }
+  // Per-side ages (roadmap A1, 2026-10-01): the demo is a single-player
+  // showcase and the director is its sole author. Player 1 is a ghost
+  // (no AI, no orders) — drop it so it can't grow stray organic buildings
+  // or fall behind the age curve and skew the movie's economy.
+  session.world.city.players = session.world.city.players.filter((p) => p.id === DEMO_OWNER);
   return session;
 }
 

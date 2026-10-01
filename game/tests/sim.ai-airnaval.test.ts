@@ -37,6 +37,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { createWorld, type World } from '../src/sim/world';
+import { getAgeState } from '../src/sim/ages';
 import {
   addAIPlayer,
   canTrain,
@@ -74,7 +75,7 @@ describe('hangar-aware canTrain', () => {
     const world = makeWorldWithAI(12);
     // navalFighter: hangarClass 'medium', requiredBuilding 'airfield',
     // minAge 'connectivity' (the aircraft workstream's real defs).
-    world.ages.age = 'connectivity';
+    getAgeState(world, 0).age = 'connectivity';
     const ai = world.ai.players[0]!;
     // No virtual airfield → no production building and no virtual
     // slots → cannot train.
@@ -91,7 +92,7 @@ describe('hangar-aware canTrain', () => {
 
   it('embarked aircraft do not consume hangar slots', () => {
     const world = makeWorldWithAI(13);
-    world.ages.age = 'connectivity';
+    getAgeState(world, 0).age = 'connectivity';
     const ai = world.ai.players[0]!;
     ai.virtualBuildings.completed = ['airfield'];
     // Six navalFighters, all embarked on a carrier → all 6 virtual

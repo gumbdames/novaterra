@@ -49,7 +49,7 @@ import { spawnUnit, registerUnitCommands } from '../src/sim/units';
 import { registerMovementCommands } from '../src/sim/movement';
 import { UNIT_DEFS } from '../src/sim/units';
 import { BUILDING_DEFS } from '../src/sim/city';
-import { AGE_ORDER } from '../src/sim/ages';
+import { AGE_ORDER, getAgeState } from '../src/sim/ages';
 
 const PRESET_NAMES = new Set(MAP_PRESETS.map((p) => p.name));
 
@@ -230,7 +230,7 @@ describe('campaign/objectives', () => {
   it('reachAge and survive objectives', () => {
     const { world } = setup();
     spawnUnit(world, 'engineer', MISSION_HUMAN_ID, 0, 0);
-    world.ages.age = 'connectivity';
+    getAgeState(world, MISSION_HUMAN_ID).age = 'connectivity';
     expect(checkObjective(world, MISSION_HUMAN_ID, MISSION_AI_ID, {
       kind: 'reachAge', age: 'connectivity', label: 'x',
     }, 0).complete).toBe(true);

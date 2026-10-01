@@ -55,6 +55,7 @@ import { describe, expect, it } from 'vitest';
 // (the NaN-GRID_CELLS cycle guard — see sim.logistics-core.test.ts).
 import { worldToCell } from '../src/sim/pathfinding';
 import { createWorld, type World } from '../src/sim/world';
+import { getAgeState } from '../src/sim/ages';
 import {
   createCommandQueue,
   registerCoreCommands,
@@ -754,7 +755,7 @@ describe('thinkNavalSupply', () => {
     ai.navalStatus = 'coastal';
     const water = findWaterNear(terrain, 0, 0);
     ai.navalWater = water;
-    world.ages.age = 'industry';
+    getAgeState(world, 0).age = 'industry';
     for (let i = 0; i < 6; i++) {
       spawnUnit(world, 'patrolBoat', 0, water.x + i * 4, water.z);
     }
@@ -834,7 +835,7 @@ describe('thinkNavalSupply', () => {
     ai.navalStatus = 'coastal';
     const water = findWaterNear(terrain, 0, 0);
     ai.navalWater = water;
-    world.ages.age = 'industry';
+    getAgeState(world, 0).age = 'industry';
     for (let i = 0; i < 6; i++) {
       spawnUnit(world, 'patrolBoat', 0, water.x + i * 4, water.z);
     }

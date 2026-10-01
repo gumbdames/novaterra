@@ -32,6 +32,12 @@
  *    "not yet available" marker, not implemented here.)
  *  - The choice is permanent for the game (landmark-style decision).
  *    Both programs are viable; the tradeoff must be real, not a no-brainer.
+ *  - **Per-side ages (2026-10-01, roadmap A1):** every owner advances
+ *    independently — `World.ages` is a per-owner map, not one shared
+ *    state. When the marshal pays for an age, only the marshal gets it;
+ *    the age race is real again (the old global age was a free-rider
+ *    exploit: whoever paid, everyone benefited). Every effect function
+ *    takes the owner whose nation it reads.
  *
  * Effects (Phase 1 engineering choices, not locked design):
  *  - Fiber Grid: +25% tax income (funds). Rewards economic play.
@@ -59,7 +65,7 @@ export type NationalProgram =
   | 'arsenalProgram' | 'prosperityProgram'
   | null;
 
-/** Age state for the world. Plain data — snapshotted + digested. */
+/** Age state for one owner. Plain data — snapshotted + digested. */
 export interface AgeState {
   /** Current age. Starts at 'foundation'. */
   age: Age;
@@ -69,15 +75,35 @@ export interface AgeState {
   programs: Partial<Record<Age, NationalProgram>>;
 }
 
+/** Per-side age states, keyed by owner id. Missing owner = Foundation (see getAgeState). */
+export type PerSideAges = Record<number, AgeState>;
+
 /** Create fresh age state: Foundation, no program chosen. */
 export function initAges(): AgeState {
   return { age: 'foundation', program: null, programs: {} };
 }
 
-/** Get the program chosen for a specific age (null if not yet chosen). */
-export function getProgramForAge(world: World, age: Age): NationalProgram {
-  if (world.ages.age === age) return world.ages.program;
-  return world.ages.programs[age] ?? null;
+/**
+ * The age state of one owner. Lazily creates (and stores) the Foundation
+ * state for owners never seen before — the creation order follows the
+ * deterministic read order, so replays stay identical. Read-only callers
+ * that must never mutate (digest, snapshot encode) read `world.ages`
+ * directly instead.
+ */
+export function getAgeState(world: World, owner: number): AgeState {
+  let st = world.ages[owner];
+  if (!st) {
+    st = initAges();
+    world.ages[owner] = st;
+  }
+  return st;
+}
+
+/** Get the program chosen by an owner for a specific age (null if not yet chosen). */
+export function getProgramForAge(world: World, owner: number, age: Age): NationalProgram {
+  const st = getAgeState(world, owner);
+  if (st.age === age) return st.program;
+  return st.programs[age] ?? null;
 }
 
 /** Cost to advance from Foundation to Connectivity (funds + materials). */
@@ -93,22 +119,22 @@ export const FIBER_GRID_TAX_MULTIPLIER = 1.25;
 export const SIGNALS_GRID_SIGHT_BONUS = 8;
 
 /**
- * Tax income multiplier for the world. Returns 1.25 with Fiber Grid,
+ * Tax income multiplier for an owner. Returns 1.25 with Fiber Grid,
  * 1.0 otherwise.
  */
-export function getTaxMultiplier(world: World): number {
-  if (getProgramForAge(world, 'connectivity') === 'fiberGrid') {
+export function getTaxMultiplier(world: World, owner: number): number {
+  if (getProgramForAge(world, owner, 'connectivity') === 'fiberGrid') {
     return FIBER_GRID_TAX_MULTIPLIER;
   }
   return 1.0;
 }
 
 /**
- * Sight range bonus for the world. Returns 8 with Signals Grid,
+ * Sight range bonus for an owner. Returns 8 with Signals Grid,
  * 0 otherwise.
  */
-export function getSightBonus(world: World): number {
-  if (getProgramForAge(world, 'connectivity') === 'signalsGrid') {
+export function getSightBonus(world: World, owner: number): number {
+  if (getProgramForAge(world, owner, 'connectivity') === 'signalsGrid') {
     return SIGNALS_GRID_SIGHT_BONUS;
   }
   return 0;
@@ -162,109 +188,109 @@ export const PROSPERITY_TAX_MULT = 1.5;
 export const PROSPERITY_GOODS_MULT = 1.5;
 
 /**
- * Factory output multiplier. Returns 1.5 with Heavy Industry, 1.0 otherwise.
+ * Factory output multiplier for an owner. Returns 1.5 with Heavy Industry, 1.0 otherwise.
  */
-export function getFactoryOutputMult(world: World): number {
-  if (getProgramForAge(world, 'industry') === 'heavyIndustry') {
+export function getFactoryOutputMult(world: World, owner: number): number {
+  if (getProgramForAge(world, owner, 'industry') === 'heavyIndustry') {
     return HEAVY_INDUSTRY_OUTPUT_MULT;
   }
   return 1.0;
 }
 
 /**
- * Building upkeep multiplier. Returns 1.25 with Heavy Industry, 1.0 otherwise.
+ * Building upkeep multiplier for an owner. Returns 1.25 with Heavy Industry, 1.0 otherwise.
  */
-export function getUpkeepMult(world: World): number {
-  if (getProgramForAge(world, 'industry') === 'heavyIndustry') {
+export function getUpkeepMult(world: World, owner: number): number {
+  if (getProgramForAge(world, owner, 'industry') === 'heavyIndustry') {
     return HEAVY_INDUSTRY_UPKEEP_MULT;
   }
   return 1.0;
 }
 
 /**
- * Utility demand multiplier. Returns 0.7 with Green Tech, 1.0 otherwise.
+ * Utility demand multiplier for an owner. Returns 0.7 with Green Tech, 1.0 otherwise.
  */
-export function getUtilityDemandMult(world: World): number {
-  if (getProgramForAge(world, 'industry') === 'greenTech') {
+export function getUtilityDemandMult(world: World, owner: number): number {
+  if (getProgramForAge(world, owner, 'industry') === 'greenTech') {
     return GREEN_TECH_UTILITY_MULT;
   }
   return 1.0;
 }
 
 /**
- * Influence generation multiplier. Stacks Green Tech (1.5x) and Global Media (2.0x).
+ * Influence generation multiplier for an owner. Stacks Green Tech (1.5x) and Global Media (2.0x).
  */
-export function getInfluenceMult(world: World): number {
+export function getInfluenceMult(world: World, owner: number): number {
   let mult = 1.0;
-  if (getProgramForAge(world, 'industry') === 'greenTech') {
+  if (getProgramForAge(world, owner, 'industry') === 'greenTech') {
     mult *= GREEN_TECH_INFLUENCE_MULT;
   }
-  if (getProgramForAge(world, 'information') === 'globalMedia') {
+  if (getProgramForAge(world, owner, 'information') === 'globalMedia') {
     mult *= GLOBAL_MEDIA_INFLUENCE_MULT;
   }
   return mult;
 }
 
 /**
- * Spectre damage multiplier. Returns 1.5 with Cyber Command, 1.0 otherwise.
+ * Spectre damage multiplier for an owner. Returns 1.5 with Cyber Command, 1.0 otherwise.
  */
-export function getSpectreDamageMult(world: World): number {
-  if (getProgramForAge(world, 'information') === 'cyberCommand') {
+export function getSpectreDamageMult(world: World, owner: number): number {
+  if (getProgramForAge(world, owner, 'information') === 'cyberCommand') {
     return CYBER_COMMAND_SPECTRE_MULT;
   }
   return 1.0;
 }
 
 /**
- * Manpower cost multiplier. Returns 0.7 with Arsenal Program, 1.0 otherwise.
+ * Manpower cost multiplier for an owner. Returns 0.7 with Arsenal Program, 1.0 otherwise.
  */
-export function getManpowerCostMult(world: World): number {
-  if (getProgramForAge(world, 'ascendance') === 'arsenalProgram') {
+export function getManpowerCostMult(world: World, owner: number): number {
+  if (getProgramForAge(world, owner, 'ascendance') === 'arsenalProgram') {
     return ARSENAL_MANPOWER_MULT;
   }
   return 1.0;
 }
 
 /**
- * Military damage multiplier. Returns 1.25 with Arsenal Program, 1.0 otherwise.
+ * Military damage multiplier for an owner. Returns 1.25 with Arsenal Program, 1.0 otherwise.
  */
-export function getMilitaryDamageMult(world: World): number {
-  if (getProgramForAge(world, 'ascendance') === 'arsenalProgram') {
+export function getMilitaryDamageMult(world: World, owner: number): number {
+  if (getProgramForAge(world, owner, 'ascendance') === 'arsenalProgram') {
     return ARSENAL_DAMAGE_MULT;
   }
   return 1.0;
 }
 
 /**
- * Goods output multiplier. Returns 1.5 with Prosperity Program, 1.0 otherwise.
+ * Goods output multiplier for an owner. Returns 1.5 with Prosperity Program, 1.0 otherwise.
  */
-export function getGoodsOutputMult(world: World): number {
-  if (getProgramForAge(world, 'ascendance') === 'prosperityProgram') {
+export function getGoodsOutputMult(world: World, owner: number): number {
+  if (getProgramForAge(world, owner, 'ascendance') === 'prosperityProgram') {
     return PROSPERITY_GOODS_MULT;
   }
   return 1.0;
 }
 
 /**
- * Extended tax multiplier: Fiber Grid (1.25x) stacks with Prosperity (1.5x).
+ * Extended tax multiplier for an owner: Fiber Grid (1.25x) stacks with Prosperity (1.5x).
  */
-export function getTaxMultiplierFull(world: World): number {
-  let mult = getTaxMultiplier(world);
-  if (getProgramForAge(world, 'ascendance') === 'prosperityProgram') {
+export function getTaxMultiplierFull(world: World, owner: number): number {
+  let mult = getTaxMultiplier(world, owner);
+  if (getProgramForAge(world, owner, 'ascendance') === 'prosperityProgram') {
     mult *= PROSPERITY_TAX_MULT;
   }
   return mult;
 }
 
 /**
- * Check if a unit kind is available at the world's current age.
+ * Check if a unit kind is available at an owner's current age.
  * Used by spawn validation and the AI's spawn choices.
  */
 /** Age ordering for gating: higher index = later age. */
 export const AGE_ORDER: Age[] = ['foundation', 'connectivity', 'industry', 'information', 'ascendance'];
 
-export function isUnitAvailableForAge(world: World, minAge: Age): boolean {
-  const have = AGE_ORDER.indexOf(world.ages.age);
+export function isUnitAvailableForAge(world: World, owner: number, minAge: Age): boolean {
+  const have = AGE_ORDER.indexOf(getAgeState(world, owner).age);
   const need = AGE_ORDER.indexOf(minAge);
   return have >= need;
 }
@@ -272,21 +298,24 @@ export function isUnitAvailableForAge(world: World, minAge: Age): boolean {
 /** Register the `advanceAge` command. */
 /**
  * True when an `advanceAge` command is a harmless duplicate: its payload
- * carries the `fromAge` the issuer saw at enqueue, and the world has
- * already advanced strictly past it (someone else's advancement landed
- * first). Such a command fizzles at apply instead of going stale — the
- * fix for the same-tick double-advance race (Phase 9 soak finding 6.1).
+ * carries the `fromAge` the issuer saw at enqueue, and the OWNER has
+ * already advanced strictly past it (the same owner enqueued twice on
+ * one tick). Such a command fizzles at apply instead of going stale —
+ * the fix for the same-tick double-advance race (Phase 9 soak finding
+ * 6.1). Per-side ages (2026-10-01): the comparison is against the
+ * issuing owner's age state, never a world-global age — two different
+ * owners advancing on the same tick is normal play, not a duplicate.
  * A missing/invalid `fromAge` keeps the legacy strict behavior, and an
  * age equal to or behind `fromAge` is never a duplicate (ages never
  * regress, so "behind" can't happen — it falls through to the normal
  * validation, which rejects loudly as before).
  */
-function isAdvanceAgeDuplicate(cmd: Command, world: World): boolean {
+function isAdvanceAgeDuplicate(cmd: Command, world: World, owner: number): boolean {
   const fromAge = cmd.payload['fromAge'];
   if (typeof fromAge !== 'string') return false;
   const fromIdx = (AGE_ORDER as string[]).indexOf(fromAge);
   if (fromIdx < 0) return false;
-  return (AGE_ORDER as string[]).indexOf(world.ages.age) > fromIdx;
+  return (AGE_ORDER as string[]).indexOf(getAgeState(world, owner).age) > fromIdx;
 }
 /** Age progression: each age maps to its successor, valid programs, and cost. */
 export const AGE_PROGRESSION: Record<Age, { next: Age | null; programs: string[]; cost: Record<string, number> }> = {
@@ -308,17 +337,20 @@ export function registerAgeCommands(queue: CommandQueue): void {
       if (!player) {
         return 'advanceAge: unknown owner';
       }
-      // Idempotency (Phase 9 balance pass, 2026-09-30): age advancement is
-      // world-global, so two issuers (two AIs, or a human and an AI) can
-      // both enqueue it on the same tick. The payload may carry `fromAge`
-      // — the age the issuer saw at enqueue. When the world has already
-      // advanced past it, this command is a harmless duplicate: it stays
-      // valid and fizzles at apply (no double charge, no stale throw).
+      // Idempotency (Phase 9 balance pass, 2026-09-30): the same owner
+      // can enqueue twice on one tick (e.g. two AI thinks, or a human
+      // and a queued order). The payload may carry `fromAge` — the age
+      // the issuer saw at enqueue. When the OWNER has already advanced
+      // past it, this command is a harmless duplicate: it stays valid
+      // and fizzles at apply (no double charge, no stale throw).
       // Without `fromAge` the legacy strict behavior applies.
-      if (isAdvanceAgeDuplicate(cmd, world)) return null;
-      const prog = AGE_PROGRESSION[world.ages.age];
+      // Per-side ages (2026-10-01): each owner advances independently —
+      // another owner's advancement is never a duplicate of yours.
+      if (isAdvanceAgeDuplicate(cmd, world, owner)) return null;
+      const st = getAgeState(world, owner);
+      const prog = AGE_PROGRESSION[st.age];
       if (!prog.next) {
-        return `advanceAge: already at ${world.ages.age}, cannot advance further`;
+        return `advanceAge: already at ${st.age}, cannot advance further`;
       }
       // Program choice is required and must match the next age.
       const program = cmd.payload['program'];
@@ -341,14 +373,15 @@ export function registerAgeCommands(queue: CommandQueue): void {
       if (!player) {
         throw new Error('advanceAge: unknown owner at apply');
       }
-      // Duplicate (see validate): the world already advanced past the
+      // Duplicate (see validate): the owner already advanced past the
       // issuer's `fromAge` — fizzle as a no-op WITHOUT charging. The
       // first applier already paid; a second charge would bill the same
       // advancement twice.
-      if (isAdvanceAgeDuplicate(cmd, world)) {
-        return { age: world.ages.age, program, stale: true };
+      const st = getAgeState(world, owner);
+      if (isAdvanceAgeDuplicate(cmd, world, owner)) {
+        return { age: st.age, program, stale: true };
       }
-      const prog = AGE_PROGRESSION[world.ages.age];
+      const prog = AGE_PROGRESSION[st.age];
       if (!prog.next) {
         throw new Error('advanceAge: already at max age at apply time');
       }
@@ -364,22 +397,29 @@ export function registerAgeCommands(queue: CommandQueue): void {
         stocks[res] = (stocks[res] ?? 0) - amount;
       }
       // Save the program choice for the age we're leaving.
-      const leavingAge = world.ages.age;
-      if (world.ages.program) {
-        world.ages.programs[leavingAge] = world.ages.program;
+      const leavingAge = st.age;
+      if (st.program) {
+        st.programs[leavingAge] = st.program;
       }
-      world.ages.age = prog.next!;
-      world.ages.program = program as NationalProgram;
+      st.age = prog.next!;
+      st.program = program as NationalProgram;
       return { age: prog.next, program };
     },
   });
 }
 
 /**
- * Canonical JSON-safe encoding of age state for snapshots and digests.
+ * Canonical JSON-safe encoding of the per-side age map for snapshots.
+ * Keys are owner ids (as strings); values are the plain AgeState.
  */
-export function encodeAgeState(ages: AgeState): unknown {
-  return { age: ages.age, program: ages.program, programs: { ...ages.programs } };
+export function encodeAgeState(ages: PerSideAges): unknown {
+  const out: Record<string, unknown> = {};
+  for (const key of Object.keys(ages).sort()) {
+    const st = ages[Number(key)];
+    if (!st) continue;
+    out[key] = { age: st.age, program: st.program, programs: { ...st.programs } };
+  }
+  return out;
 }
 
 /** Valid ages and programs for snapshot decoding. */
@@ -391,8 +431,8 @@ const VALID_PROGRAMS: string[] = [
   'arsenalProgram', 'prosperityProgram',
 ];
 
-/** Restore age state from a snapshot payload (see snapshot.ts). */
-export function decodeAgeState(data: unknown): AgeState {
+/** Restore one owner's age state from a snapshot payload. */
+function decodeOneAgeState(data: unknown): AgeState {
   const d = data as { age: Age; program: NationalProgram; programs?: Partial<Record<Age, NationalProgram>> };
   const age = VALID_AGES.includes(d.age) ? d.age : 'foundation';
   const program = (typeof d.program === 'string' && VALID_PROGRAMS.includes(d.program))
@@ -406,4 +446,28 @@ export function decodeAgeState(data: unknown): AgeState {
     }
   }
   return { age, program, programs };
+}
+
+/**
+ * Restore the per-side age map from a snapshot payload (see snapshot.ts).
+ * `owners` are the player ids in the decoded city — used only for the
+ * legacy format (pre-2026-10-01): one world-global AgeState, which every
+ * side played at, so every current owner inherits a copy (AD9 additive,
+ * no version bump).
+ */
+export function decodeAgeState(data: unknown, owners: number[] = [0]): PerSideAges {
+  const out: PerSideAges = {};
+  const d = data as Record<string, unknown> | null;
+  if (!d || typeof d !== 'object') return out;
+  if (typeof (d as { age?: unknown }).age === 'string') {
+    const st = decodeOneAgeState(d);
+    for (const o of owners) out[o] = { age: st.age, program: st.program, programs: { ...st.programs } };
+    return out;
+  }
+  for (const [k, v] of Object.entries(d)) {
+    const o = Number(k);
+    if (!Number.isInteger(o)) continue;
+    out[o] = decodeOneAgeState(v);
+  }
+  return out;
 }

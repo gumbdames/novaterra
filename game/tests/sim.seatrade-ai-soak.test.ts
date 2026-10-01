@@ -63,7 +63,7 @@ import {
 } from '../src/sim/movement';
 import { createCombatSystem, registerCombatCommands } from '../src/sim/combat';
 import { createEconomySystem, registerEconomyCommands } from '../src/sim/economy';
-import { registerAgeCommands } from '../src/sim/ages';
+import { registerAgeCommands , getAgeState } from '../src/sim/ages';
 import { addAIPlayer, createAISystem } from '../src/sim/ai';
 import { digestWorld } from '../src/sim/digest';
 import { grantAllTrainingResources } from './sim.roster-fixtures';
@@ -113,7 +113,7 @@ function setupSeaTradeSoak(seed: number): Ctx {
   // connectivity-age. Start at industry so the sea-trade think isn't
   // age-gated — the test is about the sea-trade phases, not the age
   // climb.
-  world.ages.age = 'industry';
+  getAgeState(world, 0).age = 'industry';
   const base = findCoastalBase(terrain);
   addAIPlayer(world, 0, 'marshal', base.x, base.z);
   // Make the AI rich immediately: thinkPeacefulSeaTrade needs
