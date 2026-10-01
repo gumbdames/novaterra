@@ -57,7 +57,7 @@ import { createTickDriver, TICK_MS } from '../sim/tick';
 import type { TerrainData } from '../sim/terrain';
 import { generateTerrain, getMapPreset, isWater } from '../sim/terrain';
 import { digestWorld } from '../sim/digest';
-import { registerCityCommands, getPlayer } from '../sim/city';
+import { registerCityCommands, getPlayer, BUILDING_DEFS } from '../sim/city';
 import { createEconomySystem, registerEconomyCommands } from '../sim/economy';
 import { registerUnitCommands } from '../sim/units';
 import {
@@ -337,23 +337,69 @@ export function checkSkirmishVictory(world: World): boolean {
   // raze a base instead of whack-a-moling retraining units forever.
   // The AI's own production is virtual (no physical buildings), so vs
   // the AI this still reduces to wiping its fielded army.
+  //
+  // Roadmap B8 (2026-10-02): symmetric with checkSkirmishDefeat — the
+  // capital / war-weariness short-circuit (see isConquestEliminated)
+  // applies to the rival too.
   if (world.peaceful === true) return false;
   if (world.victoryKind !== undefined && world.victoryKind !== 'conquest') {
     return checkAltVictory(world, HUMAN_PLAYER_ID);
   }
+  return isConquestEliminated(world, AI_PLAYER_ID);
+}
+
+/**
+ * Roadmap B8 (2026-10-02): capital / war-weariness elimination rule.
+ *
+ * Defeat = zero units AND (zero buildings OR capital destroyed).
+ *
+ * Design mapping (validated against the code — the item's terms have no
+ * direct referent):
+ * - "capital": NOVATERRA has no HQ building, so the capital is defined
+ *   as the side's MILITARY building set (`BuildingDef.military`, the
+ *   war-apparatus defs) — the war-making core. "Capital destroyed"
+ *   means no surviving military building.
+ * - "army < 25% cap": the rule only fires at zero units, and an empty
+ *   army is below 25% of any cap, so the clause is implied — it is not
+ *   checked separately. (Deliberate: no new cap constant, no new state.)
+ *
+ * Why this shortens the endgame: the old rule needed zero units AND
+ * zero buildings, so a beaten side with only value-10 houses left forced
+ * a bulldozing grind. Now a side with no army and no war core is done
+ * even if civilian houses stand — but a side with zero units and an
+ * intact barracks (or any military building) is NOT eliminated: it can
+ * still rebuild, so the game honestly continues.
+ *
+ * Pure function of world state — no wall clock, no RNG.
+ */
+function isConquestEliminated(world: World, owner: number): boolean {
+  let hasUnit = false;
   for (const unit of world.units) {
-    if (unit.owner === AI_PLAYER_ID) return false;
+    if (unit.owner === owner) {
+      hasUnit = true;
+      break;
+    }
   }
+  if (hasUnit) return false;
+  let hasBuilding = false;
+  let hasMilitaryBuilding = false;
   for (const building of world.city.buildings) {
-    if (building.owner === AI_PLAYER_ID) return false;
+    if (building.owner !== owner) continue;
+    hasBuilding = true;
+    if (BUILDING_DEFS[building.kind]?.military === true) {
+      hasMilitaryBuilding = true;
+      break;
+    }
   }
-  return true;
+  return !hasBuilding || !hasMilitaryBuilding;
 }
 
 /**
  * Conquest defeat check (deterministic): true when the player (owner 0)
- * has no units and no buildings left. Pure function of world state —
- * no wall clock, no RNG. Mirror of checkSkirmishVictory.
+ * is eliminated under the B8 capital / war-weariness rule — zero units
+ * AND (zero buildings OR no surviving military building). Pure function
+ * of world state — no wall clock, no RNG. Mirror of
+ * checkSkirmishVictory.
  */
 export function checkSkirmishDefeat(world: World): boolean {
   // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): conquest
@@ -366,18 +412,17 @@ export function checkSkirmishDefeat(world: World): boolean {
   // damage (C3): an enemy army with siege orders can raze the
   // player's base to the ground, so defeat is a live threat at every
   // difficulty for the first time.
+  //
+  // Roadmap B8 (2026-10-02): the war-weariness short-circuit — zero
+  // units plus a destroyed war core (no military building left) ends
+  // the game even when civilian houses still stand, cutting the
+  // bulldoze-the-houses endgame grind. See isConquestEliminated.
   if (world.peaceful === true) return false;
   if (world.victoryKind !== undefined && world.victoryKind !== 'conquest') {
     // Roadmap B2: symmetric — the rival can win the economic race too.
     return checkAltVictory(world, AI_PLAYER_ID);
   }
-  for (const unit of world.units) {
-    if (unit.owner === HUMAN_PLAYER_ID) return false;
-  }
-  for (const building of world.city.buildings) {
-    if (building.owner === HUMAN_PLAYER_ID) return false;
-  }
-  return true;
+  return isConquestEliminated(world, HUMAN_PLAYER_ID);
 }
 
 /**

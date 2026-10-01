@@ -748,7 +748,12 @@ player would. Destroy every enemy unit and building to win the
 **conquest victory** screen — right-click enemy buildings with your
 tanks and artillery to siege them to rubble (see "Attacking buildings
 (siege)" above) — but if you lose all of your own units and buildings
-first, the **defeat** screen ends your run. (If both sides fall on the
+first, the **defeat** screen ends your run. War-weariness shortens the
+endgame: if your entire army is gone and your war core is destroyed
+(no military building left standing), the defeat screen fires even
+while civilian houses still stand — but as long as a barracks or any
+other military building survives, you can rebuild and the game goes
+on. (If both sides fall on the
 same tick, defeat takes precedence: you must survive your victory to
 claim it.)
 

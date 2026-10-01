@@ -64,6 +64,23 @@ function playerBuilding(): BuildingRecord {
   };
 }
 
+/** A surviving player military building (the "capital" war core, B8). */
+function playerMilitaryBuilding(): BuildingRecord {
+  return {
+    id: 9003,
+    kind: 'barracks',
+    owner: HUMAN_PLAYER_ID,
+    cx: 12,
+    cz: 12,
+    facing: 0,
+    progress: 1,
+    level: 1,
+    operational: true,
+    powered: true,
+    watered: true,
+  };
+}
+
 describe('checkSkirmishDefeat', () => {
   it('is false for a fresh session: the player has starting forces', () => {
     const world = freshWorld();
@@ -77,10 +94,22 @@ describe('checkSkirmishDefeat', () => {
     expect(checkSkirmishDefeat(world)).toBe(true);
   });
 
-  it('is false when the player keeps a building but loses all units', () => {
+  it('is TRUE when the player keeps only civilian buildings but loses all units and the war core (B8)', () => {
+    // Roadmap B8: the war-weariness short-circuit. Zero units plus a
+    // destroyed capital (no military building left) ends the game even
+    // when value-10 houses still stand — no more bulldozing grind.
     const world = freshWorld();
     world.units = world.units.filter((u) => u.owner !== HUMAN_PLAYER_ID);
-    world.city.buildings.push(playerBuilding());
+    world.city.buildings.push(playerBuilding()); // civilian house only
+    expect(checkSkirmishDefeat(world)).toBe(true);
+  });
+
+  it('is false when the player keeps a military building but loses all units (B8)', () => {
+    // The war core survives: the player can still rebuild, so the game
+    // honestly continues.
+    const world = freshWorld();
+    world.units = world.units.filter((u) => u.owner !== HUMAN_PLAYER_ID);
+    world.city.buildings.push(playerMilitaryBuilding());
     expect(checkSkirmishDefeat(world)).toBe(false);
   });
 
