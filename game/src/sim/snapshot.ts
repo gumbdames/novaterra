@@ -54,7 +54,7 @@ import type { DelegationState } from './delegation';
 import { encodeDelegationState, decodeDelegationState, initDelegation } from './delegation';
 import type { SuperweaponState } from './superweapons';
 import { encodeSuperweaponState, decodeSuperweaponState, initSuperweapons } from './superweapons';
-import { encodeUpgrades, decodeUpgrades } from './upgrades';
+import { encodeUpgrades, decodeUpgrades, encodeUpgradeLevels, decodeUpgradeLevels } from './upgrades';
 import type { DiplomacyState } from './diplomacy';
 import { decodeDiplomacyState } from './diplomacy';
 
@@ -149,6 +149,13 @@ export interface Snapshot {
    * neutral fresh state (no old save had any diplomacy).
    */
   diplomacy: DiplomacyState;
+  /**
+   * Roadmap B9 (2026-10-02): per-player repeatable-upgrade levels
+   * (owner -> upgrade id -> level). Added without a version bump —
+   * legacy snapshots predate the field and decode to {} (no old save
+   * had any repeatable research).
+   */
+  upgradeLevels: Record<number, Record<string, number>>;
 }
 
 /** Thrown when a snapshot's version doesn't match. Names expected vs found. */
@@ -488,6 +495,9 @@ export function takeSnapshot(world: World): Snapshot {
     delegation: encodeDelegationState(world.delegation) as DelegationState,
     superweapons: encodeSuperweaponState(world.superweapons) as SuperweaponState,
     upgrades: encodeUpgrades(world.upgrades),
+    // Roadmap B9: repeatable-upgrade levels (AD9 additive — older
+    // snapshots decode to "nothing researched", no version bump).
+    upgradeLevels: encodeUpgradeLevels(world.upgradeLevels),
     // Grand-expansion Phase 8 (peaceful mode): faithful copy of the
     // immutable tick-0 flag.
     peaceful: world.peaceful,
@@ -558,6 +568,9 @@ function restoreSnapshotInner(snap: Snapshot): World {
   world.superweapons = snap.superweapons ? decodeSuperweaponState(snap.superweapons) : initSuperweapons();
   // v5 snapshots lack upgrades — per the spec they default to {}.
   world.upgrades = decodeUpgrades(snap.upgrades ?? {});
+  // Roadmap B9: pre-B9 snapshots lack upgradeLevels — decode to {}
+  // (AD9 neutral default, no version bump).
+  world.upgradeLevels = decodeUpgradeLevels(snap.upgradeLevels ?? {});
   // Grand-expansion Phase 8 (peaceful mode): pre-flag snapshots
   // decode to false — no old save was peaceful (AD9 neutral default,
   // no version bump). A hand-built snapshot without the field (e.g.

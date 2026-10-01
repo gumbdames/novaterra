@@ -628,7 +628,10 @@ describe('conquest is reachable (ui/session.ts checks)', () => {
 
   it('an enemy army razing the player base triggers DEFEAT', () => {
     const ctx = scenario();
-    completeBuilding(ctx.world, 'house', 0, 10, 10);
+    // Roadmap B8: defeat = zero units + no surviving MILITARY building.
+    // A barracks (military) keeps the player alive; razing it ends the
+    // war even though no civilian buildings were involved.
+    completeBuilding(ctx.world, 'barracks', 0, 10, 10);
     const bId = ctx.world.city.nextBuildingId - 1;
     completeBuildings(ctx.world, 1, ['warFactory'], 60, 60);
     const c = buildingCenter(ctx, bId);
@@ -647,7 +650,10 @@ describe('conquest is reachable (ui/session.ts checks)', () => {
   it('razing the rival base triggers VICTORY', () => {
     const ctx = scenario();
     completeBuildings(ctx.world, 0, ['warFactory'], 10, 10);
-    completeBuilding(ctx.world, 'house', 1, 70, 70);
+    // Roadmap B8: the rival's barracks (military) is what keeps them in
+    // the war — razing it triggers victory with civilian buildings
+    // untouched (there are none here, but none are needed).
+    completeBuilding(ctx.world, 'barracks', 1, 70, 70);
     const bId = ctx.world.city.nextBuildingId - 1;
     const c = buildingCenter(ctx, bId);
     const land = findLandNear(ctx.terrain, c.x + 15, c.z);

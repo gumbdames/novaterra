@@ -241,11 +241,14 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   (age, production building, cost, manpower, Naval Yard coast rule).
   Train buttons show funds + materials + manpower cost; build buttons
   show funds + materials. Selecting a completed Research Lab (or owning
-  one with nothing selected) opens the research panel: all 21 upgrades
+  one with nothing selected) opens the research panel: all 22 upgrades
   in Military / Economy / Infrastructure / Logistics / Intel groups with one-line effects, cost,
   researched checkmark, and disabled reasons (the Phase 2 Infrastructure
   group is the utility research ladder: combustion → advanced nuclear →
-  fusion, groundwater survey, desalination tech, grid storage). Selected
+  fusion, groundwater survey, desalination tech, grid storage; roadmap B9,
+  2026-10-02, adds the repeatable Advanced Research to the Economy group
+  — it never shows a checkmark; the row shows its level and the next
+  level's 200×level research price instead). Selected
   military units show a veterancy line (Phase 1: rank + ▲ chevrons + XP
   progress, e.g. "Veteran ▲▲ · 320/800 XP" via `ui/veterancy.ts`); selected
   buildings show their crew training level ("Level 2/3", from economy.ts)
@@ -625,7 +628,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   extension point), module-level language
   state (`setUiLanguage` / `getUiLanguage` / `loc` / `fillLoc`). Covers
   all 96 unit names, 99 building names, palette/upgrade tab names, the
-  21 upgrade names + one-line effects, cost labels, and lock reasons.
+  22 upgrade names + one-line effects, cost labels, and lock reasons.
   Legacy Phase 3 strings are still English-only; they were never localized.
   Grand-expansion Phase 8 (peaceful, workstream B, 2026-09-30):
   `STRINGS.peaceful` (setup toggle + explanation, the Military-tab

@@ -471,9 +471,9 @@ describe('military def classification (roster pinning)', () => {
     }
   });
 
-  it('classifies every one of the 21 upgrade defs', () => {
+  it('classifies every one of the 22 upgrade defs', () => {
     const kinds = Object.keys(UPGRADE_DEFS);
-    expect(kinds).toHaveLength(21);
+    expect(kinds).toHaveLength(22);
     const military = kinds.filter(
       (k) => UPGRADE_DEFS[k as keyof typeof UPGRADE_DEFS].military === true,
     );

@@ -642,6 +642,10 @@ might or economic boom, your choice:
   supply more power.
 - **Vertical Farming** — farms grow +50% more food on less water.
 - **Free Trade Policy** — markets, shops and trade routes earn more.
+- **Advanced Research** — the endgame sink: repeatable, +2% factory
+  output per level. The first level costs 200 research, the next 400,
+  then 600, and so on — research it again and again as long as your
+  labs keep producing.
 
 Each upgrade has prerequisites — buildings, ages, sometimes another
 upgrade — shown in the research panel with the reason when locked.

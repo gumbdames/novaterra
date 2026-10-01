@@ -73,6 +73,7 @@ import {
   playerHasCompletedLab,
   type MenuTabId,
 } from './palettes';
+import { UPGRADE_DEFS, repeatableUpgradeLevel } from '../sim/upgrades';
 import { HUMAN_PLAYER_ID, AI_PLAYER_ID } from './session';
 import {
   allBuildTabs,
@@ -502,6 +503,12 @@ export function selectionDigest(
     for (const group of UPGRADE_GROUPS) {
       for (const id of group.ids) {
         parts.push(`rs:${id}:${upgradeAvailability(world, HUMAN_PLAYER_ID, id).state}`);
+        // Roadmap B9 (AD11): repeatable upgrades re-render (name + cost)
+        // per level — the level joins the rebuild key as an ADDITIVE
+        // segment so the panel refreshes the moment a level lands.
+        if (UPGRADE_DEFS[id].repeatable === true) {
+          parts.push(`rslvl:${id}:${repeatableUpgradeLevel(world, HUMAN_PLAYER_ID, id)}`);
+        }
       }
     }
   }
@@ -920,7 +927,7 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'research-effect',
       'research-btn',
     ],
-    digestLabels: ['lab:', 'rs:'],
+    digestLabels: ['lab:', 'rs:', 'rslvl:'],
   },
   {
     id: 'toast',

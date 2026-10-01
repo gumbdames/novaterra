@@ -895,7 +895,8 @@ describe('upgrade effects (§4)', () => {
     // (advancedLogistics) → 19.
     // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
     // +2 intel upgrades (signalsIntel, counterIntel) → 21.
-    expect(UPGRADE_IDS).toHaveLength(21);
+    // Roadmap B9 (repeatable research, 2026-10-02): +1 advancedResearch → 22.
+    expect(UPGRADE_IDS).toHaveLength(22);
     expect(UPGRADE_DEFS.apRounds).toMatchObject({
       costFunds: 800, costResearch: 60, minAge: 'industry',
       requiredBuildings: ['warFactory'],

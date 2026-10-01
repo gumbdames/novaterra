@@ -467,7 +467,10 @@ describe('end-to-end: the AI finishes a rival whose army is gone', () => {
   it('razes the victim base and triggers the defeat path', () => {
     const r = runSoak(777);
     expect(r.siegeObserved).toBe(true);
-    expect(r.buildingKills).toBe(4);
+    // Roadmap B8: defeat fires when the victim's UNITS are gone and no
+    // MILITARY building survives — the barracks + warFactory fall, the
+    // house and powerPlant are still standing when the war ends.
+    expect(r.buildingKills).toBe(2);
     expect(r.defeat).toBe(true);
     expect(r.outcome).toBe('defeat');
     expect(r.ticks).toBeLessThan(4000);

@@ -119,6 +119,8 @@ import {
   formatTrainCost,
   formatBuildCost,
   formatResearchCost,
+  formatResearchCostFor,
+  upgradeDisplayName,
   trainTooltip,
   buildTooltip,
   buildTabsForMenuTab,
@@ -2883,12 +2885,14 @@ export class HUD {
         const st = upgradeAvailability(world, HUMAN_PLAYER_ID, id);
         const row = el('div', `research-row${st.state === 'ready' ? '' : ' locked'}`);
         const head = el('div', 'research-head');
-        const nameEl = el('span', 'research-name', upgradeName(id));
+        const nameEl = el('span', 'research-name', upgradeDisplayName(world, HUMAN_PLAYER_ID, id));
         head.append(nameEl);
         if (st.state === 'researched') {
           head.append(el('span', 'research-done', loc(p.researchedTag)));
         }
-        head.append(el('span', 'palette-cost', formatResearchCost(id)));
+        // Roadmap B9: level-scaled cost for repeatable upgrades (the
+        // static def cost would show the wrong price past level 1).
+        head.append(el('span', 'palette-cost', formatResearchCostFor(world, HUMAN_PLAYER_ID, id)));
         row.append(head);
         row.append(el('div', 'research-effect', upgradeEffect(id)));
         const btn = document.createElement('button');

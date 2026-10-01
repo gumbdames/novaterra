@@ -46,7 +46,7 @@ function setupAiAgeWorld(difficulty: 'cadet' | 'commander' | 'general' | 'marsha
   registerUnitCommands(queue, terrain);
   // Plenty of everything: the ledger gate, not the wallet, is what's
   // being pinned.
-  const player = getPlayer(world.city, 1);
+  const player = getPlayer(world.city, 1)!;
   player.funds = 1_000_000;
   player.materials = 1_000_000;
   player.influence = 10_000;

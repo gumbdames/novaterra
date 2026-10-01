@@ -65,6 +65,7 @@ import {
   FREE_TRADE_MARKET_MULT,
   FREE_TRADE_SHOP_MULT,
   FREE_TRADE_TRADE_ROUTE_INCOME,
+  advancedResearchFactoryMult,
 } from './upgrades';
 import {
   getUtilityModel,
@@ -592,6 +593,11 @@ function runProduction(world: World, city: CityState): void {
     // with Heavy Industry's 1.5x — the boom path).
     if (b.kind === 'factory' && hasUpgrade(world, b.owner, 'precisionManufacturing')) {
       mult *= PRECISION_MANUFACTURING_MULT;
+    }
+    // Roadmap B9: Advanced Research — repeatable +2% factory output per
+    // level, stacking with the one-shot bonuses above.
+    if (b.kind === 'factory') {
+      mult *= advancedResearchFactoryMult(world, b.owner);
     }
     // Phase 3: city specialization boosts/penalizes zoned output.
     mult *= specializationMult(player, def.zone);

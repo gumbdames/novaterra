@@ -514,9 +514,10 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   (`getSightBonus`, applied in `ai.ts` `getVisibleEnemies`). `UnitDef`
   carries `minAge`; fighter requires Connectivity (gated in `spawnUnit`
   validation).
-- `upgrades.ts` — the 21 researchable upgrades (roster expansion's 12 +
+- `upgrades.ts` — the 22 researchable upgrades (roster expansion's 12 +
   Phase 2's utility ladder 6 + Phase 3's advancedLogistics + the intel
-  roster's signalsIntel/counterIntel). Grand-expansion Phase 8 (peaceful
+  roster's signalsIntel/counterIntel + roadmap B9's repeatable
+  advancedResearch). Grand-expansion Phase 8 (peaceful
   mode, workstream A, 2026-09-30): `UpgradeDef.military?: boolean` —
   true on the 11 war upgrades (combat lines, fieldMedicine,
   advancedLogistics, signalsIntel/counterIntel; the full classification
@@ -527,7 +528,20 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   command: completed lab required; age/prereq/affordability/duplicates
   validated at enqueue and apply; deducts funds/research and appends the
   upgrade id to `world.upgrades[owner]` (plain data — snapshotted v6 and
-  digested, owner-sorted/id-sorted). Effect hooks consumed across the sim:
+  digested, owner-sorted/id-sorted). Roadmap B9 (2026-10-02):
+  `advancedResearch` is the first REPEATABLE upgrade (the endgame
+  research sink): `UpgradeDef.repeatable`, levels on
+  `world.upgradeLevels` (owner -> id -> level, snapshotted AD9 without
+  a version bump and digest-covered as `|upglvl=|`), priced per level
+  by `upgradeResearchCost` (200×level research, zero funds — the single
+  price authority for the sim command, the AI ledger, and the UI
+  mirror), effect `advancedResearchFactoryMult` (+2% factory output per
+  level, additive, applied in economy.ts beside Precision
+  Manufacturing). The command skips the duplicate rejection for
+  repeatable defs; `hasUpgrade` never covers them. The AI takes it
+  fixed-last (excluded from the personality research shuffle,
+  re-appended after the economy tail by `researchOrderFor`) once the
+  one-shots are done. Effect hooks consumed across the sim:
   `effectiveSight` (AI sight, Drone Optics, Sonar Suite, Advanced
   Avionics), `effectiveRange` (Cruise Missiles), `effectiveSpeed`
   (Engine Tuning), `effectiveHealPerSec` (Field Medicine),

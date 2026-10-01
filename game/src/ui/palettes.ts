@@ -42,6 +42,8 @@ import { isUnitAvailableForAge } from '../sim/ages';
 import {
   UPGRADE_DEFS,
   hasUpgrade,
+  repeatableUpgradeLevel,
+  upgradeResearchCost,
   type UpgradeId,
 } from '../sim/upgrades';
 import {
@@ -449,7 +451,7 @@ export const UPGRADE_GROUPS: readonly UpgradeGroup[] = [
   },
   {
     id: 'economy',
-    ids: ['precisionManufacturing', 'smartGrid', 'verticalFarming', 'freeTrade'],
+    ids: ['precisionManufacturing', 'smartGrid', 'verticalFarming', 'freeTrade', 'advancedResearch'],
   },
   // Grand-expansion Phase 2 (2026-09-30): the utility research ladder —
   // its own group so the military/economy pins keep their meaning.
@@ -641,7 +643,10 @@ export function upgradeAvailability(
 ): UpgradeAvailability {
   const def = UPGRADE_DEFS[id];
   const p = STRINGS.palettes;
-  if (hasUpgrade(world, owner, id)) {
+  // Roadmap B9: repeatable upgrades are never "done" — every level is a
+  // fresh research, so the researched state never applies to them
+  // (hasUpgrade never covers them anyway; the guard is belt-and-braces).
+  if (def.repeatable !== true && hasUpgrade(world, owner, id)) {
     return { state: 'researched', reason: loc(p.alreadyResearched) };
   }
   // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
@@ -680,10 +685,13 @@ export function upgradeAvailability(
     };
   }
   const player = getPlayer(world.city, owner);
+  // Roadmap B9: repeatable upgrades price the NEXT level (200×level
+  // research) — the static def cost would grey the button out wrong.
+  const cost = upgradeResearchCost(world, owner, id);
   if (
     player === undefined ||
-    player.funds < def.costFunds ||
-    player.research < def.costResearch
+    player.funds < cost.costFunds ||
+    player.research < cost.costResearch
   ) {
     return { state: 'locked', reason: loc(p.cannotAfford) };
   }
@@ -735,6 +743,37 @@ export function formatResearchCost(id: UpgradeId): string {
     [def.costFunds, p.resFunds],
     [def.costResearch, p.resResearch],
   ]);
+}
+
+/**
+ * Roadmap B9: localized research cost for the owner RIGHT NOW —
+ * level-scaled for repeatable upgrades (200×level research), the static
+ * def cost otherwise. The research panel renders through this so the
+ * price on the button always matches the sim's `researchUpgrade`
+ * validate.
+ */
+export function formatResearchCostFor(world: World, owner: number, id: UpgradeId): string {
+  const p = STRINGS.palettes;
+  const cost = upgradeResearchCost(world, owner, id);
+  return joinCostParts([
+    [cost.costFunds, p.resFunds],
+    [cost.costResearch, p.resResearch],
+  ]);
+}
+
+/**
+ * Roadmap B9: localized upgrade name for the research panel —
+ * repeatable upgrades show their current level ("Advanced Research ·
+ * Lv 2") so the panel reads as a ladder; one-shot upgrades render the
+ * plain name.
+ */
+export function upgradeDisplayName(world: World, owner: number, id: UpgradeId): string {
+  const name = upgradeName(id);
+  if (UPGRADE_DEFS[id].repeatable === true) {
+    const level = repeatableUpgradeLevel(world, owner, id);
+    return level > 0 ? `${name} · Lv ${level}` : name;
+  }
+  return name;
 }
 
 /** Multi-line train-button tooltip: cost, HP, then the lock reason. */

@@ -53,7 +53,7 @@ import type { DiplomacyState } from './diplomacy';
 import { initDiplomacy } from './diplomacy';
 import type { SuperweaponState } from './superweapons';
 import { initSuperweapons } from './superweapons';
-import { initUpgrades } from './upgrades';
+import { initUpgrades, initUpgradeLevels } from './upgrades';
 
 /** Minimal per-entity record. Later steps add components; the shape stays plain. */
 export interface EntityRecord {
@@ -102,6 +102,14 @@ export interface World {
   superweapons: SuperweaponState;
   /** Per-player researched upgrade ids (spec docs/research/roster-expansion.md §4). */
   upgrades: Record<number, string[]>;
+  /**
+   * Roadmap B9 (2026-10-02): per-player levels of REPEATABLE upgrades
+   * (currently only 'advancedResearch'): owner -> upgrade id -> level.
+   * One-shot upgrades live in `upgrades`; repeatable ones live HERE so
+   * the id list keeps its "researched set" meaning and save/digest code
+   * stays simple. Snapshotted + digested like `upgrades`.
+   */
+  upgradeLevels: Record<number, Record<string, number>>;
   /**
    * Grand-expansion Phase 8 (peaceful mode, 2026-09-30): true when this
    * world plays peaceful — rivals exist but play peacefully; military
@@ -193,6 +201,7 @@ export function createWorld(seed: number): World {
     delegation: initDelegation(),
     superweapons: initSuperweapons(),
     upgrades: initUpgrades(),
+    upgradeLevels: initUpgradeLevels(),
     // Peaceful defaults to false; the session sets it from
     // SessionOptions.peaceful for fresh worlds, restoreSnapshot for saves.
     peaceful: false,

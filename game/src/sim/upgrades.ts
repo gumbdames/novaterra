@@ -38,6 +38,16 @@
  * capability number; no upgrade has more than two prerequisite *slots*
  * (buildings count as one slot, age as the other).
  *
+ * Roadmap B9 (repeatable research, 2026-10-02): 'advancedResearch' is
+ * the first REPEATABLE upgrade — researched any number of times, each
+ * level +2% factory output, costing 200×level research. Repeatable
+ * levels live on `world.upgradeLevels` (owner -> id -> level), NOT in
+ * the `world.upgrades` id list (which keeps its "researched set"
+ * meaning); `repeatableUpgradeLevel` reads them, `upgradeResearchCost`
+ * computes the level-scaled price, and the researchUpgrade command /
+ * the UI availability mirror both treat repeatable defs through those
+ * helpers instead of `hasUpgrade`.
+ *
  * Pure module: no DOM, no three.js, no wall clock. Safe under Node/vitest.
  */
 
@@ -54,7 +64,7 @@ import {
 import type { CommandQueue } from './commands';
 import type { UnitDef } from './units';
 
-/** The 21 upgrade ids (roster expansion's 12 + Phase 2's utility ladder 6 + Phase 3's advancedLogistics + the grand-expansion intel roster's 2). */
+/** The 22 upgrade ids (roster expansion's 12 + Phase 2's utility ladder 6 + Phase 3's advancedLogistics + the grand-expansion intel roster's 2 + roadmap B9's repeatable advancedResearch). */
 export const UPGRADE_IDS = [
   'apRounds',
   'compositeArmor',
@@ -84,6 +94,9 @@ export const UPGRADE_IDS = [
   // radius/sabotage resistance).
   'signalsIntel',
   'counterIntel',
+  // Roadmap B9 (repeatable research, 2026-10-02): the repeatable
+  // endgame research sink.
+  'advancedResearch',
 ] as const;
 export type UpgradeId = (typeof UPGRADE_IDS)[number];
 
@@ -119,6 +132,14 @@ export interface UpgradeDef {
    * docs/research/phase8-civilian-peaceful.md.
    */
   military?: boolean;
+  /**
+   * Roadmap B9 (2026-10-02): true when this upgrade is repeatable —
+   * researchable any number of times, each level tracked separately on
+   * `world.upgradeLevels` instead of the `world.upgrades` id list.
+   * Repeatable defs skip the "already researched" rejection and price
+   * each level through `upgradeResearchCost` (200×level research).
+   */
+  repeatable?: boolean;
 }
 
 export const UPGRADE_DEFS: Record<UpgradeId, UpgradeDef> = {
@@ -233,6 +254,22 @@ export const UPGRADE_DEFS: Record<UpgradeId, UpgradeDef> = {
     requiredBuildings: ['signalsStation'], minAge: 'information',
     military: true,
   },
+  // ------------------------------------------------------------------
+  // Roadmap B9 (repeatable research, 2026-10-02): Advanced Research —
+  // the endgame research sink. Repeatable: each level researched
+  // separately (tracked on `world.upgradeLevels`), +2% factory output
+  // per level (see `advancedResearchFactoryMult`, applied in
+  // economy.ts beside Precision Manufacturing), costing 200×level
+  // research (see `upgradeResearchCost`). Civilian — peaceful players
+  // keep a research sink too. Prerequisite slots: age = information
+  // (one slot); the lab is required by the command itself, like every
+  // other upgrade.
+  // ------------------------------------------------------------------
+  advancedResearch: {
+    id: 'advancedResearch', name: 'Advanced Research', costFunds: 0, costResearch: 200,
+    requiredBuildings: [], minAge: 'information',
+    repeatable: true,
+  },
 };
 
 /** Fresh upgrade state: no player has researched anything. */
@@ -270,6 +307,111 @@ export function decodeUpgrades(data: unknown): Record<number, string[]> {
       (id): id is string => typeof id === 'string' && (UPGRADE_IDS as readonly string[]).includes(id),
     );
     out[n] = [...new Set(valid)];
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Repeatable upgrades (roadmap B9, 2026-10-02).
+//
+// One-shot upgrades live in `world.upgrades` (owner -> id list).
+// Repeatable upgrades live in `world.upgradeLevels` (owner -> id ->
+// level) so the id list keeps its "researched set" meaning and
+// `hasUpgrade` never needs a repeatable carve-out. Snapshotted and
+// digested like `upgrades` (see snapshot.ts / digest.ts).
+// ---------------------------------------------------------------------------
+
+/** Fresh repeatable-upgrade state: every owner at level 0 of everything. */
+export function initUpgradeLevels(): Record<number, Record<string, number>> {
+  return {};
+}
+
+/** Current level of a repeatable upgrade for the owner (0 = never researched). */
+export function repeatableUpgradeLevel(world: World, owner: number, id: string): number {
+  const levels = (world.upgradeLevels ?? {})[owner];
+  if (levels === undefined) return 0;
+  const level = levels[id] ?? 0;
+  return Number.isInteger(level) && level > 0 ? level : 0;
+}
+
+/**
+ * Research price for the NEXT level of a repeatable upgrade:
+ * 200 research × level (level 1 costs 200, level 2 costs 400, …).
+ * Funds cost is always 0 — the sink is pure research.
+ */
+export const ADVANCED_RESEARCH_RESEARCH_PER_LEVEL = 200;
+
+/** Factory-output bonus per Advanced Research level (+2%/level, additive). */
+export const ADVANCED_RESEARCH_FACTORY_OUTPUT_PER_LEVEL = 0.02;
+
+/**
+ * Price of researching `id` right now: the static def cost for
+ * one-shot upgrades, the level-scaled cost for repeatable ones.
+ * Every affordability check (sim command, AI ledger, UI mirror) goes
+ * through here so the three can never disagree.
+ */
+export function upgradeResearchCost(
+  world: World,
+  owner: number,
+  id: UpgradeId,
+): { costFunds: number; costResearch: number } {
+  const def = UPGRADE_DEFS[id];
+  if (def.repeatable === true) {
+    const nextLevel = repeatableUpgradeLevel(world, owner, id) + 1;
+    return {
+      costFunds: 0,
+      costResearch: ADVANCED_RESEARCH_RESEARCH_PER_LEVEL * nextLevel,
+    };
+  }
+  return { costFunds: def.costFunds, costResearch: def.costResearch };
+}
+
+/**
+ * Factory-output multiplier from Advanced Research: 1 + 0.02 × level
+ * (additive, stacking with Precision Manufacturing's ×1.25 and Heavy
+ * Industry — the late-game boom path).
+ */
+export function advancedResearchFactoryMult(world: World, owner: number): number {
+  return 1 + ADVANCED_RESEARCH_FACTORY_OUTPUT_PER_LEVEL * repeatableUpgradeLevel(world, owner, 'advancedResearch');
+}
+
+/** Canonical encoding for snapshots (deep copy). */
+export function encodeUpgradeLevels(
+  levels: Record<number, Record<string, number>>,
+): Record<number, Record<string, number>> {
+  const out: Record<number, Record<string, number>> = {};
+  for (const owner of Object.keys(levels)) {
+    out[Number(owner)] = { ...(levels[Number(owner)] as Record<string, number>) };
+  }
+  return out;
+}
+
+/**
+ * Restore repeatable-upgrade levels from a snapshot payload. Unknown
+ * ids, non-repeatable ids, and non-positive levels are dropped
+ * (defensive); a missing payload decodes to "nothing researched" so
+ * older saves load cleanly.
+ */
+export function decodeUpgradeLevels(data: unknown): Record<number, Record<string, number>> {
+  const out: Record<number, Record<string, number>> = {};
+  if (data === null || typeof data !== 'object') return out;
+  for (const [owner, byId] of Object.entries(data as Record<string, unknown>)) {
+    const n = Number(owner);
+    if (!Number.isInteger(n) || byId === null || typeof byId !== 'object') continue;
+    const levels: Record<string, number> = {};
+    for (const [id, level] of Object.entries(byId as Record<string, unknown>)) {
+      if (
+        typeof level !== 'number' ||
+        !Number.isInteger(level) ||
+        level <= 0 ||
+        !(UPGRADE_IDS as readonly string[]).includes(id) ||
+        UPGRADE_DEFS[id as UpgradeId].repeatable !== true
+      ) {
+        continue;
+      }
+      levels[id] = level;
+    }
+    if (Object.keys(levels).length > 0) out[n] = levels;
   }
   return out;
 }
@@ -555,14 +697,16 @@ export function registerUpgradeCommands(queue: CommandQueue): void {
       if (typeof id !== 'string' || !(UPGRADE_IDS as readonly string[]).includes(id)) {
         return `researchUpgrade: upgrade must be one of ${UPGRADE_IDS.join(', ')}`;
       }
-      if (hasUpgrade(world, owner, id)) {
+      const def = UPGRADE_DEFS[id as UpgradeId];
+      // Roadmap B9: repeatable upgrades skip the duplicate rejection —
+      // each level is a separate research.
+      if (def.repeatable !== true && hasUpgrade(world, owner, id)) {
         return `researchUpgrade: ${id} already researched`;
       }
       // Research happens at the lab — the single research site.
       if (!hasProductionBuilding(world, owner, 'lab')) {
         return 'researchUpgrade: requires a completed Research Lab';
       }
-      const def = UPGRADE_DEFS[id as UpgradeId];
       // Grand-expansion Phase 8 (peaceful mode, 2026-09-30): military
       // upgrades cannot be researched in a peaceful world — loud
       // rejection (CommandRejectedError → HUD toast), never silent.
@@ -587,9 +731,11 @@ export function registerUpgradeCommands(queue: CommandQueue): void {
         return `researchUpgrade: ${def.name} requires ${def.requiredUpgrade} first`;
       }
       // Affordability (funds + research stockpile), checked at enqueue AND apply.
+      // Roadmap B9: repeatable upgrades price the NEXT level (200×level research).
       const player = getPlayer(world.city, owner);
-      if (!player || player.funds < def.costFunds || player.research < def.costResearch) {
-        return `researchUpgrade: cannot afford ${def.name} (${def.costFunds} funds + ${def.costResearch} research)`;
+      const cost = upgradeResearchCost(world, owner, id as UpgradeId);
+      if (!player || player.funds < cost.costFunds || player.research < cost.costResearch) {
+        return `researchUpgrade: cannot afford ${def.name} (${cost.costFunds} funds + ${cost.costResearch} research)`;
       }
       return null;
     },
@@ -598,15 +744,25 @@ export function registerUpgradeCommands(queue: CommandQueue): void {
       const id = cmd.payload['upgrade'] as UpgradeId;
       const def = UPGRADE_DEFS[id];
       // Re-check affordability at apply (state may have changed since enqueue).
+      const cost = upgradeResearchCost(world, owner, id);
       const player = getPlayer(world.city, owner);
-      if (!player || player.funds < def.costFunds || player.research < def.costResearch) {
+      if (!player || player.funds < cost.costFunds || player.research < cost.costResearch) {
         throw new Error(`researchUpgrade: cannot afford ${def.name} at apply time`);
       }
-      player.funds -= def.costFunds;
-      player.research -= def.costResearch;
-      const list = world.upgrades[owner] ?? [];
-      if (!list.includes(id)) list.push(id);
-      world.upgrades[owner] = list;
+      player.funds -= cost.costFunds;
+      player.research -= cost.costResearch;
+      if (def.repeatable === true) {
+        // Roadmap B9: repeatable upgrades level up on world.upgradeLevels.
+        const table = world.upgradeLevels ?? {};
+        const byId = table[owner] ?? {};
+        byId[id] = repeatableUpgradeLevel(world, owner, id) + 1;
+        table[owner] = byId;
+        world.upgradeLevels = table;
+      } else {
+        const list = world.upgrades[owner] ?? [];
+        if (!list.includes(id)) list.push(id);
+        world.upgrades[owner] = list;
+      }
       return id;
     },
   });

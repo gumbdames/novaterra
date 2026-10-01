@@ -157,6 +157,7 @@ import {
   effectiveAmmoProduction,
   effectiveAmmoStorage,
   effectiveFuelStorage,
+  upgradeResearchCost,
 } from './upgrades';
 import {
   isDetected,
@@ -372,11 +373,17 @@ function derivePersonality(world: World, owner: number, difficulty: AIDifficulty
     p.mixWeights[kind] = rng.range(stream, 0.7, 1.3);
   }
   if (difficulty === 'citizen') return p;
-  // commander+: shuffle the economy-line research tail.
+  // commander+: shuffle the economy-line research tail. Repeatable
+  // sinks (roadmap B9: Advanced Research) are NOT shuffled — they are
+  // the fixed end-of-line research dump, appended after the tail by
+  // researchOrderFor, so the tail stays a permutation of the 5 economy
+  // upgrades and the seeded stream draws stay stable.
   p.researchOrder = shuffled(
     rng,
     stream,
-    RESEARCH_PRIORITY.slice(RESEARCH_HEAD_COUNT).map((c) => c.id),
+    RESEARCH_PRIORITY.slice(RESEARCH_HEAD_COUNT)
+      .filter((c) => UPGRADE_DEFS[c.id].repeatable !== true)
+      .map((c) => c.id),
   );
   p.expansionAngle = rng.range(stream, 0, Math.PI * 2);
   // Inverse mapping: higher eagerness ⇒ expands with fewer units.
@@ -820,15 +827,17 @@ function researchForAI(
   ai: AIPlayerState,
   id: UpgradeId,
 ): void {
-  const def = UPGRADE_DEFS[id];
   const player = getPlayer(world.city, ai.owner);
   if (!player) return;
   const l = thinkLedger(ai);
-  if (player.funds - l.funds < def.costFunds) return;
-  if (player.research - l.research < def.costResearch) return;
+  // Roadmap B9: repeatable upgrades price the next level (200×level
+  // research) — the static def cost would under-reserve the ledger.
+  const cost = upgradeResearchCost(world, ai.owner, id);
+  if (player.funds - l.funds < cost.costFunds) return;
+  if (player.research - l.research < cost.costResearch) return;
   issue(world, queue, 'researchUpgrade', { owner: ai.owner, upgrade: id });
-  l.funds += def.costFunds;
-  l.research += def.costResearch;
+  l.funds += cost.costFunds;
+  l.research += cost.costResearch;
 }
 
 /**
@@ -2270,6 +2279,13 @@ const RESEARCH_PRIORITY: ResearchCandidate[] = [
   { id: 'verticalFarming', when: always },
   { id: 'cruiseMissiles', when: always },
   { id: 'freeTrade', when: always },
+  // Roadmap B9 (2026-10-02): Advanced Research is the repeatable
+  // endgame sink — last in RESEARCH_PRIORITY so every one-shot upgrade
+  // comes first. It is EXCLUDED from the personality shuffle
+  // (derivePersonality) and re-appended fixed-last by researchOrderFor:
+  // a repeatable sink must never be shuffled ahead of the economy
+  // upgrades it is meant to follow.
+  { id: 'advancedResearch', when: always },
 ];
 
 /** ResearchCandidate lookup by id (for personality-ordered iteration). */
@@ -2284,16 +2300,29 @@ const RESEARCH_BY_ID = new Map<UpgradeId, ResearchCandidate>(
  */
 function researchOrderFor(ai: AIPlayerState): ResearchCandidate[] {
   const head = RESEARCH_PRIORITY.slice(0, RESEARCH_HEAD_COUNT);
+  // The economy tail (personality-shuffled, or priority order when the
+  // personality carries none). Repeatable sinks are excluded here —
+  // they are appended fixed-last below, never shuffled.
+  const tailPool = RESEARCH_PRIORITY.slice(RESEARCH_HEAD_COUNT).filter(
+    (c) => UPGRADE_DEFS[c.id].repeatable !== true,
+  );
   const tailIds =
     ai.personality.researchOrder.length > 0
       ? ai.personality.researchOrder
-      : RESEARCH_PRIORITY.slice(RESEARCH_HEAD_COUNT).map((c) => c.id);
+      : tailPool.map((c) => c.id);
   const tail: ResearchCandidate[] = [];
   for (const id of tailIds) {
     const cand = RESEARCH_BY_ID.get(id);
     if (cand) tail.push(cand);
   }
-  return [...head, ...tail];
+  // Roadmap B9: repeatable upgrades (Advanced Research) are the fixed
+  // end-of-line sink — researched dead last, after every one-shot, in
+  // priority order among themselves. thinkResearch's hasUpgrade skip
+  // never fires for them (levels live on world.upgradeLevels), so the
+  // AI keeps converting surplus research into factory output until the
+  // 200×level price outruns its research income.
+  const sinks = RESEARCH_PRIORITY.filter((c) => UPGRADE_DEFS[c.id].repeatable === true);
+  return [...head, ...tail, ...sinks];
 }
 
 /** Research one upgrade per think tick, by priority, when prereqs allow. */

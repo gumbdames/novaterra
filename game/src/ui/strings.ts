@@ -747,6 +747,11 @@ export const STRINGS = {
       name: { en: 'Counter-Intelligence' },
       effect: { en: 'Counter-intel income ×1.25; +25 detection radius; sabotage lasts half as long' },
     },
+    // Roadmap B9 (repeatable research, 2026-10-02): the endgame sink.
+    advancedResearch: {
+      name: { en: 'Advanced Research' },
+      effect: { en: '+2% factory output per level — research again for the next level' },
+    },
   } as Record<UpgradeId, { name: LocalizedString; effect: LocalizedString }>,
   /** Utility networks (grand-expansion Phase 2). English-only. */
   utilities: {

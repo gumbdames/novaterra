@@ -379,6 +379,19 @@ export function canonicalizeWorld(world: World): string {
     out += `u${owner}:${ids.join(',')};`;
   }
   out += '|';
+  // Roadmap B9: repeatable-upgrade levels — behavior-affecting (factory
+  // output) ⇒ digest-covered. Owners sorted numerically, ids sorted;
+  // missing owners / zero levels digest as empty.
+  out += '|upglvl=';
+  const levelOwners = Object.keys(world.upgradeLevels ?? {})
+    .map(Number)
+    .sort((a, b) => a - b);
+  for (const owner of levelOwners) {
+    const ids = Object.keys(world.upgradeLevels[owner] ?? {}).sort();
+    const parts = ids.map((id) => `${id}=${world.upgradeLevels[owner]?.[id] ?? 0}`);
+    out += `u${owner}:${parts.join(',')};`;
+  }
+  out += '|';
   return out;
 }
 
