@@ -9,7 +9,7 @@ land, sea and air — or play a fully peaceful game with war disabled.
 **Version:** 0.1 Alpha (this name stays until announced otherwise).
 
 - **Play:** https://gumbdames.github.io/novaterra/ (deploys from `main`)
-- **Status:** the grand expansion is underway. Phases 0–4 complete and live,
+- **Status:** the grand expansion is complete and live (Phases 0–9),
   plus the desirability/migration workstream (land value, migration,
   library + park), the 3-tab menu restructure (Civilian / Military /
   Management bottom-left menu), and the living menu demo (a seeded world
@@ -49,8 +49,9 @@ land, sea and air — or play a fully peaceful game with war disabled.
   each with real upkeep, funded after buildings from the treasury. The
   Mk II/III tech-level pass is in too: 28 variant defs across 14 unit
   lines (96 units total), gated by age + production building through the
-  existing spawn validator — the AI trains the best tier it has
-  unlocked and can afford, and variants share their base kind's 3D art
+  existing spawn validator — the AI picks the tier that fits the situation
+  (each variant trades something away: firepower for speed, range for
+  armor, etc.), and variants share their base kind's 3D art
   (zero new model downloads). The peaceful AI rival is in too: it
   builds a civilian city (districts → utilities → factories → housing →
   civic), issues zero military orders, and never forms them — the

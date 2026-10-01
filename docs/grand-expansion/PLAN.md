@@ -1106,7 +1106,29 @@ integration gate is green (full suite 2100/2100, tsc clean).
   unlock); commander mix gains reconTeam/hq. Polish: oversized
   airport terminals scaled to footprints, runway strips filled to
   plots, stale comments and a peaceful-mode intel-panel contradiction
-  fixed. Save/load digests stay stable. Budgets: startup 4.11 MiB
+  fixed. Save/load digests stay stable.
+- **Final-review remediation (2026-10-01, 0.1 Alpha):** a 10-team review
+  of the shipped game found 9 critical bugs (peaceful-lockout bypass,
+  AI zero-funds income, unwinnable wars — buildings had no HP, map
+  preset not saved, misplaced utility indicators, leftover API-key UI,
+  dead Prosperity tax bonus, 357 dead rail lines, tutorial teaching a
+  nonexistent drag-select) plus the M/H/L items; all remediated:
+  peaceful gates at the command layer, AI virtual economy, destructible
+  buildings + AI siege doctrine + reachable conquest (endings work),
+  endless peaceful mode (no victory condition — it never finishes),
+  per-instance utility indicator billboards, API-key UI ripped out,
+  rails wired and rendered, tutorial fixed, spectre stealth flag,
+  combat targeting grid + exact pruning + kill batching, `intelSightBonus`
+  ~1000x via version-counter cache, worst-case stress budget test,
+  GitHub Actions CI, byte-measured 8 MiB boot gate (4.11 MiB
+  transferred), corrupt-save recovery, tab-hidden auto-pause,
+  save-hitch guard, UI screen tests, colorblind live-refresh, full
+  docs + public-code refresh (ARCHITECTURE rewrite, REVERSALS,
+  TESTING, CONTRIBUTING, `.nvmrc` 22), camelCase file renames,
+  audio feel pass (7 cues, war-mood hysteresis, ambient city bed,
+  menu music, positional SFX), Mk II/III as tactical tradeoffs,
+  carrier wings armed-first, blob shadows + ACES, toast queue, storm
+  largest-cluster targeting, attack/embark race fix, emergency refuel. Budgets: startup 4.11 MiB
   transferred (byte-measured 2026-10-01, final-review R3: 0.46 MiB
   gzipped JS+CSS+HTML+GLTFLoader + 2.80 MiB pinned 33-key boot GLB set
   + 0.79 MiB tree textures + 0.06 MiB external colormaps; 5.30 MiB raw)
