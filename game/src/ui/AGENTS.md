@@ -356,6 +356,15 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `overflow-y: auto`) so every map/difficulty stays clickable on short
   viewports.
 - `camera.ts` / `selection.ts` — pure state + transitions, fully tested.
+  Roadmap B4 (2026-10-02): `militaryUnitIds(units, owner, isMilitary)` —
+  the pure core of the select-all-military hotkey (A), returning the ids
+  of every living unit of `owner` whose kind is military, in input order.
+  The game controller (game.ts) feeds it the world's units + UNIT_DEFS,
+  replaces the selection, and toasts `STRINGS.selection.noMilitaryUnits`
+  when there is nothing to select. The keydown handler skips hotkeys
+  while typing (`isTypingTarget`: inputs, textareas, selects,
+  contentEditable) so a typed 'a' in the cheat console never reselects
+  the army. Player-facing list: GAME_MECHANICS.md "Keyboard shortcuts".
 - `orders.ts` — gesture → `OrderIntent` (`NewCommand` minus issuer);
   the controller stamps `issuer: 'player'` at enqueue. Includes
   `buildResearchUpgradeOrder(owner, upgrade)` for the research panel, and

@@ -129,6 +129,7 @@ import {
 import {
   boxSelectUnits,
   clearSelection,
+  militaryUnitIds,
   nearestUnit,
   pruneSelection,
   selectBuilding,
@@ -290,6 +291,18 @@ type PlacementMode =
   | { kind: 'build'; tool: BuildTool }
   | { kind: 'storm' }
   | null;
+
+/**
+ * Roadmap B4 (2026-10-02): true when a keydown target is a text field
+ * (cheat console input, menu text fields, selects). Keyboard shortcuts
+ * must not fire while the player is typing — a typed 'a' in the cheat
+ * console must not reselect the army.
+ */
+function isTypingTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false;
+  const tag = target.tagName;
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable;
+}
 
 const ADVISOR_REFRESH_MS = 2000;
 // Edge-pan zone width lives in ui/camera.ts (EDGE_PAN_PX) next to the pure
@@ -1773,6 +1786,26 @@ class GameController {
     }
   }
 
+  /**
+   * Roadmap B4 (2026-10-02): the select-all-military hotkey (A).
+   * Selects every living player-owned unit whose def is military
+   * (`UnitDef.military`), replacing the current selection. Toasts
+   * loudly when there is nothing to select instead of silently
+   * doing nothing.
+   */
+  private selectAllMilitary(): void {
+    const ids = militaryUnitIds(
+      this.session.world.units,
+      HUMAN_PLAYER_ID,
+      (kind) => UNIT_DEFS[kind as UnitKind]?.military === true,
+    );
+    if (ids.length === 0) {
+      this.hud.toast(loc(STRINGS.selection.noMilitaryUnits));
+      return;
+    }
+    this.selection = selectUnits(ids);
+  }
+
   private issueAdvanceAge(program: string): void {
     this.enqueue(
       buildAdvanceAgeOrder(HUMAN_PLAYER_ID, program, getAgeState(this.session.world, HUMAN_PLAYER_ID).age),
@@ -2570,6 +2603,15 @@ class GameController {
       // terrain grid (the top-bar "Grid" button does the same).
       if (k === 'g' && !e.repeat) {
         this.setGrid(!this.gridVisible);
+        return;
+      }
+      // Roadmap B4 (2026-10-02): A selects every living military unit
+      // the player owns. Guarded against typing targets (the cheat
+      // console, menu text fields) — a typed 'a' must not reselect
+      // the army.
+      if (k === 'a' && !e.repeat && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        this.selectAllMilitary();
         return;
       }
       this.keys.add(k);

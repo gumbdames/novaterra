@@ -152,3 +152,23 @@ export function pruneSelection(
       : null;
   return { unitIds, buildingId };
 }
+
+/**
+ * Roadmap B4 (2026-10-02): the select-all-military hotkey (A). Returns
+ * the ids of every living unit owned by `owner` whose kind is military.
+ * The def lookup stays with the caller (game.ts owns UNIT_DEFS; the
+ * selection helpers stay sim-free). Deterministic: output follows the
+ * input array order.
+ */
+export function militaryUnitIds(
+  units: Array<{ id: number; owner: number; hp: number; kind: string }>,
+  owner: number,
+  isMilitary: (kind: string) => boolean,
+): number[] {
+  const out: number[] = [];
+  for (const u of units) {
+    if (u.owner !== owner || u.hp <= 0) continue;
+    if (isMilitary(u.kind)) out.push(u.id);
+  }
+  return out;
+}

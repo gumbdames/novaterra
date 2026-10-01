@@ -345,6 +345,17 @@ move, so it cannot reach a depot. Selecting it offers **Emergency
 refuel** — an airdropped fuel bladder costing 150 funds that restores
 30% of its tank, enough to fly to a depot and resupply normally.
 
+## Keyboard shortcuts
+
+- **Space** — pause / resume.
+- **S** — stop the selected units.
+- **A** — select every military unit you own, wherever they are.
+- **G** — toggle the terrain grid.
+- **Esc** — close menus, cancel placement, clear the selection.
+- **\`** — the cheat console (sandbox games).
+
+Shortcuts never fire while you are typing in a text field.
+
 ## Attacking buildings (siege)
 
 Every building is destructible — it has **structural HP** you can read

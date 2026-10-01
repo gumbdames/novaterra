@@ -166,6 +166,9 @@ export const STRINGS = {
   selection: {
     noSelection: 'Nothing selected',
     unitsSelected: (n: number) => `${n} unit${n === 1 ? '' : 's'} selected`,
+    // Roadmap B4 (2026-10-02): select-all-military hotkey (A) feedback —
+    // the hotkey toasts loudly when the player owns no military units.
+    noMilitaryUnits: { en: 'No military units to select' },
     stop: 'Stop',
     train: 'Train',
     build: 'Build',
