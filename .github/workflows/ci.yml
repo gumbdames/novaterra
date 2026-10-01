@@ -42,6 +42,12 @@ jobs:
       - name: Typecheck
         run: npx tsc --noEmit
 
+      # Import-cycle guard (roadmap A8, 2026-10-01): value-import cycles in
+      # game/src/sim/ are a TDZ risk; the script fails on any cycle group
+      # not in its documented allowlist. Fast and static — runs before tests.
+      - name: Import-cycle check
+        run: node scripts/check-import-cycles.mjs
+
       # Known flake (pre-existing, environmental, NOT a test bug): under
       # load a vitest worker can die with
       #   Error: [vitest-worker]: Timeout calling "onTaskUpdate"

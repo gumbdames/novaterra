@@ -55,8 +55,12 @@ function mulberry32Step(state: number): { value: number; state: number } {
   return { value, state: t };
 }
 
-/** FNV-1a 32-bit hash — used to derive per-stream seeds from the master seed. */
-function fnv1a32(input: string): number {
+/** FNV-1a 32-bit hash — used to derive per-stream seeds from the master seed.
+ * Also the canonical home of the sim's string hash (re-exported by
+ * sim/digest.ts): terrain hashes and city placement salts use it, and it
+ * must stay in an acyclic leaf module so it can never sit on an import
+ * cycle (roadmap A8, 2026-10-01). */
+export function fnv1a32(input: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < input.length; i++) {
     h ^= input.charCodeAt(i);

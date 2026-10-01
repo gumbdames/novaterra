@@ -50,7 +50,7 @@
 
 import { createRngBank } from './rng';
 import type { RngBank } from './rng';
-import { fnv1a32 } from './digest';
+import { fnv1a32 } from './rng';
 
 /** Locked Meridian Plains constants (see docs/research/game-design.md §A4). */
 export const MERIDIAN_PLAINS = {

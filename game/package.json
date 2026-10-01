@@ -21,6 +21,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "check:cycles": "node scripts/check-import-cycles.mjs",
     "postbuild": "node scripts/stamp-license.mjs",
     "portraits": "node scripts/render-portraits.mjs"
   },

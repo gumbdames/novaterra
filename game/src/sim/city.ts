@@ -61,7 +61,7 @@ import type { TerrainData } from './terrain';
 import { isWater } from './terrain';
 import type { World } from './world';
 import { rngBank } from './world';
-import { fnv1a32 } from './digest';
+import { fnv1a32 } from './rng';
 import type { CommandQueue, CommandSpec } from './commands';
 import type { Age } from './ages';
 import {

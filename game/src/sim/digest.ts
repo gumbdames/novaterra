@@ -38,16 +38,17 @@
 
 import type { World } from './world';
 import { POLICY_IDS, BUILDING_DEFS } from './city';
+import { fnv1a32 } from './rng';
 
-/** FNV-1a 32-bit hash of a string. Returns an unsigned uint32. */
-export function fnv1a32(input: string): number {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < input.length; i++) {
-    h ^= input.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return h >>> 0;
-}
+/**
+ * Re-export: the canonical home of `fnv1a32` is sim/rng.ts (an acyclic
+ * leaf). digest.ts used to define it, which pulled terrain.ts and city.ts
+ * into a value-import cycle with digest (roadmap A8, 2026-10-01); the
+ * definition moved so digest stays out of the core cycle group. Existing
+ * importers of `fnv1a32` from this module (e.g. tests/sim.digest.test.ts)
+ * keep working.
+ */
+export { fnv1a32 };
 
 /** Canonical float encoding: shortest round-trip, -0 normalized. */
 function canonicalNumber(n: number): string {
