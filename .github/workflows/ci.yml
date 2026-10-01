@@ -1,0 +1,79 @@
+# NOVATERRA CI (0.1 Alpha) — final-review R3 (2026-10-01).
+#
+# On every push and pull request:
+#   1. `npm run build` FIRST — the boot-budget gate
+#      (tests/render.boot-budget.test.ts) measures the real dist/
+#      output, so it must see a fresh build, not a stale one.
+#   2. `npx tsc --noEmit` — the type gate.
+#   3. `npx vitest run` — the full suite, serially brave under load
+#      (see the flake note below).
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: game
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: game/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # Build FIRST: the boot-budget test measures dist/ bytes, so it
+      # must run against this commit's build output (postbuild stamps
+      # the license headers automatically).
+      - name: Build
+        run: npm run build
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # Known flake (pre-existing, environmental, NOT a test bug): under
+      # load a vitest worker can die with
+      #   Error: [vitest-worker]: Timeout calling "onTaskUpdate"
+      # with ZERO test failures. It is intermittent and unrelated to
+      # the code under test (seen on small/loaded hosts).
+      #
+      # Retry policy: up to 3 attempts, but ONLY when the run died with
+      # the flake signature and no failed tests. A run with real test
+      # failures ("Failed Tests" in the output) fails fast — flakes must
+      # never mask a genuine regression.
+      #
+      # --maxWorkers=2: GitHub's ubuntu-latest runners have 2-4 vCPUs;
+      # more workers than that increases worker starvation (the flake's
+      # trigger) without speeding the suite up.
+      - name: Tests (vitest, flake-aware retry)
+        run: |
+          for attempt in 1 2 3; do
+            echo "=== vitest attempt $attempt/3 ==="
+            set +e
+            output=$(npx vitest run --maxWorkers=2 2>&1)
+            status=$?
+            set -e
+            echo "$output"
+            if [ "$status" -eq 0 ]; then
+              echo "vitest passed on attempt $attempt"
+              exit 0
+            fi
+            if echo "$output" | grep -q 'Timeout calling "onTaskUpdate"' \
+              && ! echo "$output" | grep -q 'Failed Tests'; then
+              echo "known environmental flake (worker timeout, no test failures) — retrying"
+              continue
+            fi
+            echo "real test failure on attempt $attempt — not retrying"
+            exit 1
+          done
+          echo "vitest hit the environmental flake 3 times in a row — failing"
+          exit 1
