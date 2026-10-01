@@ -29,10 +29,15 @@
  *  - Phase 3 logistics (grand expansion): `runProduction` also fills
  *    ammo-producer stocks (capped at the def's `ammoStorage`, boosted by
  *    the Advanced Logistics upgrade) and pulls fuel from the owner's
- *    stockpile into fuelDepots (rate-limited); `runSupplyAura` (after
- *    harvest) refills owner units inside `LOGISTICS_RADIUS` of each
- *    completed reloadPoint in building-id order, honoring resupply
- *    reservations before serving by lowest `supplyLevel`.
+ *    stockpile into fuelDepots and navalBases (rate-limited — the fleet's
+ *    forward fuel cache); `runSupplyAura` (after harvest) refills owner
+ *    units inside `LOGISTICS_RADIUS` of each completed reloadPoint in
+ *    building-id order, honoring resupply reservations before serving by
+ *    lowest `supplyLevel`, and loads the cargo holds of any supply unit
+ *    in radius (fuel/ammo from depot stocks, materials from the owner's
+ *    stockpile). `runMobileSupply` then discharges mobile supply ships'
+ *    holds to same-domain friendlies in their supply radius, honoring
+ *    the ship's refuel/rearm service toggles.
  *  - The market exchanges any stockpile for funds at fixed rates with a
  *    spread (buy at +20%, sell at −20%): a round trip always loses value,
  *    so the market is a lever, not free money. Dynamic pricing is a later
@@ -75,7 +80,7 @@ import {
   type UtilityModel,
   type UtilitySideModel,
 } from './utilityNetworks';
-import { UNIT_DEFS, supplyLevel, type UnitRecord } from './units';
+import { UNIT_DEFS, supplyLevel, supplyServicesOf, type UnitRecord } from './units';
 import { runIntelAccrual, isSabotaged } from './intel';
 import { createSpatialHash, shInsert, shQueryRadius } from './spatial';
 import { buildingTaxMultiplier, getDesirabilityModel, type DesirabilityModel } from './desirability';
@@ -104,6 +109,7 @@ import {
   type AirlineRoute,
   type SeaRoute,
   type SeaRoutePolicy,
+  LOGISTICS_RADIUS,
 } from './city';
 
 /** Economy ticks run once per sim-second (30 sim ticks). */
@@ -120,8 +126,13 @@ export const TAX_PERIOD_SECONDS = 60;
  * supply stays a positioning decision rather than a map-wide buff, but
  * larger than the biggest depot footprint (4x3 cells = 8x6 world units)
  * so units parked at the gate are always in range.
+ *
+ * Re-exported from city.ts (moved there so commands.ts can value-import
+ * it without an economy↔commands cycle — the `loadCargo`/`unloadCargo`
+ * orders use the same radius as the aura; sea-logistics Half B,
+ * 2026-10-01).
  */
-export const LOGISTICS_RADIUS = 18;
+export { LOGISTICS_RADIUS };
 
 /**
  * Phase 3 logistics: fuel a single fuelDepot may pull from the owner's
@@ -650,8 +661,13 @@ function runProduction(world: World, city: CityState): void {
     // forward. Rate-limited (FUEL_DEPOT_PULL_RATE_PER_SEC) and capped
     // at the effective fuel storage; never drives the player stockpile
     // negative (pulled <= player.fuel). Not gated on powered/watered —
-    // it is a logistics transfer, not production.
-    if (b.kind === 'fuelDepot') {
+    // it is a logistics transfer, not production. Sea-logistics Half B
+    // (2026-10-01): the navalBase joins the same pull — it is the
+    // fleet's forward fuel cache, feeding the supply-ship aura (the
+    // kind gate was 'fuelDepot'-only before; commercialPort is left for
+    // the Half-A civilian worker — see docs/research/sea-logistics*.
+    // md).
+    if (b.kind === 'fuelDepot' || b.kind === 'navalBase') {
       const cap = effectiveFuelStorage(world, b.owner, def);
       const cur = b.fuelStock ?? 0;
       const headroom = cap - cur;
@@ -838,8 +854,8 @@ function runSupplyAura(world: World, city: CityState): void {
       const lb = supplyLevel(UNIT_DEFS[b.kind as keyof typeof UNIT_DEFS], b);
       return la !== lb ? la - lb : a.id - b.id;
     });
-    for (const u of ordered) serveDepotUnit(d, u, true);
-    for (const u of rest) serveDepotUnit(d, u, false);
+    for (const u of ordered) serveDepotUnit(world, d, u, true);
+    for (const u of rest) serveDepotUnit(world, d, u, false);
   }
 }
 
@@ -848,7 +864,7 @@ function runSupplyAura(world: World, city: CityState): void {
  * unit holds an outstanding resupply order at this depot (served
  * first, may draw on the full stock — see runSupplyAura).
  */
-function serveDepotUnit(d: BuildingRecord, u: UnitRecord, isReserved: boolean): void {
+function serveDepotUnit(world: World, d: BuildingRecord, u: UnitRecord, isReserved: boolean): void {
   const def = UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS];
   if (!def) return;
   let gaveAmmo = 0;
@@ -892,14 +908,25 @@ function serveDepotUnit(d: BuildingRecord, u: UnitRecord, isReserved: boolean): 
     d.reservedAmmo = Math.max(0, (d.reservedAmmo ?? 0) - gaveAmmo);
     d.reservedFuel = Math.max(0, (d.reservedFuel ?? 0) - gaveFuel);
   }
-  // Grand-expansion Phase 5 (tanker, S2/S4): flying fuel stations load
-  // their cargo hold at depots — gated on the def flag, so no existing
-  // truck behavior changes. The cargo hold is what the tanker gives
-  // away through its refuel aura (runTankerRefuel); its own tank fills
-  // through the normal fossil leg above.
-  if ((def.tankerRefuelRadius ?? 0) > 0) {
-    const cargoCap = def.cargoFuelCapacity ?? 0;
-    const need = cargoCap - u.cargoFuel;
+  // Sea-logistics Half B (2026-10-01): supply units load their CARGO
+  // holds at depots — def-driven (any def with cargo capacity), not
+  // gated on the tanker flag. This is what makes the sea fuelTanker /
+  // ammoShip (and the land supplyTruck / fuelTruck / hauler, whose
+  // holds were previously unloadable-but-unfillable) work: the depot
+  // aura is the load side, `runMobileSupply` the discharge side.
+  //
+  // Order: the unit's OWN tank/magazine fill first (legs above) — a
+  // supply ship that cannot move is useless. Cargo draws only on
+  // stock the depot has not reserved for resupply orders (cargo never
+  // eats another unit's reservation); a unit holding its own
+  // reservation at this depot sees the full stock, like above.
+  //   - cargoFuel / cargoAmmo come from the depot's own stocks;
+  //   - cargoMaterials comes from the OWNER's materials stockpile (no
+  //     building stocks materials) — the depot is the loading point.
+  // Deterministic: pure arithmetic, no RNG.
+  const cargoFuelCap = def.cargoFuelCapacity ?? 0;
+  if (cargoFuelCap > 0) {
+    const need = cargoFuelCap - u.cargoFuel;
     if (need > 0) {
       const stock = d.fuelStock ?? 0;
       const reserved = d.reservedFuel ?? 0;
@@ -911,64 +938,140 @@ function serveDepotUnit(d: BuildingRecord, u: UnitRecord, isReserved: boolean): 
       }
     }
   }
+  const cargoAmmoCap = def.cargoAmmoCapacity ?? 0;
+  if (cargoAmmoCap > 0) {
+    const need = Math.floor(cargoAmmoCap - u.cargoAmmo);
+    if (need >= 1) {
+      const stock = d.ammoStock ?? 0;
+      const reserved = d.reservedAmmo ?? 0;
+      const avail = Math.floor(isReserved ? stock : stock - reserved);
+      const give = Math.min(need, Math.max(0, avail));
+      if (give > 0) {
+        d.ammoStock = stock - give;
+        u.cargoAmmo += give;
+      }
+    }
+  }
+  const cargoMaterialsCap = def.cargoMaterialsCapacity ?? 0;
+  if (cargoMaterialsCap > 0) {
+    const need = Math.floor(cargoMaterialsCap - u.cargoMaterials);
+    if (need >= 1) {
+      const player = getPlayer(world.city, d.owner);
+      const stockpile = player?.materials ?? 0;
+      const give = Math.min(need, Math.max(0, Math.floor(stockpile)));
+      if (give > 0 && player) {
+        player.materials = stockpile - give;
+        u.cargoMaterials += give;
+      }
+    }
+  }
 }
 
 /** Population eats; shortage stalls growth (flag read by runGrowth). */
 /**
- * Grand-expansion Phase 5 (tanker, S2/S4 — 2026-09-30): flying fuel
- * stations. Each living tanker, in id order, transfers fuel from its
- * cargo hold (loaded at depots — see serveDepotUnit) to friendly
- * fossil-fuel air units inside `tankerRefuelRadius`: neediest first
- * (fuel fraction ascending, ties break to the lowest unit id), until
- * the hold is dry. Nuclear-fuel units never burn fuel, so they are
- * never refueled (the data-driven exemption — user directive
- * 2026-09-30); the tanker's own tank is untouched (it burns from it).
- * Runs on the economy tick, after the depot aura (tankers load, then
- * give). Deterministic: id-ordered tankers, sorted recipients, no RNG.
+ * Sea-logistics Half B (2026-10-01): mobile supply stations. Each
+ * living supply ship (def `tankerRefuelRadius` > 0 — the air `tanker`,
+ * the sea `fuelTanker`, the sea `ammoShip`), in id order, discharges
+ * its cargo holds to friendly units OF ITS OWN DOMAIN inside the
+ * radius (world units):
+ *   - fuel leg: `cargoFuel` → friendly fossil-fuel units with an unfull
+ *     tank, neediest first (fuel fraction ascending, id tiebreak);
+ *   - ammo leg: `cargoAmmo` → friendly units with an unfull magazine,
+ *     neediest first (ammo fraction ascending, id tiebreak).
+ * Each leg honors the supplier's service toggles (`supplyServicesOf`:
+ * refuel gates the fuel leg, rearm the ammo leg — absent = all on, so
+ * the air tanker's behavior is unchanged unless the player retoggled
+ * it). Nuclear-fuel units never burn fuel, so they are never refueled
+ * (the data-driven exemption — user directive 2026-09-30); the
+ * supplier's own tank/magazine are untouched. Runs on the economy tick,
+ * after the depot aura (ships load, then give). Deterministic:
+ * id-ordered suppliers, sorted recipients, no RNG.
  */
-function runTankerRefuel(world: World): void {
-  const tankers = world.units.filter(
+function runMobileSupply(world: World): void {
+  const suppliers = world.units.filter(
     (u) => u.hp > 0 && (UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS]?.tankerRefuelRadius ?? 0) > 0,
   );
-  if (tankers.length === 0) return;
+  if (suppliers.length === 0) return;
   // world.units is spawn (id) order; sort defensively so the service
   // order never depends on insertion accidents.
-  tankers.sort((a, b) => a.id - b.id);
-  for (const t of tankers) {
-    const tdef = UNIT_DEFS[t.kind as keyof typeof UNIT_DEFS];
-    const radius = tdef?.tankerRefuelRadius ?? 0;
-    let hold = t.cargoFuel;
-    if (hold <= 0 || radius <= 0) continue;
+  suppliers.sort((a, b) => a.id - b.id);
+  for (const s of suppliers) {
+    const sdef = UNIT_DEFS[s.kind as keyof typeof UNIT_DEFS];
+    const radius = sdef?.tankerRefuelRadius ?? 0;
+    if (radius <= 0) continue;
     const r2 = radius * radius;
-    const needy: UnitRecord[] = [];
-    for (const u of world.units) {
-      if (u.hp <= 0 || u.id === t.id || u.owner !== t.owner) continue;
-      const def = UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS];
-      if (!def || def.domain !== 'air' || def.fuelType !== 'fossil') continue;
-      const cap = def.fuelCapacity ?? 0;
-      if (cap <= 0 || u.fuel >= cap) continue;
-      const dx = u.x - t.x;
-      const dz = u.z - t.z;
-      if (dx * dx + dz * dz <= r2) needy.push(u);
-    }
-    // Neediest first: fuel fraction ascending, ties break to lowest id.
-    needy.sort((a, b) => {
-      const da = UNIT_DEFS[a.kind as keyof typeof UNIT_DEFS];
-      const db = UNIT_DEFS[b.kind as keyof typeof UNIT_DEFS];
-      const fa = a.fuel / (da?.fuelCapacity ?? 1);
-      const fb = b.fuel / (db?.fuelCapacity ?? 1);
-      return fa !== fb ? fa - fb : a.id - b.id;
-    });
-    for (const u of needy) {
-      if (hold <= 0) break;
-      const def = UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS];
-      const give = Math.min((def?.fuelCapacity ?? 0) - u.fuel, hold);
-      if (give > 0) {
-        u.fuel += give;
-        hold -= give;
+    const services = supplyServicesOf(s);
+    // Fuel leg.
+    if (services.refuel && (sdef?.cargoFuelCapacity ?? 0) > 0) {
+      let hold = s.cargoFuel;
+      if (hold > 0) {
+        const needy: UnitRecord[] = [];
+        for (const u of world.units) {
+          if (u.hp <= 0 || u.id === s.id || u.owner !== s.owner) continue;
+          const def = UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS];
+          if (!def || def.domain !== sdef?.domain || def.fuelType !== 'fossil') continue;
+          const cap = def.fuelCapacity ?? 0;
+          if (cap <= 0 || u.fuel >= cap) continue;
+          const dx = u.x - s.x;
+          const dz = u.z - s.z;
+          if (dx * dx + dz * dz <= r2) needy.push(u);
+        }
+        // Neediest first: fuel fraction ascending, ties break to lowest id.
+        needy.sort((a, b) => {
+          const da = UNIT_DEFS[a.kind as keyof typeof UNIT_DEFS];
+          const db = UNIT_DEFS[b.kind as keyof typeof UNIT_DEFS];
+          const fa = a.fuel / (da?.fuelCapacity ?? 1);
+          const fb = b.fuel / (db?.fuelCapacity ?? 1);
+          return fa !== fb ? fa - fb : a.id - b.id;
+        });
+        for (const u of needy) {
+          if (hold <= 0) break;
+          const def = UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS];
+          const give = Math.min((def?.fuelCapacity ?? 0) - u.fuel, hold);
+          if (give > 0) {
+            u.fuel += give;
+            hold -= give;
+          }
+        }
+        s.cargoFuel = hold;
       }
     }
-    t.cargoFuel = hold;
+    // Ammo leg: whole shells only (ordnance is discrete — the
+    // serveDepotUnit precedent).
+    if (services.rearm && (sdef?.cargoAmmoCapacity ?? 0) > 0) {
+      let hold = Math.floor(s.cargoAmmo);
+      if (hold >= 1) {
+        const needy: UnitRecord[] = [];
+        for (const u of world.units) {
+          if (u.hp <= 0 || u.id === s.id || u.owner !== s.owner) continue;
+          const def = UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS];
+          if (!def || def.domain !== sdef?.domain) continue;
+          const cap = def.ammoCapacity ?? 0;
+          if (cap <= 0 || Math.floor(cap - u.ammo) < 1) continue;
+          const dx = u.x - s.x;
+          const dz = u.z - s.z;
+          if (dx * dx + dz * dz <= r2) needy.push(u);
+        }
+        // Neediest first: ammo fraction ascending, ties break to lowest id.
+        needy.sort((a, b) => {
+          const da = UNIT_DEFS[a.kind as keyof typeof UNIT_DEFS];
+          const db = UNIT_DEFS[b.kind as keyof typeof UNIT_DEFS];
+          const fa = a.ammo / (da?.ammoCapacity ?? 1);
+          const fb = b.ammo / (db?.ammoCapacity ?? 1);
+          return fa !== fb ? fa - fb : a.id - b.id;
+        });
+        for (const u of needy) {
+          if (hold < 1) break;
+          const def = UNIT_DEFS[u.kind as keyof typeof UNIT_DEFS];
+          const give = Math.min(Math.floor((def?.ammoCapacity ?? 0) - u.ammo), hold);
+          if (give >= 1) {
+            u.ammo += give;
+            hold -= give;
+          }
+        }
+        s.cargoAmmo = hold;
+      }
+    }
   }
 }
 function runFood(city: CityState): void {
@@ -1524,7 +1627,7 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   runSupplyAura(world, city);
   // Grand-expansion Phase 5 (tanker, S2/S4): the flying fuel stations
   // distribute after the depot aura (tankers load, then give).
-  runTankerRefuel(world);
+  runMobileSupply(world);
   runFood(city);
   runTaxes(world, economyTickIndex(world), t);
   runTradeRoutes(world, city);

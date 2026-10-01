@@ -172,6 +172,15 @@ Select it and hit **Emergency refuel**: a fuel bladder is airdropped for
 150 funds, restoring 30% of its tank — enough to fly home and resupply
 properly. (Nuclear-powered aircraft never run dry.)
 
+**The naval chain:** your fleet brings its own depots. The **Fuel
+Tanker** (Navy tab) carries 400 fuel and refuels friendly ships around
+it; the **Ammo Ship** carries 80 shells and rearms them — both also
+haul **materials** as forward dry stores. Park one at a stocked
+**Naval Base** and its holds fill automatically; select it there and
+use **Load** / **Unload** to fill or empty its holds on demand. At sea
+they serve nearby friendly ships on their own. Nuclear ships are never
+refueled, and the refuel/rearm toggles let you specialize each hull.
+
 Watch the top bar: Funds, Materials, Food, Fuel, Goods, Influence,
 Manpower, Population, and your age. Your advisor (left side) warns you
 before things go wrong — listen to it.

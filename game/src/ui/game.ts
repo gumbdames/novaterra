@@ -163,8 +163,10 @@ import {
   buildZoneOrder,
   buildResearchUpgradeOrder,
   buildEmergencyRefuelOrder,
+  buildLoadCargoOrder,
   buildResupplyOrder,
   buildSupplyTogglesOrder,
+  buildUnloadCargoOrder,
   buildUpgradeRoadOrder,
   // Grand-expansion Phase 5 (S5): the airline orders.
   buildCancelAirlineRouteOrder,
@@ -909,6 +911,12 @@ class GameController {
       // silent no-op.
       onResupplyUnit: (unitId, depotId) =>
         this.enqueue(buildResupplyOrder(unitId, depotId, HUMAN_PLAYER_ID)),
+      // Sea-logistics Half B (2026-10-01): load / unload cargo at a
+      // naval supply point. Same loud-rejection path as resupply.
+      onLoadCargo: (unitId, buildingId) =>
+        this.enqueue(buildLoadCargoOrder(unitId, buildingId, HUMAN_PLAYER_ID)),
+      onUnloadCargo: (unitId, buildingId) =>
+        this.enqueue(buildUnloadCargoOrder(unitId, buildingId, HUMAN_PLAYER_ID)),
       // Final-review R5 (2026-10-01): emergency-refuel a stranded
       // fossil-fuel aircraft. Same loud-rejection path as resupply.
       onEmergencyRefuel: (unitId) =>

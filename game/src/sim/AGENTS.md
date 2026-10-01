@@ -32,7 +32,7 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   validation, growth. Registers `buildRoad`, `paintZone`,
   `placeBuilding`, `demolish`, `setTaxRate`. Grand-expansion Phase 8
   (peaceful mode, workstream A, 2026-09-30): `BuildingDef.military?:
-  boolean` — true on the 21 war-apparatus buildings (the full 99-kind
+  boolean` — true on the 21 war-apparatus buildings (the full 100-kind
   classification is pinned in tests/sim.peaceful.test.ts);
   `placeBuilding` validate rejects military defs loudly in peaceful
   worlds. Judgment calls in docs/research/phase8-civilian-peaceful.md:
@@ -178,14 +178,15 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `stopUnit` clear it (a move supersedes a siege); the `attackUnit`
   apply path clears it too. Grand-expansion Phase 8 (peaceful mode,
   workstream A, 2026-09-30): `UnitDef.military?: boolean` — true on the
-  71 war-apparatus kinds (the full 96-kind classification is pinned in
+  71 war-apparatus kinds (the full 97-kind classification is pinned in
   tests/sim.peaceful.test.ts); `spawnUnit` and `deployMine` validates
   reject military defs loudly in peaceful worlds. Judgment calls are
   recorded in docs/research/phase8-civilian-peaceful.md: engineer,
-  hauler, transport/transportShip, cargoFreighter, reconUAV/reconPlane
+  hauler, transport/transportShip, cargoFreighter, fuelBarge,
+  reconUAV/reconPlane
   (damage 0, the recon exception) are civilian; supplyTruck/fuelTruck/
   fuelTanker, the armed scout `drone` (damage 9, targets both), and the
-  whole intel roster are military. The 96-unit roster (31 land:
+  whole intel roster are military. The 97-unit roster (31 land:
   engineer, rifles, tank, artillery, aa, hauler, supplyTruck, fuelTruck,
   spectre, hq, sniperTeam, combatMedic, apc, tankDestroyer, mlrs,
   passengerTrain, freightTrain, bus, tram, spy, reconTeam + 10 Mk II/III
@@ -195,14 +196,15 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   armedUAV, reconPlane, gunship, tanker, militaryCargo, trainer,
   navalFighter, airliner, jumboAirliner, regionalJet, cargoPlane,
   passengerHeli, seaplane + 8 Mk II/III variants: fighterMk2/Mk3,
-  fighterBomberMk2/Mk3, attackHeliMk2/Mk3, gunshipMk2/Mk3; 35 sea:
+  fighterBomberMk2/Mk3, attackHeliMk2/Mk3, gunshipMk2/Mk3; 36 sea:
   patrolBoat, destroyer, transportShip, missileBoat, frigate, submarine,
   carrier, commandShip, fishingBoat, ferry, coastalSub, missileSub,
   corvette, cruiser, battleship, heavyDestroyer, cargoFreighter,
-  fuelTanker, ammoShip, repairShip, minelayer, navalMine,
+  fuelBarge, fuelTanker, ammoShip, repairShip, minelayer, navalMine,
   coastGuardCutter, cruiseLiner, yacht + 10 Mk II/III variants:
   destroyerMk2/Mk3, frigateMk2/Mk3, submarineMk2/Mk3,
-  missileBoatMk2/Mk3, transportShipMk2/Mk3) with
+  missileBoatMk2/Mk3, transportShipMk2/Mk3 — the civilian fuelBarge
+  joined the sea roster with sea-logistics, 2026-10-01) with
   combat stats (`UnitDef`: hp, speed, armor, damage, range,
   minRange, targets, vsArmor/vsAir multipliers, sight). Training costs
   (`trainFunds`/`trainMaterials`) are deducted at spawn; gated units
@@ -618,12 +620,17 @@ canonical hangar data model and every other module reads it:
   targets; `killUnit` releases the hangar slot and recursively
   destroys a carrier's wing (id order, no XP — ordnance lost with
   the ship).
-- **Logistics (`economy.ts`):** tankers load `cargoFuel` at depots
-  inside `serveDepotUnit` (gated on `tankerRefuelRadius: 40`);
-  `runTankerRefuel(world)` runs after `runSupplyAura` — id-ordered
-  tankers transfer hold fuel to friendly fossil air units in radius,
-  neediest first; nuclear units are never refueled (data-driven
-  exemption — the user directive).
+- **Logistics (`economy.ts`):** supply units load their cargo holds at
+  depots inside `serveDepotUnit` (def-driven — any def with cargo
+  capacity; the depot aura is the load side);
+  `runMobileSupply(world)` runs after `runSupplyAura` (sea-logistics
+  2026-10-01, renamed from `runTankerRefuel`): id-ordered supply ships
+  (any def with `tankerRefuelRadius` — air `tanker` 40, sea
+  `fuelTanker`/`ammoShip` 30) discharge fuel to friendly fossil units
+  of their own domain in radius (neediest first) and ammo to friendly
+  magazines of their own domain; nuclear units are never refueled
+  (data-driven exemption — the user directive). Refuel/rearm supply
+  toggles are honored per ship.
 - **AI (`ai.ts`):** `BASE_MIX` gains gunship 0.04 + strategicBomber
   0.03 (rifles/tank trimmed, sum 1.0); `thinkCarrierWings` issues
   `embarkAircraft` for carrier-capable aircraft near friendly

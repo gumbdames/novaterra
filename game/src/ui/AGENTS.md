@@ -306,7 +306,8 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   workstream (§3.8/S6, 2026-09-30) added the intel tab: spy + reconTeam;
   Phase 8 workstream D added the 28 Mk II/III tech variants next to their
   base kinds),
-  `BUILD_TABS` (13 tabs, 99 buildings — workstream W added library+park, workstream P added the two parking buildings,
+  `BUILD_TABS` (13 tabs, 100 buildings — workstream W added library+park, workstream P added the two parking buildings,
+  sea-logistics (2026-10-01) added the civilian commercialHarbor,
   the intel roster workstream added the intel tab: intelHQ/listeningPost/signalsStation/satelliteUplink;
   Phase 8 workstream E added 10 civilian buildings: 5 civic + 5 commerce),
   `UPGRADE_GROUPS` (military 8 / economy 4 / infrastructure 6 / logistics 1 / intel 2), `unitAvailability` /
@@ -472,7 +473,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `icons.ts` — **hand-drawn inline SVG icon set (pure, tested,
   `tests/ui.icons.test.ts`).** Every button shows icon AND text (user
   directive 2026-09-30) — icons are `aria-hidden`, never icon-only.
-  `unitIcon` / `buildingIcon` cover all 96 units + 99 buildings
+  `unitIcon` / `buildingIcon` cover all 97 units + 100 buildings
   (`Record<UnitKind, string>` so a missing glyph is a compile error);
   `toolIcon` for the build tools row (incl. the Phase 2 powerLine /
   waterPipe tools); `viewIcon` for the top-bar view toggles (Phase 4
@@ -486,7 +487,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `entityPortraits.ts` — **entity portraits from the sprite atlas
   (consumer side, 2026-10-01).** The consumer contract for the atlas
   pipeline (Worker A owns `game/public/img/entity-atlas.png` +
-  `entity-atlas.json`, 195 sprites for all 96 units + 99 buildings):
+  `entity-atlas.json`, 197 sprites for all 97 units + 100 buildings):
   `hasPortrait(kind)` / `portraitStyle(kind, boxPx)` /
   `applyPortraits(scope, makeOverlay)` / `ensurePortraitsLoaded()` /
   `portraitsReady()`. Headless-safe (no DOM at module scope); the

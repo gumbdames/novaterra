@@ -41,7 +41,7 @@ land, sea and air — or play a fully peaceful game with war disabled.
   (2026-10-01) — no victory condition, no end screen, just build —
   the skirmish-setup toggle, the hidden Military tab, the Management
   tab's live status section, and the greyed-out palette lockout are
-  all wired. The civilian deep-dive is in too: 99 buildings
+  all wired. The civilian deep-dive is in too: 100 buildings
   (museum, theater, sports stadium, botanical garden, grand market,
   bank, office tower, clinic, medicalCenter, fire station) and five
   city ordinances on the Management tab — Green Initiative, Transit
@@ -78,7 +78,12 @@ land, sea and air — or play a fully peaceful game with war disabled.
   establish between two harbors; funds / materials / fuel policies;
   ships sail the route automatically). The peaceful AI builds two
   harbors, establishes a funds route, and assigns freighters on its
-  own.
+  own. The military half wired the naval supply chain the docs had
+  promised: the fuel tanker (400 fuel + 200 materials) and ammo ship
+  (80 shells + 100 materials) load at naval bases and serve friendly
+  ships at sea, the naval base pulls fuel and caches materials forward,
+  Load/Unload orders move cargo by hand, and the marshal AI trains and
+  loads its own supply tail.
   See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
@@ -86,7 +91,7 @@ land, sea and air — or play a fully peaceful game with war disabled.
 
 - City building with visible zoning, terrain-following roads, and
   power/water utility networks you drag-paint across the map
-- 99 buildings and 96 units across land, sea, and air, with tech ages
+- 100 buildings and 97 units across land, sea, and air, with tech ages
 - Command menu (rebuilt 2026-10-01): a slim icon rail with three tabs
   — **Civilian** (Tools / Build / Airlines), **Military** (Train /
   Build / Superweapons), **Management** (Taxes / City focus / Cabinet /
@@ -96,7 +101,7 @@ land, sea and air — or play a fully peaceful game with war disabled.
   Trade
 - Entity portraits (2026-10-01): the command-menu cards (train / build /
   superweapon) and the selection detail "dossier photo" show the real
-  model portrait from a generated sprite atlas (195 sprites), with the
+  model portrait from a generated sprite atlas (197 sprites), with the
   hand-drawn icon glyph as the fallback — lazy-loaded, zero boot cost
 - City ordinances (Phase 8): five city-wide policies on the Management
   tab — Green Initiative, Transit Subsidy, Business Incentives,

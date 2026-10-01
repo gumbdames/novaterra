@@ -845,6 +845,30 @@ point (barracks, war factory, naval yard, airfield, the two producers,
 and the three depots) refills its magazine and tank passively — no
 orders needed. Units on a resupply run are served first.
 
+**The naval chain.** The fleet has its own supply ships. The **Fuel
+Tanker** carries 400 fuel in its holds and refuels friendly **sea**
+units around it (radius 30); the **Ammo Ship** carries 80 shells and
+rearms friendly sea units the same way. Nuclear ships are never
+refueled. Both ships also carry **materials** (200 / 100) as a forward
+dry-stores cache — the naval equivalent of a truck's spare parts.
+
+Supply ships load the same way trucks do: park one within 18 world
+units of a stocked **Naval Base** and its holds fill from the base's
+fuel/ammo stocks (materials draw from your stockpile). The Naval Base
+is a full reload point — it pulls fuel from your stockpile (5/s) like
+a fuel depot, and its stocks can be topped up by hand: select a loaded
+supply ship at the base and order **Unload** to empty its holds into
+the base's caches (300 fuel / 100 ammo / 200 materials). **Load** fills
+the ship from the base on demand. Land trucks work the same way at
+land depots — any supply unit loads at a depot, no special case.
+
+Out at sea, the ships work on their own: a loaded fuel tanker
+automatically refuels the thirstiest friendly ship nearby, and the
+ammo ship rearms the emptiest magazine. The **refuel / rearm**
+toggles on each ship (same panel as the trucks' repair toggle) let
+you specialize: a tanker with refuel off keeps its fuel for the
+return trip.
+
 **Advanced Logistics** (research, needs a Munitions Factory): +50% ammo
 production and +50% storage on every producer and depot.
 

@@ -18,7 +18,7 @@ power/water utility networks, run a multi-resource economy, research through
 technology ages, and command armies on land, sea, and air — or play a fully
 peaceful no-military mode that never ends.
 
-**Shipped roster (verified in code): 96 units / 99 buildings / 21 upgrades.**
+**Shipped roster (verified in code): 97 units / 100 buildings / 21 upgrades.**
 Units: 31 land, 30 air, 35 sea (including 28 Mk II/III tech variants across
 14 lines). Buildings span housing, civic, commerce, industry, utilities
 (13 power/water plants), logistics (fuel/ammo chain), transport stops,
@@ -173,6 +173,13 @@ state.
 - **Logistics (Phase 3):** fuel burn by class, ammo per shot; oil wells/rigs,
   munitions/missile plants, depots; supply trucks with resupply orders;
   logistics overlay (reload-point coverage discs + low-supply rings).
+  Sea half (2026-10-01): the cargo-load leg is def-driven — any supply
+  unit (sea fuelTanker/ammoShip with materials holds, land trucks) loads
+  at a depot; `runMobileSupply` discharges same-domain (sea ships serve
+  sea units, honoring refuel/rearm toggles, nuclear exempt); navalBase
+  pulls fuel and caches materials; `loadCargo`/`unloadCargo` commands
+  (validate≡apply, peaceful-mode rejection); marshal AI trains the
+  naval tail via `thinkNavalSupply`.
   Meltdowns are attack-triggered only (user correction 2026-09-30).
 - **Transport (Phase 4):** 4 road classes (dirt/country/paved/highway,
   in-place upgrade), drag-painted rail (3 track classes), buses/trams/
@@ -240,7 +247,7 @@ state.
   (deterministic DataTextures, zero third-party IP); procedural equirect
   env map so metals shade correctly. Base models are low-poly by
   authorship — textures make materials read, not silhouettes.
-  **Entity portraits:** build-time 96px 2.5D thumbnails for all 195 kinds,
+  **Entity portraits:** build-time 96px 2.5D thumbnails for all 197 kinds,
   rendered by a deterministic CPU rasterizer over the game's own processed
   geometry (`game/scripts/portrait-atlas.ts`, `npm run portraits`) and
   packed into `game/public/img/entity-atlas.png` (189KB paletted PNG,

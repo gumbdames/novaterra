@@ -43,12 +43,22 @@
  *   stock for the unit and routes it to the depot.
  * - `setSupplyToggles`: payload `{ unitId, owner, repair, rearm, refuel }`
  *   (flat booleans) — which field services a cargo-carrying unit offers.
+ * - `loadCargo` / `unloadCargo`: payload `{ unitId, buildingId, owner }`
+ *   — immediate cargo transfer with a friendly completed naval supply
+ *   point (reload point on water) inside LOGISTICS_RADIUS. Fuel/ammo
+ *   move between the depot's stocks and the unit's holds (never
+ *   touching resupply reservations); materials move between the
+ *   owner's stockpile and the hold (load) or the depot's
+ *   materialsStock (unload). Sea-logistics Half B (2026-10-01).
  */
 
 import { BUILDING_DEFS, cellCenterWorld, getPlayer } from '../sim/city';
 import type { BuildingKind, BuildingRecord } from '../sim/city';
 import { EMERGENCY_REFUEL_COST_FUNDS } from '../sim/commands';
 import { LOGISTICS_RADIUS } from '../sim/economy';
+import { isWater } from '../sim/terrain';
+import type { TerrainData } from '../sim/terrain';
+import { effectiveAmmoStorage, effectiveFuelStorage } from '../sim/upgrades';
 import { UNIT_DEFS, supplyLevel, supplyServicesOf } from '../sim/units';
 import type { UnitDef, UnitKind, UnitRecord } from '../sim/units';
 import type { World } from '../sim/world';
@@ -103,12 +113,20 @@ export const LOGISTICS_LOW_SUPPLY = 0.3;
 
 /**
  * True when the unit def carries cargo for others (supplyTruck /
- * fuelTruck / hauler). This is the sim's `setSupplyToggles` eligibility
- * rule, mirrored so the panel only offers toggles that will validate.
+ * fuelTruck / hauler, the sea fuelTanker / ammoShip, the depot ship).
+ * This is the sim's `setSupplyToggles` eligibility rule, mirrored so
+ * the panel only offers toggles that will validate. Sea-logistics Half
+ * B (2026-10-01): the materials hold counts too.
  */
-export function isSupplyUnit(def: { cargoFuelCapacity?: number; cargoAmmoCapacity?: number } | undefined): boolean {
+export function isSupplyUnit(
+  def: { cargoFuelCapacity?: number; cargoAmmoCapacity?: number; cargoMaterialsCapacity?: number } | undefined,
+): boolean {
   if (!def) return false;
-  return (def.cargoFuelCapacity ?? 0) > 0 || (def.cargoAmmoCapacity ?? 0) > 0;
+  return (
+    (def.cargoFuelCapacity ?? 0) > 0 ||
+    (def.cargoAmmoCapacity ?? 0) > 0 ||
+    (def.cargoMaterialsCapacity ?? 0) > 0
+  );
 }
 
 /** True when the unit's own tanks/magazines are tracked by the sim. */
@@ -139,6 +157,14 @@ export function cargoFuelOf(u: UnitRecord): number {
 /** Live cargo-ammo hold on a unit (0 when the sim field is absent). */
 export function cargoAmmoOf(u: UnitRecord): number {
   return u.cargoAmmo ?? 0;
+}
+
+/**
+ * Live cargo-materials hold on a unit (0 when the sim field is absent).
+ * Sea-logistics Half B (2026-10-01).
+ */
+export function cargoMaterialsOf(u: UnitRecord): number {
+  return u.cargoMaterials ?? 0;
 }
 
 /** Unit's own fuel tank level 0..1 (1 when untracked/exempt). */
@@ -338,6 +364,104 @@ export function resupplyBlockReason(
   return own ? 'no depot has available stock' : 'no depot built yet';
 }
 
+// ---------------------------------------------------------------------------
+// Sea-logistics Half B (2026-10-01): naval supply points + cargo buttons
+// ---------------------------------------------------------------------------
+
+/**
+ * True when the building is a NAVAL supply point for the
+ * `loadCargo`/`unloadCargo` orders: a completed reload point whose
+ * footprint center is on water (navalYard, navalBase, ports —
+ * data-driven, mirroring the sim's `computeCargoTransfer` gate). The
+ * shipyard is not one (dry production building, no stocks).
+ */
+export function isNavalSupplyPoint(b: BuildingRecord, terrain: TerrainData): boolean {
+  const bdef = BUILDING_DEFS[b.kind as BuildingKind];
+  if (!bdef || !bdef.reloadPoint) return false;
+  if (b.progress < 1) return false;
+  const x = cellCenterWorld(b.cx + (bdef.footprintW - 1) / 2);
+  const z = cellCenterWorld(b.cz + (bdef.footprintH - 1) / 2);
+  return isWater(terrain, x, z);
+}
+
+/**
+ * Nearest friendly naval supply point to the unit (any — the sim
+ * validates whether a load or unload can actually transfer). Null when
+ * the owner has none on the map (or terrain is unavailable).
+ */
+export function nearestNavalDepot(
+  world: World,
+  terrain: TerrainData | undefined,
+  unit: UnitRecord,
+): BuildingRecord | null {
+  if (terrain === undefined) return null;
+  let best: BuildingRecord | null = null;
+  let bestD2 = Infinity;
+  for (const b of world.city.buildings) {
+    if (b.owner !== unit.owner) continue;
+    if (!isNavalSupplyPoint(b, terrain)) continue;
+    const dx = cellCenterWorld(b.cx) - unit.x;
+    const dz = cellCenterWorld(b.cz) - unit.z;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < bestD2) {
+      bestD2 = d2;
+      best = b;
+    }
+  }
+  return best;
+}
+
+/**
+ * Human reason a supply unit cannot load/unload cargo right now (for
+ * the button's disabled tooltip). Null when the sim would accept the
+ * order — mirrors the `computeCargoTransfer` validate order (naval
+ * supply point, range, transferable amounts); the sim remains the
+ * authority and rejects loudly.
+ */
+export function cargoBlockReason(
+  world: World,
+  terrain: TerrainData | undefined,
+  unit: UnitRecord,
+  depot: BuildingRecord | null,
+  mode: 'load' | 'unload',
+): string | null {
+  const udef = UNIT_DEFS[unit.kind as UnitKind];
+  if (!isSupplyUnit(udef)) return 'not a supply unit';
+  if (depot === null || terrain === undefined) return 'no naval supply point in range';
+  const bdef = BUILDING_DEFS[depot.kind as BuildingKind];
+  const x = cellCenterWorld(depot.cx + ((bdef?.footprintW ?? 1) - 1) / 2);
+  const z = cellCenterWorld(depot.cz + ((bdef?.footprintH ?? 1) - 1) / 2);
+  const dx = unit.x - x;
+  const dz = unit.z - z;
+  if (dx * dx + dz * dz > LOGISTICS_RADIUS * LOGISTICS_RADIUS) {
+    return "out of range — sail inside the depot's supply radius";
+  }
+  if (mode === 'load') {
+    const fuelRoom = Math.max(0, (udef?.cargoFuelCapacity ?? 0) - cargoFuelOf(unit));
+    const fuelAvail = Math.max(0, fuelStockOf(depot) - (depot.reservedFuel ?? 0));
+    const ammoRoom = Math.floor(Math.max(0, (udef?.cargoAmmoCapacity ?? 0) - cargoAmmoOf(unit)));
+    const ammoAvail = Math.max(0, Math.floor(ammoStockOf(depot) - (depot.reservedAmmo ?? 0)));
+    const matRoom = Math.floor(Math.max(0, (udef?.cargoMaterialsCapacity ?? 0) - cargoMaterialsOf(unit)));
+    const player = getPlayer(world.city, unit.owner);
+    const matAvail = Math.max(0, Math.floor(player?.materials ?? 0));
+    if (Math.min(fuelRoom, fuelAvail) <= 0 && Math.min(ammoRoom, ammoAvail) < 1 && Math.min(matRoom, matAvail) < 1) {
+      return 'nothing to load — holds full or depot empty';
+    }
+    return null;
+  }
+  if (!bdef) return 'no naval supply point in range';
+  const fuelHeadroom = Math.max(0, effectiveFuelStorage(world, unit.owner, bdef) - fuelStockOf(depot));
+  const ammoHeadroom = Math.max(0, effectiveAmmoStorage(world, unit.owner, bdef) - ammoStockOf(depot));
+  const matHeadroom = Math.max(0, (bdef.materialsStorage ?? 0) - (depot.materialsStock ?? 0));
+  const canFuel = cargoFuelOf(unit) > 0 && fuelHeadroom > 0;
+  const canAmmo = Math.floor(cargoAmmoOf(unit)) >= 1 && ammoHeadroom >= 1;
+  const canMat = Math.floor(cargoMaterialsOf(unit)) >= 1 && matHeadroom >= 1;
+  if (!canFuel && !canAmmo && !canMat) {
+    return 'nothing to unload — holds empty or depot full';
+  }
+  return null;
+}
+
 /**
  * Final-review R5 UI feel (2026-10-01): the Emergency refuel button's
  * disabled reason — null when the sim would accept the order. Mirrors
@@ -382,8 +506,9 @@ export function depotStockLine(b: BuildingRecord): string {
 }
 
 /**
- * Cargo line for supply units, e.g. "Cargo: 60 fuel · 20 ammo".
- * Only the holds the def has appear.
+ * Cargo line for supply units, e.g. "Cargo: 60 fuel · 20 ammo ·
+ * 150 materials". Only the holds the def has appear. Sea-logistics
+ * Half B (2026-10-01): the materials hold.
  */
 export function cargoLine(u: UnitRecord): string {
   const def = UNIT_DEFS[u.kind as UnitKind];
@@ -393,6 +518,9 @@ export function cargoLine(u: UnitRecord): string {
   }
   if (def !== undefined && (def.cargoAmmoCapacity ?? 0) > 0) {
     parts.push(`${Math.floor(cargoAmmoOf(u))} ammo`);
+  }
+  if (def !== undefined && (def.cargoMaterialsCapacity ?? 0) > 0) {
+    parts.push(`${Math.floor(cargoMaterialsOf(u))} materials`);
   }
   return parts.length > 0 ? `Cargo: ${parts.join(' · ')}` : '';
 }
