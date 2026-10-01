@@ -24,8 +24,8 @@
  * frequency and the honest "Live Muse (hopefully coming)" placeholder
  * (no API-key flow: removed entirely per the 2026-09-29 user
  * directive; zero third-party AI API surface) — live behind a Settings
- * interface defined here. Nothing is implemented in Phase 1; this comment
- * is the reservation, not the feature.
+ * interface defined here. The settings are fully implemented and
+ * persisted; this comment marks the seam, not a reservation.
  */
 
 /** Human-facing game title. */

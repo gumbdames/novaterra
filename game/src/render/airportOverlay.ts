@@ -58,8 +58,6 @@ export const AIRPORT_ROUTE_COLOR = 0xffd54f;
 export const AIRPORT_ROUTE_OPACITY = 0.7;
 /** Rings sit above the logistics rings (+0.18) so the airport layer reads on top. */
 export const AIRPORT_RING_TERRAIN_OFFSET = 0.22;
-/** Flat-decal Y when no terrain sampler is available (headless path). */
-export const AIRPORT_FLAT_Y = 0.24;
 /** Ring segments per airport marker. */
 export const AIRPORT_RING_SEGMENTS = 32;
 /** Ground-ring inner/outer radius factor (× the datum radius). */

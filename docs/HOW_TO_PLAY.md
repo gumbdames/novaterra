@@ -1,7 +1,7 @@
 # How to Play — novaterra
 
 > The 0.1 Alpha guide. Kept **clear, short and simple** per the
-> design brief. Last updated: 2026-09-30 (Workstream X: living menu demo).
+> design brief. Last updated: 2026-10-01 (final-review R4: docs refresh).
 
 ## Your goal
 
@@ -41,7 +41,8 @@ more water means more naval fighting) → pick your **rival**:
 Tick **Peaceful mode** before picking your rival for a no-military
 game: no armies for either side, no spies or sabotage, no superweapons
 — the Military tab disappears and every military unit, building, and
-upgrade is locked. See **Peaceful mode** below for how you win.
+upgrade is locked. See **Peaceful mode** below (it is endless — there
+is no win condition).
 
 ## Peaceful mode
 
@@ -104,9 +105,10 @@ cell must touch water). Pick a unit, then click open ground (or water
 for ships) to train it.
 
 **Research:** build a **Research Lab** (Commerce tab), then select it
-to open the research panel — 19 upgrades in **Military**, **Economy**,
-**Infrastructure**, and **Logistics** groups, each with its cost and
-effect shown. Research one at a time; researched upgrades are marked ✓.
+to open the research panel — 21 upgrades in **Military**,
+**Economy**, **Infrastructure**, **Logistics**, and **Intel** groups,
+each with its cost and effect shown. Research one at a time;
+researched upgrades are marked ✓.
 
 ## Power and water
 
@@ -236,7 +238,8 @@ harmless neighbor.
 
 - Your first buildings should be farms (food) and a power plant.
 - Scouts (drones) are cheap — send one across the map early.
-- Only AA guns, fighters, drones, and destroyers can hit air units.
+- Only AA guns, fighters, drones, destroyers, frigates, and cruisers
+  can hit air units.
 - Tanks beat infantry; artillery beats tanks; spectres are fast
   tank-hunters. Build counters, not just more of the same.
 - On water maps, control the sea first — ships can't be touched by
@@ -320,7 +323,7 @@ The bottom-left menu has three tabs:
   stop), the **train** palette, the Logistics / Naval-Air / Special
   build tabs, and the **superweapons**: fire **Aegis**, enter **Storm
   targeting** (then click the map).
-- **Management** — set **tax rates** per zone (0–50%; disabled while a
+- **Management** — set **tax rates** per zone (0–100%; disabled while a
   mayor holds office — the mayor resets them each month), set the
   **city focus** (specialization), appoint/dismiss your **Mayor** (tax
   policy + housing/industry/balanced auto-construction) and **General**
@@ -334,7 +337,6 @@ version.
 ## Keyboard shortcuts
 
 - **Space** — pause / resume.
-- **1 / 2 / 4** — game speed (1× / 2× / 4×).
 - **Esc** — cancel placement / close panels.
 - **\`** (backtick) — cheat console.
 - **Arrow keys / WASD** — pan the camera.

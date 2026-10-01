@@ -363,13 +363,6 @@ function clamp01(x: number): number {
   return x < 0 ? 0 : x > 1 ? 1 : x;
 }
 
-/** Chebyshev distance between two cells (in cells). */
-export function chebyshevCells(a: number, b: number): number {
-  const ca = cellCoords(a);
-  const cb = cellCoords(b);
-  return Math.max(Math.abs(ca.cx - cb.cx), Math.abs(ca.cz - cb.cz));
-}
-
 /**
  * Elevation driver: +0..ELEVATION_BONUS_MAX, linear in height above the
  * water level, full at ELEVATION_FULL_HEIGHT world units above it.

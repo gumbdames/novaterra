@@ -1033,5 +1033,3 @@ export const STRINGS = {
     },
   },
 } as const;
-
-export type Strings = typeof STRINGS;

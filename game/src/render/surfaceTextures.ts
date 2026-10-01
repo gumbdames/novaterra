@@ -767,11 +767,3 @@ export function surfaceRoughnessTexture(
   }
   return tex;
 }
-
-/** Release every cached surface texture (call on renderer teardown). */
-export function disposeSurfaceTextures(): void {
-  for (const tex of textureCache.values()) tex.dispose();
-  for (const tex of roughnessCache.values()) tex.dispose();
-  textureCache.clear();
-  roughnessCache.clear();
-}

@@ -142,8 +142,8 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   (age, production building, cost, manpower, Naval Yard coast rule).
   Train buttons show funds + materials + manpower cost; build buttons
   show funds + materials. Selecting a completed Research Lab (or owning
-  one with nothing selected) opens the research panel: all 19 upgrades
-  in Military / Economy / Infrastructure / Logistics groups with one-line effects, cost,
+  one with nothing selected) opens the research panel: all 21 upgrades
+  in Military / Economy / Infrastructure / Logistics / Intel groups with one-line effects, cost,
   researched checkmark, and disabled reasons (the Phase 2 Infrastructure
   group is the utility research ladder: combustion → advanced nuclear →
   fusion, groundwater survey, desalination tech, grid storage). Selected

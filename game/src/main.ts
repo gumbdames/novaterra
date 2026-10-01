@@ -15,7 +15,7 @@
  */
 
 /**
- * NOVATERRA — application entry point (Phase 1 scaffold).
+ * NOVATERRA — application entry point (0.1 Alpha).
  *
  * Responsibilities:
  *  - Create the three.js renderer (WebGPURenderer from `three/webgpu`,
