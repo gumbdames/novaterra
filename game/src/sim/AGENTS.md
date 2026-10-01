@@ -285,9 +285,13 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 - `ai.ts` — Classic AI, five difficulties (cadet/citizen/commander/general/
   marshal). Seeded per-match personalities (same seed ⇒ identical play;
   different seeds ⇒ different playstyles at the same tier), fair (only
-  sees enemies via `getVisibleEnemies()`,
-  never reads enemy positions directly; water is found by probe spawns, never
-  maphack). Issues standard commands (`spawnUnit`, `moveUnit`, `moveGroup`,
+  sees enemies via `getVisibleEnemies()` for units and
+  `getVisibleEnemyBuildings()` for buildings — both sight-gated, never
+  reads enemy positions directly; `getKnownEnemyBuildings()` latches
+  seen buildings into the AI's intel picture (A2, 2026-10-01); water is
+  found by probe spawns, never maphack). Counter table is variant-aware
+  (`isCounterHeavy`/`isCounterArty` match `variantBaseOf`, A6,
+  2026-10-01). Issues standard commands (`spawnUnit`, `moveUnit`, `moveGroup`,
   `attackUnit`, `attackBuilding`, `researchUpgrade`) through the queue — rejections are
   swallowed, never crash the tick. Think cadence: 240/120/60/45/30 ticks.
   Siege doctrine (final-review R2-B, 2026-10-01): when no enemy units

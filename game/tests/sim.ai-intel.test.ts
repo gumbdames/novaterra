@@ -394,9 +394,15 @@ describe('AI spy doctrine', () => {
     );
   });
 
-  it('getVisibleEnemyBuildings sees positions (public) but not nature', () => {
+  it('getVisibleEnemyBuildings needs sight (A2); nature stays undiscovered', () => {
     const ctx = setupIntelCtx();
     const mixed = enemyBuildingNear(ctx, 'mixedAirport');
+    // A2 (2026-10-01): positions are NOT public — no sight, no see.
+    // The AI has no units yet, so the building is invisible.
+    expect(getVisibleEnemyBuildings(ctx.world, 0)).toEqual([]);
+    // Give the AI a scout with sight on the building.
+    const c = buildingCenterWorld(mixed);
+    spawnUnit(ctx.world, 'reconTeam', 0, c.x + 5, c.z + 5);
     const seen = getVisibleEnemyBuildings(ctx.world, 0);
     expect(seen.map((b) => b.id)).toContain(mixed.id);
     // The AI learns the nature only via its own discovery records.

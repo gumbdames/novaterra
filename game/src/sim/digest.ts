@@ -277,6 +277,9 @@ export function canonicalizeWorld(world: World): string {
       ? `${canonicalNumber(p.navalWater.x)},${canonicalNumber(p.navalWater.z)},`
       : '-,';
     out += `${p.seenSubmarine ? 1 : 0},`;
+    // A2 (2026-10-01): latched seen-building IDs. Behavior-affecting
+    // (siege/spy targeting reads the latch) ⇒ digest-covered.
+    out += `sb=${(p.seenBuildingIds ?? []).join('.')},`;
     // Phase 3 logistics (workstream 3): virtual depot stocks. Behavior-
     // affecting (they refill AI units) ⇒ digest-covered (PLAN §11).
     out += `vls=${canonicalNumber(p.virtualAmmoStock ?? 0)},${canonicalNumber(p.virtualFuelStock ?? 0)},`;

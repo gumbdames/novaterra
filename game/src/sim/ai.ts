@@ -143,7 +143,7 @@ import type { World } from './world';
 import type { CommandQueue } from './commands';
 import type { SimSystem } from './tick';
 import { findUnit, isSheltered, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
-import { chooseVariant } from './variants';
+import { chooseVariant, variantBaseOf } from './variants';
 import { rngBank } from './world';
 import type { RngBank } from './rng';
 import { canTarget, canTargetBuilding } from './combat';
@@ -429,6 +429,16 @@ export interface AIPlayerState {
   /** Set once a submarine is ever seen — gates the Sonar Suite priority. */
   seenSubmarine: boolean;
   /**
+   * Latched IDs of enemy buildings this AI has ever SEEN (A2, 2026-10-01).
+   * The AI's intel picture: once a scout/sensor sees a building, the AI
+   * remembers it — it doesn't forget when the scout leaves (the
+   * airport-discovery precedent). `getKnownEnemyBuildings` maintains
+   * this; siege and spy targeting read the latched picture, not a
+   * maphack. Plain data — snapshotted + digested (AD9: missing decodes
+   * to empty).
+   */
+  seenBuildingIds: number[];
+  /**
    * Per-match personality (seeded playstyle variation). Drawn once from
    * the `ai-<owner>` RNG stream at registration; think functions read it
    * but never draw from it. Plain data — snapshotted + digested.
@@ -527,6 +537,7 @@ export function addAIPlayer(
     navalProbeIndex: 0,
     navalWater: null,
     seenSubmarine: false,
+    seenBuildingIds: [],
     // Phase 3 logistics (workstream 3): virtual depot stocks start empty.
     // Initialized here (not just in decode) so a fresh AI player deep-equals
     // its own save/load round trip (netSaveload).
@@ -557,7 +568,16 @@ export function addAIPlayer(
  * only, so a radar contact the AI "knows about" still has to be
  * engaged by a unit that can see it.
  */
-export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
+/**
+ * The AI's sight discs: per-own-unit sight radii plus building
+ * surveillance coverage. Shared by `getVisibleEnemies` (units) and
+ * `getVisibleEnemyBuildings` (buildings, A2) — one sight model, no
+ * divergence. Returns null when the owner has no perception at all.
+ */
+function getSightDiscs(
+  world: World,
+  owner: number,
+): { ownRadii: { x: number; z: number; r2: number }[]; coverage: { x: number; z: number; radius: number; seesStealth: boolean }[] } | null {
   const own = world.units.filter((u) => u.owner === owner && u.hp > 0);
   // Grand-expansion Phase 7 (S6 intel, workstream 3, 2026-09-30): the
   // building sight term — completed, operational, unsabotaged
@@ -566,9 +586,7 @@ export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
   // hook instead; reconTeam/reconUAV/reconPlane through their high
   // platform sight on the unit path below.)
   const coverage = buildingSightCoverage(world, owner);
-  if (own.length === 0 && coverage.length === 0) return [];
-  const out: UnitRecord[] = [];
-  const seen = new Set<number>();
+  if (own.length === 0 && coverage.length === 0) return null;
   // Signals Grid (Connectivity age) grants +sight to all units; upgrade
   // effects (Drone Optics, Advanced Avionics, Sonar Suite) stack on top.
   // Veterancy (Phase 1) multiplies the unit's own sight — the Signals
@@ -579,12 +597,21 @@ export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
   // kind) and vetSightMult only on the own unit, so the radius is
   // constant across enemies. Behavior-identical; turns the inner loop
   // from O(enemies x own) effectiveSight calls into O(own) + compares.
-  const ownRadii: { x: number; z: number; r2: number }[] = own.map((o) => {
+  const ownRadii = own.map((o) => {
     const def = UNIT_DEFS[o.kind as UnitKind];
     // (?? 0: hand-built records without the field count as Recruit.)
     const sight = effectiveSight(world, owner, def) * vetSightMult(o.vetLevel ?? 0) + sightBonus;
     return { x: o.x, z: o.z, r2: sight * sight };
   });
+  return { ownRadii, coverage };
+}
+
+export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
+  const discs = getSightDiscs(world, owner);
+  if (discs === null) return [];
+  const { ownRadii, coverage } = discs;
+  const out: UnitRecord[] = [];
+  const seen = new Set<number>();
   for (const e of world.units) {
     if (e.owner === owner || e.hp <= 0) continue;
     // Grand-expansion Phase 7 (S6 intel): stealthed units (spies) are
@@ -868,11 +895,11 @@ function attack(
 // real command at sign-off: the name, payload, and `buildingTargetId`
 // semantics here match combat.ts exactly.
 //
-// "Known enemy infrastructure" reuses `getVisibleEnemyBuildings` — the
-// same abstraction the spy doctrine uses (the AI's intel picture of the
-// enemy's completed buildings). Siege targeting is therefore consistent
-// with the existing AI, and it is what makes 220+ base separations
-// eliminable instead of permanent stalemates.
+// "Known enemy infrastructure" uses `getKnownEnemyBuildings` — the
+// AI's latched intel picture of the enemy's completed buildings (A2:
+// sight-gated, never a maphack). Siege targeting is therefore
+// consistent with the spy doctrine, and it is what makes 220+ base
+// separations eliminable instead of permanent stalemates.
 // ---------------------------------------------------------------------------
 
 /**
@@ -968,7 +995,7 @@ function pickSiegeTarget(
   let target: BuildingRecord | null = null;
   if (difficulty === 'citizen') {
     let best = Infinity;
-    for (const b of getVisibleEnemyBuildings(world, owner)) {
+    for (const b of getKnownEnemyBuildings(world, ai)) {
       if (b.owner === owner) continue;
       const c = buildingCenterWorld(b);
       const dx = c.x - ai.baseX;
@@ -982,7 +1009,7 @@ function pickSiegeTarget(
     return target;
   }
   let best = -1;
-  for (const b of getVisibleEnemyBuildings(world, owner)) {
+  for (const b of getKnownEnemyBuildings(world, ai)) {
     if (b.owner === owner) continue;
     const v = siegeTargetValue(b.kind);
     if (v > best || (v === best && target !== null && b.id < target.id)) {
@@ -1881,6 +1908,25 @@ const DOMAIN_OF = (u: UnitRecord): string => UNIT_DEFS[KIND_OF(u)].domain;
 const ARMOR_OF = (u: UnitRecord): string => UNIT_DEFS[KIND_OF(u)].armor;
 
 /**
+ * Enemy heavy armor for counter purposes (A6, 2026-10-01): matches the
+ * variant BASE kind, so a Mk3 tank still triggers the tank counter.
+ * Exported for testing.
+ */
+export function isCounterHeavy(kind: UnitKind): boolean {
+  const base = variantBaseOf(kind);
+  return base === 'tank' || base === 'tankDestroyer';
+}
+
+/**
+ * Enemy artillery for counter purposes (A6, 2026-10-01): variant-aware,
+ * as above. Exported for testing.
+ */
+export function isCounterArty(kind: UnitKind): boolean {
+  const base = variantBaseOf(kind);
+  return base === 'artillery' || base === 'mlrs';
+}
+
+/**
  * Pick the next unit kind to train. Counter logic (spec §7.2) runs
  * first — each branch gated by canTrain so locked kinds are skipped —
  * then the base mix fills whatever is furthest below its share.
@@ -1905,7 +1951,9 @@ function chooseUnitKind(
     const enemySubs = visible.filter((e) => SUB_KINDS.has(e.kind));
     const enemyCapitals = visible.filter((e) => CAPITAL_KINDS.has(e.kind));
     const enemyHeavy = visible.filter(
-      (e) => DOMAIN_OF(e) === 'land' && (KIND_OF(e) === 'tank' || KIND_OF(e) === 'tankDestroyer'),
+      // A6 (2026-10-01): variant-aware via isCounterHeavy — a Mk3 tank
+      // is still a tank for counter purposes.
+      (e) => DOMAIN_OF(e) === 'land' && isCounterHeavy(KIND_OF(e)),
     );
     const enemyLight = visible.filter(
       (e) =>
@@ -1914,7 +1962,8 @@ function chooseUnitKind(
         ARMOR_OF(e) === 'light',
     );
     const enemyArty = visible.filter(
-      (e) => KIND_OF(e) === 'artillery' || KIND_OF(e) === 'mlrs',
+      // A6 (2026-10-01): variant-aware via isCounterArty.
+      (e) => isCounterArty(KIND_OF(e)),
     );
     const enemyNavy = visible.filter((e) => DOMAIN_OF(e) === 'sea');
 
@@ -2348,10 +2397,71 @@ function creditVirtualIntel(world: World): void {
  * never by reading the true `airportType`. Completed buildings only —
  * a construction site is not a target.
  */
+/**
+ * Enemy buildings the owner's forces can CURRENTLY see (A2, 2026-10-01).
+ * The old version returned ALL completed enemy buildings with zero
+ * sight filtering — a maphack: the marshal knew the lab/power-plant
+ * locations from tick 0. Now gated on real detection: a building is
+ * visible only when inside an own-unit sight disc or building
+ * surveillance coverage (the same sight model as `getVisibleEnemies`).
+ * For the AI's remembered picture (latched once seen), use
+ * `getKnownEnemyBuildings`.
+ */
 export function getVisibleEnemyBuildings(world: World, owner: number): BuildingRecord[] {
+  const discs = getSightDiscs(world, owner);
+  if (discs === null) return [];
+  const { ownRadii, coverage } = discs;
   const out: BuildingRecord[] = [];
   for (const b of world.city.buildings) {
-    if (b.owner !== owner && b.progress >= 1) out.push(b);
+    if (b.owner === owner || b.progress < 1) continue;
+    const c = buildingCenterWorld(b);
+    let visible = false;
+    for (const r of ownRadii) {
+      const dx = c.x - r.x;
+      const dz = c.z - r.z;
+      if (dx * dx + dz * dz <= r.r2) {
+        visible = true;
+        break;
+      }
+    }
+    if (!visible) {
+      for (const cov of coverage) {
+        const dx = c.x - cov.x;
+        const dz = c.z - cov.z;
+        if (dx * dx + dz * dz <= cov.radius * cov.radius) {
+          visible = true;
+          break;
+        }
+      }
+    }
+    if (visible) out.push(b);
+  }
+  return out;
+}
+
+/**
+ * Enemy buildings the AI KNOWS about (A2, 2026-10-01): currently
+ * visible ones plus any latched in `ai.seenBuildingIds` from earlier
+ * sightings (the airport-discovery precedent — the AI doesn't forget
+ * when the scout leaves). Updates the latch. Siege and spy targeting
+ * use this, never the raw maphack.
+ */
+export function getKnownEnemyBuildings(world: World, ai: AIPlayerState): BuildingRecord[] {
+  const owner = ai.owner;
+  const visible = getVisibleEnemyBuildings(world, owner);
+  const latched = ai.seenBuildingIds ?? [];
+  const latchedSet = new Set(latched);
+  for (const b of visible) {
+    if (!latchedSet.has(b.id)) {
+      latchedSet.add(b.id);
+      latched.push(b.id);
+    }
+  }
+  ai.seenBuildingIds = latched;
+  const out: BuildingRecord[] = [];
+  for (const b of world.city.buildings) {
+    // Still standing, still enemy-owned, and in the intel picture.
+    if (b.owner !== owner && b.progress >= 1 && latchedSet.has(b.id)) out.push(b);
   }
   return out;
 }
@@ -2431,10 +2541,10 @@ function issueIntelOp(
  * Pick the highest-value enemy building (id-order tiebreak — no RNG in
  * thinks). Returns null when there is nothing worth infiltrating.
  */
-function pickSpyTarget(world: World, owner: number): BuildingRecord | null {
+function pickSpyTarget(world: World, ai: AIPlayerState): BuildingRecord | null {
   let target: BuildingRecord | null = null;
   let best = -1;
-  for (const b of getVisibleEnemyBuildings(world, owner)) {
+  for (const b of getKnownEnemyBuildings(world, ai)) {
     const v = intelTargetValue(b.kind);
     if (v > best) {
       best = v;
@@ -2513,7 +2623,7 @@ function directSpy(
     return;
   }
   // Free spy: converge on the highest-value enemy building.
-  const target = pickSpyTarget(world, owner);
+  const target = pickSpyTarget(world, ai);
   if (!target) return;
   const c = buildingCenterWorld(target);
   const dx = c.x - spy.x;
@@ -4678,6 +4788,7 @@ export function encodeAIState(ai: AIState): unknown {
       navalProbeIndex: p.navalProbeIndex ?? 0,
       navalWater: p.navalWater ? { x: p.navalWater.x, z: p.navalWater.z } : null,
       seenSubmarine: p.seenSubmarine ?? false,
+      seenBuildingIds: p.seenBuildingIds ?? [],
       // Phase 3 logistics (workstream 3): virtual depot stocks. ?? 0 so
       // pre-logistics snapshots decode to empty — no version bump (AD9).
       virtualAmmoStock: p.virtualAmmoStock ?? 0,
@@ -4725,6 +4836,9 @@ export function decodeAIState(data: unknown): AIState {
       navalProbeIndex?: number;
       navalWater?: { x: number; z: number } | null;
       seenSubmarine?: boolean;
+      // A2 (2026-10-01): pre-A2 snapshots have no latch — decodes to
+      // empty (AD9).
+      seenBuildingIds?: number[];
       virtualAmmoStock?: number;
       virtualFuelStock?: number;
       // Final-review R2-B (AI siege doctrine): pre-siege snapshots
@@ -4765,6 +4879,7 @@ export function decodeAIState(data: unknown): AIState {
       navalProbeIndex: p.navalProbeIndex ?? 0,
       navalWater: p.navalWater ? { x: p.navalWater.x, z: p.navalWater.z } : null,
       seenSubmarine: p.seenSubmarine ?? false,
+      seenBuildingIds: p.seenBuildingIds ?? [],
       // Phase 3 logistics (workstream 3): ?? 0 keeps pre-logistics saves
       // loading with empty virtual stocks — no version bump (AD9).
       virtualAmmoStock: p.virtualAmmoStock ?? 0,
