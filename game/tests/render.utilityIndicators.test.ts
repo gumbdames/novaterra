@@ -28,14 +28,22 @@
  *    a doubly-troubled building, disposal.
  *
  * Headless (node): no DOM, no WebGL — only sprite bytes + mesh state.
+ * A real PerspectiveCamera (non-trivial quaternion, off-center
+ * buildings) covers the billboard path: per-instance quaternions must
+ * match the camera while the meshes stay unrotated and indicators
+ * stay glued to their buildings (C5 regression).
  */
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 
 import type { BuildingRecord } from '../src/sim/city';
+import { cellCenterWorld } from '../src/sim/city';
 import {
   UtilityIndicators,
   UTILITY_INDICATOR_KINDS,
+  UTILITY_INDICATOR_LIFT,
+  UTILITY_INDICATOR_SIZE,
+  UTILITY_INDICATOR_SPREAD,
   utilityIndicatorPixels,
   utilityIndicatorsDigest,
   utilityIndicatorsFor,
@@ -170,6 +178,64 @@ describe('UtilityIndicators', () => {
     ind.sync(buildings, {});
     ind.sync([...buildings].reverse(), {}); // order-independent digest
     expect(ind.debugRebuilds()).toBe(rebuilds);
+    ind.dispose();
+  });
+
+  it('billboards per instance with a camera: indicators stay glued to their buildings', () => {
+    const scene = new THREE.Scene();
+    const ind = new UtilityIndicators(scene);
+    // Far from the map origin — the old mesh-level quaternion bug
+    // rotated every instance around the world origin, so these two
+    // floated far from their buildings.
+    const buildings = [
+      fakeBuilding({ id: 1, cx: 200, cz: 60, powerDiag: 'disconnected', waterDiag: 'ok' } as never),
+      fakeBuilding({ id: 2, cx: 40, cz: 210, powerDiag: 'ok', waterDiag: 'shortage' } as never),
+    ];
+    const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+    camera.position.set(120, 90, 60);
+    camera.lookAt(60, 0, -40); // non-trivial quaternion
+    camera.updateMatrixWorld();
+    ind.sync(buildings, { camera });
+    scene.updateMatrixWorld(true);
+
+    // The meshes themselves must never carry a rotation: instance
+    // matrices are world-space (the C5 regression).
+    const group = scene.getObjectByName('utility-indicators')!;
+    const identity = new THREE.Quaternion();
+    for (const child of group.children) {
+      if (!(child instanceof THREE.InstancedMesh) || !child.visible) continue;
+      expect(child.quaternion.angleTo(identity)).toBeCloseTo(0, 6);
+    }
+
+    // Each indicator stays at its building anchor: the bolt (noPower)
+    // left of the shared anchor, the drop (noWater) right of it.
+    const anchorY = 0 + 4 + UTILITY_INDICATOR_LIFT + UTILITY_INDICATOR_SIZE / 2;
+    const pos = new THREE.Vector3();
+    const q = new THREE.Quaternion();
+    const scl = new THREE.Vector3();
+    const bolt = ind.debugMatrices('noPower');
+    expect(bolt).toHaveLength(1);
+    bolt[0]!.decompose(pos, q, scl);
+    expect(pos.x).toBeCloseTo(cellCenterWorld(200) - UTILITY_INDICATOR_SPREAD / 2, 3);
+    expect(pos.y).toBeCloseTo(anchorY, 3);
+    expect(pos.z).toBeCloseTo(cellCenterWorld(60), 3);
+    const drop = ind.debugMatrices('noWater');
+    expect(drop).toHaveLength(1);
+    drop[0]!.decompose(pos, q, scl);
+    expect(pos.x).toBeCloseTo(cellCenterWorld(40) + UTILITY_INDICATOR_SPREAD / 2, 3);
+    expect(pos.y).toBeCloseTo(anchorY, 3);
+    expect(pos.z).toBeCloseTo(cellCenterWorld(210), 3);
+
+    // Per-instance rotation is the camera quaternion — the sprites
+    // face the camera without moving off their buildings. (Precision
+    // 3: the matrix round-trips through float32 instance memory.)
+    expect(q.angleTo(camera.quaternion)).toBeCloseTo(0, 3);
+
+    // Stable across syncs with the same camera (precision 3: the
+    // matrix round-trips through float32 instance memory).
+    ind.sync(buildings, { camera });
+    ind.debugMatrices('noPower')[0]!.decompose(pos, q, scl);
+    expect(pos.x).toBeCloseTo(cellCenterWorld(200) - UTILITY_INDICATOR_SPREAD / 2, 3);
     ind.dispose();
   });
 });

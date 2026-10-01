@@ -246,28 +246,32 @@ export class UtilityIndicators {
   }
 
   /**
-   * Rebuild the instance lists only when the indicator digest changed;
-   * billboard the sprites every sync (cheap quaternion copy). Always
-   * on — there is no visibility toggle for these.
+   * Rebuild the instance lists only when the indicator digest changed,
+   * then re-compose every instance matrix with the current billboard
+   * quaternion (the camera moves every frame, so the write pass runs on
+   * every sync — this is the whole pass, there is no second phase).
+   * Always on — there is no visibility toggle for these.
    */
   sync(buildings: readonly BuildingRecord[], opts: UtilityIndicatorsSyncOpts): void {
     const indicators = utilityIndicatorsFor(buildings);
     const digest = utilityIndicatorsDigest(indicators);
-    if (digest !== this.lastDigest) {
-      this.lastDigest = digest;
-      this.rebuildIndicators(indicators, opts);
-    }
-    this.billboard(opts.camera);
-  }
-
-  private rebuildIndicators(
-    indicators: readonly UtilityIndicator[],
-    opts: UtilityIndicatorsSyncOpts,
-  ): void {
     const byKind = new Map<UtilityIndicatorKind, UtilityIndicator[]>();
     for (const kind of UTILITY_INDICATOR_KINDS) byKind.set(kind, []);
     for (const m of indicators) byKind.get(m.kind)!.push(m);
-    const dummy = new THREE.Object3D();
+    if (digest !== this.lastDigest) {
+      this.lastDigest = digest;
+      this.restructure(byKind);
+      this.rebuilds++;
+    }
+    this.writeIndicators(byKind, opts);
+  }
+
+  /**
+   * Structural pass (runs only on digest change): create, grow, and
+   * hide the per-kind meshes. Never touches instance matrices — that
+   * is the per-sync write pass below.
+   */
+  private restructure(byKind: Map<UtilityIndicatorKind, UtilityIndicator[]>): void {
     for (const kind of UTILITY_INDICATOR_KINDS) {
       const list = byKind.get(kind)!;
       this.lastCounts[kind] = list.length;
@@ -294,52 +298,62 @@ export class UtilityIndicators {
         this.group.remove(mesh);
         mesh.dispose();
         this.indicatorMeshes.set(kind, grown);
-        mesh = grown;
       }
-      this.writeIndicators(mesh, list, opts, dummy);
     }
-    this.rebuilds++;
   }
 
+  /**
+   * Write pass (runs every sync): compose each instance as
+   * position + billboard quaternion + unit scale. The instance matrices
+   * are world-space, so the mesh itself is NEVER rotated — copying the
+   * camera quaternion onto the InstancedMesh (the old bug) rotated
+   * every indicator around the world origin, floating sprites off
+   * their buildings far from map center. Same pattern as
+   * render/chevrons.ts.
+   */
   private writeIndicators(
-    mesh: THREE.InstancedMesh,
-    list: UtilityIndicator[],
+    byKind: Map<UtilityIndicatorKind, UtilityIndicator[]>,
     opts: UtilityIndicatorsSyncOpts,
-    dummy: THREE.Object3D,
   ): void {
     const heightFn = opts.heightFn;
     const buildingTop = opts.buildingTop;
-    for (let i = 0; i < list.length; i++) {
-      const m = list[i]!;
-      const ground = heightFn !== undefined ? heightFn(m.x, m.z) : 0;
-      const top = buildingTop !== undefined ? buildingTop(m.buildingKind) : 4;
-      // A building with both problems shows the bolt left, the drop
-      // right (they share the anchor).
-      const spread =
-        m.kind === 'noPower' ? -UTILITY_INDICATOR_SPREAD / 2 : UTILITY_INDICATOR_SPREAD / 2;
-      dummy.position.set(
-        m.x + spread,
-        ground + top + UTILITY_INDICATOR_LIFT + UTILITY_INDICATOR_SIZE / 2,
-        m.z,
-      );
-      dummy.quaternion.identity();
-      dummy.scale.setScalar(1);
-      dummy.updateMatrix();
-      mesh.setMatrixAt(i, dummy.matrix);
+    // Identity when headless (no camera): sprites face +z.
+    const billboard =
+      opts.camera !== undefined ? opts.camera.quaternion : this.identityQuat;
+    for (const kind of UTILITY_INDICATOR_KINDS) {
+      const mesh = this.indicatorMeshes.get(kind);
+      if (mesh === undefined) continue;
+      const list = byKind.get(kind)!;
+      if (list.length === 0) continue;
+      for (let i = 0; i < list.length; i++) {
+        const m = list[i]!;
+        const ground = heightFn !== undefined ? heightFn(m.x, m.z) : 0;
+        const top = buildingTop !== undefined ? buildingTop(m.buildingKind) : 4;
+        // A building with both problems shows the bolt left, the drop
+        // right (they share the anchor).
+        const spread =
+          m.kind === 'noPower'
+            ? -UTILITY_INDICATOR_SPREAD / 2
+            : UTILITY_INDICATOR_SPREAD / 2;
+        this.scratch.position.set(
+          m.x + spread,
+          ground + top + UTILITY_INDICATOR_LIFT + UTILITY_INDICATOR_SIZE / 2,
+          m.z,
+        );
+        this.scratch.quaternion.copy(billboard);
+        this.scratch.scale.setScalar(1);
+        this.scratch.updateMatrix();
+        mesh.setMatrixAt(i, this.scratch.matrix);
+      }
+      mesh.count = list.length;
+      mesh.visible = true;
+      mesh.instanceMatrix.needsUpdate = true;
     }
-    mesh.count = list.length;
-    mesh.visible = true;
-    mesh.instanceMatrix.needsUpdate = true;
   }
 
-  /** Face every indicator sprite at the camera (no-op headless). */
-  private billboard(camera: THREE.Camera | undefined): void {
-    if (camera === undefined) return;
-    for (const mesh of this.indicatorMeshes.values()) {
-      if (!mesh.visible) continue;
-      mesh.quaternion.copy(camera.quaternion);
-    }
-  }
+  /** Scratch compose target + the headless identity quaternion. */
+  private readonly scratch = new THREE.Object3D();
+  private readonly identityQuat = new THREE.Quaternion();
 
   /** Indicator counts per kind (test/debug hook). */
   debugCounts(): Record<UtilityIndicatorKind, number> {
@@ -358,6 +372,22 @@ export class UtilityIndicators {
   /** Rebuild counter (test/debug hook). */
   debugRebuilds(): number {
     return this.rebuilds;
+  }
+
+  /**
+   * Live instance matrices for a kind (test/debug hook). Returned
+   * matrices are copies — mutating them does not affect the mesh.
+   */
+  debugMatrices(kind: UtilityIndicatorKind): THREE.Matrix4[] {
+    const mesh = this.indicatorMeshes.get(kind);
+    if (mesh === undefined) return [];
+    const out: THREE.Matrix4[] = [];
+    const m = new THREE.Matrix4();
+    for (let i = 0; i < mesh.count; i++) {
+      mesh.getMatrixAt(i, m);
+      out.push(m.clone());
+    }
+    return out;
   }
 
   dispose(): void {
