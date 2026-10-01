@@ -117,8 +117,9 @@ export function canonicalizeWorld(world: World): string {
     out += `${canonicalNumber(b.hp ?? BUILDING_DEFS[b.kind].hp)},${canonicalNumber(b.maxHp ?? BUILDING_DEFS[b.kind].hp)},`;
     // Phase 2 utility diagnostics (legacy decode default 'disconnected').
     out += `${b.powerDiag ?? 'disconnected'},${b.waterDiag ?? 'disconnected'},`;
-    // Phase 3 logistics stocks (integers; legacy decode default 0).
-    out += `${b.ammoStock ?? 0},${b.fuelStock ?? 0},`;
+    // Phase 3 logistics stocks, plus the Half-B materials stock
+    // (integers; legacy decode default 0).
+    out += `${b.ammoStock ?? 0},${b.fuelStock ?? 0},${b.materialsStock ?? 0},`;
     // Phase 3 resupply reservations (legacy decode default 0).
     out += `${b.reservedAmmo ?? 0},${b.reservedFuel ?? 0},`;
     // Workstream M: meltdown outage state (legacy decode default 0).
@@ -201,9 +202,10 @@ export function canonicalizeWorld(world: World): string {
     // fulfill/timeout/death/demolish; floats via canonicalNumber).
     out += `${u.resupplyDepotId ?? 0},`;
     out += `${canonicalNumber(u.resupplyReservedAmmo ?? 0)},${canonicalNumber(u.resupplyReservedFuel ?? 0)},`;
-    // Phase 3 cargo holds (floats via canonicalNumber; legacy decode 0).
-    // Behavior-affecting ⇒ digest-covered (PLAN §11).
-    out += `${canonicalNumber(u.cargoFuel ?? 0)},${canonicalNumber(u.cargoAmmo ?? 0)},`;
+    // Phase 3 cargo holds, plus the Half-B materials hold (floats via
+    // canonicalNumber; legacy decode 0). Behavior-affecting ⇒
+    // digest-covered (PLAN §11).
+    out += `${canonicalNumber(u.cargoFuel ?? 0)},${canonicalNumber(u.cargoAmmo ?? 0)},${canonicalNumber(u.cargoMaterials ?? 0)},`;
     // Phase 4 (S7): the ferry's shipping lane (endpoints via
     // canonicalNumber, leg as a/b; absent = no route). Behavior-
     // affecting ⇒ digest-covered.

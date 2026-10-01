@@ -44,8 +44,9 @@ import type { TerrainData } from './terrain';
 import { isWater } from './terrain';
 import { findUnit, UNIT_DEFS } from './units';
 import type { UnitKind, UnitRecord } from './units';
-import { BUILDING_DEFS, cellCenterWorld, getPlayer } from './city';
+import { BUILDING_DEFS, cellCenterWorld, getPlayer, LOGISTICS_RADIUS } from './city';
 import type { BuildingRecord } from './city';
+import { effectiveAmmoStorage, effectiveFuelStorage } from './upgrades';
 import { orderMoveTo } from './movement';
 
 /** A player/AI intent. Plain data — safe to log, replay, and serialize. */
@@ -452,9 +453,138 @@ export function releaseDepotReservations(world: World, depotId: number): void {
   }
 }
 
+/**
+ * Sea-logistics Half B (2026-10-01): the validated, fully-computed
+ * outcome of a `loadCargo` / `unloadCargo` order. The AD6 validate≡apply
+ * lesson: the enqueue-time validate and the apply-time re-validate both
+ * run THIS function, so they agree by construction. Returns the loud
+ * rejection reason, or the plan the apply must execute verbatim.
+ */
+interface CargoTransferPlan {
+  unit: UnitRecord;
+  depot: BuildingRecord;
+  /** Amounts the apply moves verbatim (whole units; floats for fuel). */
+  fuel: number;
+  ammo: number;
+  materials: number;
+}
+
+/**
+ * Pure shared validate+compute for `loadCargo` / `unloadCargo`.
+ *
+ * A supply unit (any def with cargo capacity — the sea fuelTanker /
+ * ammoShip, the land trucks, the depot ship) transfers cargo with a
+ * friendly completed NAVAL load point: a reload point whose footprint
+ * center is on water (navalYard, navalBase, ports — data-driven). The
+ * unit must be inside the depot's `LOGISTICS_RADIUS` — the same radius
+ * as the supply aura, so "park at the gate, then order" works. The
+ * shipyard is deliberately NOT a load point: it is a dry production
+ * building with no stocks (see docs/research/sea-logistics-
+ * military.md §3.5).
+ *
+ *   - loadCargo: fuel/ammo move from the depot's stocks — never from
+ *     another unit's resupply reservations (the serveDepotUnit rule);
+ *     materials move from the OWNER's materials stockpile (no building
+ *     stocks materials — the depot is only the loading point).
+ *   - unloadCargo: fuel → fuelStock (effective storage headroom),
+ *     ammo → ammoStock (effective headroom), materials → materialsStock
+ *     (raw def headroom — no upgrade touches materialsStorage yet).
+ *
+ * Partial transfers are fine (whatever fits moves); the rejection is
+ * loud only when NOTHING can transfer. Peaceful worlds reject like
+ * attackBuilding (combat.ts) — the supply ships are military units.
+ */
+function computeCargoTransfer(
+  world: World,
+  t: TerrainData,
+  cmdName: 'loadCargo' | 'unloadCargo',
+  unitId: unknown,
+  buildingId: unknown,
+  owner: unknown,
+): CargoTransferPlan | string {
+  if (world.peaceful === true) return `${cmdName}: not available in peaceful mode`;
+  if (typeof unitId !== 'number' || !Number.isInteger(unitId) || unitId <= 0) {
+    return `${cmdName}: payload.unitId must be a positive integer`;
+  }
+  if (typeof buildingId !== 'number' || !Number.isInteger(buildingId) || buildingId <= 0) {
+    return `${cmdName}: payload.buildingId must be a positive integer`;
+  }
+  if (typeof owner !== 'number' || !Number.isInteger(owner)) {
+    return `${cmdName}: payload.owner must be an integer`;
+  }
+  const unit = findUnit(world, unitId);
+  if (!unit) return `${cmdName}: no unit with id ${unitId}`;
+  if (unit.owner !== owner) return `${cmdName}: unit ${unitId} is not owned by player ${owner}`;
+  const udef = UNIT_DEFS[unit.kind as UnitKind];
+  const hasHold =
+    (udef?.cargoFuelCapacity ?? 0) > 0 ||
+    (udef?.cargoAmmoCapacity ?? 0) > 0 ||
+    (udef?.cargoMaterialsCapacity ?? 0) > 0;
+  if (!udef || !hasHold) {
+    return `${cmdName}: unit ${unitId} (${unit.kind}) is not a supply unit (no cargo capacity)`;
+  }
+  const depot = findDepotBuilding(world, buildingId);
+  if (!depot) return `${cmdName}: no building with id ${buildingId}`;
+  if (depot.owner !== owner) return `${cmdName}: building ${buildingId} is not owned by player ${owner}`;
+  if (depot.progress < 1) return `${cmdName}: building ${buildingId} is still under construction`;
+  const bdef = BUILDING_DEFS[depot.kind];
+  if (!bdef || !bdef.reloadPoint) {
+    return `${cmdName}: building ${buildingId} (${depot.kind}) is not a naval supply point`;
+  }
+  const x = cellCenterWorld(depot.cx + (bdef.footprintW - 1) / 2);
+  const z = cellCenterWorld(depot.cz + (bdef.footprintH - 1) / 2);
+  if (!isWater(t, x, z)) {
+    return `${cmdName}: building ${buildingId} (${depot.kind}) is not on water (naval supply point required)`;
+  }
+  const dx = unit.x - x;
+  const dz = unit.z - z;
+  if (dx * dx + dz * dz > LOGISTICS_RADIUS * LOGISTICS_RADIUS) {
+    return `${cmdName}: unit ${unitId} is out of range of building ${buildingId} (move inside its supply radius)`;
+  }
+  let fuel = 0;
+  let ammo = 0;
+  let materials = 0;
+  if (cmdName === 'loadCargo') {
+    const fuelNeed = Math.max(0, (udef.cargoFuelCapacity ?? 0) - unit.cargoFuel);
+    if (fuelNeed > 0) {
+      fuel = Math.min(fuelNeed, Math.max(0, (depot.fuelStock ?? 0) - (depot.reservedFuel ?? 0)));
+    }
+    const ammoNeed = Math.floor(Math.max(0, (udef.cargoAmmoCapacity ?? 0) - unit.cargoAmmo));
+    if (ammoNeed >= 1) {
+      ammo = Math.min(ammoNeed, Math.max(0, Math.floor((depot.ammoStock ?? 0) - (depot.reservedAmmo ?? 0))));
+    }
+    const matNeed = Math.floor(Math.max(0, (udef.cargoMaterialsCapacity ?? 0) - unit.cargoMaterials));
+    if (matNeed >= 1) {
+      const player = getPlayer(world.city, owner);
+      materials = Math.min(matNeed, Math.max(0, Math.floor(player?.materials ?? 0)));
+    }
+    if (fuel <= 0 && ammo <= 0 && materials <= 0) {
+      return `${cmdName}: nothing to load — unit ${unitId} holds are full or building ${buildingId} has no available stock`;
+    }
+  } else {
+    const fuelRoom = Math.max(0, effectiveFuelStorage(world, owner, bdef) - (depot.fuelStock ?? 0));
+    if (fuelRoom > 0 && unit.cargoFuel > 0) {
+      fuel = Math.min(unit.cargoFuel, fuelRoom);
+    }
+    const ammoRoom = Math.max(0, effectiveAmmoStorage(world, owner, bdef) - (depot.ammoStock ?? 0));
+    if (ammoRoom > 0) {
+      const shells = Math.floor(unit.cargoAmmo);
+      if (shells >= 1) ammo = Math.min(shells, Math.floor(ammoRoom));
+    }
+    const matRoom = Math.max(0, (bdef.materialsStorage ?? 0) - (depot.materialsStock ?? 0));
+    if (matRoom > 0) {
+      const crates = Math.floor(unit.cargoMaterials);
+      if (crates >= 1) materials = Math.min(crates, Math.floor(matRoom));
+    }
+    if (fuel <= 0 && ammo <= 0 && materials <= 0) {
+      return `${cmdName}: nothing to unload — unit ${unitId} holds are empty or building ${buildingId} has no storage headroom`;
+    }
+  }
+  return { unit, depot, fuel, ammo, materials };
+}
+
 /** Register the Phase 3 logistics command kinds on a fresh queue. */
-export function registerLogisticsCommands(queue: CommandQueue, t: TerrainData): void {
-  // Self-scheduled cleanup, enqueued by the `resupply` apply. Never
+export function registerLogisticsCommands(queue: CommandQueue, t: TerrainData): void {  // Self-scheduled cleanup, enqueued by the `resupply` apply. Never
   // rejects at enqueue (only the resupply apply enqueues it, always
   // well-formed) and never goes stale at apply: a dead, fulfilled, or
   // retargeted unit is a no-op, not an error — a firing timeout can never
@@ -582,6 +712,81 @@ export function registerLogisticsCommands(queue: CommandQueue, t: TerrainData): 
         refuel: cmd.payload['refuel'] as boolean,
       };
       return unit.id;
+    },
+  });
+
+  // Sea-logistics Half B (2026-10-01): `loadCargo` — the player-driven
+  // load side of the cargo loop. The depot aura (serveDepotUnit) loads
+  // automatically when a supply ship parks in radius; this order gives
+  // explicit control (e.g. load at a rear-area port, then sail to a
+  // forward navalBase) and is how a ship takes materials aboard. The
+  // transfer is immediate — the unit must already be inside the
+  // depot's LOGISTICS_RADIUS. Validate≡apply via computeCargoTransfer
+  // (AD6); loud rejections, peaceful-mode rejection like
+  // attackBuilding.
+  queue.register('loadCargo', {
+    validate(cmd, world): string | null {
+      const plan = computeCargoTransfer(
+        world, t, 'loadCargo', cmd.payload['unitId'], cmd.payload['buildingId'], cmd.payload['owner'],
+      );
+      return typeof plan === 'string' ? plan : null;
+    },
+    apply(cmd, world): unknown {
+      const plan = computeCargoTransfer(
+        world, t, 'loadCargo', cmd.payload['unitId'], cmd.payload['buildingId'], cmd.payload['owner'],
+      );
+      if (typeof plan === 'string') throw new CommandRejectedError(plan);
+      const { unit, depot, fuel, ammo, materials } = plan;
+      if (fuel > 0) {
+        depot.fuelStock = (depot.fuelStock ?? 0) - fuel;
+        unit.cargoFuel += fuel;
+      }
+      if (ammo > 0) {
+        depot.ammoStock = (depot.ammoStock ?? 0) - ammo;
+        unit.cargoAmmo += ammo;
+      }
+      if (materials > 0) {
+        const player = getPlayer(world.city, unit.owner);
+        if (player) player.materials = (player.materials ?? 0) - materials;
+        unit.cargoMaterials += materials;
+      }
+      return { unit: unit.id, depot: depot.id, fuel, ammo, materials };
+    },
+  });
+
+  // Sea-logistics Half B (2026-10-01): `unloadCargo` — the player-driven
+  // discharge side. Fuel → the depot's fuelStock (effective storage
+  // headroom), ammo → ammoStock (effective headroom), materials →
+  // materialsStock (raw def headroom — no upgrade touches
+  // materialsStorage yet). Partial transfers move whatever fits; loud
+  // when nothing can move. This is how a navalBase's forward caches
+  // get filled: a fuelTanker/ammoShip sails in loaded and unloads.
+  queue.register('unloadCargo', {
+    validate(cmd, world): string | null {
+      const plan = computeCargoTransfer(
+        world, t, 'unloadCargo', cmd.payload['unitId'], cmd.payload['buildingId'], cmd.payload['owner'],
+      );
+      return typeof plan === 'string' ? plan : null;
+    },
+    apply(cmd, world): unknown {
+      const plan = computeCargoTransfer(
+        world, t, 'unloadCargo', cmd.payload['unitId'], cmd.payload['buildingId'], cmd.payload['owner'],
+      );
+      if (typeof plan === 'string') throw new CommandRejectedError(plan);
+      const { unit, depot, fuel, ammo, materials } = plan;
+      if (fuel > 0) {
+        depot.fuelStock = (depot.fuelStock ?? 0) + fuel;
+        unit.cargoFuel -= fuel;
+      }
+      if (ammo > 0) {
+        depot.ammoStock = (depot.ammoStock ?? 0) + ammo;
+        unit.cargoAmmo -= ammo;
+      }
+      if (materials > 0) {
+        depot.materialsStock = (depot.materialsStock ?? 0) + materials;
+        unit.cargoMaterials -= materials;
+      }
+      return { unit: unit.id, depot: depot.id, fuel, ammo, materials };
     },
   });
 }

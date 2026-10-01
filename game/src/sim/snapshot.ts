@@ -211,6 +211,9 @@ function copyBuilding(b: BuildingRecord, legacy = false): BuildingRecord {
     // empty depots — no version bump, stays v6 (same precedent).
     ammoStock: b.ammoStock ?? 0,
     fuelStock: b.fuelStock ?? 0,
+    // Sea-logistics Half B (2026-10-01): materials stock. AD9 —
+    // `?? 0` decode of pre-Half-B saves, no version bump (stays v8).
+    materialsStock: b.materialsStock ?? 0,
     // Phase 3 resupply reservations (0 = none reserved). ?? 0 keeps v6.
     reservedAmmo: b.reservedAmmo ?? 0,
     reservedFuel: b.reservedFuel ?? 0,
@@ -369,6 +372,9 @@ function copyUnit(u: UnitRecord): UnitRecord {
     // — no version bump, stays v6 (AD9, same precedent as fuel/ammo).
     cargoFuel: u.cargoFuel ?? 0,
     cargoAmmo: u.cargoAmmo ?? 0,
+    // Sea-logistics Half B (2026-10-01): materials hold. AD9 —
+    // `?? 0` decode of pre-Half-B saves, no version bump (stays v8).
+    cargoMaterials: u.cargoMaterials ?? 0,
     // Phase 4 (S7, v7): the ferry's shipping lane. Preserve absence —
     // see buildingTargetId above (explicit `undefined` breaks the
     // save/load deep-equal).

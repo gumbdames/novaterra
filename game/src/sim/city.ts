@@ -678,6 +678,17 @@ export interface BuildingDef {
    */
   fuelStorage?: number;
   /**
+   * Sea-logistics Half B (2026-10-01). Max construction materials
+   * storable at this building when completed — the forward dry-stores
+   * cache. Only `navalBase` sets it in 0.1 Alpha. Stock lives on
+   * `BuildingRecord.materialsStock` (snapshotted, AD9). There is no
+   * spend path yet (forward construction still draws the global
+   * stockpile) — the stock is delivered by `unloadCargo` and read by
+   * the depot UI; a future workstream may let forward construction draw
+   * it.
+   */
+  materialsStorage?: number;
+  /**
    * Phase 3 logistics. Ammo produced per sim-second when completed and
    * operational — munitionsFactory (general) and missilePlant
    * (specialized heavy ordnance). Consumed inputs stay on
@@ -2221,6 +2232,10 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
     reloadPoint: true,
     fuelStorage: 300,
     ammoStorage: 100,
+    // Sea-logistics Half B (2026-10-01): the forward dry-stores cache —
+    // military transports unload construction materials here via
+    // `unloadCargo` (200 ≈ one fuelTanker's full materials hold).
+    materialsStorage: 200,
     jobs: 35,
     military: true,
   },
@@ -2324,6 +2339,20 @@ export const POWER_LINE_COST_MATERIALS = 1;
 /** Water-pipe cost per cell. */
 export const PIPE_COST_FUNDS = 3;
 export const PIPE_COST_MATERIALS = 1;
+/**
+ * Phase 3 logistics: how far (world units) a reload point's refill aura
+ * reaches. 18 ≈ 9 cells — the depot plus its immediate surroundings.
+ * Rationale: smaller than command auras (HQ 20, Command Ship 24) so
+ * supply stays a positioning decision rather than a map-wide buff, but
+ * larger than the biggest depot footprint (4x3 cells = 8x6 world units)
+ * so units parked at the gate are always in range.
+ *
+ * Lives here (not economy.ts) so commands.ts can value-import it
+ * without an economy↔commands cycle — the `loadCargo`/`unloadCargo`
+ * orders use the same radius as the aura (sea-logistics Half B,
+ * 2026-10-01). Re-exported from economy.ts for existing importers.
+ */
+export const LOGISTICS_RADIUS = 18;
 
 // ---------------------------------------------------------------------------
 // State
@@ -2515,6 +2544,13 @@ export interface BuildingRecord {
    */
   ammoStock?: number;
   fuelStock?: number;
+  /**
+   * Sea-logistics Half B (2026-10-01): forward construction-materials
+   * cache (see `materialsStorage`). Delivered by the `unloadCargo`
+   * command; no spend path in 0.1 Alpha. Optional, reads use `?? 0`
+   * (AD9), snapshotted and digested like the other stocks.
+   */
+  materialsStock?: number;
   /**
    * Workstream M (user correction 2026-09-30): world tick until which a
    * nuclear plant stays offline after an attack-triggered meltdown.
@@ -3037,8 +3073,10 @@ export function placeBuilding(city: CityState, p: Placement, seed = 0): Building
     waterDiag: 'disconnected',
     // Phase 3 logistics: depots start empty; the economy tick fills
     // producer stocks and shuttles fuel from the owner's stockpile.
+    // Sea-logistics Half B: materialsStock starts empty too (AD9).
     ammoStock: 0,
     fuelStock: 0,
+    materialsStock: 0,
     // Phase 4 building variety: hash-picked at placement (see
     // buildingVariantSeed). Occupancy starts at zero; the first
     // economy tick fills residents/workers.

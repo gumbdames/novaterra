@@ -303,21 +303,30 @@ export interface UnitDef {
    * Phase 3 logistics: mobile supply holds. `cargoFuelCapacity` is how
    * much fuel the unit can carry for OTHER units (supplyTruck 100,
    * fuelTruck 220, hauler 40); `cargoAmmoCapacity` the same for ammo
-   * (supplyTruck 40, hauler 20). Undefined = no hold. The live levels
-   * sit on the record (`cargoFuel`/`cargoAmmo`); the resupply workstream
-   * consumes them.
+   * (supplyTruck 40, hauler 20); `cargoMaterialsCapacity` the same for
+   * construction materials (sea-logistics Half B, 2026-10-01: the
+   * military sea transports double as dry-stores shuttles — fuelTanker
+   * 200, ammoShip 100). Undefined = no hold. The live levels sit on
+   * the record (`cargoFuel`/`cargoAmmo`/`cargoMaterials`); the depot
+   * aura loads them (economy.ts `serveDepotUnit`) and the mobile-supply
+   * pass (`runMobileSupply`) discharges fuel/ammo to same-domain
+   * friendlies.
    */
   cargoFuelCapacity?: number;
   cargoAmmoCapacity?: number;
+  cargoMaterialsCapacity?: number;
   /**
-   * Grand-expansion Phase 5 (tanker, S2/S4 — 2026-09-30). When set, this
-   * aircraft is a flying fuel station: on the economy tick it transfers
-   * fuel from its cargo hold (`cargoFuel`, loaded at depots — the
-   * supply-truck chain never loads aircraft) to friendly fossil-fuel
-   * air units inside this radius (world units). The tanker itself keeps
-   * burning from its own tank. Nuclear-fuel units are never refueled
-   * (they never burn — the data-driven exemption). Set on `tanker`
-   * only.
+   * Grand-expansion Phase 5 (tanker, S2/S4 — 2026-09-30); generalized
+   * to sea supply ships by sea-logistics Half B (2026-10-01). When set,
+   * this unit is a mobile supply station: on the economy tick it
+   * transfers fuel from its cargo hold (`cargoFuel`, loaded at depots)
+   * to friendly fossil-fuel units OF ITS OWN DOMAIN inside this radius
+   * (world units), and — when the def also carries `cargoAmmoCapacity`
+   * — ammo from `cargoAmmo` to friendly units of its own domain with
+   * magazines. The tanker itself keeps burning from its own tank.
+   * Nuclear-fuel units are never refueled (they never burn — the
+   * data-driven exemption, user directive 2026-09-30). Set on `tanker`
+   * (air, 40), `fuelTanker` (sea, 30), `ammoShip` (sea, 30).
    */
   tankerRefuelRadius?: number;
   /**
@@ -1060,6 +1069,15 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 2, trainFunds: 600, trainMaterials: 200,
     fuelCapacity: 140, fuelPerSecond: 0.2, fuelType: 'fossil', // 700 s
     cargoFuelCapacity: 400, // naval supply ship (Phase 3 logistics on water)
+    // Sea-logistics Half B (2026-10-01): a working mobile supply
+    // station. Loads its holds at depots via the aura (economy.ts
+    // serveDepotUnit) and refuels friendly sea units in radius 30
+    // through runMobileSupply, honoring its refuel service toggle.
+    // The materials hold (200) is dry stores for forward bases —
+    // loaded from the owner's stockpile at a port, unloaded into a
+    // forward depot's materialsStock (see loadCargo/unloadCargo).
+    tankerRefuelRadius: 30,
+    cargoMaterialsCapacity: 200,
     military: true,
   },
   ammoShip: {
@@ -1070,6 +1088,12 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     manpowerCost: 2, trainFunds: 700, trainMaterials: 250,
     fuelCapacity: 120, fuelPerSecond: 0.2, fuelType: 'fossil', // 600 s
     cargoAmmoCapacity: 80, // floating munitions store
+    // Sea-logistics Half B (2026-10-01): rearms friendly sea units in
+    // radius 30 through runMobileSupply (rearm toggle), loading its
+    // magazine-cargo at ammo producers via the depot aura. Materials
+    // hold (100) as dry stores, same pattern as the fuelTanker.
+    tankerRefuelRadius: 30,
+    cargoMaterialsCapacity: 100,
     military: true,
   },
   repairShip: {
@@ -1652,13 +1676,22 @@ export interface UnitRecord {  /** Stable id from `world.nextId`. Never reused. 
   resupplyReservedFuel?: number;
   /**
    * Phase 3 logistics: live cargo-hold levels (see
-   * `cargoFuelCapacity`/`cargoAmmoCapacity` on the def). Spawn EMPTY —
-   * cargo is loaded at depots, never conjured. Legacy v6 saves decode to
-   * 0 via `?? 0` in snapshot.ts (AD9, no version bump); digested via
-   * `canonicalNumber`.
+   * `cargoFuelCapacity`/`cargoAmmoCapacity`/`cargoMaterialsCapacity` on
+   * the def). Spawn EMPTY — cargo is loaded at depots, never conjured.
+   * Legacy v6 saves decode to 0 via `?? 0` in snapshot.ts (AD9, no
+   * version bump); digested via `canonicalNumber`.
    */
   cargoFuel: number;
   cargoAmmo: number;
+  /**
+   * Sea-logistics Half B (2026-10-01): live materials-hold level (see
+   * `cargoMaterialsCapacity`). Same contract as cargoFuel/cargoAmmo:
+   * spawn EMPTY, `?? 0` legacy decode (AD9, stays v8), digested via
+   * `canonicalNumber`. Loaded from the owner's materials stockpile at
+   * a friendly port/shipyard (depot aura or the `loadCargo` command),
+   * unloaded into a forward depot's `materialsStock` (`unloadCargo`).
+   */
+  cargoMaterials: number;
   /**
    * Grand-expansion Phase 5/6, S4 (hangars + carriers): the building
    * id whose hangar slot this aircraft is parked in (0 = not parked).
@@ -1736,6 +1769,9 @@ export function spawnUnit(world: World, kind: string, owner: number, x: number, 
     // for others and must be loaded at a depot — never conjured.
     cargoFuel: 0,
     cargoAmmo: 0,
+    // Sea-logistics Half B (2026-10-01): the materials hold spawns
+    // empty under the same rule.
+    cargoMaterials: 0,
     // Phase 3 resupply linkage: no reservation on spawn (the ledger
     // starts at zero, like the cargo holds above).
     resupplyDepotId: 0,
