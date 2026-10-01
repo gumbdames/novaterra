@@ -22,6 +22,10 @@
   trains advanced infantry, the **War Factory** builds armor, the
   **Airfield** builds aircraft, and the **Naval Yard** (must touch the
   coastline) builds warships.
+- **Minimap**: the bottom-right tactical map shows terrain, all your
+  units and buildings, and the rectangle your camera currently sees.
+  Click or drag on it to jump the camera across the map. Enemy forces
+  appear only where your units can actually see them — no free intel.
 - **Power**: Power Plant (burns fuel), **Solar Farm** (free sun, less
   dense), **Nuclear Plant** (huge output, late game). **Water**:
   Water Pump, **Desalination Plant** (coastal, huge output).

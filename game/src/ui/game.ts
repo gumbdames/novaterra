@@ -990,6 +990,16 @@ class GameController {
       onToggleGrid: () => {
         this.setGrid(!this.gridVisible);
       },
+      // Roadmap B12 (minimap): click/drag on the minimap jumps the
+      // camera target to that world point (panCamera clamps to the map).
+      onMinimapJump: (x, z) => {
+        this.cameraState = panCamera(
+          this.cameraState,
+          x - this.cameraState.targetX,
+          z - this.cameraState.targetZ,
+        );
+        this.applyCameraStateGuarded();
+      },
       // Phase 3 (logistics): resupply + field-service toggles. The sim's
       // registerLogisticsCommands is wired at boot (ui/session.ts), so
       // these validate for real; a rejection still throws
@@ -1227,8 +1237,24 @@ class GameController {
       setSelectedEntities: (unitIds) => this.entities.setSelected(unitIds),
       updateEntitySelectionRings: (world) =>
         this.entities.updateSelectionRings(EntityRenderer.unitMap(world)),
-      updateHud: (world, selection, advisorItems, paused, speed, terrain) =>
-        this.hud.update(world, selection, advisorItems, paused, speed, terrain),
+      updateHud: (world, selection, advisorItems, paused, speed, terrain) => {
+        this.hud.update(world, selection, advisorItems, paused, speed, terrain);
+        // Roadmap B12 (minimap): repaint the tactical overview. The
+        // view box comes from the camera distance + FOV (world units per
+        // pixel at the target plane, same helper the pan code uses).
+        const wpp = worldPerPixelAtTarget(
+          this.cameraState.distance,
+          (GAME_FOV_DEG * Math.PI) / 180,
+          this.canvas.clientHeight || window.innerHeight,
+        );
+        this.hud.updateMinimap(world, terrain, {
+          targetX: this.cameraState.targetX,
+          targetZ: this.cameraState.targetZ,
+          yaw: this.cameraState.yaw,
+          viewW: wpp * (this.canvas.clientWidth || window.innerWidth),
+          viewH: wpp * (this.canvas.clientHeight || window.innerHeight),
+        });
+      },
       pollAudioEvents: (world, nowMs) => this.pollAudioEvents(world, nowMs),
       pollCampaign: (world, nowMs) => this.pollCampaign(world, nowMs),
       updateAudioListener: () =>

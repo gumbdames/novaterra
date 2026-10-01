@@ -364,6 +364,21 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   The contract test asserts each declared label really appears in digest
   output and scans hud.ts for unregistered panel methods / DOM classes —
   see "Adding a HUD panel" below.
+- `minimap.ts` — **tactical minimap (pure helpers + browser widget, roadmap
+  B12, 2026-10-02).** A 176px 2D canvas in the HUD's bottom-right: cached
+  terrain-relief layer (painted once — terrain never changes), team-colored
+  entity dots, the camera viewport box (rotated by camera yaw), and
+  click/drag-to-jump via the `onMinimapJump` HUD action (panCamera clamps
+  the jump to the map). Dots come from `collectMinimapDots`: every own
+  unit/building plus rival units/buildings the sim's sight model
+  (`getVisibleEnemies` / `getVisibleEnemyBuildings`) actually reveals —
+  the minimap never maphacks, and stealthed assets stay hidden unless
+  detected. Repaints throttle to 5 Hz; the controller feeds it from its
+  `updateHud` frame closure (viewport size via `worldPerPixelAtTarget`).
+  Pure mapping/palette/collector helpers are headless-tested
+  (`tests/ui.minimap.test.ts`); the canvas class is browser-only.
+  Registered in HUD_PANEL_BRANCHES as 'minimap' (noDigestReason — the
+  container/canvas are built once and repainted imperatively).
 - `menus.ts` — main menu (skirmish setup: map picker + difficulty picker),
   pause overlay, settings (quality, key list, accessibility, audio). Quality,
   colorblind mode, UI scale and audio persist in localStorage. Skirmish

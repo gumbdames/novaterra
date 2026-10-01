@@ -977,4 +977,17 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     noDigestReason:
       'Transient one-line feedback; textContent set imperatively, never rebuilt on a digest.',
   },
+  {
+    // Roadmap B12 (2026-10-02): the tactical minimap canvas.
+    id: 'minimap',
+    renderedIn: 'updateMinimap',
+    domClasses: ['hud-minimap', 'hud-minimap-canvas'],
+    digestLabels: [],
+    noDigestReason:
+      'Built once in the constructor (Minimap widget, ui/minimap.ts); ' +
+      'repaints are imperative 2D-canvas draws throttled to 5 Hz — the ' +
+      'container and canvas nodes are never rebuilt, so no digest ' +
+      'segment is needed. Dots are fog-of-war filtered by the sim sight ' +
+      'model (collectMinimapDots).',
+  },
 ];

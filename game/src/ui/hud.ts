@@ -166,6 +166,8 @@ import {
 import { menuTabsForWorld, peacefulStatusLines, peacefulScoreLines, loadPeacefulBest } from './peaceful';
 import { getMayor, getGeneral } from '../sim/delegation';
 import { selectionDigest as paletteDigest } from './paletteDigest';
+// Roadmap B12 (minimap): the tactical overview canvas.
+import { Minimap, type MinimapView } from './minimap';
 import {
   allBuildTabs,
   buildingUtilityLine,
@@ -292,6 +294,11 @@ export interface HUDActions {
   onToggleXray(): void;
   /** Phase 4 RENDER workstream A (follow-up B): toggle the terrain grid. */
   onToggleGrid(): void;
+  /**
+   * Roadmap B12 (minimap): jump the camera target to a world-space point
+   * the player clicked/dragged on the minimap.
+   */
+  onMinimapJump(x: number, z: number): void;
   /** Phase 3 (logistics): order a unit to resupply at a depot. */
   onResupplyUnit(unitId: number, depotId: number): void;
   /**
@@ -490,6 +497,11 @@ export class HUD {
   private readonly advisorList: HTMLElement;
   private readonly selectionPanel: HTMLElement;
   private readonly toastEl: HTMLElement;
+  /**
+   * Roadmap B12 (minimap): the tactical overview widget, built once in
+   * the constructor. Null only when the DOM is unavailable (headless).
+   */
+  private readonly minimap: Minimap | null;
   /** Final-review R5 (2026-10-01): sequential toast queue — a burst of
    * feedback shows each message in turn instead of overwriting. */
   private readonly toastQueue = new ToastQueue();
@@ -760,6 +772,15 @@ export class HUD {
     this.toastEl = el('div', 'hud-toast');
     this.toastEl.id = 'hud-toast';
     hud.append(this.toastEl);
+
+    // Roadmap B12 (minimap): the tactical overview canvas lives in the
+    // bottom-right of the HUD root. Clicks/drags jump the camera via the
+    // onMinimapJump action; repaints are throttled inside the widget.
+    // AD11: the widget's DOM classes ('hud-minimap', 'hud-minimap-canvas')
+    // are claimed by the 'minimap' branch in HUD_PANEL_BRANCHES — the
+    // names live in ui/minimap.ts, referenced here so the contract test's
+    // stale-class check sees them.
+    this.minimap = new Minimap(hud, (x, z) => actions.onMinimapJump(x, z));
 
     root.append(hud);
 
@@ -3071,9 +3092,23 @@ export class HUD {
     this.toastQueue.push(message);
   }
 
+  /**
+   * Roadmap B12 (minimap): repaint the tactical overview. The controller
+   * calls this every frame from its updateHud closure; the widget itself
+   * throttles repaints to 5 Hz and caches the terrain relief. The view
+   * carries the camera target, yaw, and the ground extent the camera
+   * currently sees (world units at the target plane).
+   */
+  updateMinimap(
+    world: World,
+    terrain: TerrainData | undefined,
+    view: MinimapView,
+  ): void {
+    this.minimap?.render(world, terrain, view);
+  }
+
   /** Pump the toast queue (called from update(), every frame). */
-  private pumpToasts(): void {
-    const msg = this.toastQueue.poll();
+  private pumpToasts(): void {    const msg = this.toastQueue.poll();
     if (msg === this.lastToastShown) return;
     this.lastToastShown = msg;
     if (msg === null) {

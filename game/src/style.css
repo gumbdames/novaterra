@@ -1125,6 +1125,29 @@ body {
   transform: translateX(-50%) translateY(0);
 }
 
+/* Roadmap B12: the tactical minimap — bottom-right, above the canvas. */
+.hud-minimap {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  width: 176px;
+  height: 176px;
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: #0a1420;
+  pointer-events: auto;
+  cursor: crosshair;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+  z-index: 30;
+}
+
+.hud-minimap-canvas {
+  display: block;
+  width: 176px;
+  height: 176px;
+}
+
 /* drag selection rectangle */
 .select-rect {
   position: fixed;

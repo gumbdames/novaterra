@@ -168,6 +168,8 @@ export const STRINGS = {
     speed2: '2×',
     speed4: '4×',
     menu: 'Menu',
+    // Roadmap B12 (2026-10-02): the minimap's hover tooltip.
+    minimapTitle: { en: 'Minimap — click or drag to move the camera' },
   },
   selection: {
     noSelection: 'Nothing selected',
