@@ -67,6 +67,12 @@ export interface AudioWorldSnapshot {
   buildings: Map<number, AudioBuildingState>;
   /** Number of upgrades the human player has researched. */
   researchedCount: number;
+  /**
+   * Fun-audit A3 (2026-10-02): the researched upgrade ids (world.upgrades
+   * order). The differ used to count only — now it also reports WHICH
+   * upgrade finished so the completion toast can name it.
+   */
+  researchedIds: string[];
   /** Number of embedded spies owned by the human player. */
   embeddedSpies: number;
 }
@@ -93,10 +99,27 @@ export interface AudioPollEvents {
   buildsComplete: AudioDeathEvent[];
   /** Human-player units that appeared (trained). */
   trained: number;
+  /**
+   * Fun-audit B5 (2026-10-02): world positions of friendly units trained
+   * since the last poll (capped) — the event-ping system marks where
+   * reinforcements arrive, closing the "silent training" gap.
+   */
+  trainedPositions: Array<{ x: number; z: number }>;
   /** True when the human player finished researching an upgrade. */
   researchDone: boolean;
+  /**
+   * Fun-audit A3 (2026-10-02): ids of upgrades finished since the last
+   * poll (world.upgrades order) — the toast names the first.
+   */
+  newResearchIds: string[];
   /** Human-player units/buildings that lost hp since the last poll. */
   damageEvents: number;
+  /**
+   * Fun-audit B5 (2026-10-02): world positions of friendly damage since
+   * the last poll (capped) — the event-ping system needs a location for
+   * the under-attack marker, and the old code only counted.
+   */
+  damagePositions: Array<{ x: number; z: number }>;
   /** Human-player combat units right now (war-mood input). */
   combatUnits: number;
   /** True when a new spy embedded since the last poll. */
@@ -111,6 +134,7 @@ export class AudioEventTracker {
   private prevUnits: Map<number, AudioUnitState> | null = null;
   private prevBuildings: Map<number, AudioBuildingState> | null = null;
   private prevResearched = 0;
+  private prevResearchedIds: string[] = [];
   private prevEmbedded = 0;
 
   /**
@@ -125,9 +149,12 @@ export class AudioEventTracker {
     const destroyed: AudioDeathEvent[] = [];
     const buildsComplete: AudioDeathEvent[] = [];
     let damageEvents = 0;
+    const damagePositions: Array<{ x: number; z: number }> = [];
     let combatUnits = 0;
     let trained = 0;
+    const trainedPositions: Array<{ x: number; z: number }> = [];
     let researchDone = false;
+    const newResearchIds: string[] = [];
     let intelOpComplete = false;
 
     if (this.prevUnits === null || this.prevBuildings === null) {
@@ -135,8 +162,9 @@ export class AudioEventTracker {
       this.prevUnits = snap.units;
       this.prevBuildings = snap.buildings;
       this.prevResearched = snap.researchedCount;
+      this.prevResearchedIds = snap.researchedIds;
       this.prevEmbedded = snap.embeddedSpies;
-      return { deaths, destroyed, buildsComplete, trained, researchDone, damageEvents, combatUnits, intelOpComplete };
+      return { deaths, destroyed, buildsComplete, trained, trainedPositions, researchDone, newResearchIds, damageEvents, damagePositions, combatUnits, intelOpComplete };
     }
 
     for (const [id, st] of this.prevUnits) {
@@ -145,6 +173,8 @@ export class AudioEventTracker {
         deaths.push({ x: st.x, z: st.z, friendly: st.owner === this.playerId });
       } else if (st.owner === this.playerId && now.hp < st.hp) {
         damageEvents++;
+        // Fun-audit B5: keep the location for the under-attack ping.
+        if (damagePositions.length < 8) damagePositions.push({ x: now.x, z: now.z });
       }
     }
     for (const [id, st] of this.prevBuildings) {
@@ -163,6 +193,7 @@ export class AudioEventTracker {
           buildsComplete.push({ x: st.x, z: st.z, friendly: st.owner === this.playerId });
         } else if (st.owner === this.playerId && now.hp < st.hp) {
           damageEvents++;
+          if (damagePositions.length < 8) damagePositions.push({ x: now.x, z: now.z });
         }
       }
     }
@@ -170,20 +201,31 @@ export class AudioEventTracker {
       if (this.prevUnits.has(id)) continue;
       // A brand-new unit owned by the human player trained (or spawned);
       // the game loop caps the cue to one per poll.
-      if (st.owner === this.playerId) trained++;
+      if (st.owner === this.playerId) {
+        trained++;
+        // Fun-audit B5: mark where reinforcements arrive.
+        if (trainedPositions.length < 4) trainedPositions.push({ x: st.x, z: st.z });
+      }
       void id;
     }
     for (const st of snap.units.values()) {
       if (st.owner === this.playerId && st.inCombat) combatUnits++;
     }
     researchDone = snap.researchedCount > this.prevResearched;
+    // Fun-audit A3: which upgrades are new (order-stable — world.upgrades
+    // appends). Missing ids (older snapshots) degrade to the boolean.
+    const prevIdSet = new Set(this.prevResearchedIds);
+    for (const id of snap.researchedIds) {
+      if (!prevIdSet.has(id)) newResearchIds.push(id);
+    }
     intelOpComplete = snap.embeddedSpies > this.prevEmbedded;
 
     this.prevUnits = snap.units;
     this.prevBuildings = snap.buildings;
     this.prevResearched = snap.researchedCount;
+    this.prevResearchedIds = snap.researchedIds;
     this.prevEmbedded = snap.embeddedSpies;
-    return { deaths, destroyed, buildsComplete, trained, researchDone, damageEvents, combatUnits, intelOpComplete };
+    return { deaths, destroyed, buildsComplete, trained, trainedPositions, researchDone, newResearchIds, damageEvents, damagePositions, combatUnits, intelOpComplete };
   }
 }
 
@@ -233,9 +275,11 @@ export function snapshotForAudio(world: {
   }
   const researched = world.upgrades[playerId];
   const researchedCount = researched !== undefined ? researched.length : 0;
+  // Fun-audit A3: carry the ids so the differ can name the completion.
+  const researchedIds = researched !== undefined ? [...researched] : [];
   let embeddedSpies = 0;
   for (const u of units.values()) {
     if (u.owner === playerId && u.embedded) embeddedSpies++;
   }
-  return { units, buildings, researchedCount, embeddedSpies };
+  return { units, buildings, researchedCount, researchedIds, embeddedSpies };
 }

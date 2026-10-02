@@ -107,8 +107,7 @@ export class MuseBox {
   }
 
   /** Threat meter 0..100. */
-  setThreat(threat: number): void {
-    const t = Math.max(0, Math.min(100, Math.round(threat)));
+  setThreat(threat: number): void {    const t = Math.max(0, Math.min(100, Math.round(threat)));
     if (this.threatFill !== null) this.threatFill.style.width = `${t}%`;
     if (this.threatLabel !== null) {
       this.threatLabel.textContent =
@@ -124,6 +123,22 @@ export class MuseBox {
       this.threatFill.classList.toggle('high', t >= 75);
       this.threatFill.classList.toggle('low', t < 25);
     }
+  }
+
+  /**
+   * Fun-audit A4 (2026-10-02): pulse the threat meter red for a few
+   * seconds — the visual half of the "your war core has fallen" warning
+   * beat that precedes the defeat screen.
+   */
+  flashThreat(): void {
+    if (this.threatFill === null) return;
+    this.threatFill.classList.remove('muse-threat-flash');
+    // Re-trigger the CSS animation when called twice in a row.
+    void this.threatFill.offsetWidth;
+    this.threatFill.classList.add('muse-threat-flash');
+    window.setTimeout(() => {
+      this.threatFill?.classList.remove('muse-threat-flash');
+    }, 4000);
   }
 
   hide(): void {

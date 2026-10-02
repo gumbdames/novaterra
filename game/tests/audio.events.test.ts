@@ -204,8 +204,39 @@ describe('AudioEventTracker', () => {
     expect(events.trained).toBe(1);
   });
 
-  it('fires researchDone and intelOpComplete on count increases', () => {
+  it('reports which upgrades finished (fun-audit A3: the toast names it)', () => {
     const tracker = new AudioEventTracker(PLAYER);
+    tracker.observe(snapshot({ upgrades: { [PLAYER]: ['concrete'] } }));
+    const events = tracker.observe(
+      snapshot({ upgrades: { [PLAYER]: ['concrete', 'gunpowder'] } }),
+    );
+    expect(events.researchDone).toBe(true);
+    expect(events.newResearchIds).toEqual(['gunpowder']);
+  });
+
+  it('carries friendly damage positions for event pings (fun-audit B5)', () => {
+    const tracker = new AudioEventTracker(PLAYER);
+    tracker.observe(snapshot({ units: [unit(1, PLAYER, 10, 20)] }));
+    const events = tracker.observe(
+      snapshot({ units: [unit(1, PLAYER, 10, 20, { hp: 50 })] }),
+    );
+    expect(events.damageEvents).toBe(1);
+    expect(events.damagePositions).toEqual([{ x: 10, z: 20 }]);
+  });
+
+  it('carries friendly trained-unit positions for event pings (fun-audit B5)', () => {
+    const tracker = new AudioEventTracker(PLAYER);
+    tracker.observe(snapshot({ units: [unit(1, PLAYER, 10, 20)] }));
+    const events = tracker.observe(
+      snapshot({
+        units: [unit(1, PLAYER, 10, 20), unit(2, PLAYER, 40, 50), unit(3, RIVAL, 0, 0)],
+      }),
+    );
+    expect(events.trained).toBe(1);
+    expect(events.trainedPositions).toEqual([{ x: 40, z: 50 }]);
+  });
+
+  it('fires researchDone and intelOpComplete on count increases', () => {    const tracker = new AudioEventTracker(PLAYER);
     tracker.observe(snapshot({}));
     const same = tracker.observe(snapshot({}));
     expect(same.researchDone).toBe(false);

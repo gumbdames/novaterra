@@ -122,6 +122,60 @@ describe('muse/controller', () => {
     return { controller, said, advance: (ms: number) => { now += ms; } };
   }
 
+  it('names the completed building (fun-audit A2: no more "building finished")', () => {
+    const { controller, said, advance } = makeController('normal');
+    const world = createWorld(5);
+    controller.update(world, HUMAN, AI);
+    const afterHello = said.length;
+    placeBuildingForTest(world); // 'house' -> 'House'
+    advance(10000);
+    controller.update(world, HUMAN, AI);
+    expect(said.length).toBeGreaterThan(afterHello);
+    expect(said[said.length - 1]).toContain('House');
+  });
+
+  it('names the trained unit (fun-audit A2: no more "unit trained")', () => {
+    const { controller, said, advance } = makeController('normal');
+    const world = createWorld(5);
+    controller.update(world, HUMAN, AI);
+    const afterHello = said.length;
+    spawnUnit(world, 'tank', HUMAN, 0, 0);
+    advance(10000);
+    controller.update(world, HUMAN, AI);
+    expect(said.length).toBeGreaterThan(afterHello);
+    expect(said[said.length - 1]).toContain('Main Battle Tank');
+  });
+
+  it('names the lost unit (fun-audit A2: no more "unit destroyed")', () => {
+    const { controller, said, advance } = makeController('normal');
+    const world = createWorld(5);
+    const u = spawnUnit(world, 'rifles', HUMAN, 0, 0);
+    // A second rifles squad keeps the war core intact so the loss line
+    // (not the A4 war-core line) takes the poll's single slot.
+    spawnUnit(world, 'rifles', HUMAN, 10, 0);
+    controller.update(world, HUMAN, AI);
+    const afterHello = said.length;
+    world.units = world.units.filter((x) => x.id !== u.id);
+    advance(10000);
+    controller.update(world, HUMAN, AI);
+    expect(said.length).toBeGreaterThan(afterHello);
+    expect(said[said.length - 1]).toContain('Rifles');
+  });
+
+  it('announces war-core collapse as a major event (fun-audit A4)', () => {
+    const { controller, said, advance } = makeController('quiet');
+    const world = createWorld(5);
+    // A real army at the first poll so the 25% crossing is observable.
+    spawnUnit(world, 'tank', HUMAN, 0, 0);
+    spawnUnit(world, 'tank', HUMAN, 10, 0);
+    controller.update(world, HUMAN, AI);
+    advance(20000);
+    // The whole army dies: war-core event fires even in quiet mode.
+    world.units = [];
+    controller.update(world, HUMAN, AI);
+    expect(said[said.length - 1]).toMatch(/war core/i);
+  });
+
   it('greets on the first update and stays silent with frequency off', () => {
     const { controller, said } = makeController('off');
     const world = createWorld(5);

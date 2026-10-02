@@ -427,6 +427,29 @@ export function checkSkirmishDefeat(world: World): boolean {
 }
 
 /**
+ * Fun-audit A4 (2026-10-02): the war-weariness defeat from the player's
+ * chair. Exposes the B8 elimination rule for the human side so the game
+ * loop can raise the "your war core has fallen" warning BEAT before the
+ * defeat screen — today the game can end while the civilian city stands,
+ * which reads as "my city is fine, why did I lose?". Pure function of
+ * world state, no wall clock, no RNG.
+ */
+export function isHumanWarCoreFallen(world: World): boolean {
+  if (world.peaceful === true) return false;
+  return isConquestEliminated(world, HUMAN_PLAYER_ID);
+}
+
+/**
+ * Fun-audit B1 (2026-10-02): the human base position in world coords —
+ * the intro camera's target. Same land-search the session assembly uses
+ * for starting forces (HUMAN_CORNER), so the camera opens on the
+ * player's actual base instead of empty map center.
+ */
+export function humanBaseWorld(terrain: TerrainData): { x: number; z: number } {
+  return findLandNear(terrain, HUMAN_CORNER.x, HUMAN_CORNER.z);
+}
+
+/**
  * Ticks before conquest win/lose checks start firing. Both sides deploy
  * their starting forces on tick 0, but the grace period guards against
  * edge cases with slow or delayed spawns.

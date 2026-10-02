@@ -40,10 +40,11 @@
  */
 
 import type { World } from '../sim/world';
-import { getPlayer } from '../sim/city';
+import { getPlayer, BUILDING_DEFS } from '../sim/city';
+import { UNIT_DEFS } from '../sim/units';
 import { getAgeState } from '../sim/ages';
 import { personaLine, type PersonaEvent } from './persona';
-import { computeThreat, narrateTrick } from './director';
+import { computeThreat, militaryValue, narrateTrick } from './director';
 
 export type MuseFrequency = 'off' | 'quiet' | 'normal' | 'chatty';
 
@@ -72,6 +73,21 @@ const MIN_SAY_GAP_MS = 9000;
 /** Taunts at most this often, and only in chatty mode. */
 const TAUNT_GAP_MS = 60000;
 
+/**
+ * Fun-audit A2 (2026-10-02): display-name resolvers for the completion
+ * and loss events. Unknown kinds fall back to the old literals so the
+ * sentence shape never breaks.
+ */
+function buildingDisplayName(kind: string | undefined): string {
+  if (kind === undefined) return 'building';
+  return BUILDING_DEFS[kind as keyof typeof BUILDING_DEFS]?.name ?? 'building';
+}
+
+function unitDisplayName(kind: string | undefined): string {
+  if (kind === undefined) return 'unit';
+  return UNIT_DEFS[kind as keyof typeof UNIT_DEFS]?.name ?? 'unit';
+}
+
 interface MuseSnapshot {
   buildingCount: number;
   unitCount: number;
@@ -82,6 +98,8 @@ interface MuseSnapshot {
   anyFighting: boolean;
   kills: number;
   losses: number;
+  /** Deterministic military value (fun-audit A4: war-core tracking). */
+  military: number;
 }
 
 function snapshot(world: World, playerId: number, aiId: number): MuseSnapshot {
@@ -111,6 +129,10 @@ function snapshot(world: World, playerId: number, aiId: number): MuseSnapshot {
     anyFighting,
     kills: 0,
     losses: 0,
+    // Fun-audit A4 (2026-10-02): the war-core crossing watches the
+    // player's military value, not unit counts — a demoralized remnant
+    // still counts as a remnant.
+    military: militaryValue(world, playerId),
   };
 }
 
@@ -137,7 +159,15 @@ export class MuseController {
   /** Cumulative counters the controller owns (mirrors the campaign run). */
   private kills = 0;
   private losses = 0;
-  private readonly knownIds = new Map<number, number>();
+  private readonly knownIds = new Map<number, { owner: number; kind: string }>();
+  /**
+   * Fun-audit A2 (2026-10-02): building identities for the
+   * buildingComplete event — the persona templates already interpolate
+   * `{event.building}`, but the controller used to pass the literal
+   * 'building'. Now the newest completed building's display name goes
+   * through (BUILDING_DEFS names, e.g. 'House', 'Barracks').
+   */
+  private readonly knownBuildingIds = new Map<number, string>();
   private threatValue = 50;
 
   constructor(opts: MuseControllerOpts) {
@@ -174,19 +204,47 @@ export class MuseController {
     // Track kills/losses by unit-id disappearance (same technique as
     // the campaign director; UI-owned, never sim state).
     const seen = new Set<number>();
+    // Fun-audit A2 (2026-10-02): collect this poll's new arrivals so
+    // the completion/loss events can name them (display names from
+    // the sim defs — 'Main Battle Tank', not 'unit').
+    const newUnitKinds: string[] = [];
+    const lostUnitKinds: string[] = [];
     for (const u of world.units) {
       seen.add(u.id);
-      if (!this.knownIds.has(u.id)) this.knownIds.set(u.id, u.owner);
+      if (!this.knownIds.has(u.id)) {
+        this.knownIds.set(u.id, { owner: u.owner, kind: u.kind });
+        if (u.owner === playerId && u.hp > 0) newUnitKinds.push(u.kind);
+      }
     }
-    for (const [id, owner] of this.knownIds) {
+    for (const [id, rec] of this.knownIds) {
       if (!seen.has(id)) {
-        if (owner === aiId) this.kills += 1;
-        else if (owner === playerId) this.losses += 1;
+        if (rec.owner === aiId) this.kills += 1;
+        else if (rec.owner === playerId) {
+          this.losses += 1;
+          lostUnitKinds.push(rec.kind);
+        }
         this.knownIds.delete(id);
       }
     }
     cur.kills = this.kills;
     cur.losses = this.losses;
+
+    // Fun-audit A2 (2026-10-02): same identity tracking for buildings.
+    const newBuildingKinds: string[] = [];
+    const liveBuildingIds = new Set<number>();
+    for (const b of world.city.buildings) {
+      liveBuildingIds.add(b.id);
+      if (b.owner !== playerId) continue;
+      if (!this.knownBuildingIds.has(b.id)) {
+        this.knownBuildingIds.set(b.id, b.kind);
+        newBuildingKinds.push(b.kind);
+      }
+    }
+    // Buildings removed from the world (destroyed/demolished) leave the
+    // identity map so a rebuilt same-id building reads as new.
+    for (const id of [...this.knownBuildingIds.keys()]) {
+      if (!liveBuildingIds.has(id)) this.knownBuildingIds.delete(id);
+    }
 
     if (!this.saidHello) {
       this.saidHello = true;
@@ -204,17 +262,35 @@ export class MuseController {
     if (cur.program !== prev.program && cur.program !== '') {
       events.push({ event: { kind: 'programChosen', program: cur.program }, major: true });
     }
+    // Fun-audit A4 (2026-10-02): the war core crossing — the player's
+    // military value collapsing under 25% of what it once was. Major:
+    // it always lands, even in quiet mode, because the defeat screen
+    // follows this beat in the game loop.
+    if (prev !== null && prev.military >= 0.25 && cur.military < 0.25) {
+      events.push({ event: { kind: 'warCoreFallen' }, major: true });
+    }
     if (cur.buildingCount > prev.buildingCount) {
+      // Fun-audit A2 (2026-10-02): name the newest building instead of
+      // the literal 'building' — the persona template interpolates it.
+      const kind = newBuildingKinds[newBuildingKinds.length - 1];
       events.push({
-        event: { kind: 'buildingComplete', building: 'building' },
+        event: { kind: 'buildingComplete', building: buildingDisplayName(kind) },
         major: false,
       });
     }
     if (cur.unitCount > prev.unitCount) {
-      events.push({ event: { kind: 'unitTrained', unit: 'unit' }, major: false });
+      const kind = newUnitKinds[newUnitKinds.length - 1];
+      events.push({
+        event: { kind: 'unitTrained', unit: unitDisplayName(kind) },
+        major: false,
+      });
     }
     if (cur.losses > prev.losses) {
-      events.push({ event: { kind: 'unitLost', unit: 'unit' }, major: false });
+      const kind = lostUnitKinds[lostUnitKinds.length - 1];
+      events.push({
+        event: { kind: 'unitLost', unit: unitDisplayName(kind) },
+        major: false,
+      });
     }
     if (cur.kills > prev.kills && this.frequency === 'chatty') {
       events.push({ event: { kind: 'enemyDown' }, major: false });

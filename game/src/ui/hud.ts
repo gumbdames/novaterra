@@ -168,6 +168,7 @@ import { getMayor, getGeneral } from '../sim/delegation';
 import { selectionDigest as paletteDigest } from './paletteDigest';
 // Roadmap B12 (minimap): the tactical overview canvas.
 import { Minimap, type MinimapView } from './minimap';
+import { VictoryHud } from './victoryHud';
 import {
   allBuildTabs,
   buildingUtilityLine,
@@ -498,6 +499,11 @@ export class HUD {
   private readonly selectionPanel: HTMLElement;
   private readonly toastEl: HTMLElement;
   /**
+   * Fun-audit B4 (2026-10-02): the rival-watch strip widget (built
+   * once in the constructor; refreshed via updateVictoryHud).
+   */
+  private readonly victoryHud: VictoryHud;
+  /**
    * Roadmap B12 (minimap): the tactical overview widget, built once in
    * the constructor. Null only when the DOM is unavailable (headless).
    */
@@ -756,6 +762,18 @@ export class HUD {
     menuBtn.addEventListener('click', () => actions.onOpenMenu());
     this.topbar.append(menuBtn);
     hud.append(this.topbar);
+
+    // Fun-audit B4 (2026-10-02): the rival-watch strip — persistent
+    // objective + victory-race telemetry. Built once, refreshed
+    // write-on-change (see ui/victoryHud.ts); the AD11 branch is
+    // registered in HUD_PANEL_BRANCHES with a noDigestReason.
+    // AD11: the widget's DOM classes ('victory-hud',
+    // 'victory-hud-objective', 'victory-hud-race', 'victory-hud-row',
+    // 'victory-hud-mine', 'victory-hud-rival', 'victory-hud-label',
+    // 'victory-hud-bar', 'victory-hud-fill', 'victory-hud-value') are
+    // built in ui/victoryHud.ts — named here so the contract test's
+    // stale-class check sees them (the minimap precedent).
+    this.victoryHud = new VictoryHud(hud);
 
     // ---- advisor ----
     this.advisorPanel = el('div', 'hud-advisor');
@@ -3121,6 +3139,15 @@ export class HUD {
     view: MinimapView,
   ): void {
     this.minimap?.render(world, terrain, view);
+  }
+
+  /**
+   * Fun-audit B4 (2026-10-02): refresh the rival-watch strip. The
+   * caller (game.ts) owns the visibility gate — rivaled, non-peaceful,
+   * non-campaign skirmishes only.
+   */
+  updateVictoryHud(world: World, visible: boolean): void {
+    this.victoryHud.update(world, visible);
   }
 
   /** Pump the toast queue (called from update(), every frame). */

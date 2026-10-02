@@ -637,6 +637,30 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'Invariant: never rebuild topbar DOM (the click-bug pattern).',
   },
   {
+    id: 'victory-hud',
+    renderedIn: 'updateVictoryHud',
+    domClasses: [
+      'victory-hud',
+      'victory-hud-objective',
+      'victory-hud-race',
+      'victory-hud-row',
+      'victory-hud-mine',
+      'victory-hud-rival',
+      'victory-hud-label',
+      'victory-hud-bar',
+      'victory-hud-fill',
+      'victory-hud-value',
+    ],
+    digestLabels: [],
+    noDigestReason:
+      'Fun-audit B4 (2026-10-02): the VictoryHud widget (ui/victoryHud.ts) ' +
+      'builds its DOM once in the HUD constructor; updateVictoryHud ' +
+      'refreshes it write-on-change (text/width writes only) — nodes are ' +
+      'never rebuilt, so no digest segment is needed (same invariant as ' +
+      'the topbar branch). Hidden via display:none outside rivaled ' +
+      'non-peaceful non-campaign skirmishes.',
+  },
+  {
     id: 'advisor',
     renderedIn: 'updateAdvisor',
     domClasses: [

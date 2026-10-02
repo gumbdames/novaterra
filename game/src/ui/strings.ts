@@ -232,7 +232,7 @@ export const STRINGS = {
     trainFailed: 'Cannot train here.',
     buildFailed: 'Cannot build there.',
     zoneNeedsDrag: 'Zones are painted by dragging a rectangle on the map.',
-    ageAdvanced: 'Age advanced: Connectivity.',
+    ageAdvanced: { en: 'Age advanced: {age}.' },
   },
   advisor: {
     title: 'Advisor',
@@ -357,6 +357,39 @@ export const STRINGS = {
     airlineRouteCancelled: { en: 'Airline route cancelled.' },
     cancelled: { en: 'Cancelled.' },
     stormEngineFiring: { en: 'Storm Engine firing.' },
+    researchComplete: { en: 'Research complete: {name}.' },
+    warCoreFallen: { en: 'Your war core has fallen — defeat is imminent.' },
+  },
+  /**
+   * Fun-audit B1 (2026-10-02): the skirmish opening beat — one toast
+   * naming the win condition, from world.victoryKind.
+   */
+  objectives: {
+    conquest: { en: 'Objective: destroy the enemy base. No army, no war core, no rival.' },
+    economic: { en: 'Objective: first side to hold 100,000 funds wins.' },
+    population: { en: 'Objective: first side to house 10,000 residents wins.' },
+    monument: { en: 'Objective: complete the Monument before your rival.' },
+    endless: { en: 'Endless mode: no victory, no defeat — build without limits.' },
+  },
+  /**
+   * Fun-audit B4 (2026-10-02): the victory-progress "rival watch" strip.
+   */
+  victoryHud: {
+    youLabel: { en: 'You' },
+    rivalLabel: { en: 'Rival ~' },
+    raceFunds: { en: 'Funds race' },
+    racePopulation: { en: 'Population race' },
+    raceMonument: { en: 'Monument race' },
+    raceForces: { en: 'Balance of forces' },
+    progressFunds: { en: '{have} / {need} funds' },
+    progressFundsRival: { en: '~{have} / {need} funds' },
+    progressPopulation: { en: '{have} / {need} housed' },
+    progressPopulationRival: { en: '~{have} / {need} housed' },
+    progressForces: { en: '{n} units' },
+    progressForcesRival: { en: '~{n} units' },
+    monumentComplete: { en: 'Complete' },
+    monumentNotStarted: { en: 'Not started' },
+    monumentRivalUnknown: { en: '~unknown' },
   },
   /**
    * Roadmap B28 (2026-10-02): the Live-Muse advisory box copy — idle

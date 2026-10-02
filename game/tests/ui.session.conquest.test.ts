@@ -33,8 +33,10 @@ import {
   createSession,
   getSkirmishOutcome,
   HUMAN_PLAYER_ID,
+  isHumanWarCoreFallen,
 } from '../src/ui/session';
 import type { BuildingRecord } from '../src/sim/city';
+import { placeBuilding } from '../src/sim/city';
 import type { World } from '../src/sim/world';
 
 /** A fresh two-player skirmish world (tick 1 after starting forces). */
@@ -325,5 +327,39 @@ describe('alternative skirmish victories (roadmap B2)', () => {
     const a = victoryWorld('conquest');
     const b = victoryWorld('economic');
     expect(digestWorld(a)).not.toBe(digestWorld(b));
+  });
+});
+
+describe('isHumanWarCoreFallen (fun-audit A4)', () => {
+  /** Remove every unit belonging to the human player (army wiped out). */
+  function wipeHumanArmy(world: World): void {
+    world.units = world.units.filter((u) => u.owner !== HUMAN_PLAYER_ID);
+  }
+
+  it('is false while the human military still stands', () => {
+    expect(isHumanWarCoreFallen(freshWorld())).toBe(false);
+  });
+
+  it('is true when the army is gone and only civilian buildings remain', () => {
+    const world = freshWorld();
+    // A standing civilian city...
+    placeBuilding(world.city, { kind: 'house', owner: HUMAN_PLAYER_ID, cx: 10, cz: 10, facing: 0 });
+    // ...but the whole army is gone and no military building was built.
+    wipeHumanArmy(world);
+    expect(isHumanWarCoreFallen(world)).toBe(true);
+  });
+
+  it('is false when a military building survives (the player can rebuild)', () => {
+    const world = freshWorld();
+    placeBuilding(world.city, { kind: 'barracks', owner: HUMAN_PLAYER_ID, cx: 10, cz: 10, facing: 0 });
+    wipeHumanArmy(world);
+    expect(isHumanWarCoreFallen(world)).toBe(false);
+  });
+
+  it('is always false in peaceful worlds', () => {
+    const world = createSession({ seed: 7, peaceful: true }).world;
+    placeBuilding(world.city, { kind: 'house', owner: HUMAN_PLAYER_ID, cx: 10, cz: 10, facing: 0 });
+    wipeHumanArmy(world);
+    expect(isHumanWarCoreFallen(world)).toBe(false);
   });
 });

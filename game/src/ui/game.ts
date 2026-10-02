@@ -64,10 +64,12 @@ import {
 } from '../sim/city';
 import type { AIDifficulty } from '../sim/ai';
 import { CommandRejectedError } from '../sim/commands';
-import { getAgeState } from '../sim/ages';
+import { getAgeState, type Age } from '../sim/ages';
+import { UPGRADE_DEFS, type UpgradeId } from '../sim/upgrades';
 import type { TerrainData } from '../sim/terrain';
 import { buildTerrainView, type TerrainView } from '../render/terrain';
 import { EntityRenderer } from '../render/entities';
+import { EventPings, threeProjector } from '../render/eventPings';
 import {
   registerAmbientTransitProvider,
   unregisterAmbientTransitProvider,
@@ -116,7 +118,7 @@ import {
   LazyModelStore,
   TREE_MODEL_KEYS,
 } from '../render/lazyModels';
-import { createSession, getSkirmishOutcome, HUMAN_PLAYER_ID, AI_PLAYER_ID, type GameSession } from './session';
+import { createSession, getSkirmishOutcome, humanBaseWorld, isHumanWarCoreFallen, HUMAN_PLAYER_ID, AI_PLAYER_ID, type GameSession } from './session';
 import type { SkirmishVictoryKind } from '../sim/world';
 import {
   applyCameraState,
@@ -239,6 +241,13 @@ import {
   endDriftYaw,
   type EndDrift,
 } from './endDrift';
+import {
+  createDayNightRig,
+  applyDayNight,
+  disposeDayNightRig,
+  clearGlassRegistry,
+  type DayNightRig,
+} from '../render/dayNight';
 import { SaveSlotsDialog } from './saveslots';
 import type { SaveFile, SaveSlotId } from '../netSave/savefile';
 import { AUTOSAVE_SLOT, createSaveFile } from '../netSave/savefile';
@@ -260,6 +269,7 @@ import {
 } from '../campaign/director';
 import { scoreMission, type CampaignProgress } from '../campaign/progress';
 import { MuseController, loadMuseFrequency } from '../muse/controller';
+import { personaLine } from '../muse/persona';
 import { MuseBox } from './musebox';
 import { MissionPanel, MissionDebrief } from './campaignUi';
 
@@ -332,6 +342,15 @@ const ADVISOR_REFRESH_MS = 2000;
 // Edge-pan zone width lives in ui/camera.ts (EDGE_PAN_PX) next to the pure
 // edgePanVector the frame loop feeds — single source of truth.
 const KEY_PAN_SPEED = 260;
+/**
+ * Fun-audit B1 (2026-10-02): the intro zoom. A fresh game opens low
+ * over the player's base (INTRO_ZOOM_FROM) and pulls back to the
+ * standard overview (INTRO_ZOOM_TO) over INTRO_ZOOM_SECONDS, easing
+ * out. Any camera input cancels it (see cancelIntroZoom).
+ */
+const INTRO_ZOOM_FROM = 80;
+const INTRO_ZOOM_TO = 150;
+const INTRO_ZOOM_SECONDS = 2.5;
 /** Game camera vertical field of view (degrees) — shared by the camera
  *  setup and the drag-pan pixel scale. */
 const GAME_FOV_DEG = 55;
@@ -556,7 +575,7 @@ export async function startGame(
     session,
     opts,
     saveStore,
-    { modelMap: entities.modelMap, nature: entities.nature },
+    { modelMap: entities.modelMap, nature: entities.nature, water: terrainView.water },
   );
   controller.start();
   return controller;
@@ -715,6 +734,11 @@ export interface GameControllerExtras {
   modelMap?: Map<string, LoadedModel>;
   /** Nature scatter view (removed + released in dispose()). */
   nature?: NatureView | null;
+  /**
+   * Exploration bet C7 (2026-10-02): the terrain view's water mesh —
+   * the day/night rig dims it through its TSL uniform.
+   */
+  water?: THREE.Object3D | null;
 }
 
 class GameController {
@@ -726,6 +750,8 @@ class GameController {
     setSize(w: number, h: number): void;
     setPixelRatio(n: number): void;
     dispose(): void;
+    /** Exploration bet C7 (2026-10-02): the day/night rig lerps this. */
+    toneMappingExposure: number;
   };
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.PerspectiveCamera;
@@ -738,6 +764,20 @@ class GameController {
   private unbindUiClicks: (() => void) | null = null;
   private cameraState: CameraState = createCameraState();
   /**
+   * Fun-audit B1 (2026-10-02): the intro zoom — a fresh game opens low
+   * over the player's base and pulls back to the overview. Null when
+   * inactive; any camera input cancels it (see cancelIntroZoom).
+   */
+  private introZoom: { t: number } | null = null;
+
+  /**
+   * Fun-audit B1 (2026-10-02): the player's hands are on the camera —
+   * stop the intro pull-back wherever it is.
+   */
+  private cancelIntroZoom(): void {
+    this.introZoom = null;
+  }
+  /**
    * Exploration bet C6 (2026-10-02): end-screen camera drift. While the
    * victory/defeat overlay is up, the camera slow-orbits the battlefield
    * (see ui/endDrift.ts). `preEndCameraState` is the exact player camera
@@ -746,6 +786,12 @@ class GameController {
    */
   private endDrift: EndDrift | null = null;
   private preEndCameraState: CameraState | null = null;
+  /**
+   * Exploration bet C7 (2026-10-02): the visual day/night rig
+   * (render/dayNight.ts). Created per game scene, applied every frame
+   * from the sim tick (pause ⇒ frozen sky; save/load ⇒ zero new fields).
+   */
+  private readonly dayNightRig: DayNightRig;
   /**
    * Roadmap B13 (2026-10-02): screen-shake trauma 0..1. Explosions feed
    * it (scaled by distance from the camera target); it decays every
@@ -821,6 +867,11 @@ class GameController {
   private lastMusicUpdate = 0;
   private lastShotSfx = 0;
   private audioTracker = new AudioEventTracker(HUMAN_PLAYER_ID);
+  /**
+   * Fun-audit B5 (2026-10-02): off-screen event pings. Created in
+   * start() (needs the camera + a DOM parent); null until then.
+   */
+  private eventPings: EventPings | null = null;
   private moodTracker = new MoodTracker();
   private lastUnderAttackWarn = 0;
   private prevAdvisorTop: string | null = null;
@@ -873,6 +924,12 @@ class GameController {
   private victoryShown = false;
   /** True once the conquest defeat screen has been shown (one-shot). */
   private defeatShown = false;
+  /**
+   * Fun-audit A4 (2026-10-02): sim tick when the war-core warning beat
+   * fired (null = not fired). The defeat screen waits ~3s after the
+   * beat so the "your war core has fallen" warning lands first.
+   */
+  private warCoreWarnTick: number | null = null;
   // ---- Phase 2: campaign + Muse ----
   /** Mission run state (UI-owned). Null in skirmish. */
   private readonly missionRun: MissionRunState | null;
@@ -882,6 +939,13 @@ class GameController {
   private readonly missionDebrief: MissionDebrief | null;
   private lastMissionPoll = 0;
   private lastMusePoll = 0;
+  /**
+   * Fun-audit A1 (2026-10-02): the last age we toasted for. The old
+   * code toasted "Age advanced: Connectivity." the moment the advance
+   * ORDER was issued — hardcoded and premature. Now the toast fires
+   * when the age actually changes, with the real age name.
+   */
+  private prevAge: string | null = null;
   private lastObjectivePanelRefresh = 0;
   /**
    * Roadmap B1 (2026-10-02): peaceful score milestone tracking.
@@ -931,6 +995,16 @@ class GameController {
     this.modelMap = extras.modelMap ?? new Map();
     this.natureView = extras.nature ?? null;
     this.lastAutosaveTick = session.world.tick;
+    // Exploration bet C7 (2026-10-02): the visual day/night rig — one
+    // star dome added to the scene (+1 draw call), everything else is
+    // parameter lerps on the existing noon rig (+0). Applied every frame
+    // from the sim tick in the renderFrame closure below.
+    this.dayNightRig = createDayNightRig({
+      scene: this.scene,
+      renderer: this.renderer,
+      water: extras.water ?? null,
+      setBlobShadowStrength: (f) => this.entities.setBlobShadowStrength(f),
+    });
 
     // Phase 3: apply persisted accessibility settings.
     const saved = loadSettings();
@@ -1245,6 +1319,29 @@ class GameController {
 
   /** Begin the render/sim loop. */
   start(): void {
+    // Fun-audit B1 (2026-10-02): a fresh game opens ON the player's
+    // base with a slow pull-back to the overview, and states the
+    // objective up front — no more "stare at an empty map center
+    // wondering what to do". Loaded saves resume the saved camera.
+    if (this.opts.saveData === undefined) {
+      const base = humanBaseWorld(this.session.terrain);
+      this.cameraState = {
+        ...this.cameraState,
+        targetX: base.x,
+        targetZ: base.z,
+        distance: INTRO_ZOOM_FROM,
+      };
+      this.introZoom = { t: 0 };
+      // Campaign missions have their own briefing/objective panel —
+      // the skirmish objective toast is for skirmish only.
+      if (this.missionRun === null) {
+        const key = this.session.world.peaceful === true ? 'endless' : this.session.world.victoryKind;
+        this.hud.toast(loc(STRINGS.objectives[key]));
+      }
+    }
+    // Fun-audit B5 (2026-10-02): the off-screen event pings live on the
+    // game container, above the canvas.
+    this.eventPings = new EventPings(this.container, threeProjector(this.camera));
     let last = performance.now();
     // Throttle the frame-error toast: a throw that repeats every frame
     // must not spam the HUD (the console still gets every occurrence).
@@ -1301,6 +1398,20 @@ class GameController {
         this.entities.updateSelectionRings(EntityRenderer.unitMap(world)),
       updateHud: (world, selection, advisorItems, paused, speed, terrain) => {
         this.hud.update(world, selection, advisorItems, paused, speed, terrain);
+        // Fun-audit B4 (2026-10-02): the rival-watch strip lives only in
+        // rivaled, non-peaceful, non-campaign skirmishes — peaceful mode
+        // is endless (no race) and campaign missions have their own
+        // objective panel.
+        this.hud.updateVictoryHud(
+          world,
+          this.session.hasRival && world.peaceful !== true && this.missionRun === null,
+        );
+        // Fun-audit B5 (2026-10-02): reposition the event-ping markers
+        // every frame (the camera moves under them).
+        this.eventPings?.update(
+          this.canvas.clientWidth || window.innerWidth,
+          this.canvas.clientHeight || window.innerHeight,
+        );
         // Roadmap B12 (minimap): repaint the tactical overview. The
         // view box comes from the camera distance + FOV (world units per
         // pixel at the target plane, same helper the pan code uses).
@@ -1329,6 +1440,16 @@ class GameController {
         // idempotent — every camera move already goes through
         // cameraState).
         const world = this.session.world;
+        // Exploration bet C7 (2026-10-02): the sky follows the sim tick
+        // — pause freezes it (tick static), save/load needs zero new
+        // fields (phase derives from the snapshotted tick). The rig
+        // no-ops when tick + camera target are unchanged.
+        applyDayNight(
+          this.dayNightRig,
+          world.tick,
+          this.cameraState.targetX,
+          this.cameraState.targetZ,
+        );
         if (world.tick !== this.lastShakeTick) {
           this.lastShakeTick = world.tick;
           for (const e of world.combatEvents ?? []) {
@@ -1501,7 +1622,16 @@ class GameController {
       }
       // Economy / tech cues (one per poll at most).
       if (events.trained > 0) this.audio.playSfx('unitTrained');
-      if (events.researchDone) this.audio.playSfx('researchComplete');
+      if (events.researchDone) {
+        this.audio.playSfx('researchComplete');
+        // Fun-audit A3 (2026-10-02): name the finished research — the
+        // old code chimed anonymously and the player had to hunt
+        // through Management → Research to learn what completed.
+        const newId = events.newResearchIds[0];
+        const def = newId !== undefined ? UPGRADE_DEFS[newId as UpgradeId] : undefined;
+        const name = def !== undefined ? def.name : newId ?? 'research';
+        this.hud.toast(fillLoc(STRINGS.toasts.researchComplete, { name }));
+      }
       if (events.intelOpComplete) this.audio.playSfx('intelOp');
       // Roadmap B11 (2026-10-02): construction-complete cues — the
       // 'buildComplete' synth finally has a caller. Friendly completions
@@ -1512,11 +1642,22 @@ class GameController {
         if (d.friendly) this.audio.playSfx('buildComplete', { x: d.x, z: d.z });
       }
       // Under attack: throttled (30s), non-positional — the player's own
-      // units/buildings are the target and the selection ping carries the
-      // location.
+      // units/buildings are the target.
       if (events.damageEvents > 0 && nowMs - this.lastUnderAttackWarn > 30_000) {
         this.lastUnderAttackWarn = nowMs;
         this.audio.playSfx('underAttack');
+      }
+      // Fun-audit B5 (2026-10-02): off-screen event pings — the visual
+      // half of the audio events. Red at damage, green at friendly
+      // completions, white where units trained. (A5: the stale
+      // "selection ping carries the location" note is gone — the pings
+      // carry the location now.)
+      if (this.eventPings !== null) {
+        for (const p of events.damagePositions) this.eventPings.ping('attack', p.x, p.z);
+        for (const b of cap(events.buildsComplete)) {
+          if (b.friendly) this.eventPings.ping('build', b.x, b.z);
+        }
+        for (const t of events.trainedPositions) this.eventPings.ping('trained', t.x, t.z);
       }
 
       // Adaptive music via hysteresis tracker (final-review L7;
@@ -1613,6 +1754,19 @@ class GameController {
       this.museBox?.setThreat(this.muse.threat);
     }
 
+    // Fun-audit A1 (2026-10-02): toast the age that was actually
+    // reached — the issueAdvanceAge toast used to fire on order issue
+    // with a hardcoded "Connectivity" for every age.
+    const ageNow = getAgeState(world, HUMAN_PLAYER_ID).age;
+    if (this.prevAge === null) {
+      this.prevAge = ageNow;
+    } else if (ageNow !== this.prevAge) {
+      this.prevAge = ageNow;
+      const ageName = STRINGS.ageNames[ageNow as Age] ?? STRINGS.ageNames.foundation;
+      this.hud.toast(fillLoc(STRINGS.orders.ageAdvanced, { age: loc(ageName) }));
+      this.audio.playSfx('ageFanfare');
+    }
+
     if (run === null || campaignOpts === undefined || this.missionEnded) return;
 
     // Objective tracker refresh ~1×/sec.
@@ -1707,6 +1861,9 @@ class GameController {
     for (const off of this.removeListeners) off();
     this.removeListeners = [];
     this.hud.dispose();
+    // Fun-audit B5 (2026-10-02): release the event-ping markers.
+    this.eventPings?.dispose();
+    this.eventPings = null;
     this.pauseMenu.hide();
     this.cheatConsole.hide();
     this.endScreen.hide();
@@ -1758,6 +1915,10 @@ class GameController {
     this.dragRect?.remove();
     // NOTE: scene.environment is the process-shared procedural texture
     // from applyEnvironmentLighting — never disposed per game.
+    disposeDayNightRig(this.dayNightRig);
+    // Exploration bet C7 (2026-10-02): the night-window glass registry
+    // only ever holds this session's model materials.
+    clearGlassRegistry();
     this.renderer.dispose();
     this.canvas.remove();
   }
@@ -1941,6 +2102,9 @@ class GameController {
     if (this.disposed || this.victoryShown || this.defeatShown) return;
     if (!this.session.hasRival) return;
     const outcome = getSkirmishOutcome(this.session.world);
+    // Fun-audit A4: the warning beat arms only while defeat is actually
+    // imminent — a cleared condition resets it.
+    if (outcome !== 'defeat') this.warCoreWarnTick = null;
     if (outcome === 'victory') {
       this.victoryShown = true;
       // Roadmap B2 (2026-10-02): the end screen names the victory that
@@ -1959,9 +2123,26 @@ class GameController {
       else if (kind === 'monument') this.endScreen.showVictory(e.victoryMonumentTitle, e.victoryMonumentDetail, art);
       else this.endScreen.showVictory(undefined, undefined, art);
     } else if (outcome === 'defeat') {
+      // Fun-audit A4 (2026-10-02): the war-weariness short-circuit can
+      // end the game while the civilian city still stands — from the
+      // player's chair that reads as "my city is fine, why did I lose?".
+      // So the defeat gets a warning BEAT first: Muse line + threat
+      // flash + toast, then the screen ~3s later. Race defeats
+      // (economic/population/monument) skip the beat.
+      const kind = this.session.world.victoryKind;
+      const warCore = (kind === undefined || kind === 'conquest') && isHumanWarCoreFallen(this.session.world);
+      if (warCore && !this.defeatShown) {
+        if (this.warCoreWarnTick === null) {
+          this.warCoreWarnTick = this.session.world.tick;
+          if (this.muse !== null) this.muse.notify(personaLine({ kind: 'warCoreFallen' }, this.session.world.tick));
+          this.hud.toast(loc(STRINGS.toasts.warCoreFallen));
+          this.museBox?.flashThreat();
+          return;
+        }
+        if (this.session.world.tick - this.warCoreWarnTick < 90) return;
+      }
       this.defeatShown = true;
       const e = STRINGS.end;
-      const kind = this.session.world.victoryKind;
       // Exploration bet C6 (2026-10-02): conquest defeat means the
       // player's forces were annihilated; any other kind means the
       // rival won the race first.
@@ -2029,8 +2210,10 @@ class GameController {
     this.enqueue(
       buildAdvanceAgeOrder(HUMAN_PLAYER_ID, program, getAgeState(this.session.world, HUMAN_PLAYER_ID).age),
     );
-    this.hud.toast(STRINGS.orders.ageAdvanced);
-    this.audio.playSfx('ageFanfare');
+    // Fun-audit A1 (2026-10-02): no toast here — the old code announced
+    // "Age advanced: Connectivity." on ORDER ISSUE, hardcoded and
+    // premature. The real advance is toasted by the pollCampaign age
+    // watcher with the actual age name.
   }
 
   /** Phase 3: issue a simple order (fire, specialization, trade, mayor). */
@@ -2642,6 +2825,7 @@ class GameController {
         const dy = e.clientY - this.orbitLast.y;
         this.orbitLast = { x: e.clientX, y: e.clientY };
         if (dx !== 0 || dy !== 0) {
+          this.cancelIntroZoom();
           this.cameraState = orbitDrag(this.cameraState, dx, dy);
           this.applyCameraStateGuarded();
         }
@@ -2661,6 +2845,7 @@ class GameController {
               (GAME_FOV_DEG * Math.PI) / 180,
               this.canvas.clientHeight || window.innerHeight,
             );
+            this.cancelIntroZoom();
             this.cameraState = panDragTarget(this.cameraState, dx, dy, wpp);
             this.applyCameraStateGuarded();
           }
@@ -2874,6 +3059,7 @@ class GameController {
     on(this.canvas, 'contextmenu', (e) => e.preventDefault());
     on(this.canvas, 'wheel', (e) => {
       e.preventDefault();
+      this.cancelIntroZoom();
       const factor = e.deltaY > 0 ? 1.12 : 1 / 1.12;
       this.cameraState = zoomCamera(this.cameraState, factor);
       this.applyCameraStateGuarded();
@@ -3024,6 +3210,31 @@ class GameController {
       this.endDrift = advanceEndDrift(this.endDrift, dtSec);
       this.cameraState = { ...this.cameraState, yaw: endDriftYaw(this.endDrift) };
       return;
+    }
+    // Fun-audit B1 (2026-10-02): the intro pull-back. Any camera key
+    // hands control to the player immediately; wheel/drag cancel in
+    // their own handlers (see cancelIntroZoom).
+    if (this.introZoom !== null) {
+      const k = this.keys;
+      const userDrove =
+        k.has('w') || k.has('a') || k.has('s') || k.has('d') ||
+        k.has('arrowup') || k.has('arrowdown') || k.has('arrowleft') || k.has('arrowright') ||
+        k.has('q') || k.has('e') || k.has('r') || k.has('f');
+      if (userDrove) {
+        this.introZoom = null;
+      } else {
+        this.introZoom.t += dtSec;
+        const p = Math.min(1, this.introZoom.t / INTRO_ZOOM_SECONDS);
+        // Ease-out cubic: a confident pull-back that settles softly.
+        const eased = 1 - Math.pow(1 - p, 3);
+        this.cameraState = {
+          ...this.cameraState,
+          distance: INTRO_ZOOM_FROM + (INTRO_ZOOM_TO - INTRO_ZOOM_FROM) * eased,
+        };
+        if (p >= 1) this.introZoom = null;
+        this.applyCameraStateGuarded();
+        return;
+      }
     }
     let dx = 0;
     let dz = 0;

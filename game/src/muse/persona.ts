@@ -40,6 +40,7 @@ export type PersonaEvent =
   | { kind: 'ageAdvanced'; age: string }
   | { kind: 'programChosen'; program: string }
   | { kind: 'unitLost'; unit: string }
+  | { kind: 'warCoreFallen' }
   | { kind: 'enemyDown' }
   | { kind: 'enemySpotted' }
   | { kind: 'combatStarted' }
@@ -82,6 +83,11 @@ const LINES: Record<string, string[]> = {
     'We lost a unit. I have notified their next of kin and the treasury.',
     'Casualty report on your desk. War is expensive; this one cost extra.',
     'One of ours is down. The memorial committee has been informed.',
+  ],
+  warCoreFallen: [
+    'President — our war core has fallen. No army, no military production. Defeat is imminent.',
+    'The last armory is gone and the field is empty. I am sorry, President — this is the end of the war.',
+    'War core destroyed. We have nothing left to fight with. Brace for the surrender.',
   ],
   enemyDown: [
     'Enemy unit destroyed. Their insurance premiums just went up.',

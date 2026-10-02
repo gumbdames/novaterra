@@ -354,6 +354,66 @@ body {
   backdrop-filter: blur(6px);
 }
 
+/* Fun-audit B4 (2026-10-02): the rival-watch strip — persistent
+   objective + victory-race telemetry, top-right under the topbar
+   (mirrors the advisor panel on the left). Built once, refreshed
+   write-on-change; hidden outside rivaled skirmishes. */
+.victory-hud {
+  position: absolute;
+  top: 64px;
+  right: 12px;
+  width: 300px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 6px;
+  padding: 8px 10px;
+  pointer-events: none;
+  font-size: 12px;
+}
+.victory-hud-objective {
+  color: var(--ink);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.victory-hud-race {
+  color: var(--ink-dim);
+  margin-bottom: 6px;
+}
+.victory-hud-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.victory-hud-label {
+  width: 44px;
+  flex: none;
+  color: var(--ink-dim);
+}
+.victory-hud-bar {
+  flex: 1;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.victory-hud-fill {
+  height: 100%;
+  width: 0%;
+  background: #8fd694;
+  border-radius: 4px;
+}
+.victory-hud-rival .victory-hud-fill {
+  background: #ff9d6b;
+}
+.victory-hud-value {
+  width: 108px;
+  flex: none;
+  text-align: right;
+  color: var(--ink);
+  white-space: nowrap;
+}
+
 .hud-panel-title {
   font-size: 11px;
   text-transform: uppercase;
@@ -1786,6 +1846,46 @@ body {
 .muse-threat-fill.low { background: #8fd694; }
 .muse-threat-fill.high { background: #ff7a7a; }
 .muse-threat-value { font-size: 11px; color: var(--ink-dim); white-space: nowrap; }
+
+/* Fun-audit A4 (2026-10-02): the war-core warning beat pulses the
+   threat meter red — the visual half of "your war core has fallen". */
+.muse-threat-fill.muse-threat-flash {
+  animation: muse-threat-flash 0.8s ease-in-out 5;
+}
+@keyframes muse-threat-flash {
+  0%, 100% { background: #ffd76a; box-shadow: none; }
+  50% { background: #ff3b3b; box-shadow: 0 0 12px #ff3b3b; }
+}
+
+/* Fun-audit B5 (2026-10-02): off-screen event pings — pooled pulsing
+   markers for under-attack (red), building-complete (green), and
+   unit-trained (white). Positioned every frame by render/eventPings.ts;
+   off-screen pings clamp to the edge (event-ping-edge). */
+.event-ping {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  margin: -18px 0 0 -18px;
+  border-radius: 50%;
+  border: 3px solid #fff;
+  pointer-events: none;
+  animation: event-ping-pulse 1.1s ease-out infinite;
+  z-index: 5;
+}
+.event-ping-attack { border-color: #ff5b5b; }
+.event-ping-build { border-color: #8fd694; }
+.event-ping-trained { border-color: #ffffff; opacity: 0.85; }
+.event-ping-edge {
+  width: 22px;
+  height: 22px;
+  margin: -11px 0 0 -11px;
+  border-width: 4px;
+  animation: event-ping-pulse 0.7s ease-out infinite;
+}
+@keyframes event-ping-pulse {
+  0% { transform: scale(0.6); opacity: 1; }
+  100% { transform: scale(1.4); opacity: 0.15; }
+}
 
 .muse-settings .setting-row {
   display: flex;
