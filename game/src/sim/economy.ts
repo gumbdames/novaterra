@@ -1236,96 +1236,67 @@ export function airlineRouteIncome(world: World, route: AirlineRoute): number {
 
 /** Pay living routes, remove dead ones (demolished endpoint) — id order, no RNG. */
 function runAirlineIncome(world: World, city: CityState): void {
-  const dead = new Set<number>();
   for (const route of city.airlineRoutes) {
     const owner = getPlayer(city, route.owner);
     const income = airlineRouteIncome(world, route);
-    if (!owner || income <= 0) {
-      dead.add(route.id);
-      continue;
-    }
-    owner.funds += income;
+    if (income <= 0) continue;
+    if (owner) owner.funds += income;
   }
-  if (dead.size > 0) {
-    city.airlineRoutes = city.airlineRoutes.filter((r) => !dead.has(r.id));
-  }
+  // Ownerless routes cannot happen (owners never vanish) but the old
+  // code removed them defensively — preserved.
+  city.airlineRoutes = city.airlineRoutes.filter(
+    (r) => getPlayer(city, r.owner) !== undefined,
+  );
+  // Roadmap B22: the dead-endpoint sweep is the shared lifecycle.
+  sweepDeadRoutes(world, airlineRouteHooks);
 }
 
-/** An airline endpoint must be the owner's completed civil/mixed airport. */
-function airlineEndpointProblem(world: World, owner: number, id: number, which: string): string | null {
-  const b = world.city.buildings.find((x) => x.id === id);
-  if (!b) return `establishAirlineRoute: unknown ${which} building #${id}`;
-  if (b.owner !== owner) return `establishAirlineRoute: ${which} building #${id} is not yours`;
-  if (b.progress < 1) return `establishAirlineRoute: ${which} building #${id} is not completed`;
-  const type = BUILDING_DEFS[b.kind].airportType;
-  if (type !== 'civilian' && type !== 'mixed') {
-    return `establishAirlineRoute: ${which} building #${id} is not a civil or mixed airport`;
-  }
-  return null;
-}
-
-const establishAirlineRouteSpec: CommandSpec = {
-  validate(cmd, world): string | null {
-    const owner = payloadInt(cmd.payload, 'owner');
-    if (owner === null || !getPlayer(world.city, owner)) {
-      return 'establishAirlineRoute: unknown owner';
-    }
-    const from = payloadInt(cmd.payload, 'from');
-    const to = payloadInt(cmd.payload, 'to');
-    if (from === null || to === null) {
-      return 'establishAirlineRoute: from/to must be building ids';
-    }
-    if (from === to) return 'establishAirlineRoute: from and to must be different airports';
-    const problem = airlineEndpointProblem(world, owner, from, 'from')
-      ?? airlineEndpointProblem(world, owner, to, 'to');
-    if (problem) return problem;
-    // Routes are undirected for duplication (A↔B == B↔A).
-    const a = Math.min(from, to);
-    const b = Math.max(from, to);
-    const dup = world.city.airlineRoutes.some(
-      (r) => r.owner === owner && Math.min(r.from, r.to) === a && Math.max(r.from, r.to) === b,
-    );
-    if (dup) return 'establishAirlineRoute: route already exists';
-    const player = getPlayer(world.city, owner) as PlayerState;
-    if (player.funds < AIRLINE_ROUTE_SETUP_COST) {
-      return `establishAirlineRoute: cannot afford ${AIRLINE_ROUTE_SETUP_COST} funds setup`;
+/**
+ * Roadmap B22 (2026-10-02): airline specialization of the shared
+ * endpoint-route lifecycle (sim/routeLifecycle.ts). A third route kind
+ * only needs its own hooks object.
+ */
+const airlineRouteHooks: RouteKindHooks<AirlineRoute> = {
+  establishCommand: 'establishAirlineRoute',
+  cancelCommand: 'cancelAirlineRoute',
+  endpointNoun: 'airports',
+  setupCost: AIRLINE_ROUTE_SETUP_COST,
+  endpointKindProblem: (b, which, cmd) => {
+    const type = BUILDING_DEFS[b.kind].airportType;
+    if (type !== 'civilian' && type !== 'mixed') {
+      return `${cmd}: ${which} building #${b.id} is not a civil or mixed airport`;
     }
     return null;
   },
+  routesOf: (city) => city.airlineRoutes,
+  setRoutes: (city, routes) => {
+    city.airlineRoutes = routes;
+  },
+  allocRouteId: (city) => city.nextAirlineRouteId++,
+  makeRoute: (base) => ({ ...base }),
+  cancelReason: '',
+  sweepReason: '',
+  getPlayer,
+};
+
+const establishAirlineRouteSpec: CommandSpec = {
+  // Roadmap B22: the shared endpoint-route lifecycle.
+  validate(cmd, world): string | null {
+    return validateEstablishRoute(world, cmd.payload, airlineRouteHooks);
+  },
   apply(cmd, world): unknown {
-    const owner = payloadInt(cmd.payload, 'owner') as number;
-    const from = payloadInt(cmd.payload, 'from') as number;
-    const to = payloadInt(cmd.payload, 'to') as number;
-    const player = getPlayer(world.city, owner) as PlayerState;
-    player.funds -= AIRLINE_ROUTE_SETUP_COST;
-    const route: AirlineRoute = {
-      id: world.city.nextAirlineRouteId++,
-      owner,
-      from,
-      to,
-      establishedTick: world.tick,
-    };
-    world.city.airlineRoutes.push(route);
-    return { id: route.id, from, to };
+    const route = applyEstablishRoute(world, cmd.payload, airlineRouteHooks);
+    return { id: route.id, from: route.from, to: route.to };
   },
 };
 
 const cancelAirlineRouteSpec: CommandSpec = {
+  // Roadmap B22: the shared endpoint-route lifecycle.
   validate(cmd, world): string | null {
-    const owner = payloadInt(cmd.payload, 'owner');
-    if (owner === null || !getPlayer(world.city, owner)) {
-      return 'cancelAirlineRoute: unknown owner';
-    }
-    const id = payloadInt(cmd.payload, 'id');
-    const route = world.city.airlineRoutes.find((r) => r.id === id);
-    if (!route) return 'cancelAirlineRoute: unknown route';
-    if (route.owner !== owner) return 'cancelAirlineRoute: route belongs to another player';
-    return null;
+    return validateCancelRoute(world, cmd.payload, airlineRouteHooks);
   },
   apply(cmd, world): unknown {
-    const id = payloadInt(cmd.payload, 'id') as number;
-    world.city.airlineRoutes = world.city.airlineRoutes.filter((r) => r.id !== id);
-    return { id };
+    return applyCancelRoute(world, cmd.payload, airlineRouteHooks);
   },
 };
 
@@ -1343,104 +1314,84 @@ const cancelAirlineRouteSpec: CommandSpec = {
 // completes the ai→economy→city→world→ai evaluation cycle that breaks
 // module init (the market.ts precedent).
 import { SEA_ROUTE_SETUP_COST, isSeaTradeShip } from './seaTrade';
+// Roadmap B22 (2026-10-02): the shared endpoint-route lifecycle.
+import {
+  applyCancelRoute,
+  applyEstablishRoute,
+  sweepDeadRoutes,
+  validateCancelRoute,
+  validateEstablishRoute,
+  type RouteKindHooks,
+} from './routeLifecycle';
 // Re-exported: the setup cost's public home was economy.ts before the
 // leaf move (the market.ts precedent — economy's public API is unchanged).
 export { SEA_ROUTE_SETUP_COST };
 
-/** A sea-route endpoint must be the owner's completed trade dock. */
-function seaRouteEndpointProblem(
-  world: World,
-  owner: number,
-  id: number,
-  which: string,
-): string | null {
-  const b = world.city.buildings.find((x) => x.id === id);
-  if (!b) return `establishSeaRoute: unknown ${which} building #${id}`;
-  if (b.owner !== owner) return `establishSeaRoute: ${which} building #${id} is not yours`;
-  if (b.progress < 1) return `establishSeaRoute: ${which} building #${id} is not completed`;
-  // The no-blur rule (naval-building model, 2026-10-01): trade routes
-  // anchor at civilian DOCKS only — the shipyard builds ships, it
-  // doesn't trade; the military navalBase is barred from civilian
-  // routes (the airline rule, port-side). Grandfathered: routes store
-  // building ids and nothing re-validates an established route, so old
-  // harbor-anchored saves keep sailing.
-  if (BUILDING_DEFS[b.kind].tradeDock !== true) {
-    return `establishSeaRoute: ${which} building #${id} is not a trade dock (sea routes anchor at Commercial Docks, Container Port, or Fishing Harbor)`;
-  }
-  return null;
-}
+/**
+ * Roadmap B22 (2026-10-02): sea specialization of the shared
+ * endpoint-route lifecycle (sim/routeLifecycle.ts).
+ */
+const seaRouteHooks: RouteKindHooks<SeaRoute> = {
+  establishCommand: 'establishSeaRoute',
+  cancelCommand: 'cancelSeaRoute',
+  endpointNoun: 'docks',
+  setupCost: SEA_ROUTE_SETUP_COST,
+  endpointKindProblem: (b, which, cmd) => {
+    // The no-blur rule (naval-building model, 2026-10-01): trade routes
+    // anchor at civilian DOCKS only — the shipyard builds ships, it
+    // doesn't trade; the military navalBase is barred from civilian
+    // routes (the airline rule, port-side). Grandfathered: routes store
+    // building ids and nothing re-validates an established route, so old
+    // harbor-anchored saves keep sailing.
+    if (BUILDING_DEFS[b.kind].tradeDock !== true) {
+      return `${cmd}: ${which} building #${b.id} is not a trade dock (sea routes anchor at Commercial Docks, Container Port, or Fishing Harbor)`;
+    }
+    return null;
+  },
+  routesOf: (city) => city.seaRoutes ?? [],
+  setRoutes: (city, routes) => {
+    city.seaRoutes = routes;
+  },
+  allocRouteId: (city) => city.nextSeaRouteId++,
+  makeRoute: (base, payload) => ({
+    ...base,
+    policy: payload['policy'] as SeaRoutePolicy,
+  }),
+  extraValidate: (payload) => {
+    const policy = payload['policy'];
+    if (typeof policy !== 'string' || !SEA_ROUTE_POLICIES.includes(policy as SeaRoutePolicy)) {
+      return `establishSeaRoute: unknown policy ${String(policy)}`;
+    }
+    return null;
+  },
+  afterRemove: (world, routeId, reason) => {
+    clearSeaRouteAssignments(world, routeId, reason);
+  },
+  cancelReason: 'sea route cancelled',
+  sweepReason: 'sea route ended',
+  getPlayer,
+};
 
 const SEA_ROUTE_POLICIES: SeaRoutePolicy[] = ['funds', 'fuel', 'materials'];
 
 const establishSeaRouteSpec: CommandSpec = {
+  // Roadmap B22: the shared endpoint-route lifecycle.
   validate(cmd, world): string | null {
-    const owner = payloadInt(cmd.payload, 'owner');
-    if (owner === null || !getPlayer(world.city, owner)) {
-      return 'establishSeaRoute: unknown owner';
-    }
-    const from = payloadInt(cmd.payload, 'from');
-    const to = payloadInt(cmd.payload, 'to');
-    if (from === null || to === null) {
-      return 'establishSeaRoute: from/to must be building ids';
-    }
-    if (from === to) return 'establishSeaRoute: from and to must be different docks';
-    const policy = cmd.payload['policy'];
-    if (typeof policy !== 'string' || !SEA_ROUTE_POLICIES.includes(policy as SeaRoutePolicy)) {
-      return `establishSeaRoute: unknown policy ${String(policy)}`;
-    }
-    const problem = seaRouteEndpointProblem(world, owner, from, 'from')
-      ?? seaRouteEndpointProblem(world, owner, to, 'to');
-    if (problem) return problem;
-    // Routes are undirected for duplication (A↔B == B↔A), like airlines.
-    const a = Math.min(from, to);
-    const b = Math.max(from, to);
-    const dup = (world.city.seaRoutes ?? []).some(
-      (r) => r.owner === owner && Math.min(r.from, r.to) === a && Math.max(r.from, r.to) === b,
-    );
-    if (dup) return 'establishSeaRoute: route already exists';
-    const player = getPlayer(world.city, owner) as PlayerState;
-    if (player.funds < SEA_ROUTE_SETUP_COST) {
-      return `establishSeaRoute: cannot afford ${SEA_ROUTE_SETUP_COST} funds setup`;
-    }
-    return null;
+    return validateEstablishRoute(world, cmd.payload, seaRouteHooks);
   },
   apply(cmd, world): unknown {
-    const owner = payloadInt(cmd.payload, 'owner') as number;
-    const from = payloadInt(cmd.payload, 'from') as number;
-    const to = payloadInt(cmd.payload, 'to') as number;
-    const policy = cmd.payload['policy'] as SeaRoutePolicy;
-    const player = getPlayer(world.city, owner) as PlayerState;
-    player.funds -= SEA_ROUTE_SETUP_COST;
-    const route: SeaRoute = {
-      id: world.city.nextSeaRouteId++,
-      owner,
-      from,
-      to,
-      policy,
-      establishedTick: world.tick,
-    };
-    world.city.seaRoutes.push(route);
-    return { id: route.id, from, to, policy };
+    const route = applyEstablishRoute(world, cmd.payload, seaRouteHooks);
+    return { id: route.id, from: route.from, to: route.to, policy: route.policy };
   },
 };
 
 const cancelSeaRouteSpec: CommandSpec = {
+  // Roadmap B22: the shared endpoint-route lifecycle.
   validate(cmd, world): string | null {
-    const owner = payloadInt(cmd.payload, 'owner');
-    if (owner === null || !getPlayer(world.city, owner)) {
-      return 'cancelSeaRoute: unknown owner';
-    }
-    const id = payloadInt(cmd.payload, 'id');
-    const route = (world.city.seaRoutes ?? []).find((r) => r.id === id);
-    if (!route) return 'cancelSeaRoute: unknown route';
-    if (route.owner !== owner) return 'cancelSeaRoute: route belongs to another player';
-    return null;
+    return validateCancelRoute(world, cmd.payload, seaRouteHooks);
   },
   apply(cmd, world): unknown {
-    const id = payloadInt(cmd.payload, 'id') as number;
-    world.city.seaRoutes = (world.city.seaRoutes ?? []).filter((r) => r.id !== id);
-    clearSeaRouteAssignments(world, id, 'sea route cancelled');
-    return { id };
+    return applyCancelRoute(world, cmd.payload, seaRouteHooks);
   },
 };
 
@@ -1499,25 +1450,9 @@ export function clearSeaRouteAssignments(world: World, routeId: number, reason: 
 }
 
 function runSeaRouteCleanup(world: World, city: CityState): void {
-  const routes = city.seaRoutes ?? [];
-  if (routes.length === 0) return;
-  const dead = new Set<number>();
-  for (const route of routes) {
-    const from = city.buildings.find((b) => b.id === route.from);
-    const to = city.buildings.find((b) => b.id === route.to);
-    if (
-      !from || !to ||
-      from.progress < 1 || !from.operational ||
-      to.progress < 1 || !to.operational
-    ) {
-      dead.add(route.id);
-    }
-  }
-  if (dead.size === 0) return;
-  city.seaRoutes = routes.filter((r) => !dead.has(r.id));
-  for (const id of [...dead].sort((a, b) => a - b)) {
-    clearSeaRouteAssignments(world, id, 'sea route ended');
-  }
+  // Roadmap B22: the dead-endpoint sweep is the shared lifecycle
+  // (removal + ship unassignment with the 'sea route ended' reason).
+  sweepDeadRoutes(world, seaRouteHooks);
 }
 
 /** Slow development levels for thriving buildings (1→3). */

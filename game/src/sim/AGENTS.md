@@ -115,11 +115,28 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   (`seaVoyageIncome`: 40 + 0.25×distance), `MATERIALS_EXPORT_PRICE`,
   the route-ship predicate (`isSeaTradeShip`), and the port-call
   mechanic (`runSeaTradePortCall`). Imports values only from city.ts,
-  units.ts, and desirability.ts — never economy.ts or movement.ts — so
+  units.ts, desirability.ts, and routeLifecycle.ts — never economy.ts
+  or movement.ts — so
   the movement tick and the AI can consume it without opening a
   movement→economy→city or ai→economy→city→world→ai evaluation cycle
   (economy.ts re-exports `SEA_ROUTE_SETUP_COST`; its public API is
-  unchanged — the market.ts precedent).
+  unchanged — the market.ts precedent). Roadmap B22 (2026-10-02): the
+  port-call cargo legs run the shared `cargoTransferAmount` kernel from
+  routeLifecycle.ts (which value-imports only from city.ts — the leaf
+  stays a leaf).
+- `routeLifecycle.ts` — (roadmap B22, 2026-10-02) the shared
+  endpoint-route abstraction: `EndpointRoute` (`{id, owner, from, to,
+  establishedTick}`) + per-kind `RouteKindHooks` specializing the
+  establish / cancel / dead-sweep lifecycle and the kind-specific
+  endpoint rule. Airlines and sea trade are both implemented through
+  it (one hooks object each) — a third route kind (rail freight?) only
+  needs a record type + hooks. Type-only imports (`./city`, `./world`);
+  the player lookup is injected via `hooks.getPlayer`, so the module
+  opens no value edges and stays out of every module cycle. Also home
+  to `cargoTransferAmount`, the shared cargo-transfer kernel used by
+  the load/unload commands, the AI virtual loads (commands.ts), and
+  the sea port calls (seaTrade.ts): "up to need from available, capped
+  both sides, never negative".
 - `shipyardRepair.ts` — (naval-building model, 2026-10-01) drydock repair:
   damaged same-side sea units within `SHIPYARD_REPAIR_RADIUS` (14) of an
   operational production shipyard (`commercialHarbor` civilian,

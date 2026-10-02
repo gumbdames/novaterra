@@ -47,6 +47,8 @@ import type { UnitKind, UnitRecord } from './units';
 import type { AIPlayerState } from './ai';
 import { BUILDING_DEFS, cellCenterWorld, getPlayer, LOGISTICS_RADIUS } from './city';
 import type { BuildingRecord } from './city';
+// Roadmap B22 (2026-10-02): the shared cargo-transfer kernel.
+import { cargoTransferAmount } from './routeLifecycle';
 import { effectiveAmmoStorage, effectiveFuelStorage } from './upgrades';
 import { orderMoveTo } from './movement';
 
@@ -568,16 +570,17 @@ function computeCargoTransfer(
   if (cmdName === 'loadCargo') {
     const fuelNeed = Math.max(0, (udef.cargoFuelCapacity ?? 0) - unit.cargoFuel);
     if (fuelNeed > 0) {
-      fuel = Math.min(fuelNeed, Math.max(0, (depot.fuelStock ?? 0) - (depot.reservedFuel ?? 0)));
+      // Roadmap B22: the shared cargo-transfer kernel.
+      fuel = cargoTransferAmount(fuelNeed, Math.max(0, (depot.fuelStock ?? 0) - (depot.reservedFuel ?? 0)));
     }
     const ammoNeed = Math.floor(Math.max(0, (udef.cargoAmmoCapacity ?? 0) - unit.cargoAmmo));
     if (ammoNeed >= 1) {
-      ammo = Math.min(ammoNeed, Math.max(0, Math.floor((depot.ammoStock ?? 0) - (depot.reservedAmmo ?? 0))));
+      ammo = cargoTransferAmount(ammoNeed, Math.max(0, Math.floor((depot.ammoStock ?? 0) - (depot.reservedAmmo ?? 0))));
     }
     const matNeed = Math.floor(Math.max(0, (udef.cargoMaterialsCapacity ?? 0) - unit.cargoMaterials));
     if (matNeed >= 1) {
       const player = getPlayer(world.city, owner);
-      materials = Math.min(matNeed, Math.max(0, Math.floor(player?.materials ?? 0)));
+      materials = cargoTransferAmount(matNeed, Math.max(0, Math.floor(player?.materials ?? 0)));
     }
     if (fuel <= 0 && ammo <= 0 && materials <= 0) {
       return `${cmdName}: nothing to load — unit ${unitId} holds are full or building ${buildingId} has no available stock`;
@@ -585,17 +588,17 @@ function computeCargoTransfer(
   } else {
     const fuelRoom = Math.max(0, effectiveFuelStorage(world, owner, bdef) - (depot.fuelStock ?? 0));
     if (fuelRoom > 0 && unit.cargoFuel > 0) {
-      fuel = Math.min(unit.cargoFuel, fuelRoom);
+      fuel = cargoTransferAmount(unit.cargoFuel, fuelRoom);
     }
     const ammoRoom = Math.max(0, effectiveAmmoStorage(world, owner, bdef) - (depot.ammoStock ?? 0));
     if (ammoRoom > 0) {
       const shells = Math.floor(unit.cargoAmmo);
-      if (shells >= 1) ammo = Math.min(shells, Math.floor(ammoRoom));
+      if (shells >= 1) ammo = cargoTransferAmount(shells, Math.floor(ammoRoom));
     }
     const matRoom = Math.max(0, (bdef.materialsStorage ?? 0) - (depot.materialsStock ?? 0));
     if (matRoom > 0) {
       const crates = Math.floor(unit.cargoMaterials);
-      if (crates >= 1) materials = Math.min(crates, Math.floor(matRoom));
+      if (crates >= 1) materials = cargoTransferAmount(crates, Math.floor(matRoom));
     }
     if (fuel <= 0 && ammo <= 0 && materials <= 0) {
       return `${cmdName}: nothing to unload — unit ${unitId} holds are empty or building ${buildingId} has no storage headroom`;
@@ -653,8 +656,9 @@ function computeVirtualCargoLoad(
   const ammoNeed = Math.max(0, Math.floor((udef.cargoAmmoCapacity ?? 0) - unit.cargoAmmo));
   let fuel = 0;
   let ammo = 0;
-  if (fuelNeed > 0) fuel = Math.min(fuelNeed, ai.virtualFuelStock ?? 0);
-  if (ammoNeed >= 1) ammo = Math.min(ammoNeed, Math.floor(ai.virtualAmmoStock ?? 0));
+  // Roadmap B22: the shared cargo-transfer kernel.
+  if (fuelNeed > 0) fuel = cargoTransferAmount(fuelNeed, ai.virtualFuelStock ?? 0);
+  if (ammoNeed >= 1) ammo = cargoTransferAmount(ammoNeed, Math.floor(ai.virtualAmmoStock ?? 0));
   if (fuel <= 0 && ammo <= 0) {
     return `${cmdName}: nothing to load — unit ${unitId} holds are full or player ${owner} virtual stocks are empty`;
   }

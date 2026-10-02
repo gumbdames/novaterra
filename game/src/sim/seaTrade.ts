@@ -3,7 +3,9 @@
  * civilian Half A, 2026-10-01).
  *
  * This module is deliberately a LEAF: it value-imports only from
- * `./city` and `./units`, neither of which imports it back. The
+ * `./city`, `./units`, and `./routeLifecycle` (the shared
+ * cargo-transfer kernel — which keeps type-only imports, so the leaf
+ * stays a leaf), none of which imports it back. The
  * per-tick movement loop (`advanceSeaTrade` in movement.ts) calls
  * `runSeaTradePortCall` every tick, and movement.ts already sits
  * downstream of commands.ts (`commands.ts` value-imports `orderMoveTo`
@@ -29,6 +31,10 @@ import {
 } from './city';
 import { UNIT_DEFS, type UnitRecord } from './units';
 import type { World } from './world';
+// Roadmap B22 (2026-10-02): the shared cargo-transfer kernel. This
+// stays a leaf: routeLifecycle.ts value-imports only from ./city,
+// so no new module-init edge is opened.
+import { cargoTransferAmount } from './routeLifecycle';
 
 /**
  * Per-voyage income for a `funds`-policy route: flat base + per-world-
@@ -132,7 +138,8 @@ export function runSeaTradePortCall(
   if (route.policy === 'fuel') {
     if (atOrigin) {
       const room = (def.cargoFuelCapacity ?? 0) - unit.cargoFuel;
-      const load = Math.max(0, Math.min(room, harbor.fuelStock ?? 0));
+      // Roadmap B22: the shared cargo-transfer kernel.
+      const load = cargoTransferAmount(room, harbor.fuelStock ?? 0);
       if (load > 0) {
         harbor.fuelStock = (harbor.fuelStock ?? 0) - load;
         unit.cargoFuel += load;
@@ -140,7 +147,7 @@ export function runSeaTradePortCall(
     } else {
       const cap = BUILDING_DEFS[harbor.kind].fuelStorage ?? Number.POSITIVE_INFINITY;
       const room = Math.max(0, cap - (harbor.fuelStock ?? 0));
-      const give = Math.min(unit.cargoFuel, room);
+      const give = cargoTransferAmount(unit.cargoFuel, room);
       if (give > 0) {
         harbor.fuelStock = (harbor.fuelStock ?? 0) + give;
         unit.cargoFuel -= give;
@@ -151,7 +158,7 @@ export function runSeaTradePortCall(
   // materials policy.
   if (atOrigin) {
     const room = (def.cargoMaterialsCapacity ?? 0) - (unit.cargoMaterials ?? 0);
-    const load = Math.max(0, Math.min(room, player.materials));
+    const load = cargoTransferAmount(room, player.materials);
     if (load > 0) {
       player.materials -= load;
       unit.cargoMaterials = (unit.cargoMaterials ?? 0) + load;
