@@ -64,6 +64,21 @@ export const BIRD_FLOCK_DURATION_TICKS = 1350;
 export const BIRD_FLOCK_BIRDS = 6;
 /** Max simultaneously active flocks (schedule bound). */
 export const BIRD_MAX_FLOCKS = 2;
+/**
+ * Fun-audit Tier 4 (E1, 2026-10-02): dove-release tuning — 5 white
+ * gulls (variant 1, the gull) spiral up from the release point for
+ * ~10 s (300 ticks). Render-side only (living-nature contract).
+ */
+export const DOVE_VARIANT = 1;
+export const DOVE_COUNT = 5;
+export const DOVE_TICKS = 300;
+export const DOVE_START_Y = 5;
+export const DOVE_RISE_RATE = 0.45;
+export const DOVE_START_RADIUS = 3;
+export const DOVE_RADIUS_RATE = 0.12;
+export const DOVE_SPIN_RATE = 0.06;
+/** Cap on concurrent dove bursts (defensive; one per ceremony). */
+export const DOVE_MAX_BURSTS = 4;
 
 /** Procedural bird variant spec: silhouette params + plumage colors. */
 export interface BirdVariantSpec {
@@ -353,10 +368,32 @@ export class BirdFlocks {
   private readonly material: THREE.MeshStandardMaterial;
   private meshes: THREE.InstancedMesh[] | null = null;
   private readonly dummy = new THREE.Object3D();
+  /**
+   * Fun-audit Tier 4 (E1, 2026-10-02): active dove releases —
+   * `{ x, z, startTick }`, one per accepted ceasefire. The render
+   * drains `world.ceremonyEvents` (see releaseDoves); the burst is
+   * render-side state, ~10 s of spiraling white gulls. Capped (never
+   * allocates per frame).
+   */
+  private doveBursts: Array<{ x: number; z: number; startTick: number }> = [];
 
   constructor(scene: THREE.Scene) {
     this.scene = scene;
     this.material = makeBirdMaterial();
+  }
+
+  /**
+   * Fun-audit Tier 4 (E1, 2026-10-02): record a dove release at
+   * (x, z), starting at `tick`. Called while draining the sim's
+   * `ceremonyEvents` — which stay visible for exactly one tick of
+   * sim time but many render frames, so the per-tick dedupe keeps
+   * one event from spawning one burst per frame. Render-side state
+   * (living-nature contract): poses stay pure f(tick).
+   */
+  releaseDoves(x: number, z: number, tick: number): void {
+    if (this.doveBursts.some((b) => b.startTick === tick)) return;
+    if (this.doveBursts.length >= DOVE_MAX_BURSTS) this.doveBursts.shift();
+    this.doveBursts.push({ x, z, startTick: tick });
   }
 
   /** Build the 10 variant meshes on first use (idempotent). */
@@ -399,6 +436,35 @@ export class BirdFlocks {
           }
         }
       }
+    }
+    // Fun-audit Tier 4 (E1, 2026-10-02): dove bursts — 5 white gulls
+    // (variant 1) spiraling up from each release point for ~10 s.
+    // Poses are pure f(tick), so pause freezes them like the ambient
+    // flocks; the burst list is render-side (a 10 s decorative effect —
+    // not snapshotted, per the living-nature contract). Doves take
+    // precedence in the gull bucket, clamped to mesh capacity.
+    this.doveBursts = this.doveBursts.filter((b) => tick - b.startTick < DOVE_TICKS);
+    const dovePoses: BirdPose[] = [];
+    for (const b of this.doveBursts) {
+      const t = tick - b.startTick;
+      if (t < 0) continue;
+      for (let i = 0; i < DOVE_COUNT; i++) {
+        const a = (i / DOVE_COUNT) * Math.PI * 2 + t * DOVE_SPIN_RATE;
+        const r = DOVE_START_RADIUS + t * DOVE_RADIUS_RATE;
+        dovePoses.push({
+          // Bird geometry faces +z; yaw leads the tangent of the spiral.
+          yaw: -a + Math.PI / 2,
+          variant: DOVE_VARIANT,
+          x: b.x + Math.cos(a) * r,
+          y: DOVE_START_Y + t * DOVE_RISE_RATE,
+          z: b.z + Math.sin(a) * r,
+        });
+      }
+    }
+    if (dovePoses.length > 0) {
+      const gulls = poses[DOVE_VARIANT] ?? [];
+      poses[DOVE_VARIANT] = [...dovePoses, ...gulls].slice(0, BIRD_FLOCK_BIRDS);
+      active += dovePoses.length;
     }
     if (active === 0) {
       // No flyover: hide without ever creating the meshes.

@@ -68,6 +68,7 @@ import {
 import { createCombatSystem, registerCombatCommands } from '../sim/combat';
 import { createIntelSystem, registerIntelCommands } from '../sim/intel';
 import { registerDiplomacyCommands } from '../sim/diplomacy';
+import { registerEnvoyCommands, createEnvoySystem } from '../sim/envoy';
 import { registerLogisticsCommands } from '../sim/commands';
 import { registerAgeCommands, getProgramForAge, type Age, type NationalProgram } from '../sim/ages';
 import { registerCheatCommands } from '../sim/cheats';
@@ -616,6 +617,8 @@ export function createSession(options: SessionOptions): GameSession {
   // Roadmap B3 (2026-10-02): the diplomacy commands
   // (sendTribute / demandTribute / proposeCeasefire).
   registerDiplomacyCommands(queue);
+  // Fun-audit Tier 4 (E1, 2026-10-02): the envoy's answer command.
+  registerEnvoyCommands(queue);
   // Phase 3 logistics (workstream 3): resupply + supply toggles.
   registerLogisticsCommands(queue, terrain);
   registerAgeCommands(queue);
@@ -631,6 +634,12 @@ export function createSession(options: SessionOptions): GameSession {
     systems: [
       createPathfindingSystem(terrain),
       createMovementSystem(terrain),
+      // Fun-audit Tier 4 (E1, 2026-10-02): the envoy state machine —
+      // right after movement (it drives the envoy through orderMoveTo)
+      // and before combat (arrival/departure are position reads). It
+      // also clears world.ceremonyEvents at tick start (the earliest
+      // ceremony emitter; combine/luminary systems register after it).
+      createEnvoySystem(terrain),
       createCombatSystem(terrain),
       createSuperweaponSystem(),
       createEconomySystem(terrain),

@@ -551,8 +551,22 @@ export function selectionDigest(
         const ceasefireSecs = ceasefireActive(world)
           ? Math.ceil(ceasefireTicksLeft(world) / 30)
           : 0;
+        // Fun-audit Tier 4 (E1, 2026-10-02): the envoy status line
+        // renders state + the answer countdown — the digest carries
+        // them (state, verdict, whole seconds) so the Management tab
+        // repaints exactly when the row would change. Additive: no
+        // envoy ⇒ 'x' (AD9 neutral default).
+        const envoy = d.envoy;
+        const envoySeg =
+          envoy === null
+            ? 'x'
+            : `${envoy.state}:${envoy.offer.verdict}:${
+                envoy.state === 'waiting' && envoy.deadlineTick > world.tick
+                  ? Math.ceil((envoy.deadlineTick - world.tick) / 30)
+                  : 0
+              }`;
         parts.push(
-          `di:${Math.floor(d.disposition)}:${ceasefireSecs}:${d.lastDemand ?? ''}:${d.lastCeasefireAsk ?? ''}:${influence}:${influence >= DEMAND_TRIBUTE_INFLUENCE_COST ? 1 : 0}${influence >= CEASEFIRE_INFLUENCE_COST ? 1 : 0}`,
+          `di:${Math.floor(d.disposition)}:${ceasefireSecs}:${d.lastDemand ?? ''}:${d.lastCeasefireAsk ?? ''}:${influence}:${influence >= DEMAND_TRIBUTE_INFLUENCE_COST ? 1 : 0}${influence >= CEASEFIRE_INFLUENCE_COST ? 1 : 0}:${envoySeg}`,
         );
       }
     }
@@ -1027,7 +1041,9 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // stock + one-decimal net rate per FLOW_RESOURCES entry).
     // di: the Diplomacy section (fun-audit C2b, 2026-10-02 —
     // disposition, ceasefire seconds left, last AI answers, floored
-    // influence + the two influence-affordability bits).
+    // influence + the two influence-affordability bits; fun-audit E1 —
+    // the envoy status line: state, verdict, whole seconds of the
+    // answer window, 'x' when no envoy visits).
     digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:', 'po:', 'ps:', 'oc:', 'st:', 'sa:', 'ec:', 'di:'],
   },
   {
@@ -1067,5 +1083,28 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'container and canvas nodes are never rebuilt, so no digest ' +
       'segment is needed. Dots are fog-of-war filtered by the sim sight ' +
       'model (collectMinimapDots).',
+  },
+  {
+    // Fun-audit Tier 4 (E1, 2026-10-02): the envoy banner — the
+    // diplomatic card pinned top-center while an envoy visits.
+    id: 'envoy-banner',
+    renderedIn: 'updateEnvoyBanner',
+    domClasses: [
+      'envoy-banner',
+      'envoy-banner-title',
+      'envoy-banner-sub',
+      'envoy-banner-buttons',
+      'envoy-banner-btn',
+      'envoy-banner-accept',
+      'envoy-banner-decline',
+    ],
+    digestLabels: [],
+    noDigestReason:
+      'Built once in the Hud constructor (EnvoyBanner widget, ' +
+      'ui/envoyBanner.ts); refreshed write-on-change from the pure ' +
+      'envoyBannerView contract (ui/envoy.ts) — nodes are never ' +
+      'rebuilt per frame, so no digest segment is needed. The ' +
+      'diplomacy-section envoy line (management-panel branch, di: ' +
+      'segment) covers the digest-rebuild side.',
   },
 ];

@@ -24,7 +24,7 @@
  * through the session queue (which ui/session.ts wires up).
  */
 import { describe, expect, it, afterEach } from 'vitest';
-import { UNIT_DEFS, type UnitKind } from '../src/sim/units';
+import { UNIT_DEFS, isNeutralNonCombatantKind, type UnitKind } from '../src/sim/units';
 import { BUILDING_DEFS, type BuildingKind, getPlayer } from '../src/sim/city';
 import { getAgeState } from '../src/sim/ages';
 import { UPGRADE_IDS, type UpgradeId } from '../src/sim/upgrades';
@@ -76,8 +76,13 @@ describe('train tabs', () => {
     // Fun-audit C2d (transport consolidation, 2026-10-02): the four
     // delisted civilian transports are intentionally absent from the
     // palette (mechanically duplicate; defs retained for save compat).
+    // Fun-audit Tier 4 (E1, 2026-10-02): neutral non-combatants (the
+    // envoy SUV) are never trainable — absent from the palette by
+    // design (the shared immunity gate).
     const expected = Object.keys(UNIT_DEFS).filter(
-      (k) => !(DELISTED_TRANSPORT_KINDS as readonly string[]).includes(k),
+      (k) =>
+        !(DELISTED_TRANSPORT_KINDS as readonly string[]).includes(k) &&
+        !isNeutralNonCombatantKind(k),
     );
     expect(sortedKinds(seen.keys())).toEqual(sortedKinds(expected));
     for (const [kind, count] of seen) {

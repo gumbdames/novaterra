@@ -45,6 +45,17 @@ export type PersonaEvent =
   | { kind: 'offensiveWarning'; phase: 'probe' | 'offensive' | 'allIn' }
   | { kind: 'offensiveLaunched'; phase: 'probe' | 'offensive' | 'allIn' }
   | { kind: 'rivalAgeUp'; age: string; program: string }
+  | {
+      kind: 'envoy';
+      phase:
+        | 'inbound'
+        | 'waiting'
+        | 'refusalWaiting'
+        | 'accepted'
+        | 'declined'
+        | 'timedOut'
+        | 'recalled';
+    }
   | { kind: 'enemyDown' }
   | { kind: 'enemySpotted' }
   | { kind: 'combatStarted' }
@@ -112,6 +123,44 @@ const LINES: Record<string, string[]> = {
     'Scouts report the rival is probing our border, President. A small force — they are testing our fences.',
     'Movement on the border: a rival probe. Swat it, and they will think twice about the next one.',
     'The rival is sniffing around our perimeter. Small force, but probes have a way of becoming offensives.',
+  ],
+  // Fun-audit Tier 4 (E1, 2026-10-02): the envoy ceremony — dry
+  // presidential humor. The envoy is neutral and unarmed; the joke
+  // is the protocol, never the violence.
+  'envoy:inbound': [
+    'A black SUV just crossed the border, President. Neutral plates. I checked twice.',
+    'Diplomatic traffic on the road, President — one unarmed SUV, straight for our gates. I have put the good china out.',
+    'The Directorate sent a car, not a column. Somebody wants to talk.',
+  ],
+  'envoy:waiting': [
+    'The envoy is at the gates with a ceasefire offer. Sixty seconds to decide — silence counts as yes, so decide loudly.',
+    'A ceasefire is on the table, President, and the envoy is watching the clock. So am I.',
+    'The envoy waits. Five minutes of quiet if you say yes; sixty seconds to say it in.',
+  ],
+  'envoy:refusalWaiting': [
+    'The envoy brings a refusal, President. They insisted on delivering it in person. Some people enjoy their work.',
+    'The rival said no — via a chauffeured SUV. I admire the commitment to ceremony.',
+    'A refusal, hand-delivered. Dismiss them when ready, President.',
+  ],
+  'envoy:accepted': [
+    'Ceasefire signed. Five minutes of quiet — the doves are away, and so is my blood pressure.',
+    'Done, President. Five minutes of peace, sealed with doves. I have scheduled the worrying for later.',
+    'The guns go quiet for five minutes. Enjoy it — I will be here, counting.',
+  ],
+  'envoy:declined': [
+    'Declined. The envoy is driving home. I waved.',
+    'No deal, President. The SUV is turning around — the war continues.',
+    'You said no, and the envoy took it gracefully. Back to business.',
+  ],
+  'envoy:timedOut': [
+    'The envoy took your silence for consent. Bold strategy, President — it worked.',
+    'Sixty seconds passed, so the envoy signed for you. The ceasefire stands.',
+    'You said nothing, and the envoy heard yes. Diplomacy!',
+  ],
+  'envoy:recalled': [
+    'The war ended mid-ceremony. The envoy turned around — even diplomats hate a wasted trip.',
+    'No war, no envoy. They are driving home, President.',
+    'The ceremony is cancelled — the war it was about just ended.',
   ],
   'offensiveWarning:offensive': [
     'The rival is massing for a genuine offensive. I suggest we greet them with more than harsh language.',
@@ -207,6 +256,8 @@ function eventKey(event: PersonaEvent): string {
       return `offensiveWarning:${event.phase}`;
     case 'offensiveLaunched':
       return `offensiveLaunched:${event.phase}`;
+    case 'envoy':
+      return `envoy:${event.phase}`;
     default:
       return event.kind;
   }

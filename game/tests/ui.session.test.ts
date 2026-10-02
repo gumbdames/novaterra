@@ -64,12 +64,13 @@ describe('session', () => {
 
   it('registers the documented system order', () => {
     const session = createSession({ seed: 1234 });
-    // pathfinding → movement → combat → superweapons → economy →
-    // wonder-countdown → intel → mayors → AI → generals → fog: eleven
+    // pathfinding → movement → envoy → combat → superweapons → economy →
+    // wonder-countdown → intel → mayors → AI → generals → fog: twelve
     // systems. (The intel system is the sim-core workstream's; the
     // wonder-countdown system is fun-audit B2's; the fog system is
-    // fun-audit C3's — pinned here so the order stays documented.)
-    expect(session.driver.systems).toHaveLength(11);
+    // fun-audit C3's; the envoy system is fun-audit E1's — pinned here
+    // so the order stays documented.)
+    expect(session.driver.systems).toHaveLength(12);
   });
 
   it('routes player intents through the command queue', () => {

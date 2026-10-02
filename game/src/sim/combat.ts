@@ -81,6 +81,7 @@ import {
   HQ_AURA_DAMAGE_BONUS,
   supplyDamageFactor,
   isSheltered,
+  isNeutralNonCombatant,
   type UnitRecord,
   type UnitKind,
   type UnitDef,
@@ -447,6 +448,14 @@ export function acquireTarget(world: World, unit: UnitRecord, def: UnitDef): Uni
         // hangar or embarked on a carrier) are not valid targets — they
         // are inside the shelter, not on the battlespace.
         if (isSheltered(other)) continue;
+        // Fun-audit Tier 4 (E1/E2/E3, 2026-10-02): the shared neutral
+        // non-combatant gate — the envoy, luminary guests, and the
+        // Combine freighter are never valid combat targets. One-line
+        // gate, mirroring the ceasefire gate below: the flag
+        // (`neutralNonCombatant`) is the single code path for both the
+        // envoy's diplomatic immunity and the freighter's never-target
+        // rule.
+        if (isNeutralNonCombatant(other)) continue;
         // Grand-expansion Phase 6 (S6 intel): stealthed units (spies) are
         // invisible unless detected — the shooter cannot acquire what its
         // side cannot see (the `isDetected` stealth contract in intel.ts).
@@ -1149,6 +1158,15 @@ export function registerCombatCommands(queue: CommandQueue, t?: TerrainData): vo
       if (!target) return `attackUnit: no target with id ${targetId}`;
       if (target.owner === owner) return 'attackUnit: cannot attack your own unit';
       if (isSheltered(target)) return `attackUnit: target ${targetId} is parked or embarked (not on the battlespace)`;
+      // Fun-audit Tier 4 (E1/E2/E3, 2026-10-02): neutral non-combatants
+      // (the envoy, luminary guests, the Combine freighter) are never
+      // valid attack targets — the shared immunity gate. Loud, never
+      // silent: the raid is cut from 0.1 Alpha, so there is no legal
+      // way to sink the freighter, and the envoy's ceremony is
+      // protected from "funny" attack orders.
+      if (isNeutralNonCombatant(target)) {
+        return `attackUnit: target ${targetId} is a neutral non-combatant (not a valid target)`;
+      }
       // Grand-expansion Phase 6 (S6 intel): no ordering an attack on a
       // stealthed unit your side cannot see — find it first (detection
       // coverage, or burn it with a spot check). Loud, never silent.

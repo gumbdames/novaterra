@@ -738,6 +738,32 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   digest-covered (`|wonder=…|`). Warnings are UI-side (game.ts poll →
   Muse persona `wonderCountdown` events + toasts + the victoryHud
   clock).
+- `envoy.ts` — the Envoy at the Gates (fun-audit Tier 4 / E1,
+  2026-10-02): the neutral non-combatant envoy ceremony. Owns
+  `EnvoyStatus`/`EnvoyOffer` (on `World` via `DiplomacyState.envoy` +
+  `.pendingEnvoyDispatch` — the pending indirection keeps the import
+  graph acyclic) and `createEnvoySystem` (wired in ui/session.ts after
+  movement; it drives the envoy through `orderMoveTo`). The SHARED
+  gate lives here conceptually but physically in units.ts
+  (`UnitDef.neutralNonCombatant`, `isNeutralNonCombatantKind`,
+  `isNeutralNonCombatant`, `NEUTRAL_OWNER = -1`) — one code path for
+  the envoy, luminary guests, and the Combine freighter (E1/E2/E3):
+  `acquireTarget` never acquires them, `attackUnit` rejects them
+  loudly, `spawnUnit` rejects them, `canTrain` refuses them, and the
+  AI's `getVisibleEnemies` never perceives them. New kind `envoySUV`
+  (civilian land, unarmed, hp 120, speed 14, `artBase: 'reconTeam'`).
+  Flow: `proposeCeasefire` on AI accept (or a ≥2000 tribute at war via
+  a seeded draw on the `envoy` stream, or a proud AI's refusal)
+  dispatches an envoy instead of deciding — the SUV spawns at the
+  nearest map edge, parks 25u outside the capital, and waits
+  `ENVOY_WAIT_TICKS` (60 s) for `answerEnvoy`. Accept starts the
+  5-minute ceasefire clock (disposition +5, doves), decline ends the
+  visit, silence defaults to the offer, and the envoy recalls if the
+  war ends under it (checked every 30 ticks) or its unit is gone.
+  `CeremonyEvent` (`doveRelease`/`envoyArrived`/`envoyDeparted`) rides
+  `world.ceremonyEvents` (view-only, not snapshotted) to the render
+  layer (doves). Snapshot-covered (AD9 neutral null, stays v8) and
+  digest-covered (`envoy=` / `pending=` in `|diplomacy=…|`).
 - `veterancy.ts` — unit veterancy (grand-expansion Phase 1, pure: no
   imports from combat/city, so no cycles). `UnitRecord.xp` grows on
   kills (`xpForKillValue = trainFunds + trainMaterials`), `vetLevel`

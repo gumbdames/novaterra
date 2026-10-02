@@ -177,6 +177,8 @@ import {
   buildSendTributeOrder,
   buildDemandTributeOrder,
   buildProposeCeasefireOrder,
+  // Fun-audit Tier 4 (E1, 2026-10-02): answer the waiting envoy.
+  buildAnswerEnvoyOrder,
   buildSetMayorBuildPolicyOrder,
   buildSetGeneralStanceOrder,
   buildSetSpecializationOrder,
@@ -992,6 +994,15 @@ class GameController {
   /** endsAtTick of the countdown we are narrating (for resolve-vs-cancel). */
   private wonderEndsAt: number | null = null;
   /**
+   * Fun-audit Tier 4 (E1, 2026-10-02): the envoy visit being
+   * narrated — `unitId:inboundSinceTick` identifies one ceremony;
+   * the narrated set holds the phases already announced
+   * ('inbound' / 'waiting' / 'resolved'). A new key resets it.
+   * UI-owned, presentational — the sim owns the visit.
+   */
+  private envoyKey: string | null = null;
+  private envoyNarrated: Set<string> = new Set();
+  /**
    * Fun-audit B6 (2026-10-02): telegraph/launch beats already narrated,
    * keyed `tele:<owner>:<nextPhase>:<telegraphTick>` /
    * `launch:<owner>:<activePhase>:<activeUntilTick>`. The keys include
@@ -1309,6 +1320,11 @@ class GameController {
       onProposeCeasefire: () => {
         this.enqueue(buildProposeCeasefireOrder(HUMAN_PLAYER_ID, AI_PLAYER_ID));
       },
+      // Fun-audit Tier 4 (E1, 2026-10-02): answer the waiting envoy.
+      // Rejections toast via enqueue (CommandRejectedError → loud).
+      onAnswerEnvoy: (accept: boolean) => {
+        this.enqueue(buildAnswerEnvoyOrder(HUMAN_PLAYER_ID, accept));
+      },
       // Phase 3: superweapons, specialization, trade, delegation.
       onFireAegis: () => this.issueOrder(buildFireAegisOrder(HUMAN_PLAYER_ID)),
       onStormTarget: () => {
@@ -1585,6 +1601,9 @@ class GameController {
           world,
           this.session.hasRival && world.peaceful !== true && this.missionRun === null,
         );
+        // Fun-audit Tier 4 (E1, 2026-10-02): the envoy banner —
+        // write-on-change inside; hidden unless an envoy visits.
+        this.hud.updateEnvoyBanner(world);
         // Fun-audit B5 (2026-10-02): reposition the event-ping markers
         // every frame (the camera moves under them).
         this.eventPings?.update(
@@ -1951,6 +1970,11 @@ class GameController {
     // owns the clock (world.wonderCountdown); this poll only narrates
     // its transitions, ~1×/sec like the Muse poll.
     this.pollWonderCountdown(world);
+
+    // Fun-audit Tier 4 (E1, 2026-10-02): the envoy ceremony's beats —
+    // inbound, waiting (offer or refusal), resolution. All UI-side;
+    // the sim owns the visit (world.diplomacy.envoy).
+    this.pollEnvoy(world);
 
     // Fun-audit B8 (2026-10-02): rival age-ups are global events. The
     // detector is pure (ui/session.ts); this poll only narrates the
@@ -2372,6 +2396,68 @@ class GameController {
    * real, scoutable positions, so the warning is a scout report, not
    * mind-reading (muse/AGENTS.md fairness rule).
    */
+  /**
+   * Fun-audit Tier 4 (E1, 2026-10-02): narrate the envoy ceremony's
+   * transitions — inbound, waiting (offer or refusal), resolution.
+   * The sim owns the visit (`world.diplomacy.envoy`); this only
+   * speaks. One visit = one key (`unitId:inboundSinceTick`); each
+   * phase narrates once (Muse line + toast + map ping for the
+   * arrival beats).
+   */
+  private pollEnvoy(world: World): void {
+    const envoy = world.diplomacy.envoy;
+    if (envoy === null || envoy.offer.owner !== HUMAN_PLAYER_ID) {
+      this.envoyKey = null;
+      return;
+    }
+    const key = `${envoy.unitId}:${envoy.inboundSinceTick}`;
+    if (key !== this.envoyKey) {
+      this.envoyKey = key;
+      this.envoyNarrated = new Set();
+    }
+    const s = STRINGS.envoy;
+    const say = (
+      phase: 'inbound' | 'waiting' | 'refusalWaiting' | 'accepted' | 'declined' | 'timedOut' | 'recalled',
+      toast: string,
+    ): void => {
+      if (this.muse !== null) {
+        this.muse.notify(personaLine({ kind: 'envoy', phase }, world.tick));
+      }
+      this.hud.toast(toast);
+    };
+    // The envoy SUV's position for the arrival pings (park point as
+    // the fallback — the unit is always live while narrated).
+    const unit = world.units.find((u) => u.id === envoy.unitId);
+    const px = unit?.x ?? envoy.parkX;
+    const pz = unit?.z ?? envoy.parkZ;
+    if (envoy.state === 'inbound' && !this.envoyNarrated.has('inbound')) {
+      this.envoyNarrated.add('inbound');
+      say('inbound', loc(s.toastInbound));
+      // A 'build'-style ping: neutral/informational, never the red
+      // attack marker — the envoy cannot be attacked.
+      this.eventPings?.ping('build', px, pz);
+    } else if (envoy.state === 'waiting' && !this.envoyNarrated.has('waiting')) {
+      this.envoyNarrated.add('waiting');
+      if (envoy.offer.verdict === 'declined') {
+        say('refusalWaiting', loc(s.toastRefusal));
+      } else {
+        say('waiting', loc(s.toastWaiting));
+      }
+      this.eventPings?.ping('build', px, pz);
+    } else if (
+      envoy.state === 'departing' &&
+      envoy.resolution !== null &&
+      !this.envoyNarrated.has('resolved')
+    ) {
+      this.envoyNarrated.add('resolved');
+      const r = envoy.resolution;
+      if (r === 'accepted') say('accepted', loc(s.toastAccepted));
+      else if (r === 'declined') say('declined', loc(s.toastDeclined));
+      else if (r === 'timedOut') say('timedOut', loc(s.toastTimedOut));
+      else say('recalled', loc(s.toastRecalled));
+    }
+  }
+
   private pollOffensive(world: World): void {
     const players = world.ai?.players ?? [];
     for (const p of players) {

@@ -235,7 +235,13 @@ export function bootModelKeys(
     }
   };
   for (const kind of Object.keys(UNIT_DEFS)) {
-    if (UNIT_DEFS[kind as UnitKind]?.minAge === 'foundation') {
+    const def = UNIT_DEFS[kind as UnitKind];
+    // Fun-audit Tier 4 (E1, 2026-10-02): neutral non-combatants (the
+    // envoy SUV) spawn mid-game through their own systems — never in
+    // the starting forces. Their models load lazily on first spawn,
+    // keeping the boot set lean (the shared immunity gate's kinds are
+    // the only foundation-age units excluded).
+    if (def?.minAge === 'foundation' && def?.neutralNonCombatant !== true) {
       for (const key of keysForKind(kind, paths)) add(key);
     }
   }

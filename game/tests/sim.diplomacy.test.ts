@@ -31,6 +31,7 @@ import {
   HUMAN_PLAYER_ID,
 } from '../src/ui/session';
 import {
+  buildAnswerEnvoyOrder,
   buildDemandTributeOrder,
   buildProposeCeasefireOrder,
   buildSendTributeOrder,
@@ -79,6 +80,20 @@ function gentleAI(): AIStanding {
 /** A proud AI: high pride, high aggression. */
 function proudAI(): AIStanding {
   return { difficulty: 'marshal', aggression: 0.9, funds: 100000 };
+}
+
+/**
+ * Fun-audit Tier 4 (E1, 2026-10-02): drive a dispatched envoy to the
+ * 'waiting' state (the SUV drives from the map edge to the capital
+ * park point; the cap is generous — the drive is ~hundreds of ticks).
+ */
+function driveEnvoyToWaiting(session: ReturnType<typeof createSession>): void {
+  const { world } = session;
+  for (let i = 0; i < 3000; i++) {
+    if (world.diplomacy.envoy?.state === 'waiting') return;
+    session.tick();
+  }
+  throw new Error('envoy never reached waiting');
 }
 
 describe('diplomacy verdicts (pure, deterministic)', () => {
@@ -204,7 +219,7 @@ describe('demandTribute', () => {
 });
 
 describe('proposeCeasefire', () => {
-  it('an accepted ceasefire holds fire for the full window', () => {
+  it('an accepted ask dispatches an envoy; the answer starts the 5-minute clock', () => {
     const session = createSession({ seed: 777, aiDifficulty: 'citizen' });
     const { world } = session;
     world.diplomacy.disposition = 100;
@@ -212,12 +227,28 @@ describe('proposeCeasefire', () => {
     const influenceBefore = influence(world, HUMAN);
     session.enqueuePlayerIntent(buildProposeCeasefireOrder(HUMAN, AI));
     session.tick();
+    // Fun-audit Tier 4 (E1): the AI's yes dispatches an envoy — the
+    // ceasefire clock does NOT start yet.
     expect(world.diplomacy.lastCeasefireAsk).toBe('accepted');
+    expect(ceasefireActive(world)).toBe(false);
+    expect(world.diplomacy.envoy?.state).toBe('inbound');
+    // Fun-audit C2b: the ask spent influence.
+    expect(influence(world, HUMAN)).toBe(influenceBefore - CEASEFIRE_INFLUENCE_COST);
+  });
+
+  it('an answered ceasefire holds fire for the full window', () => {
+    const session = createSession({ seed: 777, aiDifficulty: 'citizen' });
+    const { world } = session;
+    world.diplomacy.disposition = 100;
+    grantInfluence(world, HUMAN);
+    session.enqueuePlayerIntent(buildProposeCeasefireOrder(HUMAN, AI));
+    session.tick();
+    driveEnvoyToWaiting(session);
+    session.enqueuePlayerIntent(buildAnswerEnvoyOrder(HUMAN, true));
+    session.tick();
     expect(ceasefireActive(world)).toBe(true);
     // The command applies at the tick boundary, so one tick has elapsed.
     expect(world.diplomacy.ceasefireUntilTick - world.tick).toBe(CEASEFIRE_TICKS - 1);
-    // Fun-audit C2b: the ask spent influence.
-    expect(influence(world, HUMAN)).toBe(influenceBefore - CEASEFIRE_INFLUENCE_COST);
   });
 
   it('a declined ceasefire sours relations', () => {
@@ -239,9 +270,20 @@ describe('proposeCeasefire', () => {
     const session = createSession({ seed: 777, aiDifficulty: 'citizen' });
     const { world } = session;
     world.diplomacy.disposition = 100;
-    grantInfluence(world, HUMAN);
+    grantInfluence(world, HUMAN, 10000);
     session.enqueuePlayerIntent(buildProposeCeasefireOrder(HUMAN, AI));
     session.tick();
+    // Fun-audit Tier 4 (E1): while the envoy is at the gates the ask
+    // is rejected (answer them first).
+    expect(() =>
+      session.enqueuePlayerIntent(buildProposeCeasefireOrder(HUMAN, AI)),
+    ).toThrow(/envoy is already at your gates/);
+    // Answer the envoy: now the ceasefire holds and the ask is
+    // rejected as already in effect.
+    driveEnvoyToWaiting(session);
+    session.enqueuePlayerIntent(buildAnswerEnvoyOrder(HUMAN, true));
+    session.tick();
+    expect(ceasefireActive(world)).toBe(true);
     expect(() =>
       session.enqueuePlayerIntent(buildProposeCeasefireOrder(HUMAN, AI)),
     ).toThrow(/already in effect/);
@@ -271,6 +313,11 @@ describe('proposeCeasefire', () => {
     world.diplomacy.disposition = 100;
     grantInfluence(world, HUMAN);
     session.enqueuePlayerIntent(buildProposeCeasefireOrder(HUMAN, AI));
+    session.tick();
+    // Fun-audit Tier 4 (E1): the ceasefire starts at the envoy's
+    // answer, not at the AI's accept.
+    driveEnvoyToWaiting(session);
+    session.enqueuePlayerIntent(buildAnswerEnvoyOrder(HUMAN, true));
     session.tick();
     expect(ceasefireActive(world)).toBe(true);
     const attacker = world.units.find((u) => u.owner === HUMAN)!;

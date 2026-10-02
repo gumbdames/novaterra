@@ -87,10 +87,30 @@ export function canonicalizeWorld(world: World): string {
   // keeps hand-built fixture worlds (which predate the field)
   // digesting identically.
   out += `|victoryKind=${world.victoryKind ?? 'conquest'}|`;
-  // Roadmap B3 (2026-10-02): diplomacy is behavior-affecting
-  // (ceasefire gates AI attacks; disposition drives AI verdicts) ⇒
-  // digest-covered (PLAN §11). The `??` chain keeps hand-built fixture
-  // worlds (which predate the field) digesting identically.
+/**
+ * Fun-audit Tier 4 (E1, 2026-10-02): the live envoy visit is
+ * behavior-affecting (it gates ceasefire timing) ⇒ digest-covered.
+ * Pre-envoy worlds (and hand-built fixtures) digest identically via
+ * the `??` chain.
+ */
+function envoyDigest(d: World['diplomacy'] | undefined): string {
+  const e = d?.envoy ?? null;
+  if (e === null) return '-';
+  return (
+    `${e.state}:${e.offer.verdict}:${e.offer.owner}:${e.offer.aiOwner}:` +
+    `${e.unitId}:${e.deadlineTick}:${canonicalNumber(e.parkX)}:` +
+    `${canonicalNumber(e.parkZ)}:${canonicalNumber(e.exitX)}:` +
+    `${canonicalNumber(e.exitZ)}:${e.inboundSinceTick}:${e.departByTick}:` +
+    `${e.resolution ?? '-'}:${e.dovesPending === true ? 1 : 0}`
+  );
+}
+
+/** A decided-but-undispatched envoy offer will spawn next tick ⇒ digest-covered. */
+function pendingEnvoyDigest(d: World['diplomacy'] | undefined): string {
+  const p = d?.pendingEnvoyDispatch ?? null;
+  if (p === null) return '-';
+  return `${p.offer.verdict}:${p.offer.owner}:${p.offer.aiOwner}`;
+}
   {
     const d = world.diplomacy;
     const parties = d?.parties;
@@ -99,7 +119,9 @@ export function canonicalizeWorld(world: World): string {
       `${d?.totalTributeSent ?? 0},${d?.totalTributeReceived ?? 0},` +
       `${d?.demandsRefused ?? 0},${d?.lastDemand ?? '-'},${d?.lastDemandAmount ?? 0},` +
       `${d?.lastCeasefireAsk ?? '-'},` +
-      `${parties ? `${parties.owner}:${parties.aiOwner}` : '-'}|`;
+      `${parties ? `${parties.owner}:${parties.aiOwner}` : '-'},` +
+      `envoy=${envoyDigest(d)},` +
+      `pending=${pendingEnvoyDigest(d)}|`;
   }
   // Fun-audit B2 (2026-10-02): the wonder countdown is
   // behavior-affecting (it decides race victories) ⇒ digest-covered.

@@ -370,6 +370,57 @@ body {
   pointer-events: none;
   font-size: 12px;
 }
+/* Fun-audit Tier 4 (E1, 2026-10-02): the envoy banner — the
+   diplomatic card pinned top-center while an envoy visits. Gold
+   accent (diplomatic), pointer events ON for the answer buttons. */
+.envoy-banner {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 340px;
+  max-width: 480px;
+  background: var(--panel);
+  border: 1px solid #c9a227;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  z-index: 30;
+}
+.envoy-banner-title {
+  color: var(--ink);
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.envoy-banner-sub {
+  color: var(--ink-dim);
+  margin-bottom: 8px;
+}
+.envoy-banner-buttons {
+  display: flex;
+  gap: 8px;
+}
+.envoy-banner-btn {
+  flex: 1;
+  padding: 6px 0;
+  border-radius: 5px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+  font-weight: 600;
+  cursor: pointer;
+}
+.envoy-banner-accept {
+  background: #2e7d32;
+  border-color: #2e7d32;
+  color: #fff;
+}
+.envoy-banner-decline {
+  background: #5d4037;
+  border-color: #5d4037;
+  color: #fff;
+}
 .victory-hud-objective {
   color: var(--ink);
   font-weight: 600;

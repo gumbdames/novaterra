@@ -116,6 +116,14 @@ land, sea and air — or play a fully peaceful game with war disabled.
   to them: stocks accrue only while the matching depot stands complete
   and operational, and destroying a depot zeroes its reserve. Conquest
   now requires razing the forward base too.
+  Fun-audit Tier 4 / E1 (2026-10-02) is in too: **the Envoy at the
+  Gates** — when the rival accepts your ceasefire (or a 2,000+ tribute
+  at war impresses it, or a proud rival declines), a neutral envoy
+  drives a black SUV to your gates instead of an instant answer. The
+  shared `neutralNonCombatant` gate makes it untargetable and
+  unattackable; a banner offers Accept/Decline with a 60-second
+  countdown (silence accepts); accepting starts the 5-minute ceasefire
+  clock with a dove release over your capital.
   See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
@@ -123,7 +131,7 @@ land, sea and air — or play a fully peaceful game with war disabled.
 
 - City building with visible zoning, terrain-following roads, and
   power/water utility networks you drag-paint across the map
-- 100 buildings and 97 units across land, sea, and air, with tech ages
+- 100 buildings and 100 units across land, sea, and air, with tech ages
 - Command menu (rebuilt 2026-10-01): a slim icon rail with three tabs
   — **Civilian** (Tools / Build / Airlines), **Military** (Train /
   Build / Superweapons), **Management** (Taxes / City focus / Cabinet /

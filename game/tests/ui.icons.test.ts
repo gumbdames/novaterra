@@ -65,8 +65,8 @@ function expectValidIcon(markup: string): void {
 }
 
 describe('unit icons', () => {
-  it('covers all 99 unit kinds (35 classic + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel + 28 Phase 8 tech-level variants + 1 Half-A sea-trade + 2 D1 doctrine signature units)', () => {
-    expect(UNIT_KINDS).toHaveLength(99); // D1 adds the 2 doctrine signature units
+  it('covers all 100 unit kinds (35 classic + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel + 28 Phase 8 tech-level variants + 1 Half-A sea-trade + 2 D1 doctrine signature units + 1 E1 envoy SUV)', () => {
+    expect(UNIT_KINDS).toHaveLength(100); // D1 adds the 2 doctrine signature units; E1 adds the envoy SUV
     for (const kind of UNIT_KINDS) {
       expectValidIcon(unitIcon(kind as UnitKind));
     }
@@ -74,7 +74,7 @@ describe('unit icons', () => {
 
   it('gives every unit a distinct glyph', () => {
     const glyphs = new Set(UNIT_KINDS.map((k) => unitIcon(k as UnitKind)));
-    expect(glyphs.size).toBe(97);
+    expect(glyphs.size).toBe(98); // 28 Mk II/III variants reuse base glyphs + tier chevron
   });
 });
 

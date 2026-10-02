@@ -43,6 +43,7 @@
  * combat.ts), so no cycle.
  */
 import { getPlayer } from './city';
+import { createRngBank } from './rng';
 import type { World } from './world';
 import type { CommandQueue } from './commands';
 import type { AIDifficulty } from './ai';
@@ -57,6 +58,69 @@ export interface DiplomacyParties {
 /** Last AI answer, for the UI to display. */
 export type DemandResult = 'accepted' | 'refused';
 export type CeasefireAskResult = 'accepted' | 'declined' | 'broken';
+
+/**
+ * Fun-audit Tier 4 (E1, 2026-10-02): the Envoy at the Gates. The
+ * envoy's verdict — what the AI rival decided about the ceasefire the
+ * envoy carries to the player's gates.
+ */
+export type EnvoyOfferVerdict = 'accepted' | 'declined';
+/** What the envoy carries: always a ceasefire offer in 0.1 Alpha. */
+export interface EnvoyOffer {
+  kind: 'ceasefire';
+  verdict: EnvoyOfferVerdict;
+  /** The player the envoy visits (the offer's recipient). */
+  owner: number;
+  /** The AI rival the envoy speaks for. */
+  aiOwner: number;
+}
+/** Where the envoy is in its ceremony. */
+export type EnvoyVisitState = 'inbound' | 'waiting' | 'departing';
+/**
+ * How the envoy's ceremony ended (set when it leaves 'waiting' or is
+ * recalled — the UI poll narrates the transition).
+ */
+export type EnvoyResolution = 'accepted' | 'declined' | 'timedOut' | 'recalled';
+/**
+ * The live envoy visit. Plain data — snapshotted + digested (the
+ * envoy gates ceasefire timing, so it is behavior-affecting).
+ */
+export interface EnvoyStatus {
+  state: EnvoyVisitState;
+  offer: EnvoyOffer;
+  /** The envoy SUV's unit id. */
+  unitId: number;
+  /** Tick the 60-second answer window closes (0 unless waiting). */
+  deadlineTick: number;
+  /** Where the envoy parks, in world units (outside the capital). */
+  parkX: number;
+  parkZ: number;
+  /** The map-edge point it entered (and will leave) through. */
+  exitX: number;
+  exitZ: number;
+  /** Tick the inbound drive started (stuck-pathing watchdog). */
+  inboundSinceTick: number;
+  /** Tick the departing drive must finish by (drive-off watchdog). */
+  departByTick: number;
+  /** How the ceremony ended (null while it is still live). */
+  resolution: EnvoyResolution | null;
+  /**
+   * The dove release is flagged here by resolveEnvoyOffer but EMITTED
+   * by the envoy system (after its tick-start clear): commands apply
+   * before systems in runTick, so a command-pushed ceremony event
+   * would be wiped the same tick and the render would never see it.
+   */
+  dovesPending: boolean;
+}
+/**
+ * A ceasefire verdict that has been decided but not yet dispatched —
+ * the envoy system (sim/envoy.ts) picks this up on the next tick and
+ * spawns the envoy. The indirection keeps the import graph acyclic
+ * (envoy.ts value-imports this module, never the reverse).
+ */
+export interface PendingEnvoyDispatch {
+  offer: EnvoyOffer;
+}
 
 /**
  * Plain diplomacy state. Snapshotted + digested. Legacy snapshots
@@ -79,6 +143,17 @@ export interface DiplomacyState {
   /** Amount of the most recent demand (for the UI's answer line). */
   lastDemandAmount: number;
   lastCeasefireAsk: CeasefireAskResult | null;
+  /**
+   * Fun-audit Tier 4 (E1, 2026-10-02): the live envoy visit, or null.
+   * The 5-minute ceasefire clock starts when the envoy reaches the
+   * player's HQ and the player answers — not when the AI accepts.
+   */
+  envoy: EnvoyStatus | null;
+  /**
+   * Fun-audit Tier 4 (E1, 2026-10-02): a decided-but-undispatched
+   * envoy offer. The envoy system spawns it on the next tick.
+   */
+  pendingEnvoyDispatch: PendingEnvoyDispatch | null;
 }
 
 /** Create a fresh (neutral) diplomacy state. */
@@ -93,6 +168,9 @@ export function initDiplomacy(): DiplomacyState {
     lastDemand: null,
     lastDemandAmount: 0,
     lastCeasefireAsk: null,
+    // Fun-audit Tier 4 (E1, 2026-10-02): no envoy on a fresh world.
+    envoy: null,
+    pendingEnvoyDispatch: null,
   };
 }
 
@@ -127,7 +205,79 @@ export function decodeDiplomacyState(data: unknown): DiplomacyState {
       d['lastCeasefireAsk'] === 'broken'
         ? d['lastCeasefireAsk']
         : null,
+    // Fun-audit Tier 4 (E1, 2026-10-02): pre-envoy snapshots decode to
+    // no envoy (AD9 neutral default, no version bump). The decode is
+    // defensive: anything outside the state/verdict unions, or a
+    // non-finite unit id / deadline, falls back to null rather than
+    // crashing the load.
+    envoy: decodeEnvoyStatus(d['envoy']),
+    pendingEnvoyDispatch: decodePendingEnvoyDispatch(d['pendingEnvoyDispatch']),
   };
+}
+
+/** Defensive decode of one envoy offer (null when malformed). */
+function decodeEnvoyOffer(data: unknown): EnvoyOffer | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const o = data as Record<string, unknown>;
+  const verdict = o['verdict'];
+  const owner = o['owner'];
+  const aiOwner = o['aiOwner'];
+  if (verdict !== 'accepted' && verdict !== 'declined') return null;
+  if (typeof owner !== 'number' || !Number.isInteger(owner)) return null;
+  if (typeof aiOwner !== 'number' || !Number.isInteger(aiOwner)) return null;
+  return { kind: 'ceasefire', verdict, owner, aiOwner };
+}
+
+/** Defensive decode of the live envoy visit (null when malformed). */
+function decodeEnvoyStatus(data: unknown): EnvoyStatus | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const e = data as Record<string, unknown>;
+  const state = e['state'];
+  if (state !== 'inbound' && state !== 'waiting' && state !== 'departing') return null;
+  const offer = decodeEnvoyOffer(e['offer']);
+  if (offer === null) return null;
+  const num = (v: unknown): number | null =>
+    typeof v === 'number' && Number.isFinite(v) ? v : null;
+  const unitId = num(e['unitId']);
+  const deadlineTick = num(e['deadlineTick']);
+  const parkX = num(e['parkX']);
+  const parkZ = num(e['parkZ']);
+  if (unitId === null || deadlineTick === null || parkX === null || parkZ === null) return null;
+  return {
+    state,
+    offer,
+    unitId: Math.floor(unitId),
+    deadlineTick: Math.floor(deadlineTick),
+    parkX,
+    parkZ,
+    exitX: typeof e['exitX'] === 'number' && Number.isFinite(e['exitX']) ? (e['exitX'] as number) : 0,
+    exitZ: typeof e['exitZ'] === 'number' && Number.isFinite(e['exitZ']) ? (e['exitZ'] as number) : 0,
+    inboundSinceTick:
+      typeof e['inboundSinceTick'] === 'number' && Number.isFinite(e['inboundSinceTick'])
+        ? Math.floor(e['inboundSinceTick'] as number)
+        : 0,
+    departByTick:
+      typeof e['departByTick'] === 'number' && Number.isFinite(e['departByTick'])
+        ? Math.floor(e['departByTick'] as number)
+        : 0,
+    resolution:
+      e['resolution'] === 'accepted' ||
+      e['resolution'] === 'declined' ||
+      e['resolution'] === 'timedOut' ||
+      e['resolution'] === 'recalled'
+        ? (e['resolution'] as EnvoyStatus['resolution'])
+        : null,
+    // Fun-audit Tier 4 (E1): pre-doves snapshots decode to no pending
+    // ceremony (AD9 neutral default, no version bump).
+    dovesPending: e['dovesPending'] === true,
+  };
+}
+
+/** Defensive decode of a pending envoy dispatch (null when malformed). */
+function decodePendingEnvoyDispatch(data: unknown): PendingEnvoyDispatch | null {
+  if (typeof data !== 'object' || data === null) return null;
+  const offer = decodeEnvoyOffer((data as Record<string, unknown>)['offer']);
+  return offer === null ? null : { offer };
 }
 
 /** Ceasefire length: 5 minutes of sim time. */
@@ -152,6 +302,13 @@ export const DEMAND_PAID_DISPOSITION_LOSS = 10;
  */
 export const DEMAND_TRIBUTE_INFLUENCE_COST = 20;
 export const CEASEFIRE_INFLUENCE_COST = 40;
+/**
+ * Fun-audit Tier 4 (E1, 2026-10-02): a single tribute of at least this
+ * many funds, sent while at war, can summon an envoy carrying a
+ * ceasefire offer — if the seeded disposition check clears. The
+ * player-reachable on-demand path to the envoy ceremony.
+ */
+export const ENVOY_TRIBUTE_THRESHOLD = 2000;
 
 /** Pride penalty per difficulty, subtracted from AI willingness. */
 const DIFFICULTY_PRIDE: Record<AIDifficulty, number> = {
@@ -296,6 +453,34 @@ function ensureParties(world: World, owner: number, aiOwner: number): void {
   }
 }
 
+/**
+ * Fun-audit Tier 4 (E2, 2026-10-02): exported for the luminary cards —
+ * some cards (the Defector's public trial) move disposition against a
+ * rival the player may never have negotiated with before.
+ */
+export function ensureDiplomacyParties(world: World, owner: number, aiOwner: number): void {
+  ensureParties(world, owner, aiOwner);
+}
+
+/**
+ * Fun-audit Tier 4 (E1, 2026-10-02): true while an envoy visit is live
+ * or one is decided-but-undispatched. Used to keep proposals and
+ * envoy ceremonies from overlapping.
+ */
+export function envoyActive(world: World): boolean {
+  const d = world.diplomacy;
+  return d.envoy !== null || d.pendingEnvoyDispatch !== null;
+}
+
+/**
+ * Fun-audit Tier 4 (E1, 2026-10-02): the proud difficulties
+ * (commander+) deliver a ceasefire refusal in person — the envoy
+ * drives out to say no, and Muse warns the front is about to heat up.
+ */
+function isProudDifficulty(difficulty: AIDifficulty): boolean {
+  return (DIFFICULTY_PRIDE[difficulty] ?? 0) >= 20;
+}
+
 function payloadAmount(
   cmdName: string,
   payload: Record<string, unknown>,
@@ -340,6 +525,27 @@ const sendTributeSpec = {
       Math.floor(amount / 500) * TRIBUTE_DISPOSITION_PER_500,
     );
     d.disposition = Math.min(100, d.disposition + gain);
+    // Fun-audit Tier 4 (E1, 2026-10-02): a large tribute while at war
+    // can summon an envoy carrying a ceasefire offer — the
+    // player-reachable on-demand path to the ceremony. The seeded
+    // disposition check (drawn on the 'envoy' stream, so replays stay
+    // identical) means warm relations earn the audience; cold ones do
+    // not. One envoy at a time — never while one is already at the
+    // gates or a ceasefire holds.
+    if (
+      amount >= ENVOY_TRIBUTE_THRESHOLD &&
+      world.peaceful !== true &&
+      !ceasefireActive(world) &&
+      !envoyActive(world) &&
+      isAIOwner(world, aiOwner)
+    ) {
+      const bank = createRngBank(world.seed, world.rng);
+      if (bank.next('envoy') < d.disposition / 100) {
+        d.pendingEnvoyDispatch = {
+          offer: { kind: 'ceasefire', verdict: 'accepted', owner, aiOwner },
+        };
+      }
+    }
     return amount;
   },
 };
@@ -407,6 +613,11 @@ const proposeCeasefireSpec = {
     if (ceasefireActive(world)) {
       return 'proposeCeasefire: a ceasefire is already in effect';
     }
+    // Fun-audit Tier 4 (E1, 2026-10-02): one envoy at a time — a new
+    // proposal waits until the current ceremony resolves.
+    if (envoyActive(world)) {
+      return 'proposeCeasefire: an envoy is already at your gates (answer them first)';
+    }
     // Fun-audit C2b (influence triage, 2026-10-02): suing for peace
     // spends political capital, like the demand above.
     const player = getPlayer(world.city, parties.owner);
@@ -426,12 +637,26 @@ const proposeCeasefireSpec = {
     const ai = readAIStanding(world, aiOwner);
     const accepted = ai !== null && ceasefireAccepted(d.disposition, ai);
     if (accepted) {
-      d.ceasefireUntilTick = world.tick + CEASEFIRE_TICKS;
+      // Fun-audit Tier 4 (E1, 2026-10-02): the 5-minute clock no longer
+      // starts here — it starts when the envoy reaches the player's HQ
+      // and the player answers. Dispatch the envoy carrying the
+      // accepted offer; `answerEnvoy` starts the clock.
+      d.pendingEnvoyDispatch = {
+        offer: { kind: 'ceasefire', verdict: 'accepted', owner, aiOwner },
+      };
       d.disposition = Math.min(100, d.disposition + SNUB_DISPOSITION_LOSS);
       d.lastCeasefireAsk = 'accepted';
     } else {
       d.disposition = Math.max(0, d.disposition - SNUB_DISPOSITION_LOSS);
       d.lastCeasefireAsk = 'declined';
+      // Fun-audit Tier 4 (E1, 2026-10-02): a proud AI's refusal is
+      // delivered in person — the envoy drives out to say no, and
+      // Muse warns the front is about to heat up.
+      if (ai !== null && isProudDifficulty(ai.difficulty)) {
+        d.pendingEnvoyDispatch = {
+          offer: { kind: 'ceasefire', verdict: 'declined', owner, aiOwner },
+        };
+      }
     }
     return d.lastCeasefireAsk;
   },

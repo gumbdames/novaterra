@@ -168,6 +168,8 @@ import { selectionDigest as paletteDigest } from './paletteDigest';
 // Roadmap B12 (minimap): the tactical overview canvas.
 import { Minimap, type MinimapView } from './minimap';
 import { VictoryHud } from './victoryHud';
+import { EnvoyBanner } from './envoyBanner';
+import { envoyBannerView } from './envoy';
 import {
   allBuildTabs,
   buildingUtilityLine,
@@ -377,6 +379,12 @@ export interface HUDActions {
    * peaceful worlds and while one is already active.
    */
   onProposeCeasefire(): void;
+  /**
+   * Fun-audit Tier 4 (E1, 2026-10-02): answer the waiting envoy
+   * (accept/decline). The sim resolves the offer and rejects loudly
+   * when no envoy waits.
+   */
+  onAnswerEnvoy(accept: boolean): void;
   /** Phase 3 (logistics): set a supply unit's field services. */
   onSetSupplyToggles(
     unitId: number,
@@ -515,6 +523,14 @@ export class HUD {
    * once in the constructor; refreshed via updateVictoryHud).
    */
   private readonly victoryHud: VictoryHud;
+  /**
+   * Fun-audit Tier 4 (E1, 2026-10-02): the envoy banner — the
+   * diplomatic card pinned top-center while an envoy visits. Built
+   * once, refreshed write-on-change (see ui/envoyBanner.ts); the
+   * AD11 branch is registered in HUD_PANEL_BRANCHES with a
+   * noDigestReason.
+   */
+  private readonly envoyBanner: EnvoyBanner;
   /**
    * Roadmap B12 (minimap): the tactical overview widget, built once in
    * the constructor. Null only when the DOM is unavailable (headless).
@@ -786,6 +802,15 @@ export class HUD {
     // built in ui/victoryHud.ts — named here so the contract test's
     // stale-class check sees them (the minimap precedent).
     this.victoryHud = new VictoryHud(hud);
+
+    // Fun-audit Tier 4 (E1, 2026-10-02): the envoy banner — pinned
+    // top-center, shown only while an envoy visits the player's
+    // gates. AD11: the widget's DOM classes ('envoy-banner',
+    // 'envoy-banner-title', 'envoy-banner-sub', 'envoy-banner-buttons',
+    // 'envoy-banner-btn', 'envoy-banner-accept', 'envoy-banner-decline')
+    // are built in ui/envoyBanner.ts — named here so the contract
+    // test's stale-class check sees them (the minimap precedent).
+    this.envoyBanner = new EnvoyBanner(hud, (accept) => actions.onAnswerEnvoy(accept));
 
     // ---- advisor ----
     this.advisorPanel = el('div', 'hud-advisor');
@@ -1764,6 +1789,24 @@ export class HUD {
       sec.append(el('div', 'panel-row', fillLoc(s.ceasefireActive, { time })));
     } else {
       sec.append(el('div', 'panel-status', loc(s.ceasefireNone)));
+    }
+
+    // Fun-audit Tier 4 (E1, 2026-10-02): the envoy status line — the
+    // banner is the primary UI, this row keeps the Management tab
+    // honest. Digest-covered (the `di:` segment carries envoy state).
+    const envoyView = envoyBannerView(world, HUMAN_PLAYER_ID);
+    if (envoyView !== null) {
+      const secs = envoyView.secondsLeft ?? 0;
+      const time = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
+      const line =
+        envoyView.phase === 'inbound'
+          ? loc(s.envoyInbound)
+          : envoyView.phase === 'refusalWaiting'
+            ? loc(s.envoyWaitingRefusal)
+            : envoyView.phase === 'departing'
+              ? loc(s.envoyDeparting)
+              : fillLoc(s.envoyWaitingCeasefire, { time });
+      sec.append(el('div', 'panel-row', line));
     }
 
     // Last AI answers.
@@ -3221,6 +3264,16 @@ export class HUD {
    */
   updateVictoryHud(world: World, visible: boolean): void {
     this.victoryHud.update(world, visible);
+  }
+
+  /**
+   * Fun-audit Tier 4 (E1, 2026-10-02): refresh the envoy banner. The
+   * banner shows only for the human player's own visits (the contract
+   * module gates on owner) — called every frame from game.ts's
+   * updateHud, write-on-change inside.
+   */
+  updateEnvoyBanner(world: World): void {
+    this.envoyBanner.update(envoyBannerView(world, HUMAN_PLAYER_ID));
   }
 
   /** Pump the toast queue (called from update(), every frame). */

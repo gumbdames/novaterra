@@ -180,6 +180,12 @@ export const UNIT_KINDS = [
   'spy',
   'reconTeam',
   // ------------------------------------------------------------------
+  // Fun-audit Tier 4 (E1, 2026-10-02): the envoy — a scripted neutral
+  // non-combatant (see `neutralNonCombatant` on UnitDef). Never trained
+  // or spawned via commands; the envoy system (sim/envoy.ts) drives it.
+  // ------------------------------------------------------------------
+  'envoySUV',
+  // ------------------------------------------------------------------
   // Grand-expansion Phase 8 — tech-level variants (workstream D,
   // 2026-09-30). 28 kinds: Mk II / Mk III of the 14 workhorse kinds
   // (land: tank, artillery, aa, apc, hauler; air: fighter,
@@ -527,6 +533,21 @@ export interface UnitDef {
    * the 'artillery' art.
    */
   doctrine?: DoctrineId;
+  /**
+   * Fun-audit Tier 4 (E1/E2/E3, 2026-10-02): the SHARED neutral
+   * non-combatant gate. A kind flagged here is never a valid combat
+   * target — `acquireTarget` (combat.ts) skips it in opportunistic
+   * acquisition, `attackUnit` rejects explicit orders against it
+   * loudly, and the AI never perceives it as an enemy
+   * (`getVisibleEnemies`, ai.ts). One flag, one predicate
+   * (`isNeutralNonCombatantKind`), three application points — the
+   * envoy's diplomatic immunity and the Combine freighter's
+   * never-target rule are the SAME gate, not two systems. Flagged
+   * kinds are scripted-only: the `spawnUnit` validator rejects them
+   * loudly (they enter the world through their own systems), and the
+   * AI's `canTrain` never picks them.
+   */
+  neutralNonCombatant?: boolean;
 }
 
 /** Mobile HQ command aura: radius and friendly damage bonus. */
@@ -1354,6 +1375,23 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     military: true,
   },
   // ------------------------------------------------------------------
+  // Fun-audit Tier 4 (E1, 2026-10-02): the Envoy at the Gates. One
+  // scripted black SUV (reuses the reconTeam SUV model via artBase,
+  // §AD12 — zero new art) carrying the Directorate's diplomatic
+  // mission to the player's capital. Unarmed, fast, and flagged
+  // neutralNonCombatant — the shared immunity gate (see UnitDef).
+  // Scripted-only: the spawnUnit validator rejects it loudly.
+  // ------------------------------------------------------------------
+  envoySUV: {
+    kind: 'envoySUV', name: 'Envoy SUV', domain: 'land', hp: 120, speed: 14, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'foundation',
+    manpowerCost: 0, trainFunds: 0, trainMaterials: 0,
+    fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil', // 400 s — plenty for the cross-map drive
+    neutralNonCombatant: true,
+    artBase: 'reconTeam',
+  },
+  // ------------------------------------------------------------------
   // Grand-expansion Phase 8 — tech-level variants (workstream D,
   // 2026-09-30). Mk II / Mk III of the 14 workhorse kinds. Each tier is
   // a REAL upgrade, not a placebo: Mk II = hp ×1.3, damage ×1.25,
@@ -1745,6 +1783,38 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     // protection screen. It feeds a fleet; it cannot fight one.
   },
 };
+
+/**
+ * Fun-audit Tier 4 (E1/E2/E3, 2026-10-02): the shared neutral
+ * non-combatant predicate — the ONE code path behind the immunity
+ * gate. Def-level (the flag lives on UnitDef, not the record), so it
+ * is cheap enough for per-candidate targeting filters. Unknown kinds
+ * are never neutral (fail closed: only explicitly flagged kinds are
+ * immune).
+ */
+export function isNeutralNonCombatantKind(kind: string): boolean {
+  const def = UNIT_DEFS[kind as UnitKind];
+  return def?.neutralNonCombatant === true;
+}
+
+/**
+ * Unit-level convenience over `isNeutralNonCombatantKind`.
+ */
+export function isNeutralNonCombatant(unit: { kind: string }): boolean {
+  return isNeutralNonCombatantKind(unit.kind);
+}
+
+/**
+ * Fun-audit Tier 4 (E1/E3, 2026-10-02): the owner id for neutral
+ * non-combatant entities (the envoy, the Combine freighter). NOT a
+ * real player — `getPlayer` returns undefined for it, so neutrals
+ * never participate in the economy, taxation, upkeep, delegation, or
+ * AI perception; the shared immunity gate (`neutralNonCombatant`)
+ * keeps them out of combat; and the Muse kill/loss tracker (which
+ * keys on the human/AI ids) ignores their despawn. Renders gray
+ * (`teamColors()[owner] ?? '#aaaaaa'` — the RTS neutral convention).
+ */
+export const NEUTRAL_OWNER = -1;
 
 /**
  * Phase 4 transport (S7). A ferry's shipping lane: the two world-space
@@ -2366,6 +2436,13 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
       // train path is closed loudly so no UI or AI path can conjure one.
       if (UNIT_DEFS[kind as UnitKind].deployableOnly === true) {
         return `spawnUnit: ${kind} is deployable-only (lay it with a minelayer's deployMine command)`;
+      }
+      // Fun-audit Tier 4 (E1/E2/E3, 2026-10-02): neutral non-combatants
+      // (envoy, luminary guests, the Combine freighter) are scripted —
+      // they enter the world through their own systems, never through
+      // training or spawn commands. Loud, never silent.
+      if (isNeutralNonCombatantKind(kind)) {
+        return `spawnUnit: ${kind} is a scripted neutral non-combatant (it enters the world through its own system)`;
       }
       const owner = cmd.payload['owner'];
       if (typeof owner !== 'number' || !Number.isInteger(owner) || !getPlayer(world.city, owner)) {

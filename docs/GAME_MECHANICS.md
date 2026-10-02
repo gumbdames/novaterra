@@ -827,10 +827,33 @@ sub-tab lets you negotiate with the rival:
   Refused demands sour relations.
 - **Propose ceasefire** — ask the rival to stop attacking for
   5 minutes (costs 40 influence — spent whether it accepts or
-  declines). While it holds, the AI issues no new attacks and both
-  sides stop opportunistically engaging each other — the front
-  freezes. But your next attack order breaks it (betrayal costs
-  15 disposition).
+  declines). If the rival accepts, it doesn't take effect at once: a
+  neutral **envoy** drives a black SUV to your gates (see below) and
+  the 5-minute clock starts when you answer. While it holds, the AI
+  issues no new attacks and both sides stop opportunistically
+  engaging each other — the front freezes. But your next attack order
+  breaks it (betrayal costs 15 disposition).
+
+### The Envoy at the Gates
+
+When the rival accepts your ceasefire — or when a single tribute of
+2,000+ funds at war impresses it (warmer relations help), or when a
+proud rival declines — a neutral **envoy** visits instead of an
+instant answer. A black SUV spawns at the map edge, drives to your
+capital, and parks at your gates:
+
+- The envoy is a **neutral non-combatant**: it cannot be attacked,
+  targeted, or trained — one shared immunity gate covers the envoy,
+  the Luminary guests, and the Vostok Combine freighter alike. It
+  takes no part in the war.
+- A banner appears above the HUD with the offer and a **60-second**
+  countdown: **Accept** or **Decline**. Silence counts as acceptance
+  of an offered ceasefire (no punishment for slow players).
+- Accepting starts the 5-minute ceasefire clock, warms relations
+  (+5), and releases a flight of doves over your capital. Declining
+  (or a delivered refusal) ends the visit with no ceasefire.
+- If the war ends while the envoy is en route, it is recalled —
+  no offer, no ceasefire.
 
 The AI answers deterministically from its seeded personality and
 difficulty — the same game always answers the same way, so no save or

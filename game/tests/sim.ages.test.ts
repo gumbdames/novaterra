@@ -617,6 +617,10 @@ describe('age-gated units', () => {
       transportShipMk2: 'information', transportShipMk3: 'ascendance',
       // Fun-audit D1 (2026-10-02): doctrine signature units (information age).
       aegisBattery: 'information', tempestCannon: 'information',
+      // Fun-audit Tier 4 (E1, 2026-10-02): the envoy SUV — a neutral
+      // non-combatant (never trainable); foundation so the ceremony
+      // can visit in any age.
+      envoySUV: 'foundation',
     };
     expect(Object.keys(UNIT_DEFS).sort()).toEqual(Object.keys(expected).sort());
     for (const [kind, age] of Object.entries(expected)) {

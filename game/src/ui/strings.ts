@@ -587,6 +587,9 @@ export const STRINGS = {
     // Fun-audit D1 (2026-10-02): doctrine signature unit names.
     aegisBattery: { en: 'Aegis Battery' },
     tempestCannon: { en: 'Tempest Cannon' },
+    // Fun-audit Tier 4 (E1, 2026-10-02): the neutral envoy SUV —
+    // visible and selectable on the map (never trainable).
+    envoySUV: { en: 'Envoy SUV' },
     hauler: { en: 'Hauler' },
     // Phase 3 SIM workstream (2026-09-30): provisional names for the two
     // new logistics trucks — the UI workstream owns final copy/palettes.
@@ -1390,6 +1393,48 @@ export const STRINGS = {
     demandVerb: { en: 'Demand' },
     /** Lifetime totals. */
     totalsLine: { en: 'Tribute sent: {sent} · received: {received}' },
+    /** Fun-audit Tier 4 (E1, 2026-10-02): envoy status lines. */
+    envoyInbound: { en: 'An envoy is inbound — the SUV will park at your gates shortly.' },
+    envoyWaitingCeasefire: {
+      en: 'The envoy waits: the rival accepts your ceasefire — answer within {time}.',
+    },
+    envoyWaitingRefusal: {
+      en: 'The envoy waits with the rival\u2019s refusal. Dismiss them when ready.',
+    },
+    envoyDeparting: { en: 'The envoy is driving home.' },
+  },
+  /**
+   * Fun-audit Tier 4 (E1, 2026-10-02): the envoy banner — the
+   * diplomatic card pinned above the HUD while an envoy visits.
+   * English-only via loc()/fillLoc().
+   */
+  envoy: {
+    /** Inbound: the SUV is on its way. */
+    bannerInbound: { en: 'The Directorate\u2019s envoy is inbound.' },
+    bannerInboundSub: { en: 'A black SUV is crossing the map. It cannot be attacked — receive it at your gates.' },
+    /** Waiting on an accepted ceasefire offer (ask or tribute-summoned). */
+    bannerWaitingCeasefire: { en: 'The envoy offers a 5-minute ceasefire.' },
+    bannerWaitingCeasefireSub: {
+      en: 'The rival will hold fire. Answer within {time} — silence accepts.',
+    },
+    /** Waiting on a refusal (proud AI declined the ask). */
+    bannerWaitingRefusal: { en: 'The envoy brings a refusal.' },
+    bannerWaitingRefusalSub: {
+      en: 'The rival declined. The envoy will deliver the no in person — then leave.',
+    },
+    /** Departing. */
+    bannerDeparting: { en: 'The envoy is driving home.' },
+    /** Buttons. */
+    acceptButton: { en: 'Accept' },
+    declineButton: { en: 'Decline' },
+    /** Toasts. */
+    toastInbound: { en: 'Envoy inbound — a neutral SUV approaches your gates.' },
+    toastWaiting: { en: 'The envoy waits at your gates. Answer from the banner above.' },
+    toastAccepted: { en: 'Ceasefire accepted — 5 minutes of quiet. The doves are away.' },
+    toastDeclined: { en: 'You declined. The envoy drives home.' },
+    toastTimedOut: { en: 'The envoy took your silence as consent — the ceasefire stands.' },
+    toastRecalled: { en: 'The war ended under the ceremony — the envoy was recalled.' },
+    toastRefusal: { en: 'The rival refused. Their envoy delivers the no in person.' },
   },
   /**
    * Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):

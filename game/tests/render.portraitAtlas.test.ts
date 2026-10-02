@@ -65,7 +65,7 @@ describe('portrait atlas: committed artifacts', () => {
   it('manifest covers every unit + building kind', () => {
     const kinds = allPortraitKinds();
     // Fun-audit D1 (2026-10-02): 99 units + 100 buildings.
-    expect(kinds.length).toBe(199); // 99 units + 100 buildings
+    expect(kinds.length).toBe(200); // 100 units + 100 buildings (envoySUV: fun-audit E1)
     const manifest = readManifest();
     const sprites = manifest['sprites'] as Record<string, { x: number; y: number; w: number; h: number }>;
     expect(Object.keys(sprites).sort()).toEqual([...kinds].sort());

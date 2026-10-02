@@ -51,6 +51,7 @@ import type { DelegationState } from './delegation';
 import { initDelegation } from './delegation';
 import type { DiplomacyState } from './diplomacy';
 import { initDiplomacy } from './diplomacy';
+import type { CeremonyEvent } from './envoy';
 import type { WonderCountdown } from './wonderCountdown';
 import type { DoctrineId } from './doctrine';
 import type { FogState } from './fog';
@@ -186,6 +187,15 @@ export interface World {
    * NOT digested — pure view, derived from deterministic state.
    */
   combatEvents: import('./combat').CombatEvent[];
+  /**
+   * Fun-audit Tier 4 (E1/E2/E3, 2026-10-02): ceremony VFX event stream
+   * (envoy/combine/luminary moments — doves, arrivals, departures).
+   * Drained by the render each frame, cleared by the envoy system at
+   * tick start (the combatEvents precedent — the envoy system is the
+   * earliest ceremony emitter; see sim/envoy.ts). NOT snapshotted,
+   * NOT digested — pure view, derived from deterministic state.
+   */
+  ceremonyEvents: CeremonyEvent[];
 }
 
 /**
@@ -260,6 +270,9 @@ export function createWorld(seed: number): World {
     fog: createFogState(),
     // Combat VFX stream starts empty (B16).
     combatEvents: [],
+    // Fun-audit Tier 4 (E1/E2/E3, 2026-10-02): ceremony VFX stream
+    // starts empty; the envoy system clears it at tick start.
+    ceremonyEvents: [],
   };
 }
 

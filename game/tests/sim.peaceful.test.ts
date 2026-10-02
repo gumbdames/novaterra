@@ -440,9 +440,9 @@ describe('peaceful command lockout', () => {
 // ---------------------------------------------------------------------------
 
 describe('military def classification (roster pinning)', () => {
-  it('classifies every one of the 99 unit defs', () => {
+  it('classifies every one of the 100 unit defs', () => {
     const kinds = Object.keys(UNIT_DEFS);
-    expect(kinds).toHaveLength(99);
+    expect(kinds).toHaveLength(100);
     const military = kinds.filter((k) => UNIT_DEFS[k as keyof typeof UNIT_DEFS].military === true);
     expect(military).toHaveLength(73);
     expect(new Set(military)).toEqual(MILITARY_UNITS);

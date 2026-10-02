@@ -770,6 +770,19 @@ export function buildProposeCeasefireOrder(
 }
 
 /**
+ * Answer a waiting envoy (fun-audit Tier 4 / E1, 2026-10-02). The
+ * payload carries only the owner's decision — the sim resolves the
+ * offer (ceasefire / tribute / refusal) at apply time and rejects
+ * loudly when no envoy waits.
+ */
+export function buildAnswerEnvoyOrder(owner: number, accept: boolean): OrderIntent {
+  return {
+    kind: 'answerEnvoy',
+    payload: { owner, accept },
+  };
+}
+
+/**
  * Sabotage an enemy building (25 operational assets; the building goes
  * offline until `sabotagedUntil`). The UI resolves the target building
  * before building the order — the sim requires `buildingId`.

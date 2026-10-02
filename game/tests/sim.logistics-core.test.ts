@@ -201,16 +201,17 @@ function findWaterNear(t: TerrainData, x: number, z: number): { x: number; z: nu
 }
 
 describe('Phase 3 logistics core — roster provisioning (units.ts)', () => {
-  it('has the 99-unit roster with the two new logistics trucks, the two intel units, the civilian fuel barge, the 28 tech-level variants, and the 2 doctrine signature units', () => {
-    expect(UNIT_KINDS).toHaveLength(99);
+  it('has the 100-unit roster with the two new logistics trucks, the two intel units, the civilian fuel barge, the 28 tech-level variants, the 2 doctrine signature units, and the envoy SUV', () => {
+    expect(UNIT_KINDS).toHaveLength(100);
     expect(UNIT_KINDS).toContain('supplyTruck');
     expect(UNIT_KINDS).toContain('fuelTruck');
     expect(UNIT_KINDS).toContain('spy');
     expect(UNIT_KINDS).toContain('reconTeam');
+    expect(UNIT_KINDS).toContain('envoySUV');
     const kinds = Object.keys(UNIT_DEFS).sort();
-    expect(kinds).toHaveLength(99);
+    expect(kinds).toHaveLength(100);
     const land = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'land');
-    expect(land).toHaveLength(33); // D1 adds the 2 doctrine signature units
+    expect(land).toHaveLength(34); // D1 adds the 2 doctrine signature units; E1 adds the envoy SUV
   });
 
   it('provisions ammo only on the missile units (§3.2)', () => {

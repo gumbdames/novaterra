@@ -328,6 +328,12 @@ const BASE_UNIT_ICONS: Record<Exclude<UnitKind, VariantUnitKind>, string> = {
     '<circle cx="12" cy="12" r="8"/>' +
     '<circle cx="12" cy="12" r="3.5"/>' +
     '<path d="M12 4v3.5M12 16.5V20M4 12h3.5M16.5 12H20"/>',
+  // Fun-audit Tier 4 (E1, 2026-10-02): the envoy — a car silhouette
+  // with a pennant flag (diplomatic mission).
+  envoySUV:
+    '<path d="M3 16l2-6h9l3 3h4v3"/>' +
+    '<circle cx="7.5" cy="18.5" r="1.8"/><circle cx="16.5" cy="18.5" r="1.8"/>' +
+    '<path d="M18 10V4h5l-2 2.5L23 9h-5"/>',
 };
 
 // ---------------------------------------------------------------------------

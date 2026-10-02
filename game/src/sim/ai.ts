@@ -168,7 +168,7 @@ import type { CommandQueue } from './commands';
 import type { SimSystem } from './tick';
 import { TICK_HZ } from './tick';
 import { detSin, detCos } from './deterministic';
-import { findUnit, isSheltered, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
+import { findUnit, isSheltered, isNeutralNonCombatant, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
 import { chooseVariant, variantBaseOf } from './variants';
 import { rngBank } from './world';
 import type { RngBank } from './rng';
@@ -712,6 +712,11 @@ export function getVisibleEnemies(world: World, owner: number): UnitRecord[] {
   const seen = new Set<number>();
   for (const e of world.units) {
     if (e.owner === owner || e.hp <= 0) continue;
+    // Fun-audit Tier 4 (E1/E2/E3, 2026-10-02): neutral non-combatants
+    // (the envoy, luminary guests, the Combine freighter) are never
+    // enemies — the AI must never target, chase, or siege them. Same
+    // shared gate as combat's acquireTarget (`neutralNonCombatant`).
+    if (isNeutralNonCombatant(e)) continue;
     // Grand-expansion Phase 7 (S6 intel): stealthed units (spies) are
     // invisible to the AI unless detected — the AI perceives exactly
     // what its side can see (the `isDetected` stealth contract in
@@ -1385,6 +1390,11 @@ function moveGroupTo(
 export function canTrain(world: World, owner: number, kind: UnitKind): boolean {
   const def = UNIT_DEFS[kind];
   if (!def) return false;
+  // Fun-audit Tier 4 (E1/E2/E3, 2026-10-02): scripted neutral
+  // non-combatants (envoy, luminary guests, the Combine freighter)
+  // enter the world through their own systems — the AI never trains
+  // them (the spawnUnit validator rejects them loudly as well).
+  if (def.neutralNonCombatant === true) return false;
   // Grand-expansion Phase 8 (peaceful mode, workstream C): military
   // defs are unbuildable in a peaceful world — the trainUnit command
   // rejects them loudly (workstream A), so every composition check

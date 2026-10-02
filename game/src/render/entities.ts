@@ -1750,6 +1750,13 @@ export class EntityRenderer {
       this.waterMesh.position.y = waterBobY(this.waterLevel, tickSec);
     }
     const mapHalf = this.terrain !== null ? this.terrain.size / 2 : 256;
+    // Fun-audit Tier 4 (E1, 2026-10-02): dove releases from the envoy
+    // ceremony — the render drains the sim's ceremony event stream
+    // (cleared each tick by the envoy system; releaseDoves dedupes
+    // the multi-frame drain to one burst per event).
+    for (const e of world.ceremonyEvents ?? []) {
+      if (e.kind === 'doveRelease') this.birds.releaseDoves(e.x, e.z, world.tick);
+    }
     this.birds.sync(world.tick, mapHalf);
   }
 
