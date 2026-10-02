@@ -22,6 +22,7 @@
 import type { World } from '../sim/world';
 import { heightAt, type TerrainData } from '../sim/terrain';
 import { getVisibleEnemies, getVisibleEnemyBuildings } from '../sim/ai';
+import { FOG_GRID } from '../sim/fog';
 import { buildingCenterWorld } from '../sim/intel';
 import { HUMAN_PLAYER_ID } from './session';
 import { STRINGS, loc } from './strings';
@@ -224,7 +225,18 @@ export class Minimap {
   }
 
   /** Repaint (throttled to 5 Hz). Safe to call every frame. */
-  render(world: World, terrain: TerrainData | undefined, view: MinimapView): void {
+  render(
+    world: World,
+    terrain: TerrainData | undefined,
+    view: MinimapView,
+    /**
+     * Fun-audit C3 (2026-10-02): current visibility grid for the human
+     * owner (from `computeVisibleCells`, refreshed at fog cadence by
+     * the controller). Unexplored cells draw black, explored-but-unseen
+     * dim — the minimap honors the same shroud as the main view.
+     */
+    fogCells?: Uint8Array | null,
+  ): void {
     const now =
       typeof performance !== 'undefined' ? performance.now() : Date.now();
     if (now - this.lastRender < MINIMAP_RENDER_INTERVAL_MS) return;
@@ -238,6 +250,9 @@ export class Minimap {
     const { ctx, sizePx } = this;
     ctx.clearRect(0, 0, sizePx, sizePx);
     if (this.terrainLayer) ctx.drawImage(this.terrainLayer, 0, 0);
+
+    // Fun-audit C3: fog shroud over the terrain layer, under the dots.
+    this.paintFogShroud(world, fogCells ?? null);
 
     const worldSize = terrain.size;
     const colorblind = document.documentElement.classList.contains('colorblind');
@@ -262,6 +277,32 @@ export class Minimap {
     ctx.lineWidth = 1.5;
     ctx.strokeRect(-wPx / 2, -hPx / 2, wPx, hPx);
     ctx.restore();
+  }
+
+  /**
+   * Fun-audit C3 (2026-10-02): paint the fog shroud onto the minimap
+   * canvas. Unexplored cells go near-black, explored-but-unseen get a
+   * dim veil; currently visible cells are untouched. No fog data (or a
+   * null grid) means no shroud — the trailer and pre-fog saves render
+   * exactly as before.
+   */
+  private paintFogShroud(world: World, fogCells: Uint8Array | null): void {
+    const explored = world.fog?.explored[HUMAN_PLAYER_ID];
+    if (!explored) return;
+    const { ctx, sizePx } = this;
+    const cellPx = sizePx / FOG_GRID;
+    const n = FOG_GRID * FOG_GRID;
+    for (let i = 0; i < n; i++) {
+      const style = minimapFogCellStyle(
+        (explored[i] ?? 0) === 1,
+        fogCells !== null && (fogCells[i] ?? 0) === 1,
+      );
+      if (style === null) continue;
+      const col = i % FOG_GRID;
+      const row = Math.floor(i / FOG_GRID);
+      ctx.fillStyle = style;
+      ctx.fillRect(col * cellPx, row * cellPx, cellPx + 0.5, cellPx + 0.5);
+    }
   }
 
   /** Paint the static terrain relief into an offscreen canvas. */
@@ -316,4 +357,18 @@ export class Minimap {
   dispose(): void {
     this.element.remove();
   }
+}
+
+/**
+ * Fun-audit C3 (2026-10-02): minimap shroud styling — the single source
+ * of truth for how fog reads on the tactical overview. Unexplored goes
+ * near-black, explored-but-unseen gets a dim veil, visible cells are
+ * untouched (null = paint nothing).
+ */
+export function minimapFogCellStyle(
+  explored: boolean,
+  visible: boolean,
+): string | null {
+  if (visible) return null;
+  return explored ? 'rgba(4,6,14,0.55)' : 'rgba(2,2,8,0.92)';
 }

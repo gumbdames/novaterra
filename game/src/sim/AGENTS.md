@@ -357,6 +357,19 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `createCombatSystem` / `registerCombatCommands` take an optional
   terrain for the stand-cell scan (headless tests may omit it and get
   the legacy center behavior).
+- `fog.ts` — (fun-audit C3, 2026-10-02) the player fog of war's sim
+  side. `FogState`: per-owner explored memory, monotonic (bits only
+  turn on), 64×64 cells of 8 world units over the 512-unit map.
+  `computeVisibleCells(world, owner)` rasterizes the same
+  `getSightDiscs` the AI perception model uses — the shroud and the AI
+  can never disagree about what is seen (sight radii + SIGINT/radar
+  building coverage; `Math.sqrt` only — no banned transcendental).
+  `updateFog` folds visibility into explored for every player;
+  `createFogSystem` runs it at 30-tick cadence with first-call priming
+  (a fresh session opens with its base already explored). `world.fog`
+  is SNAPSHOT, never digest — display memory, like `economyFlows`.
+  Lazy `getFogState` for hand-built worlds; pre-fog snapshots decode
+  to fresh unexplored (no version bump).
 - `ai.ts` — Classic AI, five difficulties (cadet/citizen/commander/general/
   marshal). Seeded per-match personalities (same seed ⇒ identical play;
   different seeds ⇒ different playstyles at the same tier), fair (only

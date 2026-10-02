@@ -79,6 +79,7 @@ import {
   createWonderCountdownSystem,
 } from '../sim/wonderCountdown';
 import { restoreSnapshot, type Snapshot } from '../sim/snapshot';
+import { createFogSystem } from '../sim/fog';
 import { rebuildFlowFields } from '../sim/pathfinding';
 import {
   registerDelegationCommands,
@@ -625,6 +626,10 @@ export function createSession(options: SessionOptions): GameSession {
       createAISystem(queue, terrain),
       // Generals issue orders like the AI does, after it.
       createGeneralSystem(queue),
+      // Fun-audit C3 (2026-10-02): fog of war — explored memory folds
+      // the tick's final positions into the shroud, after everyone
+      // (including the AI) has moved.
+      createFogSystem(),
     ],
   });
 

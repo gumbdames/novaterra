@@ -37,6 +37,36 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   owns the mesh. `EntityRenderer` constructs/syncs/disposes the
   system; unit hulls come from `hullSizeFor` (variants share the base
   hull), building diameters from `BUILDING_DEFS` footprints.
+- Fun-audit C3 (2026-10-02): `collectBlobShadows` takes an optional
+  fog gate `(owner, id, isBuilding) => boolean` — hidden entities cast
+  no shadow (a shadow with no body would leak positions through the
+  fog). Pinned in `tests/render.fog.test.ts`.
+
+## Fog shroud (`render/fog.ts`, 0.1 Alpha)
+
+- Fun-audit C3 (2026-10-02): the player fog of war's render side.
+  `fogCellColor` is the single source of truth for shroud styling
+  (visible = transparent, explored = dim memory tint, unexplored = dark
+  shroud); `paintFogTexture` paints the 64×64 RGBA grid from explored
+  memory + the visibility grid — both pure and unit-tested in
+  `tests/render.fog.test.ts`.
+- `FogShroud`: one height-conforming 64×64-quad plane
+  (y = max(terrain, waterLevel) + 0.6), one 64×64 RGBA `DataTexture`,
+  `MeshBasicMaterial` with `mat.fog = false` (scene fog and day/night
+  exposure must not lift the black), `depthWrite: false`,
+  `renderOrder = 4`, `frustumCulled = false`. Exactly **+1 draw call**;
+  repainted at fog cadence from the sim tick, never per frame. Reads
+  `world.fog` only — never mutates sim state.
+- The entity side: `EntityRenderer.setFogFilter(rivals, visibleUnits,
+  visibleBuildings)` + `setFogCells(cells)` (refreshed by `ui/game.ts`
+  at fog cadence from the sim's own sight model). Hidden rival units /
+  buildings are skipped before the seen-set, so their views, chevrons,
+  and blob shadows dispose exactly like dead entities'. Damage numbers
+  for the player's own losses always show; enemy damage shows only
+  where currently visible. The minimap paints the same shroud
+  (`minimapFogCellStyle`, `tests/ui.minimap.test.ts`). Trailer mode
+  never installs the filter — the cinematic sees the whole map.
+
 - Perf estimate (2026-10-01): +1 draw call total (instancer-pools +
   chevron pins in `render.entityInstancing.test.ts` updated for it).
   CPU/frame: up to 4096 matrix writes (16 floats each; typical

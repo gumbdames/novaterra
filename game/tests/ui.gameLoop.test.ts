@@ -171,6 +171,9 @@ function makeDeps(world: World, entities: EntityRenderer): {
     refreshAdvisor: () => {},
     pruneSelection: () => {},
     syncEntities: (w) => entities.sync(w),
+    // Fun-audit C3 (2026-10-02): fog-of-war render refresh (stubbed
+    // here — the real controller owns the shroud).
+    refreshFog: () => {},
     // Phase 4 (transport): the frame loop refreshes the ambient transit
     // providers before the entity sync (stubbed here — the real
     // controller owns the providers).

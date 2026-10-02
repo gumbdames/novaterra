@@ -156,11 +156,24 @@ export class DamageNumbers {
   }
 
   /** Drain this frame's combat events; advance live floaters. */
-  update(events: CombatEvent[], dt: number): void {
+  update(
+    events: CombatEvent[],
+    dt: number,
+    /**
+     * Fun-audit C3 (2026-10-02): optional fog gate for the event
+     * position. Numbers for the human's own damaged units always show
+     * (you feel your own losses); enemy damage shows only where the
+     * human currently sees.
+     */
+    visible?: (x: number, z: number) => boolean,
+  ): void {
     if (this.floaters.length === 0) return; // inert in headless envs
     for (const e of events) {
       if (e.kind !== 'impact' && e.kind !== 'explosion') continue;
       if (!(e.damage >= 1)) continue;
+      if (e.victimOwner !== this.humanOwner && visible !== undefined && !visible(e.x, e.z)) {
+        continue;
+      }
       this.spawn(
         e.x,
         e.z,

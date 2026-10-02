@@ -64,6 +64,7 @@ import type { World } from '../sim/world';
 import type { UnitRecord } from '../sim/units';
 import { UNIT_DEFS, isSheltered, type UnitKind } from '../sim/units';
 import { variantArtBase } from '../sim/variants';
+import { fogCellIndex } from '../sim/fog';
 import {
   BUILDING_DEFS,
   cellCenterWorld,
@@ -1271,6 +1272,18 @@ export class EntityRenderer {
     // bright at night (zero per-frame cost).
     toneMapped: false,
   });
+  /**
+   * Fun-audit C3 (2026-10-02): fog-of-war filter. When set, units and
+   * buildings owned by a rival in `fogRivals` are only rendered when
+   * their id is in the corresponding visible set (refreshed by game.ts
+   * at fog cadence from the sim's own sight model). Hidden entities
+   * are skipped before the `seen` set, so their views (including
+   * instancer slots, chevrons, and blob shadows) are released exactly
+   * like dead entities — nothing leaks through the fog.
+   */
+  private fogRivals: Set<number> | null = null;
+  private fogVisibleUnits: Set<number> | null = null;
+  private fogVisibleBuildings: Set<number> | null = null;
   private readonly barTexture: THREE.CanvasTexture;
   /**
    * Veterancy chevron overlay (render/chevrons.ts): three instanced
@@ -1521,15 +1534,18 @@ export class EntityRenderer {
     this.combatVfx.update(world.combatEvents ?? [], 1 / 60);
     // Roadmap B13 (2026-10-02): floating damage numbers from the same
     // event stream, plus the damaged-building HP-bar/smoke overlay.
-    this.damageNumbers.update(world.combatEvents ?? [], 1 / 60);
+    // Fun-audit C3: enemy damage numbers respect the fog (own losses
+    // always show).
+    this.damageNumbers.update(world.combatEvents ?? [], 1 / 60, (x, z) => this.fogSees(x, z));
     this.damageState.sync(world, 1 / 60);
     // Roadmap B17 (2026-10-02): construction-site scaffolds + dust.
     this.constructionDressing.sync(world, 1 / 60);
     // Roadmap B21 (2026-10-02): foam wakes behind moving ships.
     this.shipWakes.sync(world, 1 / 60);
     // Final-review R5 visual lift: blob shadows for every unit +
-    // building (1 instanced draw call).
-    this.blobShadows.sync(world);
+    // building (1 instanced draw call). Fun-audit C3: hidden entities
+    // cast no shadows.
+    this.blobShadows.sync(world, (owner, id, isBuilding) => this.fogHidesShadow(owner, id, isBuilding));
     this.instancer?.endFrame(this.camera ?? undefined);
   }
 
@@ -1683,7 +1699,9 @@ export class EntityRenderer {
   private syncChevrons(world: World): void {
     // Sheltered units (parked in a hangar / embarked on a carrier) have
     // no body view to anchor chevrons to — filter them out too.
-    const visible = world.units.filter((u) => !isSheltered(u));
+    // Fun-audit C3: chevrons on fog-hidden rivals would leak veterancy
+    // (and presence) through the shroud.
+    const visible = world.units.filter((u) => !isSheltered(u) && !this.fogHidesUnit(u));
     this.chevrons.sync(
       visible,
       this.terrain,
@@ -1865,6 +1883,72 @@ export class EntityRenderer {
   setLogisticsOverlayVisible(visible: boolean): void {
     this.logisticsOverlayVisible = visible;
     this.logisticsOverlay.setVisible(visible);
+  }
+
+  /**
+   * Fun-audit C3 (2026-10-02): install the fog-of-war filter. `rivals`
+   * are the hostile owner ids (the AI players); the visible sets carry
+   * the sim sight model's current answer for the human owner. Refreshed
+   * by the controller at fog cadence — views stay stable between
+   * refreshes, so nothing flickers mid-frame.
+   */
+  setFogFilter(rivals: Set<number>, visibleUnits: Set<number>, visibleBuildings: Set<number>): void {
+    this.fogRivals = rivals;
+    this.fogVisibleUnits = visibleUnits;
+    this.fogVisibleBuildings = visibleBuildings;
+  }
+
+  /** Fun-audit C3: remove the fog filter (trailer/cinematic mode). */
+  clearFogFilter(): void {
+    this.fogRivals = null;
+    this.fogVisibleUnits = null;
+    this.fogVisibleBuildings = null;
+  }
+
+  /** True when the fog filter hides this unit record. */
+  private fogHidesUnit(u: { owner: number; id: number }): boolean {
+    return (
+      this.fogRivals !== null &&
+      this.fogRivals.has(u.owner) &&
+      !(this.fogVisibleUnits?.has(u.id) ?? false)
+    );
+  }
+
+  /** True when the fog filter hides this building record. */
+  private fogHidesBuilding(b: { owner: number; id: number }): boolean {
+    return (
+      this.fogRivals !== null &&
+      this.fogRivals.has(b.owner) &&
+      !(this.fogVisibleBuildings?.has(b.id) ?? false)
+    );
+  }
+
+  /**
+   * Fun-audit C3: predicate for the blob-shadow system — hidden entities
+   * cast no shadows (a shadow with no body would leak positions).
+   */
+  fogHidesShadow(owner: number, id: number, isBuilding: boolean): boolean {
+    if (this.fogRivals === null || !this.fogRivals.has(owner)) return false;
+    const set = isBuilding ? this.fogVisibleBuildings : this.fogVisibleUnits;
+    return !(set?.has(id) ?? false);
+  }
+
+  /**
+   * Fun-audit C3: the current visibility grid for the human owner
+   * (from `computeVisibleCells`, refreshed at fog cadence). Powers
+   * position-based gates like damage numbers.
+   */
+  private fogCells: Uint8Array | null = null;
+
+  setFogCells(cells: Uint8Array | null): void {
+    this.fogCells = cells;
+  }
+
+  /** True when the human currently sees the cell containing (x, z). */
+  private fogSees(x: number, z: number): boolean {
+    if (this.fogCells === null) return true; // no fog active (trailer)
+    const idx = fogCellIndex(x, z);
+    return (this.fogCells[idx] ?? 0) === 1;
   }
 
   // -------------------------------------------------------------------------
@@ -2591,6 +2675,9 @@ export class EntityRenderer {
       // have no map presence: skipping them here keeps them out of the
       // `seen` set, so the dispose sweep below releases their views.
       if (isSheltered(u)) continue;
+      // Fun-audit C3: rival units outside current sight are not
+      // rendered at all (their views dispose like dead units').
+      if (this.fogHidesUnit(u)) continue;
       seen.add(u.id);
       let view = this.units.get(u.id);
       if (!view) {
@@ -2880,6 +2967,9 @@ export class EntityRenderer {
   private syncBuildings(world: World): void {
     const seen = new Set<number>();
     for (const b of world.city.buildings) {
+      // Fun-audit C3: rival buildings outside current sight are not
+      // rendered (views dispose like demolished buildings').
+      if (this.fogHidesBuilding(b)) continue;
       seen.add(b.id);
       let view = this.buildings.get(b.id);
       if (!view) {

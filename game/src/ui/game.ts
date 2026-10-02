@@ -63,6 +63,9 @@ import {
   validatePlacement,
 } from '../sim/city';
 import type { AIDifficulty } from '../sim/ai';
+import { getVisibleEnemies, getVisibleEnemyBuildings } from '../sim/ai';
+import { computeVisibleCells, FOG_UPDATE_EVERY_TICKS } from '../sim/fog';
+import { FogShroud } from '../render/fog';
 import { CommandRejectedError } from '../sim/commands';
 import { getAgeState, type Age } from '../sim/ages';
 import { UPGRADE_DEFS, type UpgradeId } from '../sim/upgrades';
@@ -404,6 +407,13 @@ export interface GameFrameDeps {
   pruneSelection(): void;
   syncEntities(world: World): void;
   /**
+   * Fun-audit C3 (2026-10-02): refresh the fog-of-war render state at
+   * fog cadence — the shroud texture, the entity visibility filter,
+   * and the cached visibility grid. Runs before syncEntities so hidden
+   * rivals never render a frame.
+   */
+  refreshFog(world: World): void;
+  /**
    * Phase 4 (transport): keep the ambient transit providers (bus/tram/
    * ferry) — and the Phase 6 cargo-ship provider — in sync with the
    * player's networks. Runs before syncEntities so the crowd sees the
@@ -458,6 +468,9 @@ export function runGameFrame(deps: GameFrameDeps, nowMs: number, frameMs: number
     deps.refreshAdvisor(world);
   }
   deps.pruneSelection();
+  // Fun-audit C3 (2026-10-02): fog-of-war render refresh at fog
+  // cadence, before the entity sync so hidden rivals never draw.
+  deps.refreshFog(world);
   // Phase 4 (transport): refresh ambient transit providers before the
   // entity sync so the crowd renders this frame's registrations.
   deps.syncTransitProviders(world);
@@ -809,6 +822,16 @@ class GameController {
    */
   private readonly dayNightRig: DayNightRig;
   /**
+   * Fun-audit C3 (2026-10-02): the fog-of-war shroud (render/fog.ts).
+   * Created per game scene; repainted at fog cadence from the sim tick
+   * (pause ⇒ frozen shroud; save/load ⇒ explored grid is snapshotted).
+   * The cached visibility grid (`fogCells`) feeds the minimap and the
+   * entity filter at the same cadence.
+   */
+  private readonly fogShroud: FogShroud;
+  private fogCells: Uint8Array | null = null;
+  private lastFogTick = -1;
+  /**
    * Roadmap B13 (2026-10-02): screen-shake trauma 0..1. Explosions feed
    * it (scaled by distance from the camera target); it decays every
    * frame and the render step offsets the camera by shakeOffset().
@@ -1046,6 +1069,10 @@ class GameController {
       water: extras.water ?? null,
       setBlobShadowStrength: (f) => this.entities.setBlobShadowStrength(f),
     });
+    // Fun-audit C3 (2026-10-02): the fog-of-war shroud — one
+    // height-conforming transparent plane (+1 draw call), repainted at
+    // fog cadence from the sim's explored grid.
+    this.fogShroud = new FogShroud(this.scene, session.terrain);
 
     // Phase 3: apply persisted accessibility settings.
     const saved = loadSettings();
@@ -1506,6 +1533,33 @@ class GameController {
           this.entities.setRallyFlag(0, 0, false);
         }
       },
+      // Fun-audit C3 (2026-10-02): fog-of-war render refresh. Runs at
+      // fog cadence (every FOG_UPDATE_EVERY_TICKS sim ticks) so views
+      // stay stable between refreshes — no flicker. The sim's own sight
+      // model (units + building surveillance) answers what the human
+      // sees; the shroud, the entity filter, the minimap, and the
+      // threat meter all read the same answer.
+      refreshFog: (world) => {
+        if (world.tick - this.lastFogTick < FOG_UPDATE_EVERY_TICKS && this.fogCells !== null) {
+          return;
+        }
+        this.lastFogTick = world.tick;
+        const cells = computeVisibleCells(world, HUMAN_PLAYER_ID);
+        this.fogCells = cells;
+        // Entity filter: rivals are the AI players; only currently
+        // visible rival entities render (neutrals always render).
+        const rivals = new Set<number>();
+        for (const p of world.ai.players) {
+          if (p.owner !== HUMAN_PLAYER_ID) rivals.add(p.owner);
+        }
+        const visibleUnits = new Set<number>();
+        for (const u of getVisibleEnemies(world, HUMAN_PLAYER_ID)) visibleUnits.add(u.id);
+        const visibleBuildings = new Set<number>();
+        for (const b of getVisibleEnemyBuildings(world, HUMAN_PLAYER_ID)) visibleBuildings.add(b.id);
+        this.entities.setFogFilter(rivals, visibleUnits, visibleBuildings);
+        this.entities.setFogCells(cells);
+        this.fogShroud.update(world, HUMAN_PLAYER_ID, cells);
+      },
       updateHud: (world, selection, advisorItems, paused, speed, terrain) => {
         this.hud.update(world, selection, advisorItems, paused, speed, terrain);
         // Fun-audit B4 (2026-10-02): the rival-watch strip lives only in
@@ -1536,7 +1590,7 @@ class GameController {
           yaw: this.cameraState.yaw,
           viewW: wpp * (this.canvas.clientWidth || window.innerWidth),
           viewH: wpp * (this.canvas.clientHeight || window.innerHeight),
-        });
+        }, this.fogCells);
       },
       pollAudioEvents: (world, nowMs) => this.pollAudioEvents(world, nowMs),
       pollCampaign: (world, nowMs) => this.pollCampaign(world, nowMs),
@@ -2006,6 +2060,8 @@ class GameController {
     for (const off of this.removeListeners) off();
     this.removeListeners = [];
     this.hud.dispose();
+    // Fun-audit C3 (2026-10-02): release the fog shroud.
+    this.fogShroud.dispose();
     // Fun-audit B5 (2026-10-02): release the event-ping markers.
     this.eventPings?.dispose();
     this.eventPings = null;

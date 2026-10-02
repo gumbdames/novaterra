@@ -253,6 +253,13 @@ describe('muse/controller', () => {
     controller.update(world, HUMAN, AI);
     expect(controller.threat).toBe(50);
     spawnUnit(world, 'tank', AI, 0, 0);
+    // Fun-audit C3 (2026-10-02): the meter only counts what the player
+    // can see — with no scouts out, the tank is invisible and the meter
+    // stays at 50 (unknown, not safe).
+    controller.update(world, HUMAN, AI);
+    expect(controller.threat).toBe(50);
+    // A human scout adjacent to the tank: now it counts.
+    spawnUnit(world, 'rifles', HUMAN, 4, 0);
     controller.update(world, HUMAN, AI);
     expect(controller.threat).toBeGreaterThan(50);
   });

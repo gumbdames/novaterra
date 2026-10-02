@@ -37,7 +37,8 @@
  */
 
 import type { World } from '../sim/world';
-import { UNIT_DEFS, type UnitKind } from '../sim/units';
+import { UNIT_DEFS, type UnitKind, type UnitRecord } from '../sim/units';
+import { getVisibleEnemies } from '../sim/ai';
 
 /**
  * Deterministic military value of one player's living units.
@@ -47,20 +48,40 @@ export function militaryValue(world: World, playerId: number): number {
   let value = 0;
   for (const u of world.units) {
     if (u.owner !== playerId || u.hp <= 0) continue;
-    const def = UNIT_DEFS[u.kind as UnitKind];
-    if (!def || def.damage <= 0) continue;
-    value += u.hp * (def.damage + def.range / 10);
+    value += unitMilitaryValue(u);
   }
   return value;
+}
+
+/** Military value of a single living unit record. */
+export function unitMilitaryValue(u: UnitRecord): number {
+  if (u.hp <= 0) return 0;
+  const def = UNIT_DEFS[u.kind as UnitKind];
+  if (!def || def.damage <= 0) return 0;
+  return u.hp * (def.damage + def.range / 10);
 }
 
 /**
  * Threat meter 0..100: the AI's share of combined military value.
  * 50 with no armies on either side (unknown, not safe).
+ *
+ * Fun-audit C3 (2026-10-02, game-feel P3): the AI term counts only
+ * forces VISIBLE to the player through the sim's own sight model —
+ * the meter can no longer maphack an unseen army. The player's own
+ * term is unchanged (you always know your own strength). When nothing
+ * of the rival is visible the meter reads low: that is the honest
+ * fog-of-war answer ("no visible threat"), not safety.
  */
 export function computeThreat(world: World, playerId: number, aiId: number): number {
   const mine = militaryValue(world, playerId);
-  const theirs = militaryValue(world, aiId);
+  // Fun-audit C3: only forces the player can actually see count —
+  // getVisibleEnemies is the sim's own sight model (units + building
+  // surveillance), so the meter and the shroud never disagree.
+  let theirs = 0;
+  for (const u of getVisibleEnemies(world, playerId)) {
+    if (u.owner !== aiId) continue;
+    theirs += unitMilitaryValue(u);
+  }
   const total = mine + theirs;
   if (total <= 0) return 50;
   return Math.round((theirs / total) * 100);

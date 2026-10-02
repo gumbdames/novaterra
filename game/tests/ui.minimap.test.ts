@@ -191,3 +191,17 @@ describe('collectMinimapDots (fog of war)', () => {
     expect(dots.some((d) => d.id === dead.id)).toBe(false);
   });
 });
+
+describe('minimapFogCellStyle (fun-audit C3)', () => {
+  it('paints nothing for visible cells', async () => {
+    const { minimapFogCellStyle } = await import('../src/ui/minimap');
+    expect(minimapFogCellStyle(false, true)).toBeNull();
+    expect(minimapFogCellStyle(true, true)).toBeNull();
+  });
+
+  it('dims explored-but-unseen, near-blacks unexplored', async () => {
+    const { minimapFogCellStyle } = await import('../src/ui/minimap');
+    expect(minimapFogCellStyle(true, false)).toBe('rgba(4,6,14,0.55)');
+    expect(minimapFogCellStyle(false, false)).toBe('rgba(2,2,8,0.92)');
+  });
+});

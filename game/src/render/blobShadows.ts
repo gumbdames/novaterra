@@ -75,10 +75,17 @@ export function collectBlobShadows(
   world: World,
   heightAt: (x: number, z: number, domain: 'land' | 'air' | 'sea') => number,
   maxEntries: number = BLOB_SHADOW_CAPACITY,
+  /**
+   * Fun-audit C3 (2026-10-02): optional fog gate — when provided,
+   * entities it flags as hidden cast no shadow (a shadow with no body
+   * would leak positions through the fog).
+   */
+  hidden?: (owner: number, id: number, isBuilding: boolean) => boolean,
 ): BlobShadowEntry[] {
   const out: BlobShadowEntry[] = [];
   for (const u of world.units) {
     if (u.hp <= 0) continue;
+    if (hidden?.(u.owner, u.id, false) === true) continue;
     if (out.length >= maxEntries) break;
     const hull = hullSizeFor(u.kind);
     const diameter = Math.max(hull.x, hull.z, 1) * BLOB_HULL_SCALE;
@@ -91,6 +98,7 @@ export function collectBlobShadows(
   }
   for (const b of world.city.buildings) {
     if (out.length >= maxEntries) break;
+    if (hidden?.(b.owner, b.id, true) === true) continue;
     const def = BUILDING_DEFS[b.kind];
     const footprint = def ? Math.max(def.footprintW, def.footprintH) * CELL_WORLD_SIZE : 4;
     out.push({
@@ -160,11 +168,14 @@ export class BlobShadowSystem {
   }
 
   /** Rewrite this frame's shadow instances from the world. */
-  sync(world: World): void {
+  sync(
+    world: World,
+    hidden?: (owner: number, id: number, isBuilding: boolean) => boolean,
+  ): void {
     if (this.disposed) return;
     const heightAt = (x: number, z: number, domain: 'land' | 'air' | 'sea') =>
       groundYAt(this.terrain, this.waterLevel, domain, x, z);
-    const entries = collectBlobShadows(world, heightAt);
+    const entries = collectBlobShadows(world, heightAt, BLOB_SHADOW_CAPACITY, hidden);
     const n = Math.min(entries.length, BLOB_SHADOW_CAPACITY);
     for (let i = 0; i < n; i++) {
       // B27: no `!` — i < n <= entries.length by loop bound.

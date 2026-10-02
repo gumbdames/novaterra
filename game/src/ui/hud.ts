@@ -3208,8 +3208,10 @@ export class HUD {
     world: World,
     terrain: TerrainData | undefined,
     view: MinimapView,
+    /** Fun-audit C3 (2026-10-02): visibility grid — the minimap honors the shroud. */
+    fogCells?: Uint8Array | null,
   ): void {
-    this.minimap?.render(world, terrain, view);
+    this.minimap?.render(world, terrain, view, fogCells ?? null);
   }
 
   /**

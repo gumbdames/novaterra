@@ -78,8 +78,13 @@ for (const v of names) if (!idx.has(v)) visit(v);
 // src/sim/AGENTS.md), and the FORBIDDEN city→commands→movement→
 // pathfinding edge stays absent. Shrinking this group is welcome cleanup;
 // growing it (a new member) fails CI.
+// 2026-10-02 (fun-audit C3): `fog` joins sim-core — fog.ts reads the
+// sight model from ai.ts (getSightDiscs, function-body use only) while
+// world.ts owns the FogState store (createFogState, called inside
+// createWorld, never at module level). No TDZ hazard; the shroud and
+// the AI perception model share one sight source by construction.
 const ALLOWLIST = new Set([
-  'ages,ai,city,combat,commands,delegation,desirability,diplomacy,intel,movement,pathfinding,rail,seaTrade,shipyardRepair,superweapons,units,upgrades,utilityNetworks,variants,veterancy,world',
+  'ages,ai,city,combat,commands,delegation,desirability,diplomacy,fog,intel,movement,pathfinding,rail,seaTrade,shipyardRepair,superweapons,units,upgrades,utilityNetworks,variants,veterancy,world',
 ]);
 
 const bad = sccs.filter((s) => !ALLOWLIST.has(s));

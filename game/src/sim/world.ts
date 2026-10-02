@@ -52,6 +52,8 @@ import { initDelegation } from './delegation';
 import type { DiplomacyState } from './diplomacy';
 import { initDiplomacy } from './diplomacy';
 import type { WonderCountdown } from './wonderCountdown';
+import type { FogState } from './fog';
+import { createFogState } from './fog';
 import type { SuperweaponState } from './superweapons';
 import { initSuperweapons } from './superweapons';
 import { initUpgrades, initUpgradeLevels } from './upgrades';
@@ -160,6 +162,15 @@ export interface World {
    */
   wonderCountdown: WonderCountdown | null;
   /**
+   * Fun-audit C3 (2026-10-02): player fog of war — per-owner explored
+   * cell grids (see sim/fog.ts). Snapshotted (save/load keeps the
+   * shroud; legacy snapshots decode to fresh unexplored, no version
+   * bump — AD9) but NOT digested: nothing in the sim reads explored,
+   * so it cannot affect behavior (the economyFlows display-data
+   * precedent).
+   */
+  fog: FogState;
+  /**
    * Combat VFX event stream (B16, 2026-10-01): visual cues the sim
    * emits during the tick for the render layer. Drained by the render
    * each frame, cleared by the sim at tick start. NOT snapshotted,
@@ -232,6 +243,9 @@ export function createWorld(seed: number): World {
     diplomacy: initDiplomacy(),
     // Fun-audit B2: no countdown on a fresh world; restoreSnapshot for saves.
     wonderCountdown: null,
+    // Fun-audit C3: fog starts unexplored; the fog system's priming
+    // pass explores the starting base on the first tick.
+    fog: createFogState(),
     // Combat VFX stream starts empty (B16).
     combatEvents: [],
   };

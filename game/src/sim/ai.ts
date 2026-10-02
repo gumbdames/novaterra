@@ -662,13 +662,17 @@ export function addAIPlayer(
  * only, so a radar contact the AI "knows about" still has to be
  * engaged by a unit that can see it.
  */
+
 /**
- * The AI's sight discs: per-own-unit sight radii plus building
+ * The sight discs for one owner: per-own-unit sight radii plus building
  * surveillance coverage. Shared by `getVisibleEnemies` (units) and
  * `getVisibleEnemyBuildings` (buildings, A2) — one sight model, no
- * divergence. Returns null when the owner has no perception at all.
+ * divergence. Also shared by the fog-of-war system (sim/fog.ts), which
+ * rasterizes the same discs into the explored grid — the render shroud
+ * and the AI's perception can never disagree. Returns null when the
+ * owner has no perception at all.
  */
-function getSightDiscs(
+export function getSightDiscs(
   world: World,
   owner: number,
 ): { ownRadii: { x: number; z: number; r2: number }[]; coverage: { x: number; z: number; radius: number; seesStealth: boolean }[] } | null {

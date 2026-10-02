@@ -58,6 +58,8 @@ import { encodeUpgrades, decodeUpgrades, encodeUpgradeLevels, decodeUpgradeLevel
 import type { DiplomacyState } from './diplomacy';
 import { decodeDiplomacyState } from './diplomacy';
 import type { WonderCountdown, WonderRaceKind } from './wonderCountdown';
+import type { FogState } from './fog';
+import { createFogState, FOG_GRID } from './fog';
 
 /**
  * Snapshot format version. Bump on any breaking change to the shape below.
@@ -214,6 +216,12 @@ export interface Snapshot {
    * null (no countdown was ever running in an old save).
    */
   wonderCountdown: WonderCountdown | null;
+  /**
+   * Fun-audit C3 (2026-10-02): fog-of-war explored memory. Added
+   * without a version bump — legacy snapshots predate the field and
+   * decode to fresh unexplored (no old save had any fog).
+   */
+  fog: { cell: number; explored: Record<string, number[]> };
   /**
    * Roadmap B9 (2026-10-02): per-player repeatable-upgrade levels
    * (owner -> upgrade id -> level). Added without a version bump —
@@ -611,6 +619,8 @@ export function takeSnapshot(world: World): Snapshot {
       world.wonderCountdown === null || world.wonderCountdown === undefined
         ? null
         : { ...world.wonderCountdown },
+    // Fun-audit C3: faithful copy of the explored grids (plain data).
+    fog: encodeFogState(world.fog),
   };
 }
 
@@ -737,6 +747,9 @@ function restoreSnapshotInner(snap: Snapshot): World {
   // Defensive against corrupt values: kind must be a race kind, leader
   // a finite owner id, endsAtTick a finite tick.
   world.wonderCountdown = decodeWonderCountdown(snap.wonderCountdown);
+  // Fun-audit C3: pre-fog snapshots decode to fresh unexplored — no
+  // old save had any fog (AD9 neutral default, no version bump).
+  world.fog = decodeFogState(snap.fog);
   return world;
 }
 
@@ -760,4 +773,50 @@ function decodeWonderCountdown(data: unknown): WonderCountdown | null {
     leader,
     endsAtTick: Math.floor(endsAtTick),
   };
+}
+
+/**
+ * Fun-audit C3 (2026-10-02): encode the fog explored grids. Plain
+ * data — deep copy so the snapshot shares no references with the
+ * world (the restoreSnapshot contract).
+ */
+function encodeFogState(fog: FogState | undefined): { cell: number; explored: Record<string, number[]> } {
+  const out: Record<string, number[]> = {};
+  if (fog) {
+    for (const [owner, flags] of Object.entries(fog.explored)) {
+      out[owner] = [...flags];
+    }
+  }
+  return { cell: fog?.cell ?? 0, explored: out };
+}
+
+/**
+ * Fun-audit C3 (2026-10-02): defensive decode of fog state. Anything
+ * malformed (or absent — pre-fog snapshots) decodes to fresh
+ * unexplored: a corrupt shroud must never break a load.
+ */
+function decodeFogState(data: unknown): FogState {
+  const fresh = createFogState();
+  if (data === null || data === undefined || typeof data !== 'object') return fresh;
+  const d = data as Record<string, unknown>;
+  const explored = d['explored'];
+  if (explored === null || explored === undefined || typeof explored !== 'object') return fresh;
+  const gridSize = FOG_GRID * FOG_GRID;
+  for (const [ownerKey, flags] of Object.entries(explored as Record<string, unknown>)) {
+    const owner = Number(ownerKey);
+    if (!Number.isInteger(owner)) continue;
+    if (!Array.isArray(flags) || flags.length !== gridSize) continue;
+    const clean: number[] = new Array<number>(gridSize);
+    let ok = true;
+    for (let i = 0; i < gridSize; i++) {
+      const v = flags[i];
+      if (v !== 0 && v !== 1) {
+        ok = false;
+        break;
+      }
+      clean[i] = v as number;
+    }
+    if (ok) fresh.explored[owner] = clean;
+  }
+  return fresh;
 }
