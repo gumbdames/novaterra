@@ -47,90 +47,20 @@ import { SaveSlotsDialog, formatSaveSummary } from '../src/ui/saveslots';
 import { emptyProgress } from '../src/campaign/progress';
 import { missionsInOrder } from '../src/campaign/missions';
 import type { SaveMetadata } from '../src/netSave/savefile';
+import { installFakeDom, fakeRoot as root } from './support/fakeDom';
 
 // ---------------------------------------------------------------------------
-// Permissive fake DOM: every screen builds with createElement/append/
-// addEventListener/classList/style and nothing else structural.
+// Permissive fake DOM (shared): every screen builds with
+// createElement/append/addEventListener/classList/style and nothing else
+// structural. See tests/support/fakeDom.ts (extracted 2026-10-02,
+// roadmap B24).
 // ---------------------------------------------------------------------------
 
-function fakeClassList() {
-  const set = new Set<string>();
-  return {
-    add: (...c: string[]) => void c.forEach((x) => set.add(x)),
-    remove: (...c: string[]) => void c.forEach((x) => set.delete(x)),
-    toggle: (c: string, force?: boolean) => {
-      const on = force ?? !set.has(c);
-      if (on) set.add(c);
-      else set.delete(c);
-      return on;
-    },
-    contains: (c: string) => set.has(c),
-  };
-}
-
-function fakeElement(): Record<string, unknown> {
-  const listeners = new Map<string, Array<() => void>>();
-  const el: Record<string, unknown> = {
-    className: '',
-    textContent: '',
-    innerHTML: '',
-    title: '',
-    disabled: false,
-    value: '',
-    checked: false,
-    style: {},
-    dataset: {},
-    children: [] as unknown[],
-    classList: fakeClassList(),
-    append: (...kids: unknown[]) => void (el.children as unknown[]).push(...kids),
-    appendChild: (kid: unknown) => {
-      (el.children as unknown[]).push(kid);
-      return kid;
-    },
-    remove: () => {},
-    addEventListener: (type: string, fn: () => void) => {
-      const arr = listeners.get(type) ?? [];
-      arr.push(fn);
-      listeners.set(type, arr);
-    },
-    removeEventListener: () => {},
-    querySelector: () => null,
-    querySelectorAll: () => [],
-    setAttribute: () => {},
-    getAttribute: () => null,
-    click: () => void listeners.get('click')?.forEach((fn) => fn()),
-    focus: () => {},
-  };
-  return el;
-}
-
-const store = new Map<string, string>();
+let store = installFakeDom();
 
 beforeEach(() => {
-  store.clear();
-  vi.stubGlobal('document', {
-    createElement: (_tag: string) => fakeElement(),
-    createTextNode: (text: string) => {
-      const n = fakeElement();
-      n.textContent = text;
-      return n;
-    },
-    documentElement: { classList: fakeClassList() },
-  });
-  vi.stubGlobal('localStorage', {
-    getItem: (k: string) => (store.has(k) ? store.get(k)! : null),
-    setItem: (k: string, v: string) => void store.set(k, v),
-    removeItem: (k: string) => void store.delete(k),
-  });
-  vi.stubGlobal('window', {
-    setTimeout: (fn: () => void) => 1 as unknown as number,
-    clearTimeout: () => {},
-  });
+  store = installFakeDom();
 });
-
-function root(): HTMLElement {
-  return fakeElement() as unknown as HTMLElement;
-}
 
 // ---------------------------------------------------------------------------
 // campaignUi

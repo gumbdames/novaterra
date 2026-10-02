@@ -131,11 +131,16 @@ export function seaRouteOfUnit(world: World, u: UnitRecord): SeaRoute | undefine
  */
 export function seaTradeCargoLine(u: UnitRecord): string {
   const def = UNIT_DEFS[u.kind as UnitKind];
+  const fuel = u.cargoFuel ?? 0;
+  const mats = u.cargoMaterials ?? 0;
+  // An empty hold reads "Hold: empty" rather than a row of zeroes —
+  // the detail panel's cargo line is for the load, not the capacity.
+  if (fuel <= 0 && mats <= 0) return 'Hold: empty';
   const parts: string[] = [];
   const fuelCap = def?.cargoFuelCapacity ?? 0;
-  if (fuelCap > 0) parts.push(`${u.cargoFuel}/${fuelCap} fuel`);
+  if (fuelCap > 0) parts.push(`${fuel}/${fuelCap} fuel`);
   const matCap = def?.cargoMaterialsCapacity ?? 0;
-  if (matCap > 0) parts.push(`${u.cargoMaterials ?? 0}/${matCap} materials`);
+  if (matCap > 0) parts.push(`${mats}/${matCap} materials`);
   if (parts.length === 0) return 'Hold: empty';
   return `Hold: ${parts.join(' · ')}`;
 }

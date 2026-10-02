@@ -507,7 +507,7 @@ export class HUD {
   private readonly toastQueue = new ToastQueue();
   private lastToastShown: string | null = null;
   private lastText = new Map<string, string>();
-  private lastAdvisorKey = '';
+  private lastAdvisorKey: string | null = null;
   /**
    * Workstream Y (3-tab menu): which main menu tab is active. The build
    * tab is remembered per main tab so flipping between Civilian and
