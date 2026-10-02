@@ -109,39 +109,54 @@ const AMBIENT_BED_PEACE = 0.05;
 const AMBIENT_BED_WAR = 0.02;
 
 /**
- * Build the ambient city bed buffer: low brown-ish noise with slow
- * swells (distant traffic/wind) plus two soft low sine partials (city
- * hum). The last second crossfades into the first so the loop seam is
- * inaudible. Deterministic fill (fixed seed) — UI-layer only, but
- * stable behavior is free.
+ * Build the ambient city bed buffer (roadmap B21, 2026-10-02: richer
+ * layered bed — was mono brown noise + hum). Now stereo, three layers:
+ *  - deep brown-ish rumble (distant traffic/wind) with a slow swell;
+ *  - brighter airy noise ("city air") with its own independent swell —
+ *    the two channels use different seeds/phases so the bed has gentle
+ *    stereo movement;
+ *  - the soft low sine city hum (55Hz + 110Hz), slightly detuned per
+ *    channel.
+ * The last second of each channel crossfades into its first so the loop
+ * seam is inaudible. Deterministic fill (fixed seeds) — UI-layer only,
+ * but stable behavior is free.
  */
 function createAmbientBedBuffer(ctx: AudioContext): AudioBuffer {
   const rate = ctx.sampleRate;
   const len = Math.floor(rate * AMBIENT_BED_SECONDS);
-  const buffer = ctx.createBuffer(1, len, rate);
-  const data = buffer.getChannelData(0);
-  let seed = 0x51ab3c7d;
-  const rand = (): number => {
-    seed = (seed * 1664525 + 1013904223) >>> 0;
-    return (seed / 0xffffffff) * 2 - 1;
-  };
-  // Brown-ish noise via a leaky integrator, plus slow amplitude swells.
-  let last = 0;
-  for (let i = 0; i < len; i++) {
-    const t = i / rate;
-    last = (last + 0.02 * rand()) / 1.02;
-    const swell = 0.6 + 0.4 * Math.sin((2 * Math.PI * t) / AMBIENT_BED_SECONDS * 2);
-    const hum =
-      0.15 * Math.sin(2 * Math.PI * 55 * t) + 0.08 * Math.sin(2 * Math.PI * 110 * t + 1.3);
-    data[i] = last * 2.2 * swell + hum * 0.35;
-  }
-  // Seam crossfade: blend the last second into the first.
-  const fade = Math.min(rate, len);
-  for (let i = 0; i < fade; i++) {
-    const a = i / fade;
-    const j = len - fade + i;
-    const blended = data[i]! * a + data[j]! * (1 - a);
-    data[j] = blended;
+  const buffer = ctx.createBuffer(2, len, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buffer.getChannelData(ch);
+    let seed = 0x51ab3c7d + ch * 0x9e3779b9;
+    const rand = (): number => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return (seed / 0xffffffff) * 2 - 1;
+    };
+    // Brown-ish noise via leaky integrators (deep + airy layers).
+    let low = 0;
+    let air = 0;
+    for (let i = 0; i < len; i++) {
+      const t = i / rate;
+      low = (low + 0.02 * rand()) / 1.02;
+      air = (air + 0.09 * rand()) / 1.09;
+      const swell =
+        0.6 + 0.4 * Math.sin((2 * Math.PI * t) / AMBIENT_BED_SECONDS * 2 + ch * 2.1);
+      const activity =
+        0.5 +
+        0.5 * Math.sin((2 * Math.PI * t) / AMBIENT_BED_SECONDS * 3 + ch * 1.2 + 0.7);
+      const hum =
+        0.15 * Math.sin(2 * Math.PI * 55 * t + ch * 0.4) +
+        0.08 * Math.sin(2 * Math.PI * 110 * t + 1.3);
+      data[i] = (low * 2.2 * swell + air * 0.45 * activity + hum * 0.35) * 0.8;
+    }
+    // Seam crossfade: blend the last second into the first.
+    const fade = Math.min(rate, len);
+    for (let i = 0; i < fade; i++) {
+      const a = i / fade;
+      const j = len - fade + i;
+      const blended = data[i]! * a + data[j]! * (1 - a);
+      data[j] = blended;
+    }
   }
   return buffer;
 }

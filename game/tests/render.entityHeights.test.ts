@@ -326,13 +326,15 @@ describe('EntityRenderer terrain riding', () => {
     const groups = scene.getObjectByName('units')?.children as THREE.Group[];
     expect(groups).toHaveLength(3);
     // sync() preserves world order: land rides the terrain, sea floats at
-    // the water level, air rides the terrain with the 14 hover applied
-    // to the hull (group-relative).
+    // the water level (roadmap B21: ±0.35 bob around it), air rides the
+    // terrain with the 14 hover applied to the hull (group-relative).
     expect((groups[0] as THREE.Group).position.y).toBeCloseTo(
       heightAt(t, land.x, land.z),
       6,
     );
-    expect((groups[1] as THREE.Group).position.y).toBe(t.waterLevel);
+    expect(
+      Math.abs((groups[1] as THREE.Group).position.y - t.waterLevel),
+    ).toBeLessThanOrEqual(0.35);
     const airGroup = groups[2] as THREE.Group;
     expect(airGroup.position.y).toBeCloseTo(heightAt(t, land.x, land.z), 6);
     const airHull = airGroup.children[0] as THREE.Group;

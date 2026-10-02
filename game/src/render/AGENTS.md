@@ -347,7 +347,6 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   Pure math tested in `tests/ui.cameraShake.test.ts`.
 
 ## Construction dressing (`render/constructionDressing.ts`, roadmap B17, 2026-10-02)
-
 - Construction was a 55%-opacity ghost fade only. Now every building
   with `progress < 1` gets a safety-orange scaffold frame (4 corner
   poles + 3 horizontal levels, height scaled by footprint) plus
@@ -847,3 +846,29 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   The dead `_v1.._v3` GLB variant-key scaffolding (`variantModelKey` /
   `isVariantModelKey`) was deleted in the same change — variant identity
   comes from rooftop props + size tiers + this tint, not suffixed keys.
+
+## Small juice (`render/shipWakes.ts`, roadmap B21, 2026-10-02)
+
+- **Aircraft banking**: 'air'-domain units bank into their remaining
+  turn — `bankForTurn` (pure, `entityInstancing.ts`) maps the wrapped
+  remaining yaw to a roll (capped at `MAX_BANK` 0.45 rad), smoothed per
+  frame on the view (`UnitView.bank`). Frame-rate independent (it keys
+  on yaw-still-to-go, not per-frame turn rate). Applied as
+  `InstanceWrite.roll` (yaw→pitch→roll 'YXZ' in `writeTransform`) on the
+  instanced path and `hull.rotation.z` on the legacy path.
+- **Ship bob**: 'sea'-domain units ride `shipBob(t, bobPhase(id))`
+  (pure, deterministic) — ±0.35 lift, ±0.03 pitch, ±0.04 roll at game
+  time `t = ambientSecondsForTick(world.tick)` (pauses with the game).
+  Applied as `InstanceWrite` lift/roll/pitch (instanced) or group
+  position + hull rotation (legacy).
+- **Ship wakes**: one `THREE.InstancedMesh` (1 draw call, hidden while
+  no ship moves) of 24 foam streak quads. Each moving sea unit
+  (>3 u/s) owns a quad glued to its stern, stretching with speed; when
+  the ship stops the quad shrinks away over 1s. The foam texture is a
+  DataTexture (head-bright, tail-fading — headless-safe). Owned by
+  `EntityRenderer` (construct / sync / dispose), like the other
+  overlays. Shore foam stays skipped per the `render/terrain.ts`
+  deliberate decision.
+- Pure juice math + wake texture + pool behavior are covered by
+  `tests/render.juice.test.ts` (15 tests); the renderer scene-graph
+  pins in `tests/render.entityInstancing.test.ts` count the wake mesh.

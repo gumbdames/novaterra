@@ -60,6 +60,65 @@ const INITIAL_POOL_CAPACITY = 8;
 /** Preallocated health-bar job slots; doubles on overflow (rare). */
 const INITIAL_BAR_JOBS = 256;
 
+/**
+ * Roadmap B21 (2026-10-02): small-juice math (pure, tested).
+ *
+ * Aircraft banking and ship bob are computed here so both the instanced
+ * and legacy view paths share them; `updateUnitView` (entities.ts) feeds
+ * the results into `InstanceWrite.roll/pitch` (or the legacy hull
+ * rotation). Render-side only — never touches sim state.
+ */
+
+/** Wrap an angle to (-π, π]. */
+export function wrapAngle(a: number): number {
+  while (a > Math.PI) a -= 2 * Math.PI;
+  while (a <= -Math.PI) a += 2 * Math.PI;
+  return a;
+}
+
+/** Maximum aircraft bank angle (radians) — a visible but sane lean. */
+export const MAX_BANK = 0.45;
+
+/**
+ * Aircraft bank target for a remaining turn: bank INTO the turn,
+ * proportional to the yaw still to go (frame-rate independent —
+ * smoothing happens in the view), capped at MAX_BANK. Positive
+ * `turnRemaining` is a right turn → negative roll (right wing down;
+ * models face +z at yaw 0).
+ */
+export function bankForTurn(turnRemaining: number): number {
+  const banked = -turnRemaining * 2;
+  return Math.max(-MAX_BANK, Math.min(MAX_BANK, banked));
+}
+
+/**
+ * Ship-bob phase from the unit id — golden-angle spacing so neighboring
+ * hulls never bob in sync.
+ */
+export function bobPhase(unitId: number): number {
+  return (unitId * 2.399963) % (Math.PI * 2);
+}
+
+/** One ship-bob sample: lift (world units) + pitch/roll (radians). */
+export interface ShipBob {
+  lift: number;
+  pitch: number;
+  roll: number;
+}
+
+/**
+ * Ship bob at game-time `t` (seconds): a slow swell lift plus gentle
+ * pitch and roll, all well under a degree-or-two visually except the
+ * lift. Deterministic in (t, phase).
+ */
+export function shipBob(t: number, phase: number): ShipBob {
+  return {
+    lift: Math.sin(t * 0.9 + phase) * 0.35,
+    pitch: Math.sin(t * 0.7 + phase * 1.3) * 0.03,
+    roll: Math.sin(t * 0.8 + phase * 0.7) * 0.04,
+  };
+}
+
 /** One model piece of an entity: pool key + entity-local offset. */
 export interface InstancedPiece {
   /** Pool key: a MODEL_PATHS key, `procedural:<kind>`, or `prop:<propKey>`. */
@@ -154,6 +213,13 @@ export interface InstanceWrite {
   z: number;
   /** Yaw in radians; hulls face +z at 0. */
   yaw: number;
+  /**
+   * Roadmap B21: roll (about the forward axis) and pitch in radians —
+   * aircraft banking / ship bob. Optional; absent = level flight.
+   * Applied yaw→pitch→roll ('YXZ').
+   */
+  roll?: number;
+  pitch?: number;
   /** Hover lift above y (the legacy hull-group offset). */
   baseY: number;
   /** Model top above the base: stripe/pennant/bar anchor. */
@@ -202,6 +268,7 @@ interface BarJob {
 const _entity = new THREE.Matrix4();
 const _piece = new THREE.Matrix4();
 const _quat = new THREE.Quaternion();
+const _euler = new THREE.Euler();
 const _pos = new THREE.Vector3();
 const _scl = new THREE.Vector3();
 const _yAxis = new THREE.Vector3(0, 1, 0);
@@ -419,8 +486,14 @@ export class EntityInstancer {
   writeTransform(id: number, w: InstanceWrite): void {
     const entity = this.entities.get(id);
     if (entity === undefined) return;
-    // Entity matrix: world position (with hover lift) × yaw.
-    _quat.setFromAxisAngle(_yAxis, w.yaw);
+    // Entity matrix: world position (with hover lift) × yaw, plus the
+    // B21 juice rotations (pitch/roll) in yaw→pitch→roll order.
+    if (w.roll !== undefined || w.pitch !== undefined) {
+      _euler.set(w.pitch ?? 0, w.yaw, w.roll ?? 0, 'YXZ');
+      _quat.setFromEuler(_euler);
+    } else {
+      _quat.setFromAxisAngle(_yAxis, w.yaw);
+    }
     _pos.set(w.x, w.y + w.baseY, w.z);
     _scl.set(1, 1, 1);
     _entity.compose(_pos, _quat, _scl);

@@ -19,7 +19,12 @@ state. Pause = ctx.suspend(); settings persist to localStorage.
   hysteresis); `updateListener(x, z)` keeps the listener on the camera
   target every frame; `startAmbientBed()` starts the procedural city
   hum under the music bus (in-game only, pause-aware, ducks under war).
-  `bindUiClicks(root)` plays the click cue for any button press.
+  `bindUiClicks(root)` plays the click cue for any button press. The
+  procedural city hum (`createAmbientBedBuffer`, roadmap B21,
+  2026-10-02) is a stereo 8s loop in three layers — deep brown-noise
+  rumble, brighter airy noise, and the low sine city hum — with
+  independent per-channel swells for gentle stereo movement; it ducks
+  under war.
 - `events.ts` — sim→audio event differ (pure, tested,
   `tests/audio.events.test.ts`). The sim never emits audio events; the
   game loop snapshots once per poll and `AudioEventTracker` diffs by

@@ -78,7 +78,15 @@ import {
 } from '../sim/city';
 import { STORM_FX_TICKS, type WeaponFx } from '../sim/superweapons';
 import type { LoadedModel } from './models';
-import { EntityInstancer, type InstancedPiece } from './entityInstancing';
+import {
+  EntityInstancer,
+  bankForTurn,
+  bobPhase,
+  shipBob,
+  wrapAngle,
+  type InstancedPiece,
+} from './entityInstancing';
+import { ShipWakes } from './shipWakes';
 import {
   buildHqAntenna,
   buildInfantryGear,
@@ -1115,6 +1123,12 @@ interface UnitView {
   modelTop: number;
   /** Yaw in instanced mode (the legacy path stores it on hull.rotation.y). */
   yaw: number;
+  /**
+   * Roadmap B21: smoothed aircraft bank angle (radians) — the legacy
+   * path and the instanced path both read this; only 'air' domains
+   * ever bank.
+   */
+  bank: number;
   /** True when this view's meshes live in the instancer's pools. */
   instanced: boolean;
   /** Legacy path only: team stripe mesh (repositioned on model upgrade). */
@@ -1262,6 +1276,8 @@ export class EntityRenderer {
   private readonly damageState: DamageStateOverlay;
   /** Roadmap B17: construction-site scaffolds + dust. */
   private readonly constructionDressing: ConstructionDressing;
+  /** Roadmap B21: foam wakes behind moving ships. */
+  private readonly shipWakes: ShipWakes;
   // Workstream Z: zone-tint ground decals (visible by default).
   private readonly zoneOverlay: ZoneOverlay;
   // Workstream P (ambient city life): auto-paved zone decals +
@@ -1422,6 +1438,8 @@ export class EntityRenderer {
     this.damageState = new DamageStateOverlay(scene);
     // Roadmap B17: construction dressing rides the same path.
     this.constructionDressing = new ConstructionDressing(scene);
+    // Roadmap B21: ship wakes.
+    this.shipWakes = new ShipWakes(scene, this.waterLevel);
     this.zoneOverlay = new ZoneOverlay(scene);
     // Workstream P (ambient city life): paving is a sibling of the zone
     // decals (same digest cadence); the crowd reads zones/roads/seed.
@@ -1497,6 +1515,8 @@ export class EntityRenderer {
     this.damageState.sync(world, 1 / 60);
     // Roadmap B17 (2026-10-02): construction-site scaffolds + dust.
     this.constructionDressing.sync(world, 1 / 60);
+    // Roadmap B21 (2026-10-02): foam wakes behind moving ships.
+    this.shipWakes.sync(world, 1 / 60);
     // Final-review R5 visual lift: blob shadows for every unit +
     // building (1 instanced draw call).
     this.blobShadows.sync(world);
@@ -2002,6 +2022,8 @@ export class EntityRenderer {
     this.damageState.dispose();
     // Roadmap B17.
     this.constructionDressing.dispose();
+    // Roadmap B21.
+    this.shipWakes.dispose();
     this.zoneOverlay.dispose();
     // Workstream P (ambient city life).
     this.pavingOverlay.dispose();
@@ -2508,7 +2530,7 @@ export class EntityRenderer {
         this.units.set(u.id, view);
         this.unitGroup.add(view.group);
       }
-      this.updateUnitView(view, u);
+      this.updateUnitView(view, u, ambientSecondsForTick(world.tick));
       // Lazy-load upgrade: a view built while its kind's GLB was still
       // arriving renders fallback art until the pieces land, then swaps
       // to the real model in place (render-side only).
@@ -2555,6 +2577,7 @@ export class EntityRenderer {
         baseY,
         modelTop: resolved.top,
         yaw: 0,
+        bank: 0,
         instanced: false,
         stripe: null,
         pennant: null,
@@ -2614,6 +2637,7 @@ export class EntityRenderer {
     group.position.set(u.x, this.unitGroundY(u), u.z);
     return {
       group, id: u.id, owner: u.owner, hull, barBg, barFg, baseY, modelTop, yaw: 0,
+      bank: 0,
       instanced: false, stripe, pennant: pennant.mesh, degraded, owned,
     };
   }
@@ -2700,21 +2724,49 @@ export class EntityRenderer {
     view.degraded = false;
   }
 
-  private updateUnitView(view: UnitView, u: UnitRecord): void {
+  private updateUnitView(view: UnitView, u: UnitRecord, timeSec: number): void {
     const instancer = this.instancer;
-    if (instancer !== null && view.instanced) {
-      const dx = u.destX - u.x;
-      const dz = u.destZ - u.z;
-      if (dx * dx + dz * dz > 0.5) {
-        view.yaw = Math.atan2(dx, dz);
+    const def = UNIT_DEFS[u.kind as UnitKind];
+    const domain = def?.domain;
+
+    // Roadmap B21 juice — computed once, applied on both view paths.
+    // Face the order destination when it has one; cheap orientation cue.
+    // Models face +z at rotation 0 (rotY baked at load), matching the
+    // placeholder convention.
+    const dx = u.destX - u.x;
+    const dz = u.destZ - u.z;
+    const desiredYaw = dx * dx + dz * dz > 0.5 ? Math.atan2(dx, dz) : view.yaw;
+    let roll = 0;
+    let pitch = 0;
+    let lift = 0;
+    if (domain === 'air') {
+      // Aircraft bank into the remaining turn: proportional to the yaw
+      // still to go (frame-rate independent), smoothed per frame.
+      const remaining = wrapAngle(desiredYaw - view.yaw);
+      const targetBank = bankForTurn(remaining);
+      view.bank += (targetBank - view.bank) * 0.12;
+      roll = view.bank;
+    } else {
+      view.bank = 0;
+      if (domain === 'sea') {
+        // Ships ride a slow swell: lift + gentle pitch/roll.
+        const bob = shipBob(timeSec, bobPhase(u.id));
+        lift = bob.lift;
+        pitch = bob.pitch;
+        roll = bob.roll;
       }
-      const def = UNIT_DEFS[u.kind as UnitKind];
+    }
+    view.yaw = desiredYaw;
+
+    if (instancer !== null && view.instanced) {
       const frac = def ? Math.max(0, Math.min(1, u.hp / def.hp)) : 1;
       instancer.writeTransform(u.id, {
         x: u.x,
-        y: this.unitGroundY(u),
+        y: this.unitGroundY(u) + lift,
         z: u.z,
         yaw: view.yaw,
+        roll,
+        pitch,
         baseY: view.baseY,
         modelTop: view.modelTop,
         hpFrac: frac,
@@ -2723,16 +2775,10 @@ export class EntityRenderer {
       return;
     }
     const hull = view.hull as THREE.Group;
-    view.group.position.set(u.x, this.unitGroundY(u), u.z);
-    // Face the order destination when it has one; cheap orientation cue.
-    // Models face +z at rotation 0 (rotY baked at load), matching the
-    // placeholder convention.
-    const dx = u.destX - u.x;
-    const dz = u.destZ - u.z;
-    if (dx * dx + dz * dz > 0.5) {
-      hull.rotation.y = Math.atan2(dx, dz);
-    }
-    const def = UNIT_DEFS[u.kind as UnitKind];
+    view.group.position.set(u.x, this.unitGroundY(u) + lift, u.z);
+    hull.rotation.y = view.yaw;
+    hull.rotation.x = pitch;
+    hull.rotation.z = roll;
     const frac = def ? Math.max(0, Math.min(1, u.hp / def.hp)) : 1;
     const barY = view.baseY + view.modelTop + 1.1;
     const barBg = view.barBg as THREE.Sprite;

@@ -389,8 +389,10 @@ describe('EntityRenderer instanced mode', () => {
     expect(sprites).toBe(96 + 72 + 16);
     // 3 instancer pools + 3 chevron level meshes (always in the scene,
     // hidden while no veteran is alive — zero draw calls when empty)
-    // + 1 blob-shadow InstancedMesh (final-review R5 visual lift).
-    expect(instanced).toBe(7);
+    // + 1 blob-shadow InstancedMesh (final-review R5 visual lift)
+    // + 1 ship-wake InstancedMesh (roadmap B21 — hidden while no ship
+    // moves, zero draw calls when empty).
+    expect(instanced).toBe(8);
     expect(meshes).toBe(0);
     renderer.dispose();
   });
@@ -404,9 +406,10 @@ describe('EntityRenderer instanced mode', () => {
     expect(renderer.debugInstancer).toBeNull();
     const { instanced, sprites } = countObjects(scene);
     // 3 chevron level meshes (hidden, no veterans) + 1 blob-shadow
-    // InstancedMesh (final-review R5 visual lift); legacy bodies are
-    // per-view meshes, never instanced.
-    expect(instanced).toBe(4);
+    // InstancedMesh (final-review R5 visual lift) + 1 ship-wake
+    // InstancedMesh (roadmap B21 — hidden while no ship moves);
+    // legacy bodies are per-view meshes, never instanced.
+    expect(instanced).toBe(5);
     // Per-view meshes exist (hull + stripe + pennant each); 24 health-bar
     // sprites (all undamaged, bars hidden — visibility, not absence) +
     // 96 B16 VFX sprites (hidden while no combat is active) + 72 B13
@@ -455,16 +458,18 @@ describe('EntityRenderer instanced mode', () => {
     let counts = countObjects(scene);
     expect(counts.meshes).toBeGreaterThan(0);
     // Only the 3 hidden chevron level meshes + the 1 blob-shadow
-    // InstancedMesh are instanced while the building is still legacy.
-    expect(counts.instanced).toBe(4);
+    // InstancedMesh + the 1 ship-wake InstancedMesh (roadmap B21) are
+    // instanced while the building is still legacy.
+    expect(counts.instanced).toBe(5);
     // Completing construction converts the view into the pools.
     building.progress = 1;
     renderer.sync(fakeWorld([], [building]));
     expect(inst.entityCount).toBe(1);
     counts = countObjects(scene);
     // house model pool + pennant (no stripe) + 3 hidden chevron meshes
-    // + 1 blob-shadow InstancedMesh (final-review R5 visual lift).
-    expect(counts.instanced).toBe(6);
+    // + 1 blob-shadow InstancedMesh (final-review R5 visual lift)
+    // + 1 ship-wake InstancedMesh (roadmap B21).
+    expect(counts.instanced).toBe(7);
     expect(counts.meshes).toBe(0);
     expect(inst.drawCallCount()).toBe(2);
     renderer.dispose();
@@ -481,8 +486,9 @@ describe('EntityRenderer instanced mode', () => {
     expect(inst.entityCount).toBe(0);
     const { instanced, meshes } = countObjects(scene);
     // Only the 3 hidden chevron level meshes + the 1 blob-shadow
-    // InstancedMesh; bodies fall back to legacy.
-    expect(instanced).toBe(4);
+    // InstancedMesh + the 1 ship-wake InstancedMesh (roadmap B21);
+    // bodies fall back to legacy.
+    expect(instanced).toBe(5);
     expect(meshes).toBeGreaterThan(0);
     renderer.dispose();
   });
