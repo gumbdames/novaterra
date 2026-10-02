@@ -421,9 +421,9 @@ function copyCity(city: CityState, legacy = false): CityState {
     nextBuildingId: city.nextBuildingId,
     players: city.players.map(copyPlayer),
     foodShortage: city.foodShortage,
-    tradeRoutes: city.tradeRoutes.map((r) => ({
-      owner: r.owner, partner: r.partner, establishedTick: r.establishedTick,
-    })),
+    // Fun-audit C2c (land-trade deletion, 2026-10-02): trade routes
+    // are gone — legacy snapshots carrying them decode by ignoring
+    // the field (extra JSON fields are skipped by the decoders).
     // Grand-expansion Phase 5 (S5, 2026-09-30): airline routes.
     // Legacy saves (no field) decode to [] / 1 — AD9 additive, no
     // version bump (stays v8).

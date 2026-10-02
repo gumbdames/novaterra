@@ -602,9 +602,8 @@ export function effectiveWaterSupply(world: World, owner: number, kind: string, 
   return base;
 }
 
-/** Free Trade: market funds x1.5, trade-route income 3 -> 4.5, shop funds x1.25. */
+/** Free Trade: market funds x1.5, shop funds x1.25. */
 export const FREE_TRADE_MARKET_MULT = 1.5;
-export const FREE_TRADE_TRADE_ROUTE_INCOME = 4.5;
 export const FREE_TRADE_SHOP_MULT = 1.25;
 
 /** Max (spawn) hp for a unit, with Composite Armor / Field Medicine applied. */

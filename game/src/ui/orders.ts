@@ -404,28 +404,6 @@ export function buildSetPolicyOrder(
   };
 }
 
-/** Phase 3: establish a trade route with another player. */
-export function buildEstablishTradeRouteOrder(
-  owner: number,
-  partner: number,
-): OrderIntent {
-  return {
-    kind: 'establishTradeRoute',
-    payload: { owner, partner },
-  };
-}
-
-/** Phase 3: cancel a trade route. */
-export function buildCancelTradeRouteOrder(
-  owner: number,
-  partner: number,
-): OrderIntent {
-  return {
-    kind: 'cancelTradeRoute',
-    payload: { owner, partner },
-  };
-}
-
 /**
  * Civilian sea trade (Half A, 2026-10-01): establish a sea route
  * between two of the owner's harbors. `from` / `to` are building ids —

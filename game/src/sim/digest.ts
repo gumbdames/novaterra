@@ -205,8 +205,8 @@ export function canonicalizeWorld(world: World): string {
     out += `|pol${p.id}=${POLICY_IDS.filter((pid) => policies[pid] === true).join(',')};`;
   }
   out += `|shortage=${world.city.foodShortage ? 1 : 0}`;
-  // Trade routes: owner→partner pairs in establishment order.
-  out += `|trade=${world.city.tradeRoutes.map((r) => `${r.owner}>${r.partner}@${r.establishedTick}`).join(',')};`;
+  // Fun-audit C2c (land-trade deletion, 2026-10-02): trade routes are
+  // gone — the |trade=| segment is removed (no routes ⇒ no behavior).
   // Grand-expansion Phase 5 (S5, 2026-09-30): airline routes — route
   // income is behavior-affecting ⇒ digest-covered (PLAN §11).
   // Establishment order; legacy saves decode to [] (the empty string).

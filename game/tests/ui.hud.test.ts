@@ -80,8 +80,6 @@ function stubActions(): HUDActions & { calls: string[] } {
     onDismissGeneral: rec('onDismissGeneral'),
     onSetGeneralStance: rec('onSetGeneralStance'),
     onSetSpecialization: rec('onSetSpecialization'),
-    onEstablishTradeRoute: rec('onEstablishTradeRoute'),
-    onCancelTradeRoute: rec('onCancelTradeRoute'),
     onSeaTradeNewRoute: rec('onSeaTradeNewRoute'),
     onCancelSeaRoute: rec('onCancelSeaRoute'),
     onAssignSeaRoute: rec('onAssignSeaRoute'),

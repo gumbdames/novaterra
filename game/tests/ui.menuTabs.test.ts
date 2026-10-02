@@ -170,11 +170,14 @@ describe('every pre-existing control has a home under the rebuilt menu', () => {
     }
   });
 
-  it('the Management Trade sub-tab surfaces the trade-route commands', () => {
-    const trade = methodBody('tradeSectionEl');
-    expect(trade).toContain('onEstablishTradeRoute');
-    expect(trade).toContain('onCancelTradeRoute');
-    expect(trade).toContain('tradeEmpty');
+  it('the Management Trade sub-tab surfaces the sea-trade section', () => {
+    // Fun-audit C2c (land-trade deletion, 2026-10-02): the
+    // player-to-player land trade routes are gone — the Trade sub-tab
+    // now holds only the dock-to-dock sea routes.
+    const trade = methodBody('seaTradeSectionEl');
+    expect(trade).toContain('onSeaTradeNewRoute');
+    expect(trade).toContain('onCancelSeaRoute');
+    expect(trade).toContain('seaTradeEmpty');
   });
 
   it('every HUDActions callback is still wired to a menu surface', () => {
@@ -265,7 +268,7 @@ describe('menu-tab digest coverage', () => {
     expect(mgmt).toContain('sb:trade');
   });
 
-  it('the Management tab digest covers taxes, focus, cabinet and trade routes', () => {
+  it('the Management tab digest covers taxes, focus, cabinet and diplomacy', () => {
     const session = createSession({ seed: 4242 });
     const d = selectionDigest(
       session.world,
@@ -278,7 +281,10 @@ describe('menu-tab digest coverage', () => {
     expect(d).toContain('tx:');
     expect(d).toContain('ms:');
     expect(d).toContain('mg:');
-    expect(d).toContain('tr:');
+    // Fun-audit C2c (land-trade deletion, 2026-10-02): the tr: segment
+    // is gone with the routes; C2b added the di: diplomacy segment.
+    expect(d).not.toContain('tr:');
+    expect(d).toContain('di:');
   });
 });
 

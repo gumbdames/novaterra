@@ -157,10 +157,8 @@ import {
   buildAssignMayorOrder,
   buildAttackBuildingOrders,
   buildAttackOrders,
-  buildCancelTradeRouteOrder,
   buildDismissGeneralOrder,
   buildDismissMayorOrder,
-  buildEstablishTradeRouteOrder,
   buildFireAegisOrder,
   buildFireStormOrder,
   buildMoveOrder,
@@ -1285,10 +1283,6 @@ class GameController {
       // the Management tab's City ordinances toggles → setPolicy orders.
       onSetPolicy: (policy, on) =>
         this.issueOrder(buildSetPolicyOrder(HUMAN_PLAYER_ID, policy, on)),
-      onEstablishTradeRoute: (partner) =>
-        this.issueOrder(buildEstablishTradeRouteOrder(HUMAN_PLAYER_ID, partner)),
-      onCancelTradeRoute: (partner) =>
-        this.issueOrder(buildCancelTradeRouteOrder(HUMAN_PLAYER_ID, partner)),
       onAssignMayor: (policy) =>
         this.issueOrder(buildAssignMayorOrder(HUMAN_PLAYER_ID, policy)),
       onDismissMayor: () => this.issueOrder(buildDismissMayorOrder(HUMAN_PLAYER_ID)),

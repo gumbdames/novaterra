@@ -435,9 +435,16 @@ export class DemoDirector {
     w: number,
     h: number,
     reserved: Array<{ cx: number; cz: number; w: number; h: number }>,
+    fallback?: { x: number; z: number; w: number; h: number },
   ): boolean {
     const def = BUILDING_DEFS[kind];
     let spot = this.planBuilding(kind, x0, z0, w, h, reserved);
+    if (!spot && fallback) {
+      // Quarter full — try the chapter's preferred overflow rect before
+      // the whole-site search, so utility overflow lands in a sensible
+      // quarter (industrial) instead of fragmenting commercial.
+      spot = this.planBuilding(kind, fallback.x, fallback.z, fallback.w, fallback.h, reserved);
+    }
     if (!spot) {
       // Quarter full (organic growth got there first) — fall back to a
       // whole-site search. Zone-locked kinds still land on matching
@@ -490,8 +497,9 @@ export class DemoDirector {
       kind: BuildingKind,
       q: { x: number; z: number; w: number; h: number },
       reserved: Array<{ cx: number; cz: number; w: number; h: number }>,
+      fallback?: { x: number; z: number; w: number; h: number },
     ): void => {
-      d.placeClaimed(chapter, kind, q.x, q.z, q.w, q.h, reserved);
+      d.placeClaimed(chapter, kind, q.x, q.z, q.w, q.h, reserved, fallback);
     };
 
     /** Train a unit and remember the id mark for later move orders. */
@@ -927,9 +935,10 @@ export class DemoDirector {
 
     add(24600, 'nuclear', (d) => {
       // Industry-age nuclear plant (coal/gas need the combustionTech
-      // upgrade, which the demo never researches).
+      // upgrade, which the demo never researches). Falls back to IND
+      // (not whole-site) so UTL overflow never fragments COM.
       const reserved: Array<{ cx: number; cz: number; w: number; h: number }> = [];
-      place(d, 'nuclear', 'nuclearPlant', UTL, reserved);
+      place(d, 'nuclear', 'nuclearPlant', UTL, reserved, IND);
     });
 
     add(25200, 'desal', (d) => {
@@ -948,9 +957,11 @@ export class DemoDirector {
     });
 
     add(27000, 'depots', (d) => {
+      // Falls back to IND (not whole-site) so UTL overflow never
+      // fragments COM.
       const reserved: Array<{ cx: number; cz: number; w: number; h: number }> = [];
-      place(d, 'depots', 'ordnanceDepot', UTL, reserved);
-      place(d, 'depots', 'missileSilo', UTL, reserved);
+      place(d, 'depots', 'ordnanceDepot', UTL, reserved, IND);
+      place(d, 'depots', 'missileSilo', UTL, reserved, IND);
     });
 
     add(27600, 'refinery', (d) => {

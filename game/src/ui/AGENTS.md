@@ -96,6 +96,9 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   digest-identical to pristine (entering a game discards the demo
   completely — `startGame` always builds its own session). Headless-safe
   (no DOM/three.js); covered by `tests/ui.demoDirector.test.ts`.
+  `placeClaimed` takes an optional overflow fallback rect (UTL chapters
+  fall back to IND, not whole-site, so utility overflow never fragments
+  the COM quarter the late 4×4 airport needs).
   Latent bug fixed alongside: `sim/pathfinding.ts` computed `GRID_CELLS`
   at module scope from `CITY_GRID_CELLS`, which reads NaN inside the
   city → world → pathfinding → city import cycle whenever pathfinding is
@@ -258,8 +261,9 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   instant map-click placement. Management → Taxes / Economy / City focus /
   Cabinet / Ordinances / Intelligence / Trade / Research each show one
   section; Economy lists the eight stockpiles with stocks + net flow
-  rates (roadmap B10); Trade surfaces the trade-route commands (sim
-  orders waited for a home since Phase 3); Research needs a completed
+  rates (roadmap B10); Trade surfaces the civilian sea-trade section
+  (dock-to-dock routes — the land trade routes were deleted in the
+  fun-audit C2c triage, 2026-10-02); Research needs a completed
   lab (the sub-tab explains that when there is none). Sub-tab state is
   remembered per main tab,
   and so is the build tab per main tab. Selecting a unit/building

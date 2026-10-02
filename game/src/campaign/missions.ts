@@ -198,9 +198,13 @@ export const MISSIONS: readonly MissionDef[] = [
           // C9 (2026-10-01): the real selection model — left-drag with no
           // tool armed is grab-pan (game.ts pressDragKind), never
           // box-select, so the tutorial must not teach a drag-box.
+          // Fun-audit C2a (2026-10-02): the engineer now has a real
+          // job — teach it in the welcome message.
           'Welcome, President. Left-click an engineer to select it ' +
           '(Shift + left-click selects more), then right-click to move ' +
-          'them. Left-drag pans the map — it never selects.',
+          'them. Engineers double construction speed and repair ' +
+          'buildings they stand near — park yours on your build sites. ' +
+          'Left-drag pans the map — it never selects.',
       },
       {
         id: 'm1-how-to-build',

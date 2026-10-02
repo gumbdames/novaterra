@@ -351,16 +351,6 @@ export const CITY_SPECIALIZATIONS: CitySpecialization[] = [
   'balanced', 'industrial', 'commercial', 'residential',
 ];
 
-/** A trade route between two players: bonus funds while both ends trade. */
-export interface TradeRoute {
-  /** Route owner (pays the setup cost, collects the income). */
-  owner: number;
-  /** Trading partner: another player id. */
-  partner: number;
-  /** Sim tick when the route was established. */
-  establishedTick: number;
-}
-
 /**
  * Grand-expansion Phase 5 (S5, 2026-09-30): one civilian airline route.
  * `from`/`to` are building ids of the owner's completed airports
@@ -2889,8 +2879,6 @@ export interface CityState {
   players: PlayerState[];
   /** Set by the economy tick when food demand outruns supply. */
   foodShortage: boolean;
-  /** Phase 3: active trade routes (established via command). */
-  tradeRoutes: TradeRoute[];
   /**
    * Grand-expansion Phase 5 (S5, 2026-09-30): active civilian airline
    * routes (established via the `establishAirlineRoute` command).
@@ -2964,7 +2952,6 @@ export function initCity(): CityState {
     nextBuildingId: 1,
     players: [createPlayer(0, 'Player'), createPlayer(1, 'Rival')],
     foodShortage: false,
-    tradeRoutes: [],
     airlineRoutes: [],
     nextAirlineRouteId: 1,
     seaRoutes: [],

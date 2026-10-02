@@ -72,8 +72,6 @@ import { getDesirabilityModel } from '../sim/desirability';
 import { landValueLine } from './desirability';
 import { AGE_PROGRESSION, getAgeState } from '../sim/ages';
 import {
-  TRADE_ROUTE_INCOME_PER_SEC,
-  TRADE_ROUTE_SETUP_COST,
   FLOW_RESOURCES,
   flowRate,
   type FlowResource,
@@ -244,7 +242,12 @@ import {
   warningLine,
 } from './intel';
 import { SABOTAGE_COST_OPERATIONAL, isSpyUnit } from '../sim/intel';
-import { ceasefireActive, ceasefireTicksLeft } from '../sim/diplomacy';
+import {
+  ceasefireActive,
+  ceasefireTicksLeft,
+  DEMAND_TRIBUTE_INFLUENCE_COST,
+  CEASEFIRE_INFLUENCE_COST,
+} from '../sim/diplomacy';
 
 /** Build-palette tools the HUD can request. */
 export type BuildTool =
@@ -392,10 +395,6 @@ export interface HUDActions {
   onStormTarget(): void;
   /** Phase 3: set city specialization. */
   onSetSpecialization(spec: string): void;
-  /** Phase 3: establish a trade route. */
-  onEstablishTradeRoute(partner: number): void;
-  /** Phase 3: cancel a trade route. */
-  onCancelTradeRoute(partner: number): void;
   /** Phase 3: appoint a mayor. */
   onAssignMayor(policy: string): void;
   /** Phase 3: dismiss the mayor. */
@@ -1399,10 +1398,10 @@ export class HUD {
         panel.append(this.diplomacySectionEl(world));
         break;
       case 'trade':
-        panel.append(this.tradeSectionEl(world));
-        // Civilian sea trade (Half A, 2026-10-01; naval-building
-        // model, 2026-10-01): the dock-to-dock sea-route section sits
-        // under the partner-route section in the same Trade sub-tab.
+        // Fun-audit C2c (land-trade deletion, 2026-10-02): the
+        // player-to-player land trade routes are gone — the Trade
+        // sub-tab now holds only the dock-to-dock sea routes (Half A,
+        // 2026-10-01; naval-building model, 2026-10-01).
         panel.append(this.seaTradeSectionEl(world));
         break;
       case 'research':
@@ -1417,69 +1416,6 @@ export class HUD {
         panel.append(this.taxSectionEl(world));
         break;
     }
-  }
-
-  /**
-   * Management → Trade (command-menu rebuild, 2026-10-01): the
-   * trade-route surface the sim commands waited for since Phase 3.
-   * Lists the player's routes (partner + income line) with per-route
-   * Cancel, and an Establish button per rival nation without a route.
-   * The sim validates loudly (unknown partner, duplicate, funds) — the
-   * buttons never re-check, so there are no dead buttons and no silent
-   * no-ops (the intel panel's rule).
-   *
-   * Named *El per the ui/AGENTS.md AD11 rule — covered by the
-   * 'management-panel' digest branch (tr: segment), not a branch of its
-   * own. All DOM classes are the shared panel classes that branch
-   * already claims.
-   */
-  private tradeSectionEl(world: World): HTMLElement {
-    const m = STRINGS.menuTabs;
-    const sec = this.makeSection(loc(m.tradeTitle));
-    const routes = world.city.tradeRoutes.filter(
-      (r) => r.owner === HUMAN_PLAYER_ID,
-    );
-    if (routes.length === 0) {
-      sec.append(el('div', 'panel-status', loc(m.tradeEmpty)));
-    }
-    for (const r of routes) {
-      const row = el('div', 'panel-row');
-      row.append(
-        el(
-          'span',
-          'panel-label',
-          `${this.tradePartnerName(world, r.partner)} · ${fillLoc(m.tradeIncomeLine, { income: TRADE_ROUTE_INCOME_PER_SEC })}`,
-        ),
-      );
-      row.append(
-        this.makePanelButton(loc(m.tradeCancel), `Cancel the trade route with ${this.tradePartnerName(world, r.partner)}`, () =>
-          this.actions.onCancelTradeRoute(r.partner),
-        ),
-      );
-      sec.append(row);
-    }
-    const partners = world.city.players.filter((p) => p.id !== HUMAN_PLAYER_ID);
-    for (const p of partners) {
-      if (routes.some((r) => r.partner === p.id)) continue;
-      const row = el('div', 'panel-row');
-      row.append(el('span', 'panel-label', this.tradePartnerName(world, p.id)));
-      row.append(
-        this.makePanelButton(
-          loc(m.tradeEstablish),
-          fillLoc(m.tradeEstablishTitle, { cost: TRADE_ROUTE_SETUP_COST }),
-          () => this.actions.onEstablishTradeRoute(p.id),
-        ),
-      );
-      sec.append(row);
-    }
-    return sec;
-  }
-
-  /** Display name for a trade partner (the AI rival in 0.1 Alpha). */
-  private tradePartnerName(world: World, partnerId: number): string {
-    const p = world.city.players.find((x) => x.id === partnerId);
-    if (p === undefined) return `Player ${partnerId}`;
-    return p.id === 1 ? loc(STRINGS.menuTabs.tradePartnerRival) : p.name;
   }
 
   /**
@@ -1871,14 +1807,32 @@ export class HUD {
     if (world.peaceful !== true) {
       sec.append(el('div', 'panel-row', loc(s.demandTitle)));
       sec.append(el('div', 'panel-status', loc(s.demandHint)));
+      // Fun-audit C2b (influence triage, 2026-10-02): demands cost
+      // influence — the cost is shown and the buttons disable (with a
+      // reason) when the player is short. Never a dead button.
+      const influence = getPlayer(world.city, HUMAN_PLAYER_ID)?.influence ?? 0;
+      const demandShort = influence < DEMAND_TRIBUTE_INFLUENCE_COST;
+      sec.append(
+        el(
+          'div',
+          'panel-status',
+          fillLoc(s.demandCostHint, {
+            cost: DEMAND_TRIBUTE_INFLUENCE_COST,
+            have: Math.floor(influence),
+          }),
+        ),
+      );
       {
         const row = el('div', 'panel-row');
         for (const amount of [500, 2000, 10000]) {
           row.append(
             this.makePanelButton(
               fillLoc(s.amountButtonTitle, { verb: loc(s.demandVerb), amount }),
-              fillLoc(s.amountButtonTitle, { verb: loc(s.demandVerb), amount }),
+              demandShort
+                ? loc(s.notEnoughInfluence)
+                : fillLoc(s.amountButtonTitle, { verb: loc(s.demandVerb), amount }),
               () => this.actions.onDemandTribute(amount),
+              { disabled: demandShort },
             ),
           );
         }
@@ -1888,11 +1842,25 @@ export class HUD {
       // Ceasefire.
       sec.append(el('div', 'panel-row', loc(s.ceasefireTitle)));
       sec.append(el('div', 'panel-status', loc(s.ceasefireHint)));
+      sec.append(
+        el(
+          'div',
+          'panel-status',
+          fillLoc(s.ceasefireCostHint, {
+            cost: CEASEFIRE_INFLUENCE_COST,
+            have: Math.floor(influence),
+          }),
+        ),
+      );
       if (!ceasefireActive(world)) {
+        const ceasefireShort = influence < CEASEFIRE_INFLUENCE_COST;
         const row = el('div', 'panel-row');
         row.append(
-          this.makePanelButton(loc(s.ceasefireButton), loc(s.ceasefireButton), () =>
-            this.actions.onProposeCeasefire(),
+          this.makePanelButton(
+            loc(s.ceasefireButton),
+            ceasefireShort ? loc(s.notEnoughInfluence) : loc(s.ceasefireButton),
+            () => this.actions.onProposeCeasefire(),
+            { disabled: ceasefireShort },
           ),
         );
         sec.append(row);
@@ -2483,6 +2451,12 @@ export class HUD {
         // (AD11).
         if (isShipUnderRepair(world, u)) {
           stats.append(el('div', 'stat-row', loc(sel.underRepair)));
+        }
+        // Fun-audit C2a (engineer triage, 2026-10-02): the engineer's
+        // job line — static kind copy, covered by the `u:` selection
+        // segment (AD11), uses the 'stat-row' class.
+        if (u.kind === 'engineer') {
+          stats.append(el('div', 'stat-row', loc(sel.engineerAura)));
         }
         // Grand-expansion Phase 7 (intel): a selected owned spy shows
         // its mission state ("Infiltrating Power Plant · 12s left",

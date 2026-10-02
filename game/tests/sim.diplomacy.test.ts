@@ -37,6 +37,8 @@ import {
 } from '../src/ui/orders';
 import {
   CEASEFIRE_TICKS,
+  CEASEFIRE_INFLUENCE_COST,
+  DEMAND_TRIBUTE_INFLUENCE_COST,
   ceasefireAccepted,
   ceasefireActive,
   demandAccepted,
@@ -53,6 +55,20 @@ const AI = AI_PLAYER_ID;
 
 function funds(world: World, owner: number): number {
   return getPlayer(world.city, owner)?.funds ?? NaN;
+}
+
+function influence(world: World, owner: number): number {
+  return getPlayer(world.city, owner)?.influence ?? NaN;
+}
+
+/**
+ * Fun-audit C2b (influence triage, 2026-10-02): demands and ceasefires
+ * cost influence — the pre-cost tests grant a stockpile first (the
+ * game starts at 0; influence comes from cultural buildings).
+ */
+function grantInfluence(world: World, owner: number, amount = 1000): void {
+  const p = getPlayer(world.city, owner);
+  if (p) p.influence = amount;
 }
 
 /** A gentle AI: low pride, middling aggression, rich treasury. */
@@ -137,8 +153,10 @@ describe('demandTribute', () => {
     const session = createSession({ seed: 777, aiDifficulty: 'cadet' });
     const { world } = session;
     world.diplomacy.disposition = 100;
+    grantInfluence(world, HUMAN);
     const humanBefore = funds(world, HUMAN);
     const aiBefore = funds(world, AI);
+    const influenceBefore = influence(world, HUMAN);
     session.enqueuePlayerIntent(buildDemandTributeOrder(HUMAN, AI, 500));
     session.tick();
     expect(world.diplomacy.lastDemand).toBe('accepted');
@@ -147,17 +165,23 @@ describe('demandTribute', () => {
     expect(funds(world, AI)).toBe(aiBefore - 500);
     expect(world.diplomacy.totalTributeReceived).toBe(500);
     expect(world.diplomacy.demandsRefused).toBe(0);
+    // Fun-audit C2b: the demand spent influence.
+    expect(influence(world, HUMAN)).toBe(influenceBefore - DEMAND_TRIBUTE_INFLUENCE_COST);
   });
 
   it('a refused demand sours relations and counts the refusal', () => {
     const session = createSession({ seed: 777, aiDifficulty: 'marshal' });
     const { world } = session;
     world.diplomacy.disposition = 10;
+    grantInfluence(world, HUMAN);
+    const influenceBefore = influence(world, HUMAN);
     session.enqueuePlayerIntent(buildDemandTributeOrder(HUMAN, AI, 500));
     session.tick();
     expect(world.diplomacy.lastDemand).toBe('refused');
     expect(world.diplomacy.disposition).toBe(5);
     expect(world.diplomacy.demandsRefused).toBe(1);
+    // Fun-audit C2b: the ask spends influence even when refused.
+    expect(influence(world, HUMAN)).toBe(influenceBefore - DEMAND_TRIBUTE_INFLUENCE_COST);
   });
 
   it('rejects loudly in peaceful mode', () => {
@@ -166,6 +190,17 @@ describe('demandTribute', () => {
       session.enqueuePlayerIntent(buildDemandTributeOrder(HUMAN, AI, 500)),
     ).toThrow(/peaceful/);
   });
+
+  it('rejects loudly without enough influence (fun-audit C2b)', () => {
+    const session = createSession({ seed: 777, aiDifficulty: 'cadet' });
+    const { world } = session;
+    world.diplomacy.disposition = 100;
+    grantInfluence(world, HUMAN, DEMAND_TRIBUTE_INFLUENCE_COST - 1);
+    expect(() =>
+      session.enqueuePlayerIntent(buildDemandTributeOrder(HUMAN, AI, 500)),
+    ).toThrow(/influence/);
+    expect(world.diplomacy.lastDemand).toBeNull();
+  });
 });
 
 describe('proposeCeasefire', () => {
@@ -173,34 +208,54 @@ describe('proposeCeasefire', () => {
     const session = createSession({ seed: 777, aiDifficulty: 'citizen' });
     const { world } = session;
     world.diplomacy.disposition = 100;
+    grantInfluence(world, HUMAN);
+    const influenceBefore = influence(world, HUMAN);
     session.enqueuePlayerIntent(buildProposeCeasefireOrder(HUMAN, AI));
     session.tick();
     expect(world.diplomacy.lastCeasefireAsk).toBe('accepted');
     expect(ceasefireActive(world)).toBe(true);
     // The command applies at the tick boundary, so one tick has elapsed.
     expect(world.diplomacy.ceasefireUntilTick - world.tick).toBe(CEASEFIRE_TICKS - 1);
+    // Fun-audit C2b: the ask spent influence.
+    expect(influence(world, HUMAN)).toBe(influenceBefore - CEASEFIRE_INFLUENCE_COST);
   });
 
   it('a declined ceasefire sours relations', () => {
     const session = createSession({ seed: 777, aiDifficulty: 'marshal' });
     const { world } = session;
     world.diplomacy.disposition = 0;
+    grantInfluence(world, HUMAN);
+    const influenceBefore = influence(world, HUMAN);
     session.enqueuePlayerIntent(buildProposeCeasefireOrder(HUMAN, AI));
     session.tick();
     expect(world.diplomacy.lastCeasefireAsk).toBe('declined');
     expect(ceasefireActive(world)).toBe(false);
     expect(world.diplomacy.disposition).toBe(0); // floored at 0
+    // Fun-audit C2b: the ask spends influence even when declined.
+    expect(influence(world, HUMAN)).toBe(influenceBefore - CEASEFIRE_INFLUENCE_COST);
   });
 
   it('rejects while a ceasefire is already active', () => {
     const session = createSession({ seed: 777, aiDifficulty: 'citizen' });
     const { world } = session;
     world.diplomacy.disposition = 100;
+    grantInfluence(world, HUMAN);
     session.enqueuePlayerIntent(buildProposeCeasefireOrder(HUMAN, AI));
     session.tick();
     expect(() =>
       session.enqueuePlayerIntent(buildProposeCeasefireOrder(HUMAN, AI)),
     ).toThrow(/already in effect/);
+  });
+
+  it('rejects loudly without enough influence (fun-audit C2b)', () => {
+    const session = createSession({ seed: 777, aiDifficulty: 'citizen' });
+    const { world } = session;
+    world.diplomacy.disposition = 100;
+    grantInfluence(world, HUMAN, CEASEFIRE_INFLUENCE_COST - 1);
+    expect(() =>
+      session.enqueuePlayerIntent(buildProposeCeasefireOrder(HUMAN, AI)),
+    ).toThrow(/influence/);
+    expect(world.diplomacy.lastCeasefireAsk).toBeNull();
   });
 
   it('rejects loudly in peaceful mode', () => {
@@ -214,6 +269,7 @@ describe('proposeCeasefire', () => {
     const session = createSession({ seed: 777, aiDifficulty: 'citizen' });
     const { world } = session;
     world.diplomacy.disposition = 100;
+    grantInfluence(world, HUMAN);
     session.enqueuePlayerIntent(buildProposeCeasefireOrder(HUMAN, AI));
     session.tick();
     expect(ceasefireActive(world)).toBe(true);
@@ -259,6 +315,8 @@ describe('diplomacy snapshots and digests', () => {
     const session = createSession({ seed: 777, aiDifficulty: 'citizen' });
     const { world } = session;
     world.diplomacy.disposition = 100;
+    // Fun-audit C2b: the diplomatic moves cost influence.
+    grantInfluence(world, HUMAN);
     session.enqueuePlayerIntent(buildProposeCeasefireOrder(HUMAN, AI));
     session.tick();
     session.enqueuePlayerIntent(buildDemandTributeOrder(HUMAN, AI, 500));

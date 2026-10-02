@@ -1091,25 +1091,6 @@ describe('upgrade effects (§4)', () => {
     const dUp = player.funds - f1;
     expect(dUp).toBeCloseTo(1.5 * (dPlain + upkeep) - upkeep, 9);
   });
-
-  it('Free Trade: trade-route income 3→4.5 funds/s', () => {
-    // Labs give both players trade capacity with no funds output of their
-    // own; upkeep is constant, so the income delta is exactly 1.5.
-    const ctx = setup();
-    completeBuildings(ctx.world, 0, ['lab']);
-    completeBuildings(ctx.world, 1, ['lab']);
-    for (const p of ctx.world.city.players) p.taxRates = [0, 0, 0, 0];
-    ctx.world.city.tradeRoutes.push({ owner: 0, partner: 1, establishedTick: 0 });
-    const player = getPlayer(ctx.world.city, 0)!;
-    const f0 = player.funds;
-    runEconomyTick(ctx.world, ctx.terrain);
-    const dPlain = player.funds - f0;
-    ctx.world.upgrades[0] = ['freeTrade'];
-    const f1 = player.funds;
-    runEconomyTick(ctx.world, ctx.terrain);
-    const dUp = player.funds - f1;
-    expect(dUp - dPlain).toBeCloseTo(1.5, 9);
-  });
 });
 
 describe('snapshot v9 + canonical digest (§9)', () => {

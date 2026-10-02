@@ -108,6 +108,14 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   rate), read via `flowRate(world, owner, res)` (`FLOW_RESOURCES`). The
   table is derived display data — NOT snapshotted, NOT digested, never
   read by the sim — so save/load simply restarts the averages at 0.
+  Fun-audit C2 (dead-system triage, 2026-10-02): `runConstruction`
+  gives living same-owner engineers within `ENGINEER_AURA_CELLS` (12)
+  cells a construction/repair aura — 2× build speed on sites,
+  1 hp/s repair on damaged completed buildings (position-derived, no
+  new state); the Phase 3 land `tradeRoutes` (establish/cancelTradeRoute
+  commands, `runTradeRoutes`, the `TradeRoute` state) were deleted —
+  the 3/s income is gone with them (the market already serves the
+  economic niche).
 - `market.ts` — (R1 final-review, 2026-10-01) the fixed-rate market
   price list (`MarketResource`, `MARKET_PRICES`, `MARKET_SPREAD`,
   `marketBuyCost`, `marketSellValue`). A LEAF module: no sim imports,
@@ -687,7 +695,11 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   the combat loop skips cross-pair opportunistic acquisition, and
   attackUnit/attackBuilding orders against the AI rival break it
   (betrayal, −15 disposition). Demand/ceasefire reject loudly in
-  peaceful worlds; tribute works everywhere. Snapshot-covered (AD9
+  peaceful worlds; tribute works everywhere. Fun-audit C2b (influence
+  triage, 2026-10-02): `demandTribute` costs 20 influence and
+  `proposeCeasefire` costs 40 (validated at enqueue AND apply,
+  deducted on apply whether the AI accepts or not) — influence is a
+  real decision axis now. Snapshot-covered (AD9
   additive, stays v8) and digest-covered (`|diplomacy=…|`).
 - `wonderCountdown.ts` — the wonder countdown (fun-audit B2,
   2026-10-02). Owns `WonderCountdown` (on `World`: race kind, leader

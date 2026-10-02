@@ -71,9 +71,27 @@ export interface TrainTab {
   kinds: readonly UnitKind[];
 }
 
+/**
+ * Fun-audit C2d (transport consolidation, 2026-10-02): the four
+ * mechanically-duplicate civilian transports delisted from TRAIN_TABS.
+ * Their defs stay in UNIT_DEFS (save compatibility; "no sim changes")
+ * and they remain spawnable for AI/campaign/demo use — they are just
+ * no longer player-trainable. The palette's "every kind exactly once"
+ * contract (tests/ui.palettes.test.ts) excludes these.
+ */
+export const DELISTED_TRANSPORT_KINDS: readonly UnitKind[] = [
+  'jumboAirliner',
+  'regionalJet',
+  'passengerHeli',
+  'seaplane',
+];
+
 /** 97 units across 6 tabs (Phase 8 adds the 28 Mk II/III tech-level
  * variants next to their base kinds; Half A adds the civilian fuel
- * barge to the navy tab). Every unit kind appears in exactly one tab. */
+ * barge to the navy tab). Every TRAINABLE unit kind appears in exactly
+ * one tab — the four delisted civilian transports (fun-audit C2d,
+ * 2026-10-02: jumboAirliner, regionalJet, passengerHeli, seaplane) are
+ * intentionally absent (see DELISTED_TRANSPORT_KINDS). */
 export const TRAIN_TABS: readonly TrainTab[] = [
   {
     id: 'infantry',
@@ -120,11 +138,14 @@ export const TRAIN_TABS: readonly TrainTab[] = [
       'trainer',
       'navalFighter',
       'airliner',
-      'jumboAirliner',
-      'regionalJet',
+      // Fun-audit C2d (transport consolidation, 2026-10-02):
+      // jumboAirliner, regionalJet, passengerHeli and seaplane are
+      // delisted from the palette — mechanically duplicate civilian
+      // transports at different sizes (the plan's verdict: keep one
+      // Cargo Plane, one Airliner, one Freighter trainable). Their defs
+      // stay in UNIT_DEFS (save compatibility; "no sim changes") and
+      // they remain spawnable for AI/campaign/demo use.
       'cargoPlane',
-      'passengerHeli',
-      'seaplane',
     ],
   },
   {

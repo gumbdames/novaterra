@@ -47,8 +47,9 @@
 - **Research** — produced by labs; unlocks progress later.
 - **Goods** — made by factories, bought by shops and turned into
   funds. No goods, no shop income.
-- **Influence** — produced by Media Centers. Spent to advance ages;
-  more influence means faster progress.
+- **Influence** — produced by Media Centers. Spent to advance ages,
+  to demand tribute (20) and to propose ceasefires (40); more
+  influence means more diplomatic leverage.
 - **Manpower** — grows with your population. Training soldiers and
   ships spends it — a big army needs a big city behind it.
 
@@ -287,7 +288,9 @@ Advanced units need their production building (barracks, war
 factory, airfield, naval yard) before they can be trained.
 
 **Infantry**
-- **Engineer** — cheap basic infantry; trains at the Barracks.
+- **Engineer** — cheap basic infantry; a construction specialist —
+  doubles nearby build speed and repairs nearby buildings (trains at
+  the Barracks).
 - **Rifles** — cheap infantry, good against other infantry.
 - **Sniper Team** — long-range precision; deletes infantry and
   raiders, dies to anything that touches it (needs a barracks).
@@ -671,7 +674,7 @@ might or economic boom, your choice:
 - **Smart Grid** — power plants, solar farms and nuclear plants
   supply more power.
 - **Vertical Farming** — farms grow +50% more food on less water.
-- **Free Trade Policy** — markets, shops and trade routes earn more.
+- **Free Trade Policy** — markets and shops earn more.
 - **Advanced Research** — the endgame sink: repeatable, +2% factory
   output per level. The first level costs 200 research, the next 400,
   then 600, and so on — research it again and again as long as your
@@ -817,12 +820,14 @@ sub-tab lets you negotiate with the rival:
 
 - **Send tribute** — gift funds (500 / 2,000 / 10,000). Every 500
   funds warms the rival's disposition by 1, up to +20 per gift.
-- **Demand tribute** — demand funds from the rival. It pays or refuses
+- **Demand tribute** — demand funds from the rival (costs 20
+  influence — spent whether it pays or refuses). It pays or refuses
   based on its personality and pride: higher difficulties refuse more,
   aggressive rivals refuse more, and a warm disposition persuades.
   Refused demands sour relations.
 - **Propose ceasefire** — ask the rival to stop attacking for
-  5 minutes. While it holds, the AI issues no new attacks and both
+  5 minutes (costs 40 influence — spent whether it accepts or
+  declines). While it holds, the AI issues no new attacks and both
   sides stop opportunistically engaging each other — the front
   freezes. But your next attack order breaks it (betrayal costs
   15 disposition).
@@ -939,12 +944,10 @@ output, −10% other zones), **Commercial** (+25% shops), **Residential**
 (+25% homes), or **Balanced** (no bonus, no penalty). Utility buildings
 are unaffected.
 
-**Trade routes**: the sim commands exist (establish for 500 funds
-setup; each active route pays 3 funds/sec — but only while both you
-and your partner have working commercial buildings; cancel anytime).
-Routes are established from the **Trade** panel in the Management tab
-(**New route…**, then click the two docks) — sea routes anchor
-dock-to-dock at Commercial Docks, Container Ports, or Fishing Harbors.
+**Trade**: the Management tab's Trade panel manages your civilian
+sea routes — establish them dock-to-dock at Commercial Docks,
+Container Ports, or Fishing Harbors (**New route…**, then click the
+two docks).
 
 ## Phase 3: Logistics (fuel and ammo)
 

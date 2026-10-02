@@ -547,6 +547,11 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     damage: 5, range: 10, minRange: 0, cooldownTicks: 30, targets: 'ground',
     vsLight: 1.0, vsMedium: 0.6, vsHeavy: 0.4, vsAir: 1.0, sight: 18, minAge: 'foundation',
     manpowerCost: 0, trainFunds: 50, trainMaterials: 0,
+    // Fun-audit C2a (engineer triage, 2026-10-02): the engineer's job —
+    // a living engineer within ENGINEER_AURA_CELLS cells of a
+    // same-owner building doubles its construction speed and slowly
+    // repairs it when damaged (sim/economy.ts runConstruction). Weak
+    // in a fight; park it on your build sites.
   },
   rifles: {
     kind: 'rifles', name: 'Rifles', domain: 'land', hp: 110, speed: 9, armor: 'light',
@@ -900,6 +905,9 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     hangarClass: 'heavy',
   },
   jumboAirliner: {
+    // Fun-audit C2d (transport consolidation, 2026-10-02): delisted
+    // from TRAIN_TABS (mechanically a bigger Airliner) — def retained
+    // for save compatibility and AI/campaign/demo spawns.
     kind: 'jumboAirliner', name: 'Jumbo Airliner', domain: 'air', hp: 320, speed: 24, armor: 'medium',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'industry',
@@ -908,6 +916,9 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     hangarClass: 'heavy',
   },
   regionalJet: {
+    // Fun-audit C2d (transport consolidation, 2026-10-02): delisted
+    // from TRAIN_TABS (mechanically a smaller Airliner) — def retained
+    // for save compatibility and AI/campaign/demo spawns.
     kind: 'regionalJet', name: 'Regional Jet', domain: 'air', hp: 150, speed: 30, armor: 'light',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'connectivity',
@@ -924,6 +935,9 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     hangarClass: 'heavy',
   },
   passengerHeli: {
+    // Fun-audit C2d (transport consolidation, 2026-10-02): delisted
+    // from TRAIN_TABS (mechanically a smaller Airliner) — def retained
+    // for save compatibility and AI/campaign/demo spawns.
     kind: 'passengerHeli', name: 'Passenger Heli', domain: 'air', hp: 90, speed: 24, armor: 'light',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'connectivity',
@@ -932,6 +946,9 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     hangarClass: 'light',
   },
   seaplane: {
+    // Fun-audit C2d (transport consolidation, 2026-10-02): delisted
+    // from TRAIN_TABS (mechanically a smaller Airliner) — def retained
+    // for save compatibility and AI/campaign/demo spawns.
     kind: 'seaplane', name: 'Seaplane', domain: 'air', hp: 80, speed: 26, armor: 'light',
     damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'connectivity',

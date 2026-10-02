@@ -231,6 +231,12 @@ export const STRINGS = {
     // this badge when the sim's isShipUnderRepair says the ship is
     // inside a drydock's repair radius (sim/shipyardRepair.ts).
     underRepair: { en: 'Under repair' },
+    // Fun-audit C2a (engineer triage, 2026-10-02): the engineer's job
+    // line in the selection panel — static copy for the kind (covered
+    // by the `u:` selection segment, AD11).
+    engineerAura: {
+      en: 'Construction specialist: doubles nearby build speed, repairs nearby buildings',
+    },
   },
   /**
    * Fun-audit C1 (production queues, 2026-10-02): the building
@@ -1193,17 +1199,6 @@ export const STRINGS = {
     subDiplomacy: { en: 'Diplomacy' },
     subTrade: { en: 'Trade' },
     subResearch: { en: 'Research' },
-    /** Management → Trade: the trade-route surface (0.1 Alpha adds the
-     * menu; the sim commands existed since Phase 3 with no buttons). */
-    tradeTitle: { en: 'Trade routes' },
-    tradeEmpty: {
-      en: 'No trade routes yet. A route pays while both ends run an operating commercial building.',
-    },
-    tradeIncomeLine: { en: '+{income} funds/s while both ends trade' },
-    tradeEstablish: { en: 'Establish route' },
-    tradeEstablishTitle: { en: 'Establish a trade route ({cost} funds setup)' },
-    tradeCancel: { en: 'Cancel route' },
-    tradePartnerRival: { en: 'Rival nation' },
     /** Management → Trade: civilian sea trade (Half A, 2026-10-01).
      * Dock-to-dock routes with a cargo policy per route; ships sail
      * the route physically (the ferry-loop pattern). */
@@ -1347,6 +1342,15 @@ export const STRINGS = {
     demandHint: {
       en: 'Demand funds from the rival. It pays or refuses by personality and pride — refused demands sour relations.',
     },
+    // Fun-audit C2b (influence triage, 2026-10-02): the influence
+    // cost lines — demands and ceasefires spend political capital.
+    demandCostHint: {
+      en: 'Each demand costs {cost} influence (you have {have}) — spent whether the rival pays or refuses.',
+    },
+    ceasefireCostHint: {
+      en: 'Asking costs {cost} influence (you have {have}) — spent whether the rival accepts or declines.',
+    },
+    notEnoughInfluence: { en: 'Not enough influence' },
     ceasefireTitle: { en: 'Ceasefire' },
     ceasefireHint: {
       en: 'Ask the rival to stop attacking for 5 minutes. Your next attack breaks it.',

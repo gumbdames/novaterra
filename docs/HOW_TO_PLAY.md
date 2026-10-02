@@ -397,9 +397,8 @@ with sub-tabs along the top:
   housing/industry/balanced auto-construction) and **General**
   (select units first, then pick a stance); **Ordinances**: city-wide
   policy toggles; **Intelligence**: assets, spies and covert
-  operations; **Trade**: establish and cancel **trade routes** with
-  the rival nation (a setup cost, then steady income while both sides
-  keep trading); **Research**: research upgrades once you own a
+  operations; **Trade**: your civilian **sea trade** routes
+  (dock-to-dock, with cargo policies); **Research**: research upgrades once you own a
   completed lab.
 
 ## Keyboard shortcuts

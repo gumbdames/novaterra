@@ -64,7 +64,6 @@ import {
   VERTICAL_FARMING_FOOD_MULT,
   FREE_TRADE_MARKET_MULT,
   FREE_TRADE_SHOP_MULT,
-  FREE_TRADE_TRADE_ROUTE_INCOME,
   advancedResearchFactoryMult,
 } from './upgrades';
 import {
@@ -84,6 +83,7 @@ import {
 import { UNIT_DEFS, supplyLevel, supplyServicesOf, runTraining, type UnitRecord } from './units';
 import { runIntelAccrual, isSabotaged } from './intel';
 import { createSpatialHash, shInsert, shQueryRadius } from './spatial';
+import { dist2 } from './deterministic';
 import { buildingTaxMultiplier, getDesirabilityModel, type DesirabilityModel } from './desirability';
 import {
   BUILDING_DEFS,
@@ -99,6 +99,8 @@ import {
   isOnTransportNetwork,
   policyFunded,
   runGrowth,
+  buildingCenterWorld,
+  CELL_WORLD_SIZE,
   type BuildingKind,
   type BuildingRecord,
   type CitySpecialization,
@@ -106,7 +108,6 @@ import {
   type PlayerState,
   type PolicyId,
   type ResourceKey,
-  type TradeRoute,
   type AirlineRoute,
   type SeaRoute,
   type SeaRoutePolicy,
@@ -1161,39 +1162,6 @@ function runTaxes(world: World, economyTickIndex: number, t: TerrainData): void 
   }
 }
 
-/** Funds to establish one trade route. */
-export const TRADE_ROUTE_SETUP_COST = 500;
-/** Funds per sim-second paid to the route owner while the route is active. */
-export const TRADE_ROUTE_INCOME_PER_SEC = 3;
-
-/**
- * Phase 3 trade routes. A route is active while both ends operate at
- * least one completed commercial-zone building (shops, media centers);
- * the owner collects the income each economy tick. Routes are
- * unilateral — no partner consent needed (like trading with neutrals).
- */
-function hasTradeCapacity(city: CityState, owner: number): boolean {
-  for (const b of city.buildings) {
-    if (b.owner !== owner || b.progress < 1 || !b.operational) continue;
-    if (BUILDING_DEFS[b.kind].zone === ZoneType.COMMERCIAL) return true;
-  }
-  return false;
-}
-
-function runTradeRoutes(world: World, city: CityState): void {
-  for (const route of city.tradeRoutes) {
-    const owner = getPlayer(city, route.owner);
-    if (!owner) continue;
-    if (!getPlayer(city, route.partner)) continue;
-    if (hasTradeCapacity(city, route.owner) && hasTradeCapacity(city, route.partner)) {
-      // Free Trade lifts route income 3 -> 4.5/s.
-      owner.funds += hasUpgrade(world, route.owner, 'freeTrade')
-        ? FREE_TRADE_TRADE_ROUTE_INCOME
-        : TRADE_ROUTE_INCOME_PER_SEC;
-    }
-  }
-}
-
 /** Funds to establish one airline route. */
 export const AIRLINE_ROUTE_SETUP_COST = 500;
 /** Base funds per sim-second per active airline route. */
@@ -1543,17 +1511,65 @@ function generateManpower(city: CityState): void {
   }
 }
 
+/**
+ * Fun-audit C2a (engineer triage, 2026-10-02): the engineer's
+ * construction/repair aura. A living same-owner engineer within this
+ * many CELLS of a building doubles its construction speed and slowly
+ * repairs it when damaged (see runConstruction).
+ */
+export const ENGINEER_AURA_CELLS = 12;
+/** Construction-speed multiplier while an engineer works the site. */
+export const ENGINEER_CONSTRUCTION_MULT = 2;
+/** Repair aura rate, HP per economy tick (one sim-second). */
+export const ENGINEER_REPAIR_HP_PER_SEC = 1;
+
 /** Advance construction progress by one economy tick (one sim-second). */
-function runConstruction(city: CityState): void {
+function runConstruction(world: World): void {
+  const city = world.city;
+  // Fun-audit C2a (engineer triage, 2026-10-02): collect the living
+  // engineers once per tick — their aura doubles nearby construction
+  // speed and repairs damaged completed buildings. Units live in world
+  // coords; buildings in cell coords — range checks go through
+  // buildingCenterWorld.
+  const engineers: Array<{ x: number; z: number; owner: number }> = [];
+  for (const u of world.units) {
+    if (u.hp > 0 && u.kind === 'engineer') engineers.push({ x: u.x, z: u.z, owner: u.owner });
+  }
+  const aura2 = ENGINEER_AURA_CELLS * ENGINEER_AURA_CELLS * CELL_WORLD_SIZE * CELL_WORLD_SIZE;
+  // Fast path: no living engineers, no aura — skip the per-building
+  // proximity checks entirely (perf budget: the aura must cost ~zero
+  // when nobody fields engineers).
+  const hasEngineers = engineers.length > 0;
+  const engineerNear = (b: BuildingRecord): boolean => {
+    const c = buildingCenterWorld(b);
+    for (const e of engineers) {
+      if (e.owner === b.owner && dist2(e.x - c.x, e.z - c.z) <= aura2) return true;
+    }
+    return false;
+  };
   for (const b of city.buildings) {
     if (b.progress < 1) {
       const def = BUILDING_DEFS[b.kind];
-      b.progress = Math.min(1, b.progress + 1 / def.buildSeconds);
+      // An engineer on site doubles the build speed (the plan's
+      // construction-verb option, "a-lite": automatic like the depot
+      // supply auras — no new orders, no UI gestures).
+      const speed = hasEngineers && engineerNear(b) ? ENGINEER_CONSTRUCTION_MULT : 1;
+      b.progress = Math.min(1, b.progress + (speed / def.buildSeconds));
       // Final-review R3 L7: a completion crossing can change the intel
       // building-sight sum (satelliteUplink) — invalidate its cache.
       // Completions are rare, so the bump costs one O(buildings)
       // recompute on the next sight query, not per query.
       if (b.progress >= 1) bumpSightBonusCache(city);
+    } else if (
+      hasEngineers &&
+      (b.hp ?? BUILDING_DEFS[b.kind].hp) < (b.maxHp ?? BUILDING_DEFS[b.kind].hp)
+    ) {
+      // The repair aura: damaged completed buildings slowly regain HP
+      // while an engineer works nearby.
+      if (engineerNear(b)) {
+        const maxHp = b.maxHp ?? BUILDING_DEFS[b.kind].hp;
+        b.hp = Math.min(maxHp, (b.hp ?? BUILDING_DEFS[b.kind].hp) + ENGINEER_REPAIR_HP_PER_SEC);
+      }
     }
   }
 }
@@ -1629,7 +1645,7 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   // either way) and is smoothed into world.economyFlows per player.
   const before = new Map<number, Record<FlowResource, number>>();
   for (const p of city.players) before.set(p.id, readStocks(p));
-  runConstruction(city);
+  runConstruction(world);
   const { powerHeadroom, waterHeadroom } = allocateUtilities(world, city);
   // Phase 4 occupancy (2026-09-30): after construction AND the utility
   // allocation, so workers see this tick's operational flags (no
@@ -1666,7 +1682,6 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   runMobileSupply(world);
   runFood(city);
   runTaxes(world, economyTickIndex(world), t);
-  runTradeRoutes(world, city);
   // Grand-expansion Phase 5 (S5, 2026-09-30): airline route income —
   // same position as trade routes (after taxes, before growth).
   runAirlineIncome(world, city);
@@ -1764,8 +1779,6 @@ const marketTradeSpec: CommandSpec = {
 /** Register the market command kind on a queue. */
 export function registerEconomyCommands(queue: CommandQueue): void {
   queue.register('marketTrade', marketTradeSpec);
-  queue.register('establishTradeRoute', establishTradeRouteSpec);
-  queue.register('cancelTradeRoute', cancelTradeRouteSpec);
   // Grand-expansion Phase 5 (S5, 2026-09-30): civilian airline routes.
   queue.register('establishAirlineRoute', establishAirlineRouteSpec);
   queue.register('cancelAirlineRoute', cancelAirlineRouteSpec);
@@ -1775,62 +1788,3 @@ export function registerEconomyCommands(queue: CommandQueue): void {
   queue.register('cancelSeaRoute', cancelSeaRouteSpec);
   queue.register('assignSeaRoute', assignSeaRouteSpec);
 }
-
-const establishTradeRouteSpec: CommandSpec = {
-  validate(cmd, world): string | null {
-    const owner = payloadInt(cmd.payload, 'owner');
-    if (owner === null || !getPlayer(world.city, owner)) {
-      return 'establishTradeRoute: unknown owner';
-    }
-    const partner = payloadInt(cmd.payload, 'partner');
-    if (partner === null || !getPlayer(world.city, partner)) {
-      return 'establishTradeRoute: unknown partner';
-    }
-    if (partner === owner) return 'establishTradeRoute: cannot trade with yourself';
-    const dup = world.city.tradeRoutes.some(
-      (r) => r.owner === owner && r.partner === partner,
-    );
-    if (dup) return 'establishTradeRoute: route already exists';
-    const player = getPlayer(world.city, owner) as PlayerState;
-    if (player.funds < TRADE_ROUTE_SETUP_COST) {
-      return `establishTradeRoute: cannot afford ${TRADE_ROUTE_SETUP_COST} funds setup`;
-    }
-    return null;
-  },
-  apply(cmd, world): unknown {
-    const owner = payloadInt(cmd.payload, 'owner') as number;
-    const partner = payloadInt(cmd.payload, 'partner') as number;
-    const player = getPlayer(world.city, owner) as PlayerState;
-    player.funds -= TRADE_ROUTE_SETUP_COST;
-    const route: TradeRoute = { owner, partner, establishedTick: world.tick };
-    world.city.tradeRoutes.push(route);
-    return { owner, partner };
-  },
-};
-
-const cancelTradeRouteSpec: CommandSpec = {
-  validate(cmd, world): string | null {
-    const owner = payloadInt(cmd.payload, 'owner');
-    if (owner === null || !getPlayer(world.city, owner)) {
-      return 'cancelTradeRoute: unknown owner';
-    }
-    const partner = payloadInt(cmd.payload, 'partner');
-    if (partner === null || !getPlayer(world.city, partner)) {
-      return 'cancelTradeRoute: unknown partner';
-    }
-    const i = world.city.tradeRoutes.findIndex(
-      (r) => r.owner === owner && r.partner === partner,
-    );
-    if (i === -1) return 'cancelTradeRoute: no such route';
-    return null;
-  },
-  apply(cmd, world): unknown {
-    const owner = payloadInt(cmd.payload, 'owner') as number;
-    const partner = payloadInt(cmd.payload, 'partner') as number;
-    const i = world.city.tradeRoutes.findIndex(
-      (r) => r.owner === owner && r.partner === partner,
-    );
-    world.city.tradeRoutes.splice(i, 1);
-    return { owner, partner };
-  },
-};

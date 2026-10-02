@@ -101,6 +101,12 @@ import { parkedAircraft } from './hangars';
 // tool state are dynamic civilian-tab content, so the digest carries
 // them (al: / aa:).
 import { airlineRoutesOf } from './airports';
+import {
+  ceasefireActive,
+  ceasefireTicksLeft,
+  DEMAND_TRIBUTE_INFLUENCE_COST,
+  CEASEFIRE_INFLUENCE_COST,
+} from '../sim/diplomacy';
 import { airlineRouteIncome, FLOW_RESOURCES, flowRate } from '../sim/economy';
 // Civilian sea trade (Half A, 2026-10-01): the sea-trade UI contract
 // module — the st:/sa:/sr:/sh: digest segments for the Trade section,
@@ -505,18 +511,6 @@ export function selectionDigest(
       // funding states (ui/policies.ts `policiesPanelDigest`), so the
       // panel repaints exactly when a rendered row would change.
       parts.push(policiesPanelDigest(world, HUMAN_PLAYER_ID));
-      // Command-menu rebuild (2026-10-01): the Management tab's Trade
-      // sub-tab lists the player's trade routes. Always emitted under
-      // Management (like tx:/ms:/mg:) so the representative state
-      // covers the label; the panel repaints when a route appears or
-      // disappears (establish/cancel orders).
-      parts.push(
-        `tr:${world.city.tradeRoutes
-          .filter((r) => r.owner === HUMAN_PLAYER_ID)
-          .map((r) => r.partner)
-          .sort((a, b) => a - b)
-          .join(',')}`,
-      );
       // Civilian sea trade (Half A, 2026-10-01): the Trade sub-tab's
       // sea-trade section lists the player's sea routes (id.from.to.
       // policy each — the panel renders the endpoints + income line);
@@ -542,6 +536,25 @@ export function selectionDigest(
           (r) => `${Math.floor(player?.[r] ?? 0)}:${flowRate(world, HUMAN_PLAYER_ID, r).toFixed(1)}`,
         ).join(',')}`,
       );
+      // Fun-audit C2b (influence triage, 2026-10-02): the Management
+      // tab's Diplomacy section renders the disposition readout, the
+      // ceasefire status, the last AI answers, and the influence cost
+      // lines + the demand/ceasefire buttons' disabled states — the
+      // digest carries them all (floored disposition/influence, whole
+      // seconds of ceasefire left, the two influence-affordability
+      // bits) so the panel repaints exactly when a rendered row would
+      // change. Always emitted under Management (like tx:/ms:/mg:) so
+      // the representative state covers the label.
+      {
+        const d = world.diplomacy;
+        const influence = Math.floor(getPlayer(world.city, HUMAN_PLAYER_ID)?.influence ?? 0);
+        const ceasefireSecs = ceasefireActive(world)
+          ? Math.ceil(ceasefireTicksLeft(world) / 30)
+          : 0;
+        parts.push(
+          `di:${Math.floor(d.disposition)}:${ceasefireSecs}:${d.lastDemand ?? ''}:${d.lastCeasefireAsk ?? ''}:${influence}:${influence >= DEMAND_TRIBUTE_INFLUENCE_COST ? 1 : 0}${influence >= CEASEFIRE_INFLUENCE_COST ? 1 : 0}`,
+        );
+      }
     }
   }
   // The research panel is listed whenever the player owns a completed
@@ -1007,15 +1020,15 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // the section does not render).
     // oc: the City ordinances section (Phase 8 civilian, workstream E —
     // per-policy on/off + funded/unfunded, in POLICY_IDS order).
-    // tr: the Trade sub-tab's route list (command-menu rebuild,
-    // 2026-10-01 — the player's trade-route partners; 'tr:' empty when
-    // there are no routes).
     // st: the sea-trade section's route list (Half A: id.from.to.policy
     // each); sa: the sea-route tool's armed state ('off' / 'pick.pick' /
     // first id / first+second ids).
     // ec: the Economy sub-tab's stockpile rows (roadmap B10 — floored
     // stock + one-decimal net rate per FLOW_RESOURCES entry).
-    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:', 'po:', 'ps:', 'oc:', 'tr:', 'st:', 'sa:', 'ec:'],
+    // di: the Diplomacy section (fun-audit C2b, 2026-10-02 —
+    // disposition, ceasefire seconds left, last AI answers, floored
+    // influence + the two influence-affordability bits).
+    digestLabels: ['tx:', 'ms:', 'mg:', 'ia:', 'ir:', 'is:', 'iw:', 'ig:', 'po:', 'ps:', 'oc:', 'st:', 'sa:', 'ec:', 'di:'],
   },
   {
     id: 'research-panel',

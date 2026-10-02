@@ -35,6 +35,7 @@ import {
 } from '../src/ui/session';
 import {
   TRAIN_TABS,
+  DELISTED_TRANSPORT_KINDS,
   BUILD_TABS,
   UPGRADE_GROUPS,
   unitAvailability,
@@ -72,7 +73,12 @@ describe('train tabs', () => {
     }
     // The Phase 3 supply trucks ride the armor tab (UI workstream,
     // 2026-09-30) — covered here like every other kind.
-    const expected = Object.keys(UNIT_DEFS);
+    // Fun-audit C2d (transport consolidation, 2026-10-02): the four
+    // delisted civilian transports are intentionally absent from the
+    // palette (mechanically duplicate; defs retained for save compat).
+    const expected = Object.keys(UNIT_DEFS).filter(
+      (k) => !(DELISTED_TRANSPORT_KINDS as readonly string[]).includes(k),
+    );
     expect(sortedKinds(seen.keys())).toEqual(sortedKinds(expected));
     for (const [kind, count] of seen) {
       expect(count, `${kind} in ${count} tabs`).toBe(1);
@@ -144,11 +150,9 @@ describe('train tabs', () => {
       'trainer',
       'navalFighter',
       'airliner',
-      'jumboAirliner',
-      'regionalJet',
+      // Fun-audit C2d (transport consolidation, 2026-10-02): the four
+      // delisted civilian transports are absent by design.
       'cargoPlane',
-      'passengerHeli',
-      'seaplane',
     ]);
     expect(byId.get('navy')).toEqual([
       'patrolBoat',

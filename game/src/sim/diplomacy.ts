@@ -144,6 +144,14 @@ export const SNUB_DISPOSITION_LOSS = 5;
 export const BETRAYAL_DISPOSITION_LOSS = 15;
 /** Disposition lost when the AI pays a demand (tribute under duress). */
 export const DEMAND_PAID_DISPOSITION_LOSS = 10;
+/**
+ * Fun-audit C2b (influence triage, 2026-10-02): influence costs for
+ * the two hostile diplomatic moves — the ask spends political capital
+ * whether the AI accepts or not, so influence is a real decision axis
+ * (ages 3+ already spend it at 100/250/500).
+ */
+export const DEMAND_TRIBUTE_INFLUENCE_COST = 20;
+export const CEASEFIRE_INFLUENCE_COST = 40;
 
 /** Pride penalty per difficulty, subtracted from AI willingness. */
 const DIFFICULTY_PRIDE: Record<AIDifficulty, number> = {
@@ -346,6 +354,13 @@ const demandTributeSpec = {
     if (parties.error) return parties.error;
     const { error } = payloadAmount('demandTribute', cmd.payload);
     if (error) return error;
+    // Fun-audit C2b (influence triage, 2026-10-02): making a demand
+    // spends political capital — influence becomes a real decision
+    // axis (monuments become diplomatically meaningful overnight).
+    const player = getPlayer(world.city, parties.owner);
+    if (player && player.influence < DEMAND_TRIBUTE_INFLUENCE_COST) {
+      return `demandTribute: player ${parties.owner} has ${Math.floor(player.influence)} influence, needs ${DEMAND_TRIBUTE_INFLUENCE_COST}`;
+    }
     return null;
   },
   apply(cmd: { payload: Record<string, unknown> }, world: World): unknown {
@@ -354,6 +369,9 @@ const demandTributeSpec = {
     const amount = cmd.payload['amount'] as number;
     ensureParties(world, owner, aiOwner);
     const d = world.diplomacy;
+    // The ask itself spends the influence — accepted or refused.
+    const player = getPlayer(world.city, owner);
+    if (player) player.influence = Math.max(0, player.influence - DEMAND_TRIBUTE_INFLUENCE_COST);
     const ai = readAIStanding(world, aiOwner);
     const accepted = ai !== null && demandAccepted(d.disposition, ai, amount);
     d.lastDemandAmount = amount;
@@ -389,6 +407,12 @@ const proposeCeasefireSpec = {
     if (ceasefireActive(world)) {
       return 'proposeCeasefire: a ceasefire is already in effect';
     }
+    // Fun-audit C2b (influence triage, 2026-10-02): suing for peace
+    // spends political capital, like the demand above.
+    const player = getPlayer(world.city, parties.owner);
+    if (player && player.influence < CEASEFIRE_INFLUENCE_COST) {
+      return `proposeCeasefire: player ${parties.owner} has ${Math.floor(player.influence)} influence, needs ${CEASEFIRE_INFLUENCE_COST}`;
+    }
     return null;
   },
   apply(cmd: { payload: Record<string, unknown> }, world: World): unknown {
@@ -396,6 +420,9 @@ const proposeCeasefireSpec = {
     const aiOwner = cmd.payload['targetOwner'] as number;
     ensureParties(world, owner, aiOwner);
     const d = world.diplomacy;
+    // The ask itself spends the influence — accepted or declined.
+    const player = getPlayer(world.city, owner);
+    if (player) player.influence = Math.max(0, player.influence - CEASEFIRE_INFLUENCE_COST);
     const ai = readAIStanding(world, aiOwner);
     const accepted = ai !== null && ceasefireAccepted(d.disposition, ai);
     if (accepted) {
