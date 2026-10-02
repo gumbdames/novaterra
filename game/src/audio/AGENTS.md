@@ -96,6 +96,16 @@ state. Pause = ctx.suspend(); settings persist to localStorage.
 - Served at `<base>/audio/*.mp3` via Vite `public/`; `engine.ts` resolves
   the base with `import.meta.env.BASE_URL`.
 
+### Pipeline guard (found bug 2026-10-02)
+
+Both tracks were documented here but were never committed, so the live site
+404'd and the game played in silence — `MusicDirector` is defensive and
+stays silent rather than breaking the game, so nothing surfaced the loss.
+`tests/audio.assets.test.ts` now pins both files in `public/audio/` (size +
+mp3 framing) AND in `dist/audio/` after the build. When adding a new track:
+commit the file, document it here + in THIRD_PARTY_NOTICES.md, and extend
+the test's `TRACKS` table.
+
 ## Rules
 
 - Audio is UI-layer only: DOM + Web Audio allowed here, but the modules
