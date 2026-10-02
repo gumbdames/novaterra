@@ -164,9 +164,11 @@ describe('sim/economy — specialization', () => {
     };
     const balanced = run('balanced');
     const industrial = run('industrial');
-    // Factory outputs 2.5 materials/sec; industrial focus adds 25%.
+    // Factory outputs 2.5 materials/sec; the test helper builds a road
+    // next to it (×1.25 road-adjacency, fun-audit D2); industrial focus
+    // adds another 25%.
     expect(industrial).toBeCloseTo(balanced * SPECIALIZATION_OUTPUT_BONUS, 9);
-    expect(balanced).toBeCloseTo(2.5, 9);
+    expect(balanced).toBeCloseTo(2.5 * 1.25, 9);
   });
 });
 

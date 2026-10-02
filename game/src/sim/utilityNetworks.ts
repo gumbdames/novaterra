@@ -176,6 +176,13 @@ export interface NetworkInfo {
   plantIds: number[];
   /** True when any network tile touches the map edge (auto-export). */
   touchesEdge: boolean;
+  /**
+   * Fun-audit D2 (2026-10-02): number of power-line cells in this
+   * network's conductor component — the network's delivery capacity
+   * is lineCells × POWER_LINE_CAPACITY (see economy.ts). Derived,
+   * never snapshotted.
+   */
+  lineCells: number;
 }
 
 /** How a building is reached by its network. */
@@ -558,7 +565,13 @@ function buildSide(
     }
     const plantIds = memberPlants.map((b) => b.id); // id order (networked is id-ordered)
     for (const pid of plantIds) plantNetwork.set(pid, id);
-    networks.push({ id, plantIds, touchesEdge });
+    // Fun-audit D2: count the power-line cells in this component —
+    // the network's delivery capacity (see economy.ts).
+    let lineCells = 0;
+    for (const c of tiles) {
+      if (sortedHas(city.powerLines, c)) lineCells++;
+    }
+    networks.push({ id, plantIds, touchesEdge, lineCells });
   }
 
   // 4. Per-region best network: the region is served when any region

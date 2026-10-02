@@ -102,6 +102,9 @@ import {
   runGrowth,
   buildingCenterWorld,
   CELL_WORLD_SIZE,
+  CITY_GRID_CELLS,
+  footprintCells,
+  roadSortedHas,
   type BuildingKind,
   type BuildingRecord,
   type CitySpecialization,
@@ -146,6 +149,94 @@ export { LOGISTICS_RADIUS };
  * no per-unit iteration, just one min() per depot.
  */
 export const FUEL_DEPOT_PULL_RATE_PER_SEC = 5;
+
+/**
+ * Fun-audit D2 (2026-10-02): power-line capacity — each power-line
+ * cell carries this many power units per economy tick. A network's
+ * deliverable supply is capped at lineCells × capacity (see
+ * allocateSide); demand beyond the cap reads as 'shortage', never
+ * 'disconnected'. Tuned so early nets (a plant + a few buildings on a
+ * handful of line cells) never hit the cap — only late-game
+ * mega-networks need parallel line capacity.
+ */
+export const POWER_LINE_CAPACITY = 100;
+
+/**
+ * Fun-audit D2 (2026-10-02): road-adjacency throughput — a producer
+ * building whose footprint touches a road cell gets this multiplier on
+ * its production output. Roads stay PURELY OPTIONAL (the user's
+ * standing directive): this is a bonus for building them, never a
+ * requirement. Depots are reloadPoints with no production output, so
+ * the bonus naturally applies only to producers.
+ */
+export const ROAD_ADJACENCY_BONUS = 1.25;
+
+/**
+ * Fun-audit D2 (2026-10-02): adjacency synergies — co-locating supply-
+ * chain buildings pays. Each entry is [receiver, provider, bonus]: the
+ * receiver gets the output bonus when its footprint touches the
+ * provider's footprint. Data-driven (add a row, get a synergy).
+ */
+const ADJACENCY_SYNERGIES: Array<{ receiver: BuildingKind; provider: BuildingKind; bonus: number }> = [
+  { receiver: 'oilRefinery', provider: 'oilWell', bonus: 1.25 },
+  { receiver: 'factory', provider: 'quarry', bonus: 1.25 },
+  { receiver: 'recyclingCenter', provider: 'factory', bonus: 1.25 },
+];
+
+/**
+ * The synergy multiplier for a building: 1.25 for each synergy whose
+ * provider footprint touches this building's footprint (multiplicative
+ * when several apply). Pure geometry. Exported for tests.
+ */
+export function adjacencySynergyMult(city: CityState, b: BuildingRecord): number {
+  let mult = 1;
+  for (const s of ADJACENCY_SYNERGIES) {
+    if (b.kind !== s.receiver) continue;
+    if (isBuildingAdjacent(city, b, s.provider)) mult *= s.bonus;
+  }
+  return mult;
+}
+
+/**
+ * True when any building of `providerKind` has a footprint cell
+ * orthogonally adjacent to `b`'s footprint.
+ */
+function isBuildingAdjacent(city: CityState, b: BuildingRecord, providerKind: BuildingKind): boolean {
+  const def = BUILDING_DEFS[b.kind];
+  const myCells = new Set(footprintCells(b.cx, b.cz, def.footprintW, def.footprintH));
+  for (const o of city.buildings) {
+    if (o.kind !== providerKind || o.id === b.id) continue;
+    const odef = BUILDING_DEFS[o.kind];
+    for (const c of footprintCells(o.cx, o.cz, odef.footprintW, odef.footprintH)) {
+      const cx = c % CITY_GRID_CELLS;
+      const cz = Math.floor(c / CITY_GRID_CELLS);
+      if (cx > 0 && myCells.has(c - 1)) return true;
+      if (cx < CITY_GRID_CELLS - 1 && myCells.has(c + 1)) return true;
+      if (cz > 0 && myCells.has(c - CITY_GRID_CELLS)) return true;
+      if (cz < CITY_GRID_CELLS - 1 && myCells.has(c + CITY_GRID_CELLS)) return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * True when any cell orthogonally adjacent to the building's footprint
+ * is a road cell. Pure geometry; roads are a sorted cell list.
+ * Exported for tests (the behavior is pinned through runProduction).
+ */
+export function isRoadAdjacent(city: CityState, b: BuildingRecord): boolean {
+  const def = BUILDING_DEFS[b.kind];
+  for (const c of footprintCells(b.cx, b.cz, def.footprintW, def.footprintH)) {
+    const cx = c % CITY_GRID_CELLS;
+    const cz = Math.floor(c / CITY_GRID_CELLS);
+    // Four orthogonal neighbors (roads are a sorted RoadCell[]).
+    if (cx > 0 && roadSortedHas(city.roads, c - 1)) return true;
+    if (cx < CITY_GRID_CELLS - 1 && roadSortedHas(city.roads, c + 1)) return true;
+    if (cz > 0 && roadSortedHas(city.roads, c - CITY_GRID_CELLS)) return true;
+    if (cz < CITY_GRID_CELLS - 1 && roadSortedHas(city.roads, c + CITY_GRID_CELLS)) return true;
+  }
+  return false;
+}
 
 /**
  * Fixed-rate market price list (R1 final-review, 2026-10-01): moved to
@@ -386,6 +477,14 @@ function allocateUtilities(world: World, city: CityState): UtilityAllocation {
           const pb = byId.get(pid);
           if (pb) supply += supplyOf(pb);
         }
+        // Fun-audit D2: power-line capacity — the network can only
+        // deliver lineCells × POWER_LINE_CAPACITY power units per tick.
+        // Demand beyond the cap is 'shortage' (the diag loop below),
+        // never 'disconnected'. Water is unmetered (pipes don't cap).
+        // Networks with no power-line cells (roads-only) are unmetered.
+        if (utility === 'power' && net.lineCells > 0) {
+          supply = Math.min(supply, net.lineCells * POWER_LINE_CAPACITY);
+        }
         const members = side.networkMembers.get(net.id) ?? [];
         let demand = 0;
         for (const m of members) {
@@ -576,6 +675,50 @@ export function specializationMult(player: PlayerState, zone: number | string): 
 /** Run production/consumption for operational buildings, in id order. */
 function runProduction(world: World, city: CityState): void {
   const ordered = [...city.buildings].sort((a, b) => a.id - b.id);
+  // Fun-audit D2: precompute the per-building output bonuses ONCE per
+  // tick (not per building per resource key). Road adjacency is a
+  // single Set of building ids; synergies are resolved via a
+  // provider-cell Set per synergy (O(buildings + cells), not O(n²)).
+  const roadBonusIds = new Set<number>();
+  for (const b of ordered) {
+    if (b.operational && b.progress >= 1 && isRoadAdjacent(city, b)) {
+      roadBonusIds.add(b.id);
+    }
+  }
+  // Provider footprint cells per synergy, then receiver lookup.
+  const synergyMult = new Map<number, number>();
+  for (const s of ADJACENCY_SYNERGIES) {
+    const providerCells = new Set<number>();
+    for (const o of ordered) {
+      if (o.kind !== s.provider || !o.operational || o.progress < 1) continue;
+      const odef = BUILDING_DEFS[o.kind];
+      for (const c of footprintCells(o.cx, o.cz, odef.footprintW, odef.footprintH)) {
+        providerCells.add(c);
+      }
+    }
+    if (providerCells.size === 0) continue;
+    for (const b of ordered) {
+      if (b.kind !== s.receiver || !b.operational || b.progress < 1) continue;
+      const def = BUILDING_DEFS[b.kind];
+      let touches = false;
+      for (const c of footprintCells(b.cx, b.cz, def.footprintW, def.footprintH)) {
+        const cx = c % CITY_GRID_CELLS;
+        const cz = Math.floor(c / CITY_GRID_CELLS);
+        if (
+          (cx > 0 && providerCells.has(c - 1)) ||
+          (cx < CITY_GRID_CELLS - 1 && providerCells.has(c + 1)) ||
+          (cz > 0 && providerCells.has(c - CITY_GRID_CELLS)) ||
+          (cz < CITY_GRID_CELLS - 1 && providerCells.has(c + CITY_GRID_CELLS))
+        ) {
+          touches = true;
+          break;
+        }
+      }
+      if (touches) {
+        synergyMult.set(b.id, (synergyMult.get(b.id) ?? 1) * s.bonus);
+      }
+    }
+  }
   for (const b of ordered) {
     if (!b.operational || b.progress < 1) continue;
     const def = BUILDING_DEFS[b.kind];
@@ -619,6 +762,14 @@ function runProduction(world: World, city: CityState): void {
     }
     for (const key of RESOURCE_KEYS) {
       let gain = (def.output[key] ?? 0) * mult;
+      // Fun-audit D2: road-adjacency throughput — a producer on a road
+      // moves goods faster (+25% output). Bonus only; roads stay
+      // optional. Applied to output, not inputs. (Precomputed above.)
+      if (gain > 0 && roadBonusIds.has(b.id)) gain *= ROAD_ADJACENCY_BONUS;
+      // Fun-audit D2: adjacency synergies — co-located supply chains
+      // (refinery↔well, factory↔quarry, recycling↔factory) produce more.
+      // (Precomputed above.)
+      if (gain > 0) gain *= synergyMult.get(b.id) ?? 1;
       // Apply age program multipliers to specific resources.
       if (key === 'influence') gain *= influenceMult;
       if (key === 'goods') gain *= goodsMult;
