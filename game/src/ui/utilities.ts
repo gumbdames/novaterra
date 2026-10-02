@@ -528,8 +528,25 @@ export function networkToolHint(): string {
 }
 
 // ---------------------------------------------------------------------------
-// NIGHT LAMPS — deferred (documented, not built).
+// NIGHT LAMPS — shipped as night windows (exploration bet C7, 2026-10-02).
 // ---------------------------------------------------------------------------
+//
+// CORRECTION (2026-10-02): the note below claimed "the sim has no
+// tick-of-day" — that premise was always false. `daylightFactor(tick)`
+// has existed in sim/utilityNetworks.ts all along (pure, 0 = deep night,
+// 1 = full day, 240 s cycle). C7 built the visual day/night rig on it:
+// `render/dayNight.ts` (`sunParams(tick)` + the per-scene `DayNightRig`)
+// lerps the noon rig every frame from the sim tick — sun, hemisphere,
+// sky/fog, exposure, env intensity, water TSL dim, stars, blob-shadow
+// fade — and every `glassBlue` surface material glows warm at night via
+// the shared glass registry. That IS the lamp pass for 0.1 Alpha:
+// windows light up after dark, +0 draw calls.
+//
+// What remains genuinely future: per-building lamp POSTS (streetlights)
+// as geometry, and any gameplay effect of darkness (rejected — visual
+// only by design).
+//
+// --- The original deferred note, kept for the record: ---
 //
 // The brief asked for night lamps driven by the sim's `daylightFactor(tick)`
 // "if cheap". It is not cheap: the game has NO day/night cycle today —

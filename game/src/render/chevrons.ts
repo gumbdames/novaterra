@@ -216,6 +216,10 @@ export class ChevronOverlay {
         map: tex,
         transparent: true,
         depthWrite: false,
+        // Exploration bet C7 (2026-10-02): chevrons are gameplay
+        // information — immune to the day/night exposure lerp so they
+        // stay bright at night (zero per-frame cost).
+        toneMapped: false,
       });
       const mesh = new THREE.InstancedMesh(geo, mat, CHEVRON_INITIAL_CAPACITY);
       // Instances spread across the map: never let three.js cull the

@@ -1260,6 +1260,10 @@ export class EntityRenderer {
     opacity: 0.9,
     side: THREE.DoubleSide,
     depthWrite: false,
+    // Exploration bet C7 (2026-10-02): selection rings are gameplay
+    // information — immune to the day/night exposure lerp so they stay
+    // bright at night (zero per-frame cost).
+    toneMapped: false,
   });
   private readonly barTexture: THREE.CanvasTexture;
   /**
@@ -1529,6 +1533,15 @@ export class EntityRenderer {
    */
   setCamera(camera: THREE.Camera | null): void {
     this.camera = camera;
+  }
+
+  /**
+   * Exploration bet C7 (2026-10-02): blob-shadow strength for the
+   * day/night rig (shadows fade with darkness). Sink for
+   * `DayNightRig.setBlobShadowStrength`.
+   */
+  setBlobShadowStrength(f: number): void {
+    this.blobShadows.setStrength(f);
   }
 
   /**

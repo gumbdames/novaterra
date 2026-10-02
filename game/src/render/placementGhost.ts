@@ -71,11 +71,21 @@ export class PlacementGhost {
         transparent: true,
         opacity: GHOST_OPACITY,
         depthWrite: false,
+        // Exploration bet C7 (2026-10-02): the placement ghost is
+        // gameplay information — immune to the day/night exposure lerp
+        // so it stays readable at night (zero per-frame cost).
+        toneMapped: false,
       }),
     );
     this.edges = new THREE.LineSegments(
       new THREE.EdgesGeometry(geo),
-      new THREE.LineBasicMaterial({ color: GHOST_COLOR_VALID, transparent: true, opacity: 0.9 }),
+      new THREE.LineBasicMaterial({
+        color: GHOST_COLOR_VALID,
+        transparent: true,
+        opacity: 0.9,
+        // Exploration bet C7 (2026-10-02): see fill above.
+        toneMapped: false,
+      }),
     );
     this.edges.renderOrder = 5;
     this.fill.renderOrder = 4;

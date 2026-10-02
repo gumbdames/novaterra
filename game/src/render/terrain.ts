@@ -48,6 +48,7 @@ import {
   materialColor,
   positionLocal,
   sin,
+  uniform,
   vec3,
 } from 'three/tsl';
 import {
@@ -159,6 +160,11 @@ export function waterRippleTilt(x: number, z: number, t: number): [number, numbe
  * Shore foam is deliberately skipped: without a shoreline distance field
  * it would need a texture or a per-frame CPU pass, neither of which is
  * cheap.
+ *
+ * Exploration bet C7 (2026-10-02): the day/night rig scales the whole
+ * water color through a `dayNightDim` TSL uniform (1.0 by day, ~0.5 at
+ * night) — the traveling bands and ripple keep working, just dimmer.
+ * The rig finds the uniform on the material's userData; +0 draw calls.
  */
 function attachWaterFlow(mat: THREE.MeshStandardMaterial): void {
   const t = ambientTimeSeconds;
@@ -169,7 +175,9 @@ function attachWaterFlow(mat: THREE.MeshStandardMaterial): void {
   const bandA = sin(x.mul(F.bandAKx).add(z.mul(F.bandAKz)).sub(t.mul(F.bandAW)));
   const bandB = sin(z.mul(F.bandBKz).sub(x.mul(F.bandBKx)).add(t.mul(F.bandBW)));
   const brighten = bandA.mul(bandB).mul(F.contrast).add(1);
-  mat.colorNode = materialColor.mul(brighten);
+  const dayNightDim = uniform(1);
+  mat.colorNode = materialColor.mul(brighten).mul(dayNightDim);
+  (mat.userData as Record<string, unknown>)['dayNightDim'] = dayNightDim;
 
   const c1 = cos(x.mul(F.ripple1K).sub(t.mul(F.ripple1W)));
   const c2 = cos(x.mul(F.ripple2Kx).add(z.mul(F.ripple2Kz)).sub(t.mul(F.ripple2W)));

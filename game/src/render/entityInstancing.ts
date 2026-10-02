@@ -712,6 +712,10 @@ export class EntityInstancer {
           color: 0x1a1a1a,
           depthTest: false,
           transparent: true,
+          // Exploration bet C7 (2026-10-02): health bars are gameplay
+          // information — immune to the day/night exposure lerp so they
+          // stay readable at night (zero per-frame cost).
+          toneMapped: false,
         }),
         false,
       );
@@ -722,6 +726,8 @@ export class EntityInstancer {
           color: 0x4ade80,
           depthTest: false,
           transparent: true,
+          // Exploration bet C7 (2026-10-02): see barBg above.
+          toneMapped: false,
         }),
         true,
       );

@@ -46,6 +46,30 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   footprint, mostly hidden under the unit itself. ACES is a single
   output-node op — unmeasurable on any real GPU.
 
+## Day/night rig (`render/dayNight.ts`, exploration bet C7, 0.1 Alpha)
+
+- The sim already ran a 240 s day cycle (`daylightFactor(tick)`); the
+  rig makes it visible. `sunParams(tick)` is pure (same pattern as
+  `daylightFactor` — Node-testable, deterministic); the per-scene
+  `DayNightRig` lerps the noon rig every frame from the sim tick: sun
+  2.0→0.06, hemi 1.1→0.22, sky/fog colors, exposure 1.0→0.45, env
+  intensity 0.5→0.06, water TSL dim, night-window emissive on the
+  shared `glassBlue` registry, one `THREE.Points` star field (+1 draw
+  call, hidden by day), blob shadows fading to 0.3. +0 draw calls
+  otherwise. Pause ⇒ frozen sky (tick static); save/load ⇒ zero new
+  fields (phase derives from the snapshotted tick). The trailer pins
+  `GOLDEN_HOUR_TICK` with `keepBackground` (its baked sunset gradient
+  stays; ~7,400 captured ticks ≈ one full cycle would otherwise
+  strobe). Gameplay-critical overlay materials (selection rings,
+  chevrons, health bars, damage numbers, placement ghost) set
+  `toneMapped: false` — immune to the exposure lerp, zero per-frame
+  cost. Night is deep blue, never black (readability contract).
+- **Art QA rule: every future art pass must be eyeballed at 4 times of
+  day** — dawn (tick 0), noon (tick ~1800), golden hour (tick 410),
+  deep night (tick ~5400). The rig changes what every material looks
+  like; a surface that reads at noon can wash out or vanish at night.
+
+
 ## Terrain meshing conventions (`render/terrain.ts`)
 
 - Mesh data is built as **plain typed arrays first** (`buildChunkMeshData` is

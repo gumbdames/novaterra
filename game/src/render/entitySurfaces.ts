@@ -37,6 +37,7 @@ import {
   SURFACE_MATERIALS,
 } from './surfaceMaterials';
 import type { SurfaceCategory } from './surfaceTextures';
+import { registerGlassMaterial } from './dayNight';
 import {
   surfaceTexture,
   surfaceRoughnessTexture,
@@ -604,5 +605,13 @@ export function surfaceMaterial(
   }
   if (opts.flatShading !== undefined) material.flatShading = opts.flatShading;
   material.userData.surfaceCategory = category;
+  // Exploration bet C7 (2026-10-02): every glass clone feeds the
+  // night-window registry (render/dayNight.ts) — one emissive write
+  // lights every window of the kind. Callers that pass their own
+  // emissive keep it by day; the rig only writes at night (f > 0) and
+  // restores black when the glow fades.
+  if (category === 'glassBlue' && opts.emissive === undefined) {
+    registerGlassMaterial(material);
+  }
   return material;
 }

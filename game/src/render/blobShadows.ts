@@ -188,4 +188,15 @@ export class BlobShadowSystem {
     (this.mesh.material as THREE.Material).dispose();
     ((this.mesh.material as THREE.MeshBasicMaterial).map as THREE.Texture | null)?.dispose();
   }
+
+  /**
+   * Exploration bet C7 (2026-10-02): blob shadows fade with darkness
+   * (fake AO decals at full strength would look painted on at night).
+   * `f` is 1.0 by day, ~0.3 at deep night (see sunParams().blobShadow).
+   */
+  setStrength(f: number): void {
+    if (this.disposed) return;
+    (this.mesh.material as THREE.MeshBasicMaterial).opacity =
+      0.34 * Math.min(1, Math.max(0, f));
+  }
 }

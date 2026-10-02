@@ -62,6 +62,11 @@ import {
 } from './trailerDirector';
 import { poseAtTick } from './trailerCamera';
 import {
+  createDayNightRig,
+  applyDayNight,
+  GOLDEN_HOUR_TICK,
+} from '../render/dayNight';
+import {
   startTrailerCapture,
   downloadTrailerRecording,
   type TrailerCapture,
@@ -137,6 +142,19 @@ export async function runTrailerMode(search: string): Promise<void> {
     instanced: true,
   });
   entities.setCamera(camera);
+
+  // Exploration bet C7 (2026-10-02): pin a fixed golden-hour phase.
+  // ~7,400 captured ticks ≈ one full 240 s day cycle — a live sky would
+  // strobe through day/night mid-movie. `keepBackground` preserves the
+  // menu scene's baked sunset gradient; lights, water, windows and
+  // shadows still take the golden-hour grade.
+  const dayNightRig = createDayNightRig({
+    scene,
+    renderer,
+    water: terrainView.water,
+    setBlobShadowStrength: (f) => entities.setBlobShadowStrength(f),
+  });
+  applyDayNight(dayNightRig, GOLDEN_HOUR_TICK, 0, 0, { keepBackground: true });
 
   // Title-card overlay (in-game HUD, styled via style.css).
   const cardsEl = document.createElement('div');

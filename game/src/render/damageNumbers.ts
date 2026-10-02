@@ -127,6 +127,10 @@ export class DamageNumbers {
           transparent: true,
           depthTest: false,
           depthWrite: false,
+          // Exploration bet C7 (2026-10-02): damage numbers are gameplay
+          // information — immune to the day/night exposure lerp so they
+          // stay readable at night (zero per-frame cost).
+          toneMapped: false,
         });
         const sprite = new THREE.Sprite(mat);
         sprite.visible = false;

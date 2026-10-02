@@ -103,6 +103,12 @@ land, sea and air — or play a fully peaceful game with war disabled.
   the boot payload, with a slow cinematic camera drift over the final
   battlefield while the overlay is up (your camera is restored exactly
   on dismiss). Provenance in `THIRD_PARTY_NOTICES.md`.
+  Exploration bet C7 (2026-10-02) is in too: the visible day/night cycle
+  — the sim always ran a 4-minute day (`daylightFactor(tick)`) and now
+  the sky follows it: sun, sky/fog, exposure, water and windows all grade
+  from dawn gold through noon blue to a readable deep-blue night with
+  stars. Visual only, driven by the sim tick (pause freezes the sky;
+  saves carry no new fields).
   See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
