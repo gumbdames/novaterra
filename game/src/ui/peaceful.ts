@@ -72,6 +72,21 @@ export function menuTabsForWorld(peaceful: boolean): MenuTabId[] {
 }
 
 /**
+ * Roadmap B18 (2026-10-02): per-tab color-identity class for the menu
+ * rail buttons and the menu shell (`tab-civilian` green, `tab-military`
+ * red, `tab-management` violet — the CSS `--tab-accent` hues). Pure so
+ * the tab→class mapping stays headless-testable (hud.ts renders from
+ * this).
+ */
+export function menuTabColorClass(id: MenuTabId): string {
+  return id === 'civilian'
+    ? 'tab-civilian'
+    : id === 'military'
+      ? 'tab-military'
+      : 'tab-management';
+}
+
+/**
  * Thousands-separated integer formatting — deterministic and
  * locale-independent (no `toLocaleString`, whose output varies by
  * runtime ICU data).

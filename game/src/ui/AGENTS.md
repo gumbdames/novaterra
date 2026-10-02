@@ -232,6 +232,12 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   remembered per main tab,
   and so is the build tab per main tab. Selecting a unit/building
   replaces the tab content with the contextual branch (as before).
+  Roadmap B18 (2026-10-02): per-tab color identity — Civilian green,
+  Military red, Management violet. Rail buttons and the menu shell
+  carry `tab-<id>` classes (via `menuTabColorClass` in `peaceful.ts`);
+  the active rail button shows a colored inset strip and active
+  sub-tabs / palette tabs inherit the tab accent (`--tab-accent` /
+  `--tab-soft`, blue default outside a tab context).
   TRAIN palette has 6 tabs (Infantry / Armor / Air / Navy — the Navy tab
   lists 24 kinds; navalMine rides along but is never trained — its button
   stays disabled with the "Deployed by a Minelayer" reason, teaching the

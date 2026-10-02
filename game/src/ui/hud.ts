@@ -163,7 +163,7 @@ import {
 } from './entityPortraits';
 // Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):
 // the peaceful UI contract (tab visibility, objectives lines).
-import { menuTabsForWorld, peacefulStatusLines, peacefulScoreLines, loadPeacefulBest } from './peaceful';
+import { menuTabsForWorld, menuTabColorClass, peacefulStatusLines, peacefulScoreLines, loadPeacefulBest } from './peaceful';
 import { getMayor, getGeneral } from '../sim/delegation';
 import { selectionDigest as paletteDigest } from './paletteDigest';
 // Roadmap B12 (minimap): the tactical overview canvas.
@@ -819,6 +819,10 @@ export class HUD {
     for (const id of menuTabsForWorld(world.peaceful === true)) {
       const b = document.createElement('button');
       b.className = `menu-rail-btn${this.menuTab === id ? ' active' : ''}`;
+      // Roadmap B18: per-tab color identity (class names claimed by the
+      // menu-rail digest branch for the AD11 stale check:
+      // 'tab-civilian', 'tab-military', 'tab-management').
+      b.classList.add(menuTabColorClass(id));
       b.prepend(iconSpan(menuIcon(icons[id])));
       b.append(el('span', 'palette-label', loc(STRINGS.menuTabs[id])));
       b.setAttribute('aria-pressed', this.menuTab === id ? 'true' : 'false');
@@ -2381,7 +2385,17 @@ export class HUD {
     // 'military' selection can never point at it, so render Civilian
     // instead (the stored state is left alone; the button is simply
     // gone). The digest's mt: segment still keys on the stored tab.
+    // Roadmap B18 (2026-10-02): the shell carries the effective tab's
+    // color-identity class (tab-civilian/military/management) so the
+    // sub-tabs and palette tabs inside inherit the tab accent.
+    const menuTab =
+      world.peaceful === true && this.menuTab === 'military'
+        ? 'civilian'
+        : this.menuTab;
     const shell = el('div', 'menu-shell');
+    // Roadmap B18: the shell carries the effective tab's color-identity
+    // class so sub-tabs and palette tabs inside inherit the tab accent.
+    shell.classList.add(menuTabColorClass(menuTab));
     shell.append(this.menuRailEl(world));
     const content = el('div', 'menu-content');
     shell.append(content);
@@ -2389,10 +2403,6 @@ export class HUD {
 
     if (selection.unitIds.length === 0 && selection.buildingId === null) {
       content.append(el('div', 'sel-empty', sel.noSelection));
-      const menuTab =
-        world.peaceful === true && this.menuTab === 'military'
-          ? 'civilian'
-          : this.menuTab;
       if (menuTab === 'civilian') {
         this.appendCivilianPanel(content, world);
       } else if (menuTab === 'military') {

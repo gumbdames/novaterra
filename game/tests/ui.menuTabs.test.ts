@@ -33,6 +33,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { menuTabsForWorld } from '../src/ui/peaceful';
+import { menuTabColorClass } from '../src/ui/peaceful';
 import { fileURLToPath } from 'node:url';
 
 import { createSession } from '../src/ui/session';
@@ -278,5 +279,23 @@ describe('menu-tab digest coverage', () => {
     expect(d).toContain('ms:');
     expect(d).toContain('mg:');
     expect(d).toContain('tr:');
+  });
+});
+
+// Roadmap B18 (2026-10-02): per-tab color identity — the tab→class
+// mapping the rail buttons and menu shell render from.
+describe('menuTabColorClass', () => {
+  it('maps every menu tab to its color-identity class', () => {
+    expect(menuTabColorClass('civilian')).toBe('tab-civilian');
+    expect(menuTabColorClass('military')).toBe('tab-military');
+    expect(menuTabColorClass('management')).toBe('tab-management');
+  });
+
+  it('covers every tab the world can show', () => {
+    for (const peaceful of [false, true]) {
+      for (const tab of menuTabsForWorld(peaceful)) {
+        expect(menuTabColorClass(tab)).toMatch(/^tab-/);
+      }
+    }
   });
 });

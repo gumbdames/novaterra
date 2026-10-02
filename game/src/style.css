@@ -650,14 +650,38 @@ body {
 
 .palette-tab:hover {
   color: var(--ink);
-  border-color: var(--accent);
+  border-color: var(--tab-accent, var(--accent));
 }
 
 .palette-tab.active {
-  background: rgba(87, 200, 255, 0.18);
-  border-color: var(--accent);
+  background: var(--tab-soft, rgba(87, 200, 255, 0.18));
+  border-color: var(--tab-accent, var(--accent));
   color: var(--ink);
   font-weight: 600;
+}
+
+/* Roadmap B18 (2026-10-02): per-tab color identity — Civilian green,
+ * Military red, Management violet. The rail buttons carry tab-<id>
+ * classes (hud.ts) and the menu shell carries the effective tab's
+ * class, so sub-tabs and palette tabs inside inherit the accent via
+ * --tab-accent / --tab-soft. Outside a tab context the blue default
+ * still applies. */
+.menu-shell.tab-civilian,
+.menu-rail-btn.tab-civilian {
+  --tab-accent: #4ade80;
+  --tab-soft: rgba(74, 222, 128, 0.16);
+}
+
+.menu-shell.tab-military,
+.menu-rail-btn.tab-military {
+  --tab-accent: #f87171;
+  --tab-soft: rgba(248, 113, 113, 0.16);
+}
+
+.menu-shell.tab-management,
+.menu-rail-btn.tab-management {
+  --tab-accent: #a78bfa;
+  --tab-soft: rgba(167, 139, 250, 0.16);
 }
 
 /* Command-menu rebuild (2026-10-01): the selection panel is a slim
@@ -708,13 +732,15 @@ body {
 
 .menu-rail-btn:hover {
   color: var(--ink);
-  border-color: var(--accent);
+  border-color: var(--tab-accent, var(--accent));
 }
 
 .menu-rail-btn.active {
-  background: rgba(87, 200, 255, 0.18);
-  border-color: var(--accent);
+  background: var(--tab-soft, rgba(87, 200, 255, 0.18));
+  border-color: var(--tab-accent, var(--accent));
   color: var(--ink);
+  /* B18: the active rail button reads in its tab hue at a glance. */
+  box-shadow: inset 0 3px 0 var(--tab-accent, var(--accent));
 }
 
 .menu-content {
@@ -747,12 +773,12 @@ body {
 
 .sub-tab:hover {
   color: var(--ink);
-  border-color: var(--accent);
+  border-color: var(--tab-accent, var(--accent));
 }
 
 .sub-tab.active {
-  background: rgba(87, 200, 255, 0.18);
-  border-color: var(--accent);
+  background: var(--tab-soft, rgba(87, 200, 255, 0.18));
+  border-color: var(--tab-accent, var(--accent));
   color: var(--ink);
 }
 

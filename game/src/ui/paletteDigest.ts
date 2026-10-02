@@ -855,6 +855,11 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'menu-content',
       'palette-icon',
       'palette-label',
+      // Roadmap B18 (2026-10-02): per-tab color identity classes on the
+      // rail buttons and the menu shell (drive the --tab-accent hue).
+      'tab-civilian',
+      'tab-military',
+      'tab-management',
     ],
     // mt: the active main tab — the rail highlights it, so the digest
     // must move on a tab switch. Grand-expansion Phase 8 (peaceful,
