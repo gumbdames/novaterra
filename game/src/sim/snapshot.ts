@@ -57,6 +57,7 @@ import { encodeSuperweaponState, decodeSuperweaponState, initSuperweapons } from
 import { encodeUpgrades, decodeUpgrades, encodeUpgradeLevels, decodeUpgradeLevels } from './upgrades';
 import type { DiplomacyState } from './diplomacy';
 import { decodeDiplomacyState } from './diplomacy';
+import type { WonderCountdown, WonderRaceKind } from './wonderCountdown';
 
 /**
  * Snapshot format version. Bump on any breaking change to the shape below.
@@ -208,6 +209,12 @@ export interface Snapshot {
    */
   diplomacy: DiplomacyState;
   /**
+   * Fun-audit B2 (2026-10-02): the wonder countdown. Added without a
+   * version bump — legacy snapshots predate the field and decode to
+   * null (no countdown was ever running in an old save).
+   */
+  wonderCountdown: WonderCountdown | null;
+  /**
    * Roadmap B9 (2026-10-02): per-player repeatable-upgrade levels
    * (owner -> upgrade id -> level). Added without a version bump —
    * legacy snapshots predate the field and decode to {} (no old save
@@ -345,6 +352,9 @@ function copyPlayer(p: PlayerState): PlayerState {
       (p.taxRates[3] as number | undefined) ?? DEFAULT_TAX_RATE,
     ],
     population: p.population,
+    // Fun-audit B3 (2026-10-02): lifetime peak population — legacy
+    // saves decode to 0 (AD9, no version bump).
+    peakPopulation: p.peakPopulation ?? 0,
     specialization: p.specialization,
     // Grand-expansion intel roster (§3.8/S6, workstream 2, 2026-09-30):
     // per-player intel asset counters. ?? 0 per counter so legacy
@@ -587,6 +597,12 @@ export function takeSnapshot(world: World): Snapshot {
     victoryKind: world.victoryKind,
     // Roadmap B3: faithful copy of the diplomacy state (plain data).
     diplomacy: JSON.parse(JSON.stringify(world.diplomacy)) as DiplomacyState,
+    // Fun-audit B2: faithful copy of the wonder countdown (plain data,
+    // null when idle).
+    wonderCountdown:
+      world.wonderCountdown === null || world.wonderCountdown === undefined
+        ? null
+        : { ...world.wonderCountdown },
   };
 }
 
@@ -708,5 +724,32 @@ function restoreSnapshotInner(snap: Snapshot): World {
   // version bump). decodeDiplomacyState is defensive against corrupt
   // values too.
   world.diplomacy = decodeDiplomacyState(snap.diplomacy);
+  // Fun-audit B2: pre-countdown snapshots decode to null — no old save
+  // had a countdown running (AD9 neutral default, no version bump).
+  // Defensive against corrupt values: kind must be a race kind, leader
+  // a finite owner id, endsAtTick a finite tick.
+  world.wonderCountdown = decodeWonderCountdown(snap.wonderCountdown);
   return world;
+}
+
+/**
+ * Fun-audit B2 (2026-10-02): defensive decode of the wonder countdown.
+ * Anything malformed (or absent) decodes to null — the countdown is
+ * purely additive state.
+ */
+function decodeWonderCountdown(data: unknown): WonderCountdown | null {
+  if (data === null || data === undefined) return null;
+  if (typeof data !== 'object') return null;
+  const d = data as Record<string, unknown>;
+  const kind = d['kind'];
+  if (kind !== 'economic' && kind !== 'population' && kind !== 'monument') return null;
+  const leader = d['leader'];
+  const endsAtTick = d['endsAtTick'];
+  if (typeof leader !== 'number' || !Number.isFinite(leader)) return null;
+  if (typeof endsAtTick !== 'number' || !Number.isFinite(endsAtTick)) return null;
+  return {
+    kind: kind as WonderRaceKind,
+    leader,
+    endsAtTick: Math.floor(endsAtTick),
+  };
 }

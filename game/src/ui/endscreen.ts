@@ -44,7 +44,9 @@
  * Pure DOM. Copy comes from ui/strings.ts.
  */
 
-import { STRINGS } from './strings';
+import { STRINGS, loc } from './strings';
+import type { EndGameStats } from './endStats';
+import { endStatsLines } from './endStats';
 
 /**
  * The six end-screen illustrations (exploration bet C6, 2026-10-02):
@@ -129,12 +131,12 @@ export class EndScreen {
     return this.art;
   }
 
-  showVictory(title?: string, detail?: string, art?: EndArt): void {
-    this.show('victory', title, detail, art ?? defaultEndArt('victory'));
+  showVictory(title?: string, detail?: string, art?: EndArt, stats?: EndGameStats): void {
+    this.show('victory', title, detail, art ?? defaultEndArt('victory'), stats);
   }
 
-  showDefeat(title?: string, detail?: string, art?: EndArt): void {
-    this.show('defeat', title, detail, art ?? defaultEndArt('defeat'));
+  showDefeat(title?: string, detail?: string, art?: EndArt, stats?: EndGameStats): void {
+    this.show('defeat', title, detail, art ?? defaultEndArt('defeat'), stats);
   }
 
   hide(): void {
@@ -150,6 +152,7 @@ export class EndScreen {
     title: string | undefined,
     detail: string | undefined,
     art: EndArt,
+    stats?: EndGameStats,
   ): void {
     this.hide();
     this.actions.onShow?.(kind);
@@ -185,6 +188,24 @@ export class EndScreen {
     detailEl.textContent =
       detail ?? (kind === 'victory' ? s.victoryDetail : s.defeatDetail);
     panel.append(detailEl);
+
+    // Fun-audit B3 (2026-10-02): the session record — the game asks
+    // for a long session, it should report back more than one
+    // sentence. Localized DOM text only (no baked text in the art).
+    if (stats !== undefined) {
+      const statsTitle = document.createElement('h3');
+      statsTitle.className = 'end-stats-title';
+      statsTitle.textContent = loc(STRINGS.endStats.title);
+      panel.append(statsTitle);
+      const statsList = document.createElement('ul');
+      statsList.className = 'end-stats';
+      for (const line of endStatsLines(stats)) {
+        const li = document.createElement('li');
+        li.textContent = line;
+        statsList.append(li);
+      }
+      panel.append(statsList);
+    }
 
     const keep = document.createElement('button');
     keep.textContent = s.keepPlaying;

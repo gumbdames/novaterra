@@ -51,6 +51,7 @@ import type { DelegationState } from './delegation';
 import { initDelegation } from './delegation';
 import type { DiplomacyState } from './diplomacy';
 import { initDiplomacy } from './diplomacy';
+import type { WonderCountdown } from './wonderCountdown';
 import type { SuperweaponState } from './superweapons';
 import { initSuperweapons } from './superweapons';
 import { initUpgrades, initUpgradeLevels } from './upgrades';
@@ -151,6 +152,14 @@ export interface World {
    */
   diplomacy: DiplomacyState;
   /**
+   * Fun-audit B2 (2026-10-02): the wonder countdown — when any side
+   * completes a Monument or crosses 80% of the economic/population
+   * threshold, a 5-minute global countdown starts (see
+   * sim/wonderCountdown.ts). Null when no countdown runs. Snapshotted
+   * (AD9 neutral-default null) and digest-covered.
+   */
+  wonderCountdown: WonderCountdown | null;
+  /**
    * Combat VFX event stream (B16, 2026-10-01): visual cues the sim
    * emits during the tick for the render layer. Drained by the render
    * each frame, cleared by the sim at tick start. NOT snapshotted,
@@ -221,6 +230,8 @@ export function createWorld(seed: number): World {
     victoryKind: 'conquest',
     // Roadmap B3: neutral diplomacy; restoreSnapshot for saves.
     diplomacy: initDiplomacy(),
+    // Fun-audit B2: no countdown on a fresh world; restoreSnapshot for saves.
+    wonderCountdown: null,
     // Combat VFX stream starts empty (B16).
     combatEvents: [],
   };

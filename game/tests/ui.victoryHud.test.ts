@@ -103,3 +103,32 @@ describe('victoryProgressOf (fun-audit B4)', () => {
     expect(POPULATION_VICTORY_POP).toBe(10000);
   });
 });
+
+describe('victoryProgressOf countdown (fun-audit B2)', () => {
+  it('carries the live countdown when one runs', () => {
+    const world = worldWithKind('economic');
+    getPlayer(world.city, HUMAN_PLAYER_ID)!.funds = 85_000;
+    // Run the session's tick driver once so the wonder system fires.
+    // createSession's driver is internal; emulate one system tick here.
+    world.wonderCountdown = { kind: 'economic', leader: HUMAN_PLAYER_ID, endsAtTick: 9000 };
+    world.tick = 100;
+    const p = victoryProgressOf(world)!;
+    expect(p.countdown).toBeDefined();
+    expect(p.countdown!.remainingTicks).toBe(8900);
+    expect(p.countdown!.leaderIsMine).toBe(true);
+  });
+
+  it('no countdown field when idle', () => {
+    const world = worldWithKind('economic');
+    const p = victoryProgressOf(world)!;
+    expect(p.countdown).toBeUndefined();
+  });
+
+  it('reports the rival leading when they triggered', () => {
+    const world = worldWithKind('monument');
+    world.wonderCountdown = { kind: 'monument', leader: AI_PLAYER_ID, endsAtTick: 9000 };
+    world.tick = 0;
+    const p = victoryProgressOf(world)!;
+    expect(p.countdown!.leaderIsMine).toBe(false);
+  });
+});

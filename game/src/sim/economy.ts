@@ -1527,6 +1527,10 @@ function recountPopulation(city: CityState): void {
     const player = getPlayer(city, b.owner);
     if (player) player.population += r;
   }
+  // Fun-audit B3 (2026-10-02): lifetime peak, for the end-of-game stats.
+  for (const player of city.players) {
+    player.peakPopulation = Math.max(player.peakPopulation ?? 0, player.population);
+  }
 }
 
 /** Manpower trickles in from population: 2% of population per sim-second. */

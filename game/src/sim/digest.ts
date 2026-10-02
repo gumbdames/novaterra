@@ -101,6 +101,14 @@ export function canonicalizeWorld(world: World): string {
       `${d?.lastCeasefireAsk ?? '-'},` +
       `${parties ? `${parties.owner}:${parties.aiOwner}` : '-'}|`;
   }
+  // Fun-audit B2 (2026-10-02): the wonder countdown is
+  // behavior-affecting (it decides race victories) ⇒ digest-covered.
+  // `?? null` keeps hand-built fixture worlds (which predate the field)
+  // digesting identically.
+  {
+    const w = world.wonderCountdown ?? null;
+    out += `|wonder=${w === null ? '-' : `${w.kind},${w.leader},${w.endsAtTick}`}|`;
+  }
   for (const e of world.entities) {
     out += `${e.id},${e.kind},${canonicalNumber(e.x)},${canonicalNumber(e.z)};`;
   }

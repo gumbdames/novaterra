@@ -359,6 +359,15 @@ export const STRINGS = {
     stormEngineFiring: { en: 'Storm Engine firing.' },
     researchComplete: { en: 'Research complete: {name}.' },
     warCoreFallen: { en: 'Your war core has fallen — defeat is imminent.' },
+    /**
+     * Fun-audit B2 (2026-10-02): the wonder countdown. {leader} is
+     * "Your" / "The rival"; {time} is "m:ss" remaining.
+     */
+    wonderStartMonument: { en: 'The Monument stands. Five minutes until the world acknowledges Novaterra.' },
+    wonderStartEconomic: { en: '{leader} treasury passes 80,000 funds — five minutes to stop the count.' },
+    wonderStartPopulation: { en: '{leader} city passes 8,000 housed — five minutes to stop the count.' },
+    wonderWarning: { en: 'Countdown: {time} remaining — {leader} holds the lead.' },
+    wonderCancelled: { en: 'The countdown is broken — {reason}.' },
   },
   /**
    * Fun-audit B1 (2026-10-02): the skirmish opening beat — one toast
@@ -390,6 +399,12 @@ export const STRINGS = {
     monumentComplete: { en: 'Complete' },
     monumentNotStarted: { en: 'Not started' },
     monumentRivalUnknown: { en: '~unknown' },
+    /**
+     * Fun-audit B2 (2026-10-02): the live wonder-countdown clock on
+     * the strip. {time} is "m:ss" remaining.
+     */
+    countdownMine: { en: 'Countdown {time} — you lead' },
+    countdownRival: { en: 'Countdown {time} — rival leads' },
   },
   /**
    * Roadmap B28 (2026-10-02): the Live-Muse advisory box copy — idle
@@ -460,6 +475,19 @@ export const STRINGS = {
     defeatMonumentTitle: 'Monument defeat',
     defeatMonumentDetail:
       'The rival completed their Monument first. History remembers the builders.',
+  },
+  /**
+   * Fun-audit B3 (2026-10-02): the end-of-game statistics block on the
+   * victory/defeat overlay. Templates filled by ui/endStats.ts.
+   */
+  endStats: {
+    title: { en: 'Session record' },
+    kills: { en: '{n} enemy units destroyed' },
+    losses: { en: '{n} units lost' },
+    buildings: { en: '{n} buildings raised' },
+    peakPopulation: { en: 'peak population {n}' },
+    age: { en: 'reached the {age} age' },
+    duration: { en: '{t}' },
   },
   // ------------------------------------------------------------------
   // English-only sections (roster expansion). Every entry is en-only,

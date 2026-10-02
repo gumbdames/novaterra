@@ -47,6 +47,7 @@ import { peacefulStatus } from '../sim/peaceful';
 import type { SkirmishVictoryKind, World } from '../sim/world';
 import { militaryValue } from '../muse/director';
 import { ECONOMIC_VICTORY_FUNDS, POPULATION_VICTORY_POP, HUMAN_PLAYER_ID, AI_PLAYER_ID } from './session';
+import { formatDuration } from './endStats';
 import { formatCount } from './peaceful';
 import { STRINGS, loc, fillLoc } from './strings';
 
@@ -72,6 +73,11 @@ export interface VictoryProgress {
   /** 0..1 progress fractions (drive the two bars). */
   mineFrac: number;
   rivalFrac: number;
+  /**
+   * Fun-audit B2 (2026-10-02): the live wonder countdown, when one
+   * runs — remaining ticks + whether the player leads it.
+   */
+  countdown?: { remainingTicks: number; leaderIsMine: boolean };
 }
 
 function clamp01(n: number): number {
@@ -88,6 +94,14 @@ export function victoryProgressOf(world: World): VictoryProgress | null {
   const kind: SkirmishVictoryKind = world.victoryKind ?? 'conquest';
   const s = STRINGS.victoryHud;
   const objective = loc(STRINGS.objectives[kind]);
+  // Fun-audit B2 (2026-10-02): the live wonder countdown rides along
+  // with every race readout — the strip is where the 5-minute clock
+  // stays visible. Undefined when no countdown runs (or it resolved).
+  const cd = world.wonderCountdown ?? null;
+  const countdown =
+    cd !== null && world.tick < cd.endsAtTick
+      ? { remainingTicks: cd.endsAtTick - world.tick, leaderIsMine: cd.leader === HUMAN_PLAYER_ID }
+      : undefined;
 
   switch (kind) {
     case 'economic': {
@@ -106,6 +120,7 @@ export function victoryProgressOf(world: World): VictoryProgress | null {
           need: formatCount(ECONOMIC_VICTORY_FUNDS),
         }),
         mineFrac: clamp01(mine / ECONOMIC_VICTORY_FUNDS),
+        countdown,
         rivalFrac: clamp01(theirs / ECONOMIC_VICTORY_FUNDS),
       };
     }
@@ -125,6 +140,7 @@ export function victoryProgressOf(world: World): VictoryProgress | null {
           need: formatCount(POPULATION_VICTORY_POP),
         }),
         mineFrac: clamp01(mine / POPULATION_VICTORY_POP),
+        countdown,
         rivalFrac: clamp01(theirs / POPULATION_VICTORY_POP),
       };
     }
@@ -148,6 +164,7 @@ export function victoryProgressOf(world: World): VictoryProgress | null {
         mine: line(mine),
         rival: theirs <= 0 ? loc(s.monumentRivalUnknown) : `~${line(theirs)}`,
         mineFrac: clamp01(mine),
+        countdown,
         rivalFrac: clamp01(theirs),
       };
     }
@@ -189,6 +206,7 @@ export class VictoryHud {
   private readonly root: HTMLElement;
   private readonly objectiveEl: HTMLElement;
   private readonly raceEl: HTMLElement;
+  private readonly countdownEl: HTMLElement;
   private readonly mineLabel: HTMLElement;
   private readonly mineBar: HTMLElement;
   private readonly mineValue: HTMLElement;
@@ -204,6 +222,10 @@ export class VictoryHud {
     root.append(this.objectiveEl);
     this.raceEl = el('div', 'victory-hud-race', '');
     root.append(this.raceEl);
+    // Fun-audit B2 (2026-10-02): the live wonder-countdown clock.
+    this.countdownEl = el('div', 'victory-hud-countdown', '');
+    this.countdownEl.style.display = 'none';
+    root.append(this.countdownEl);
     const mkRow = (cls: string, label: string): { label: HTMLElement; bar: HTMLElement; value: HTMLElement } => {
       const row = el('div', `victory-hud-row ${cls}`);
       const lab = el('span', 'victory-hud-label', label);
@@ -245,11 +267,28 @@ export class VictoryHud {
       this.lastKey = '';
       return;
     }
-    const key = [p.kind, p.mine, p.rival].join('|');
+    // The countdown clock ticks every sim tick, but the mm:ss readout
+    // only changes once a second — key on the readout so the DOM write
+    // stays ~1 Hz, not 30 Hz.
+    const countdownText =
+      p.countdown !== undefined
+        ? fillLoc(
+            p.countdown.leaderIsMine ? STRINGS.victoryHud.countdownMine : STRINGS.victoryHud.countdownRival,
+            { time: formatDuration(p.countdown.remainingTicks) },
+          )
+        : '';
+    const key = [p.kind, p.mine, p.rival, countdownText].join('|');
     if (key === this.lastKey) return;
     this.lastKey = key;
     this.objectiveEl.textContent = p.objective;
     this.raceEl.textContent = p.raceLabel;
+    // Fun-audit B2: the countdown clock, write-on-change with the rest.
+    if (countdownText !== '') {
+      this.countdownEl.style.display = '';
+      this.countdownEl.textContent = countdownText;
+    } else {
+      this.countdownEl.style.display = 'none';
+    }
     this.mineValue.textContent = p.mine;
     this.rivalValue.textContent = p.rival;
     this.mineBar.style.width = `${Math.round(p.mineFrac * 100)}%`;

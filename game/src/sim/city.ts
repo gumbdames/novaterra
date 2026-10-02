@@ -2782,6 +2782,14 @@ export interface PlayerState {
   /** Derived each economy tick from residential capacity. */
   population: number;
   /**
+   * Fun-audit B3 (2026-10-02): lifetime peak of `population`, for the
+   * end-of-game statistics. Updated in recountPopulation (economy
+   * tick); never read by the sim — display data, but snapshotted so
+   * save/load keeps the stat honest. Optional (AD9): older saves decode
+   * to 0 via copyPlayer's ?? 0.
+   */
+  peakPopulation?: number;
+  /**
    * Phase 3 city specialization: 'balanced' (no modifiers) or a focus
    * that boosts matching-zone building output by 25% at a 10% penalty
    * to other zoned buildings. Set via the `setSpecialization` command.

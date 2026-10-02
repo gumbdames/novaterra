@@ -72,6 +72,12 @@ import { registerLogisticsCommands } from '../sim/commands';
 import { registerAgeCommands } from '../sim/ages';
 import { registerCheatCommands } from '../sim/cheats';
 import { addAIPlayer, AI_MAX_UNITS, createAISystem, type AIDifficulty } from '../sim/ai';
+import {
+  ECONOMIC_VICTORY_FUNDS,
+  POPULATION_VICTORY_POP,
+  checkWonderCountdownVictory,
+  createWonderCountdownSystem,
+} from '../sim/wonderCountdown';
 import { restoreSnapshot, type Snapshot } from '../sim/snapshot';
 import { rebuildFlowFields } from '../sim/pathfinding';
 import {
@@ -272,17 +278,21 @@ function startingForces(
  * Roadmap B2 (2026-10-02): alternative victory thresholds.
  *
  * ECONOMIC_VICTORY_FUNDS — first side to hold this treasury wins the
- * economic game (25× the 4,000 starting funds: a real mid-game
+ * economic game outright (25× the 4,000 starting funds: a real mid-game
  * economy, not an opening rush).
  *
  * POPULATION_VICTORY_POP — first side to house this many residents
- * wins the population game (a genuine city, not a hamlet).
+ * wins the population game outright (a genuine city, not a hamlet).
  *
  * Monument victory needs no threshold: the first side to COMPLETE a
- * Monument (progress 1, operational) wins.
+ * Monument (progress 1) starts the wonder countdown (fun-audit B2) —
+ * survival, not the completion itself, wins.
+ *
+ * Canonical definitions live in sim/wonderCountdown.ts (the sim owns
+ * the countdown); re-exported here so existing UI/test import sites
+ * keep working.
  */
-export const ECONOMIC_VICTORY_FUNDS = 100_000;
-export const POPULATION_VICTORY_POP = 10_000;
+export { ECONOMIC_VICTORY_FUNDS, POPULATION_VICTORY_POP } from '../sim/wonderCountdown';
 
 /** Re-exported so setup UI / tests import the kind from this module. */
 export type { SkirmishVictoryKind };
@@ -295,20 +305,22 @@ export { SKIRMISH_VICTORY_KINDS };
 function checkAltVictory(world: World, owner: number): boolean {
   switch (world.victoryKind) {
     case 'economic': {
+      // Instant win at 100% — crossing the finish line outright ends
+      // the race. The wonder countdown (fun-audit B2, 2026-10-02)
+      // forces the ending when a leader stalls near it instead.
       const player = getPlayer(world.city, owner);
-      return (player?.funds ?? 0) >= ECONOMIC_VICTORY_FUNDS;
+      if ((player?.funds ?? 0) >= ECONOMIC_VICTORY_FUNDS) return true;
+      return checkWonderCountdownVictory(world) === owner;
     }
     case 'population': {
       const player = getPlayer(world.city, owner);
-      return (player?.population ?? 0) >= POPULATION_VICTORY_POP;
+      if ((player?.population ?? 0) >= POPULATION_VICTORY_POP) return true;
+      return checkWonderCountdownVictory(world) === owner;
     }
     case 'monument': {
-      for (const b of world.city.buildings) {
-        if (b.owner === owner && b.kind === 'monument' && b.progress >= 1) {
-          return true;
-        }
-      }
-      return false;
+      // Fun-audit B2 (2026-10-02): completion starts the countdown —
+      // surviving it wins, not the completion itself.
+      return checkWonderCountdownVictory(world) === owner;
     }
     case 'conquest':
     default:
@@ -583,6 +595,10 @@ export function createSession(options: SessionOptions): GameSession {
       createCombatSystem(terrain),
       createSuperweaponSystem(),
       createEconomySystem(terrain),
+      // Fun-audit B2 (2026-10-02): the wonder countdown runs right
+      // after the economy tick — funds and population are economy-tick
+      // values, so the trigger reads this tick's numbers.
+      createWonderCountdownSystem(),
       // Grand-expansion Phase 6 (S6 intel): spy infiltration missions
       // advance every tick (asset accrual rides the economy tick).
       createIntelSystem(),

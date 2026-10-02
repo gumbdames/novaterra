@@ -41,6 +41,7 @@ export type PersonaEvent =
   | { kind: 'programChosen'; program: string }
   | { kind: 'unitLost'; unit: string }
   | { kind: 'warCoreFallen' }
+  | { kind: 'wonderCountdown'; phase: 'start' | 'warn' | 'cancelled'; detail: string }
   | { kind: 'enemyDown' }
   | { kind: 'enemySpotted' }
   | { kind: 'combatStarted' }
@@ -88,6 +89,21 @@ const LINES: Record<string, string[]> = {
     'President — our war core has fallen. No army, no military production. Defeat is imminent.',
     'The last armory is gone and the field is empty. I am sorry, President — this is the end of the war.',
     'War core destroyed. We have nothing left to fight with. Brace for the surrender.',
+  ],
+  'wonderCountdown:start': [
+    'A wonder rises — or a treasury swells. Five minutes, President. Make them count.',
+    'The endgame just started. Somebody is about to win; I suggest it be us.',
+    'Five minutes on the clock. History is watching, and so am I.',
+  ],
+  'wonderCountdown:warn': [
+    'The clock is bleeding out, President. If that countdown hits zero, it is over.',
+    'Time check: the end is scheduled. Shall we reschedule it with artillery?',
+    'Minutes left on the wonder clock. I have moved the good china twice already.',
+  ],
+  'wonderCountdown:cancelled': [
+    'The countdown is broken! Somebody just kicked over the hourglass.',
+    'No more countdown — the leader lost their grip. Back to the grind, President.',
+    'The wonder clock stopped. Breathe. Then get back to work.',
   ],
   enemyDown: [
     'Enemy unit destroyed. Their insurance premiums just went up.',
@@ -150,6 +166,8 @@ function eventKey(event: PersonaEvent): string {
   switch (event.kind) {
     case 'taunt':
       return `taunt:${event.context}`;
+    case 'wonderCountdown':
+      return `wonderCountdown:${event.phase}`;
     default:
       return event.kind;
   }
@@ -187,6 +205,7 @@ export function personaLine(event: PersonaEvent, tick: number): string {
   if (event.kind === 'ageAdvanced') line = `${line} Welcome to the ${event.age} age.`;
   if (event.kind === 'programChosen') line = `${line} (${event.program})`;
   if (event.kind === 'unitLost') line = `${line.replace(/\.*$/, '')} (${event.unit} lost).`;
+  if (event.kind === 'wonderCountdown') line = `${line} (${event.detail})`;
   return line;
 }
 

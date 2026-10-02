@@ -46,6 +46,8 @@ import {
   type CampaignProgress,
 } from '../campaign/progress';
 import type { ObjectiveProgress } from '../campaign/objectives';
+import { STRINGS, loc } from './strings';
+import { type EndGameStats, endStatsLines } from './endStats';
 
 function el(tag: string, className: string, text?: string): HTMLElement {
   const e = document.createElement(tag);
@@ -194,6 +196,12 @@ export interface DebriefResult {
   commander: number;
   isFinalMission: boolean;
   progress: CampaignProgress;
+  /**
+   * Fun-audit B3 (2026-10-02): the session record — the same stat
+   * surface as the skirmish end screen (C6 art is reused for campaign
+   * endings; the stats ride along the same way).
+   */
+  stats?: EndGameStats;
 }
 
 export interface MissionDebriefActions {
@@ -234,6 +242,17 @@ export class MissionDebrief {
       panel.append(el('p', 'campaign-ending-text', copy.text));
       panel.append(el('p', 'debrief-score',
         `Final tally — Diplomat ${result.progress.diplomat} · Commander ${result.progress.commander}`));
+    }
+
+    // Fun-audit B3 (2026-10-02): the session record, same surface as
+    // the skirmish end screen.
+    if (result.stats !== undefined) {
+      panel.append(el('h3', 'end-stats-title', loc(STRINGS.endStats.title)));
+      const statsList = el('ul', 'end-stats');
+      for (const line of endStatsLines(result.stats)) {
+        statsList.append(el('li', '', line));
+      }
+      panel.append(statsList);
     }
 
     const row = el('div', 'buttons');

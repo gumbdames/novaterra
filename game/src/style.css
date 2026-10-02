@@ -379,6 +379,12 @@ body {
   color: var(--ink-dim);
   margin-bottom: 6px;
 }
+/* Fun-audit B2 (2026-10-02): the live wonder-countdown clock. */
+.victory-hud-countdown {
+  color: #ffd76a;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
 .victory-hud-row {
   display: flex;
   align-items: center;
@@ -1530,6 +1536,26 @@ body {
   color: var(--ink-dim);
   font-size: 14px;
 }
+
+/* Fun-audit B3 (2026-10-02): the session-record stat block. */
+.end-stats-title {
+  margin: 0 0 8px;
+  font-size: 12px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--ink-dim);
+}
+.end-stats {
+  list-style: none;
+  margin: 0 0 24px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 16px;
+  font-size: 13px;
+  color: var(--ink);
+}
+.end-stats li { text-align: left; }
 
 .end-panel button {
   margin: 0 6px;

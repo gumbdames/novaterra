@@ -213,9 +213,21 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   (defaults = the existing conquest/cheat copy — existing callers pass
   nothing and see no change; peaceful mode is endless since
   2026-10-01 and never shows an end screen, so the overrides now serve
-  only the cheats).
+  only the cheats). Fun-audit B3 (2026-10-02): `showVictory()` /
+  `showDefeat()` take an optional fourth `stats` (EndGameStats, built
+  by ui/endStats.ts) rendered as a localized six-line session-record
+  block under the copy; the campaign debrief (campaignUi.ts
+  MissionDebrief) renders the same block from DebriefResult.stats.
 - `saveslots.ts` — save/load slot picker dialog + pure
   `formatSaveSummary`.
+- `victoryHud.ts` — the "rival watch" strip (fun-audit B4,
+  2026-10-02): persistent objective + per-kind race telemetry, rival
+  values as "~" intel estimates; pure `victoryProgressOf` + a
+  write-on-change DOM widget (no digest segment). Fun-audit B2
+  (2026-10-02): carries the live wonder-countdown clock
+  (`countdown: { remainingTicks, leaderIsMine }`) rendered from
+  `world.wonderCountdown`, keyed on the mm:ss readout (~1 Hz DOM
+  writes, not 30 Hz).
 - `hud.ts` — top bar, advisor panel, selection panel, tabbed train/build
   palettes, research panel, toasts. Calls back into the controller; never
   touches sim. `update()` runs every frame but only touches the DOM when a

@@ -182,3 +182,56 @@ describe('end-screen camera drift (pure)', () => {
     expect(advanceEndDrift(d, -1)).toBe(d);
   });
 });
+
+describe('EndScreen session-record stats (fun-audit B3, fake DOM)', () => {
+  function setup() {
+    installFakeDom();
+    const root = fakeRoot();
+    const screen = new EndScreen(root, {
+      onKeepPlaying: () => undefined,
+      onExitToMenu: () => undefined,
+    });
+    return { screen, root };
+  }
+
+  type FakeEl = { children: FakeEl[]; textContent: string; className: string };
+  /** Depth-first collect of textContent across the fake-DOM tree. */
+  function allText(node: FakeEl): string[] {
+    const out = node.textContent !== '' ? [node.textContent] : [];
+    for (const kid of node.children ?? []) out.push(...allText(kid));
+    return out;
+  }
+
+  const stats = {
+    durationTicks: (41 * 60 + 23) * 30,
+    kills: 27,
+    losses: 11,
+    buildingsRaised: 38,
+    peakPopulation: 1204,
+    ageName: 'Industry',
+  };
+
+  it('showVictory renders the six-line stat block when stats are passed', () => {
+    const { screen, root } = setup();
+    screen.showVictory(undefined, undefined, undefined, stats);
+    expect(screen.visible).toBe(true);
+    const texts = allText(root as unknown as FakeEl);
+    // Six stat lines: kills, losses, duration, buildings, peak pop, age.
+    expect(texts.some((t) => t.includes('27') && t.includes('destroyed'))).toBe(true);
+    expect(texts.some((t) => t.includes('11') && t.includes('lost'))).toBe(true);
+    expect(texts).toContain('41:23');
+    expect(texts.some((t) => t.includes('38') && t.includes('buildings'))).toBe(true);
+    expect(texts.some((t) => t.includes('1,204'))).toBe(true);
+    expect(texts.some((t) => t.includes('Industry'))).toBe(true);
+    expect(texts).toContain('Session record');
+  });
+
+  it('no stat block without stats (existing callers unchanged)', () => {
+    const { screen, root } = setup();
+    screen.showDefeat();
+    expect(screen.visible).toBe(true);
+    expect(screen.currentArt).toBe('defeat-annihilation');
+    const texts = allText(root as unknown as FakeEl);
+    expect(texts).not.toContain('Session record');
+  });
+});

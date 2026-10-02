@@ -159,6 +159,16 @@ export class MuseController {
   /** Cumulative counters the controller owns (mirrors the campaign run). */
   private kills = 0;
   private losses = 0;
+  /**
+   * Fun-audit B3 (2026-10-02): read access for the end-of-game
+   * statistics — the overlay reports what the persona tracked.
+   */
+  get killCount(): number {
+    return this.kills;
+  }
+  get lossCount(): number {
+    return this.losses;
+  }
   private readonly knownIds = new Map<number, { owner: number; kind: string }>();
   /**
    * Fun-audit A2 (2026-10-02): building identities for the

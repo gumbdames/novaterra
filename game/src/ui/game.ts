@@ -119,6 +119,7 @@ import {
   TREE_MODEL_KEYS,
 } from '../render/lazyModels';
 import { createSession, getSkirmishOutcome, humanBaseWorld, isHumanWarCoreFallen, HUMAN_PLAYER_ID, AI_PLAYER_ID, type GameSession } from './session';
+import { formatDuration, endGameStatsOf } from './endStats';
 import type { SkirmishVictoryKind } from '../sim/world';
 import {
   applyCameraState,
@@ -339,6 +340,12 @@ function isTypingTarget(target: EventTarget | null): boolean {
 }
 
 const ADVISOR_REFRESH_MS = 2000;
+/**
+ * Fun-audit B2 (2026-10-02): wonder-countdown warning marks, in ticks
+ * of remaining time (4:00 / 3:00 / 2:00 / 1:00 / 0:30 / 0:10 at
+ * 30 Hz). Presentational only — the sim owns the clock.
+ */
+const WONDER_WARN_THRESHOLDS_TICKS = [7200, 5400, 3600, 1800, 900, 300];
 // Edge-pan zone width lives in ui/camera.ts (EDGE_PAN_PX) next to the pure
 // edgePanVector the frame loop feeds — single source of truth.
 const KEY_PAN_SPEED = 260;
@@ -930,6 +937,17 @@ class GameController {
    * beat so the "your war core has fallen" warning lands first.
    */
   private warCoreWarnTick: number | null = null;
+  /**
+   * Fun-audit B2 (2026-10-02): wonder-countdown warning state
+   * (UI-owned, presentational — the sim owns the clock). The key
+   * identifies one countdown run (kind + leader + endsAtTick); the
+   * warned list holds the remaining-time thresholds already announced
+   * (in ticks). A new key resets both.
+   */
+  private wonderKey: string | null = null;
+  private wonderWarned: number[] = [];
+  /** endsAtTick of the countdown we are narrating (for resolve-vs-cancel). */
+  private wonderEndsAt: number | null = null;
   // ---- Phase 2: campaign + Muse ----
   /** Mission run state (UI-owned). Null in skirmish. */
   private readonly missionRun: MissionRunState | null;
@@ -1767,6 +1785,12 @@ class GameController {
       this.audio.playSfx('ageFanfare');
     }
 
+    // Fun-audit B2 (2026-10-02): the wonder-countdown warning beat —
+    // start / escalating warnings / cancellation, all UI-side. The sim
+    // owns the clock (world.wonderCountdown); this poll only narrates
+    // its transitions, ~1×/sec like the Muse poll.
+    this.pollWonderCountdown(world);
+
     if (run === null || campaignOpts === undefined || this.missionEnded) return;
 
     // Objective tracker refresh ~1×/sec.
@@ -1822,6 +1846,9 @@ class GameController {
             commander: score.commander,
             isFinalMission: campaignOpts.mission.order === 8,
             progress,
+            // Fun-audit B3 (2026-10-02): the session record on the
+            // campaign debrief too.
+            stats: endGameStatsOf(world, MISSION_HUMAN_ID, run.kills, run.unitsLost),
           });
           if (this.muse !== null) {
             this.muse.notify(
@@ -2082,6 +2109,71 @@ class GameController {
   }
 
   /**
+   * Fun-audit B2 (2026-10-02): narrate the wonder countdown's
+   * transitions — start, escalating warnings, cancellation. The sim
+   * owns the clock (`world.wonderCountdown`); this only speaks. Warn
+   * thresholds are remaining-time marks in ticks (4:00 … 0:10).
+   */
+  private pollWonderCountdown(world: World): void {
+    const cd = world.wonderCountdown ?? null;
+    if (cd === null) {
+      if (this.wonderKey !== null) {
+        // A narrated countdown vanished: either it resolved (the
+        // victory screen takes it from here — stay silent) or the
+        // rival broke it (say so).
+        const resolved = this.wonderEndsAt !== null && world.tick >= this.wonderEndsAt;
+        const kind = this.wonderKey.split(':')[0] ?? '';
+        this.wonderKey = null;
+        this.wonderWarned = [];
+        this.wonderEndsAt = null;
+        if (!resolved) {
+          const reason =
+            kind === 'monument' ? 'the Monument fell'
+            : kind === 'economic' ? 'the leading treasury slipped below 80,000 funds'
+            : 'the leading city slipped below 8,000 housed';
+          if (this.muse !== null) {
+            this.muse.notify(personaLine({ kind: 'wonderCountdown', phase: 'cancelled', detail: reason }, world.tick));
+          }
+          this.hud.toast(fillLoc(STRINGS.toasts.wonderCancelled, { reason }));
+        }
+      }
+      return;
+    }
+    const key = `${cd.kind}:${cd.leader}:${cd.endsAtTick}`;
+    const leaderName = cd.leader === HUMAN_PLAYER_ID ? 'Your' : 'The rival';
+    if (key !== this.wonderKey) {
+      this.wonderKey = key;
+      this.wonderWarned = [];
+      this.wonderEndsAt = cd.endsAtTick;
+      const t = STRINGS.toasts;
+      const toast =
+        cd.kind === 'monument'
+          ? loc(t.wonderStartMonument)
+          : cd.kind === 'economic'
+            ? fillLoc(t.wonderStartEconomic, { leader: leaderName })
+            : fillLoc(t.wonderStartPopulation, { leader: leaderName });
+      if (this.muse !== null) {
+        this.muse.notify(personaLine({ kind: 'wonderCountdown', phase: 'start', detail: toast }, world.tick));
+      }
+      this.hud.toast(toast);
+      return;
+    }
+    const remaining = cd.endsAtTick - world.tick;
+    for (const threshold of WONDER_WARN_THRESHOLDS_TICKS) {
+      if (remaining <= threshold && !this.wonderWarned.includes(threshold)) {
+        this.wonderWarned.push(threshold);
+        const time = formatDuration(Math.max(0, remaining));
+        if (this.muse !== null) {
+          this.muse.notify(
+            personaLine({ kind: 'wonderCountdown', phase: 'warn', detail: `${time} remaining` }, world.tick),
+          );
+        }
+        this.hud.toast(fillLoc(STRINGS.toasts.wonderWarning, { time, leader: leaderName }));
+      }
+    }
+  }
+
+  /**
    * Conquest outcome: when a skirmish has a rival and one side loses every
    * unit and building, show the end screen once. Sandbox games (no rival)
    * have no win/lose condition by design. Campaign missions use their own
@@ -2097,6 +2189,9 @@ class GameController {
    * simulating. `getSkirmishOutcome` already returns null for peaceful
    * worlds (conquest is bypassed in ui/session.ts), so falling through
    * to the conquest check below is a no-op for them.
+   *
+   * Fun-audit B3 (2026-10-02): the session record (endGameStatsOf)
+   * rides along on every showVictory/showDefeat call.
    */
   private maybeShowConquestOutcome(): void {
     if (this.disposed || this.victoryShown || this.defeatShown) return;
@@ -2111,17 +2206,24 @@ class GameController {
       // was actually won — conquest keeps the classic default copy.
       // Exploration bet C6 (2026-10-02): each victory kind gets its
       // own illustration.
+      // Fun-audit B3 (2026-10-02): the session record rides along.
       const e = STRINGS.end;
       const kind = this.session.world.victoryKind;
+      const stats = endGameStatsOf(
+        this.session.world,
+        HUMAN_PLAYER_ID,
+        this.muse?.killCount ?? 0,
+        this.muse?.lossCount ?? 0,
+      );
       const art: EndArt =
         kind === 'economic' ? 'victory-economic'
         : kind === 'population' ? 'victory-population'
         : kind === 'monument' ? 'victory-monument'
         : 'victory-conquest';
-      if (kind === 'economic') this.endScreen.showVictory(e.victoryEconomicTitle, e.victoryEconomicDetail, art);
-      else if (kind === 'population') this.endScreen.showVictory(e.victoryPopulationTitle, e.victoryPopulationDetail, art);
-      else if (kind === 'monument') this.endScreen.showVictory(e.victoryMonumentTitle, e.victoryMonumentDetail, art);
-      else this.endScreen.showVictory(undefined, undefined, art);
+      if (kind === 'economic') this.endScreen.showVictory(e.victoryEconomicTitle, e.victoryEconomicDetail, art, stats);
+      else if (kind === 'population') this.endScreen.showVictory(e.victoryPopulationTitle, e.victoryPopulationDetail, art, stats);
+      else if (kind === 'monument') this.endScreen.showVictory(e.victoryMonumentTitle, e.victoryMonumentDetail, art, stats);
+      else this.endScreen.showVictory(undefined, undefined, art, stats);
     } else if (outcome === 'defeat') {
       // Fun-audit A4 (2026-10-02): the war-weariness short-circuit can
       // end the game while the civilian city still stands — from the
@@ -2143,15 +2245,22 @@ class GameController {
       }
       this.defeatShown = true;
       const e = STRINGS.end;
+      // Fun-audit B3 (2026-10-02): the session record rides along.
+      const stats = endGameStatsOf(
+        this.session.world,
+        HUMAN_PLAYER_ID,
+        this.muse?.killCount ?? 0,
+        this.muse?.lossCount ?? 0,
+      );
       // Exploration bet C6 (2026-10-02): conquest defeat means the
       // player's forces were annihilated; any other kind means the
       // rival won the race first.
       const art: EndArt =
         kind === 'conquest' ? 'defeat-annihilation' : 'defeat-race';
-      if (kind === 'economic') this.endScreen.showDefeat(e.defeatEconomicTitle, e.defeatEconomicDetail, art);
-      else if (kind === 'population') this.endScreen.showDefeat(e.defeatPopulationTitle, e.defeatPopulationDetail, art);
-      else if (kind === 'monument') this.endScreen.showDefeat(e.defeatMonumentTitle, e.defeatMonumentDetail, art);
-      else this.endScreen.showDefeat(undefined, undefined, art);
+      if (kind === 'economic') this.endScreen.showDefeat(e.defeatEconomicTitle, e.defeatEconomicDetail, art, stats);
+      else if (kind === 'population') this.endScreen.showDefeat(e.defeatPopulationTitle, e.defeatPopulationDetail, art, stats);
+      else if (kind === 'monument') this.endScreen.showDefeat(e.defeatMonumentTitle, e.defeatMonumentDetail, art, stats);
+      else this.endScreen.showDefeat(undefined, undefined, art, stats);
     }
   }
 

@@ -670,6 +670,21 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   (betrayal, −15 disposition). Demand/ceasefire reject loudly in
   peaceful worlds; tribute works everywhere. Snapshot-covered (AD9
   additive, stays v8) and digest-covered (`|diplomacy=…|`).
+- `wonderCountdown.ts` — the wonder countdown (fun-audit B2,
+  2026-10-02). Owns `WonderCountdown` (on `World`: race kind, leader
+  owner, endsAtTick) and `createWonderCountdownSystem` (wired in
+  ui/session.ts after the economy system — funds/population are
+  economy-tick values). Trigger: completed Monument, or 80% of the
+  economic/population threshold, either side; conquest/peaceful never
+  trigger. The leader must keep qualifying — dropping below cancels.
+  Expiry is resolved purely by `checkWonderCountdownVictory` (leader
+  wins if they qualify, else the rival if they do). Monument
+  completion starts the countdown (no instant win); economic/
+  population keep the instant win at 100%. 5 minutes = 9000 ticks at
+  30 Hz. Snapshot-covered (AD9 neutral-default null, stays v8) and
+  digest-covered (`|wonder=…|`). Warnings are UI-side (game.ts poll →
+  Muse persona `wonderCountdown` events + toasts + the victoryHud
+  clock).
 - `veterancy.ts` — unit veterancy (grand-expansion Phase 1, pure: no
   imports from combat/city, so no cycles). `UnitRecord.xp` grows on
   kills (`xpForKillValue = trainFunds + trainMaterials`), `vetLevel`

@@ -37,6 +37,7 @@ import {
 } from '../src/ui/session';
 import type { BuildingRecord } from '../src/sim/city';
 import { placeBuilding } from '../src/sim/city';
+import { createWonderCountdownSystem } from '../src/sim/wonderCountdown';
 import type { World } from '../src/sim/world';
 
 /** A fresh two-player skirmish world (tick 1 after starting forces). */
@@ -276,15 +277,26 @@ describe('alternative skirmish victories (roadmap B2)', () => {
     expect(checkSkirmishDefeat(defeat)).toBe(true);
   });
 
-  it('monument: first completed Monument wins; incomplete does not', () => {
+  it('monument: completion starts the countdown — survival wins, not completion', () => {
+    // Fun-audit B2 (2026-10-02): the instant win on completion is
+    // gone — completing the Monument starts the 5-minute countdown,
+    // and surviving it wins (the game's documented design).
     const world = victoryWorld('monument');
     world.city.buildings.push(monument(HUMAN_PLAYER_ID, 0.5));
     expect(checkSkirmishVictory(world)).toBe(false);
     world.city.buildings.push(monument(HUMAN_PLAYER_ID, 1));
+    expect(checkSkirmishVictory(world)).toBe(false);
+    createWonderCountdownSystem()(world, 1 / 30);
+    expect(world.wonderCountdown).not.toBeNull();
+    expect(checkSkirmishVictory(world)).toBe(false);
+    world.tick = world.wonderCountdown?.endsAtTick ?? 0;
     expect(checkSkirmishVictory(world)).toBe(true);
     // The rival's monument is the rival's win, not the player's.
     const rival = victoryWorld('monument');
     rival.city.buildings.push(monument(AI_PLAYER_ID, 1));
+    expect(checkSkirmishVictory(rival)).toBe(false);
+    createWonderCountdownSystem()(rival, 1 / 30);
+    rival.tick = rival.wonderCountdown?.endsAtTick ?? 0;
     expect(checkSkirmishVictory(rival)).toBe(false);
     expect(checkSkirmishDefeat(rival)).toBe(true);
   });
