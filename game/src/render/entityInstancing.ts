@@ -68,6 +68,68 @@ export interface InstancedPiece {
   offset: THREE.Matrix4;
 }
 
+/**
+ * Roadmap B19 (2026-10-02): deterministic per-building hull tint, seeded
+ * by the building id. Blocks of identical instanced buildings read
+ * clone-stamped at city scale; this breaks the look with a subtle
+ * near-white tint per building — full hue wheel, 0–6% saturation,
+ * 93–100% lightness (±5% HSL in spirit) — applied ONCE at addEntity
+ * time, never per frame. Pure: the same id always yields the same tint.
+ *
+ * The team-color contract is untouched: team identity lives on the
+ * stripe/pennant pools only; the hull tint multiplies the model's own
+ * material and never approaches saturated team colors.
+ */
+export function buildingHullTint(
+  buildingId: number,
+  out: { r: number; g: number; b: number },
+): { r: number; g: number; b: number } {
+  // splitmix32 — deterministic, no shared RNG state to disturb.
+  let state = (Math.imul(buildingId | 0, 2654435761) + 0x9e3779b9) >>> 0;
+  const draw = (): number => {
+    state = (state + 0x9e3779b9) >>> 0;
+    let z = state;
+    z = Math.imul(z ^ (z >>> 16), 0x21f0aaad);
+    z = Math.imul(z ^ (z >>> 15), 0x735a2d97);
+    z ^= z >>> 15;
+    return (z >>> 0) / 4294967296;
+  };
+  const h = draw();
+  const s = draw() * 0.06;
+  const l = 0.93 + draw() * 0.07;
+  // HSL → RGB (h full wheel, s/l near-white).
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h * 6) % 2) - 1));
+  const m = l - c / 2;
+  const sector = Math.floor(h * 6) % 6;
+  let r = m;
+  let g = m;
+  let b = m;
+  if (sector === 0) {
+    r += c;
+    g += x;
+  } else if (sector === 1) {
+    r += x;
+    g += c;
+  } else if (sector === 2) {
+    g += c;
+    b += x;
+  } else if (sector === 3) {
+    g += x;
+    b += c;
+  } else if (sector === 4) {
+    r += x;
+    b += c;
+  } else {
+    r += c;
+    b += x;
+  }
+  out.r = r;
+  out.g = g;
+  out.b = b;
+  return out;
+}
+
 /** Options for `EntityInstancer.addEntity`. */
 export interface AddEntityOpts {
   /** Units show the team stripe; buildings don't. */
@@ -76,6 +138,12 @@ export interface AddEntityOpts {
   stripeScale: number;
   /** Team color for stripe + pennant. */
   team: THREE.ColorRepresentation;
+  /**
+   * Roadmap B19: when set (building id), the hull model slots get the
+   * deterministic per-building tint from `buildingHullTint`. The caller
+   * must have defined the pools with `{ colored: true }`.
+   */
+  hullTintSeed?: number;
 }
 
 /** Per-frame transform write for one live entity. */
@@ -187,11 +255,26 @@ export class EntityInstancer {
    * InstancedMesh is created per (key × material) — GLB assets arrive
    * merged per material, so this is usually one pool per key. Idempotent;
    * geometries/materials stay caller-owned (never disposed here).
+   *
+   * Roadmap B19: `opts.colored` marks the pool's instanceColor buffer as
+   * wanted (building hull tint). Sticky — once colored, always colored —
+   * and enabling it on an existing pool backfills the live slots with
+   * white so no instance renders black.
    */
-  definePool(key: string, model: LoadedModel): void {
+  definePool(
+    key: string,
+    model: LoadedModel,
+    opts?: { colored?: boolean },
+  ): void {
     for (let i = 0; i < model.geometries.length; i++) {
       const poolKey = `${key}#${i}`;
-      if (this.pools.has(poolKey)) continue;
+      const existing = this.pools.get(poolKey);
+      if (existing !== undefined) {
+        if (opts?.colored === true && !existing.colored) {
+          this.enablePoolColor(existing);
+        }
+        continue;
+      }
       const geo = model.geometries[i];
       const mat = model.materials[i] ?? model.materials[0];
       if (geo === undefined || mat === undefined) continue;
@@ -201,8 +284,7 @@ export class EntityInstancer {
       // culls per chunk later (tech-stack.md §3). Measure full throughput.
       mesh.frustumCulled = false;
       mesh.visible = false;
-      this.group.add(mesh);
-      this.pools.set(poolKey, {
+      const pool: ModelPool = {
         key: poolKey,
         mesh,
         capacity: INITIAL_POOL_CAPACITY,
@@ -210,8 +292,27 @@ export class EntityInstancer {
         owners: [],
         dirty: false,
         colored: false,
-      });
+      };
+      this.group.add(mesh);
+      this.pools.set(poolKey, pool);
+      if (opts?.colored === true) this.enablePoolColor(pool);
     }
+  }
+
+  /** Allocate a pool's instanceColor buffer (white backfill). */
+  private enablePoolColor(pool: ModelPool): void {
+    pool.colored = true;
+    // Allocate the instanceColor buffer up front so setColorAt never
+    // reallocates mid-frame; every live slot starts white so enabling
+    // color never darkens anyone.
+    pool.mesh.setColorAt(0, _color.set(0xffffff));
+    for (let i = 1; i < pool.count; i++) {
+      pool.mesh.setColorAt(i, _color.set(0xffffff));
+    }
+    if (pool.mesh.instanceColor !== null) {
+      pool.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    }
+    pool.dirty = true;
   }
 
   /**
@@ -239,6 +340,22 @@ export class EntityInstancer {
         const index = this.alloc(pool, id);
         entity.modelSlots.push({ pool, index });
         entity.pieceOffsets.push(piece.offset.clone());
+      }
+    }
+    if (opts.hullTintSeed !== undefined) {
+      // Roadmap B19: one deterministic near-white tint per building,
+      // written once here (never per frame). The pools must have been
+      // defined with { colored: true }.
+      const tint = buildingHullTint(opts.hullTintSeed, {
+        r: 1,
+        g: 1,
+        b: 1,
+      });
+      _color.setRGB(tint.r, tint.g, tint.b);
+      for (const slot of entity.modelSlots) {
+        if (slot.pool.colored && slot.pool.mesh.instanceColor !== null) {
+          slot.pool.mesh.setColorAt(slot.index, _color);
+        }
       }
     }
     if (opts.stripe) {
@@ -434,6 +551,20 @@ export class EntityInstancer {
     return pool.mesh.instanceMatrix.array.slice(
       0,
       pool.count * 16,
+    ) as Float32Array;
+  }
+
+  /**
+   * Copy of one pool's instance colors (tests: B19 hull-tint checks).
+   * Returns null for unknown pools or pools without an instanceColor
+   * buffer (uncolored pools).
+   */
+  debugColors(poolKey: string, materialIndex = 0): Float32Array | null {
+    const pool = this.pools.get(`${poolKey}#${materialIndex}`);
+    if (pool === undefined || pool.mesh.instanceColor === null) return null;
+    return pool.mesh.instanceColor.array.slice(
+      0,
+      pool.count * 3,
     ) as Float32Array;
   }
 

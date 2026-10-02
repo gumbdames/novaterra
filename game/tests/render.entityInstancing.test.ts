@@ -38,7 +38,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import * as THREE from 'three';
 
-import { EntityInstancer } from '../src/render/entityInstancing';
+import { EntityInstancer, buildingHullTint } from '../src/render/entityInstancing';
 import { EntityRenderer } from '../src/render/entities';
 import type { LoadedModel } from '../src/render/models';
 import { UNIT_DEFS, type UnitKind, type UnitRecord } from '../src/sim/units';
@@ -506,5 +506,110 @@ describe('EntityRenderer instanced mode', () => {
     expect(inst.entityCount).toBe(firstEntities);
     expect(inst.drawCallCount()).toBe(first);
     renderer.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Roadmap B19 (2026-10-02): per-instance building hull tint.
+// ---------------------------------------------------------------------------
+
+describe('buildingHullTint', () => {
+  it('is deterministic per building id', () => {
+    const a = buildingHullTint(42, { r: 0, g: 0, b: 0 });
+    const b = buildingHullTint(42, { r: 0, g: 0, b: 0 });
+    expect(a).toEqual(b);
+  });
+
+  it('stays near-white: never dark, never saturated', () => {
+    for (let id = 1; id <= 200; id++) {
+      const t = buildingHullTint(id, { r: 0, g: 0, b: 0 });
+      for (const c of [t.r, t.g, t.b]) {
+        expect(c).toBeGreaterThanOrEqual(0.9);
+        expect(c).toBeLessThanOrEqual(1);
+      }
+      // Near-white: channels stay close together (low saturation), so the
+      // tint can never read as a team color.
+      const spread = Math.max(t.r, t.g, t.b) - Math.min(t.r, t.g, t.b);
+      expect(spread).toBeLessThan(0.08);
+    }
+  });
+
+  it('varies across ids (breaks the clone-stamp look)', () => {
+    const seen = new Set<string>();
+    for (let id = 1; id <= 50; id++) {
+      const t = buildingHullTint(id, { r: 0, g: 0, b: 0 });
+      seen.add(`${t.r.toFixed(4)},${t.g.toFixed(4)},${t.b.toFixed(4)}`);
+    }
+    expect(seen.size).toBeGreaterThan(40);
+  });
+});
+
+describe('EntityInstancer hull tint', () => {
+  function addTintedBuilding(inst: EntityInstancer, id: number): void {
+    inst.definePool('house', boxModel(), { colored: true });
+    inst.addEntity(id, [{ pool: 'house', offset: OFFSET.clone() }], {
+      stripe: false,
+      stripeScale: 0,
+      team: '#3aa0ff',
+      hullTintSeed: id,
+    });
+  }
+
+  it('writes the deterministic tint into the pool instanceColor', () => {
+    const scene = new THREE.Scene();
+    const inst = new EntityInstancer(scene);
+    addTintedBuilding(inst, 7);
+    addTintedBuilding(inst, 8);
+    const colors = inst.debugColors('house');
+    expect(colors).not.toBeNull();
+    expect(colors!.length).toBe(2 * 3);
+    for (const [slot, id] of [
+      [0, 7],
+      [1, 8],
+    ] as const) {
+      const t = buildingHullTint(id, { r: 0, g: 0, b: 0 });
+      expect(colors![slot * 3]).toBeCloseTo(t.r, 5);
+      expect(colors![slot * 3 + 1]).toBeCloseTo(t.g, 5);
+      expect(colors![slot * 3 + 2]).toBeCloseTo(t.b, 5);
+    }
+    inst.dispose();
+  });
+
+  it('uncolored pools (units) get no instanceColor buffer', () => {
+    const scene = new THREE.Scene();
+    const inst = new EntityInstancer(scene);
+    addBoxEntity(inst, 1); // the unit path: definePool without colored
+    expect(inst.debugColors('tank')).toBeNull();
+    inst.dispose();
+  });
+
+  it('enabling color on an existing pool backfills white, not black', () => {
+    const scene = new THREE.Scene();
+    const inst = new EntityInstancer(scene);
+    addBoxEntity(inst, 1);
+    inst.definePool('tank', boxModel(), { colored: true }); // late enable
+    const colors = inst.debugColors('tank');
+    expect(colors).not.toBeNull();
+    expect(colors![0]).toBeCloseTo(1, 5);
+    expect(colors![1]).toBeCloseTo(1, 5);
+    expect(colors![2]).toBeCloseTo(1, 5);
+    inst.dispose();
+  });
+
+  it('swap-compaction carries the tint with the moved instance', () => {
+    const scene = new THREE.Scene();
+    const inst = new EntityInstancer(scene);
+    addTintedBuilding(inst, 11);
+    addTintedBuilding(inst, 22);
+    addTintedBuilding(inst, 33);
+    inst.removeEntity(11); // entity 33's slot moves into slot 0
+    const colors = inst.debugColors('house');
+    expect(colors).not.toBeNull();
+    expect(colors!.length).toBe(2 * 3);
+    const t33 = buildingHullTint(33, { r: 0, g: 0, b: 0 });
+    expect(colors![0]).toBeCloseTo(t33.r, 5);
+    expect(colors![1]).toBeCloseTo(t33.g, 5);
+    expect(colors![2]).toBeCloseTo(t33.b, 5);
+    inst.dispose();
   });
 });

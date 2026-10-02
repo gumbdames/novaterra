@@ -20,54 +20,29 @@
  * `render/buildingVariants.ts` gives every building silhouette variety
  * (variants 0..3) and readable size (tiers 1..3) through the existing
  * lazy-model pipeline — no new download at boot. These tests pin:
- *  - `variantModelKey`: variant 0 → the kind itself; 1..3 → suffixed keys
- *    that `isVariantModelKey` recognizes.
  *  - the boot gate: no variant key ever appears in `bootModelKeys()`
  *    (the ~8 MiB boot-download budget is pinned by a test elsewhere).
  *  - `sizeTierScale`: 0.88/1.0/1.14 with a safe fallback for bad input
  *    (never 0/NaN — a broken scale collapses the mesh).
  *  - `variantExtraFor`: one distinct cached prop per variant 1..3,
  *    none for variant 0; pool keys are variant-owned, never boot keys.
+ *
+ * Note (roadmap B19, 2026-10-02): the `_v1.._v3` GLB variant-key
+ * scaffolding (`variantModelKey` / `isVariantModelKey`) was dead — never
+ * called by game code — and was deleted. Variant identity now comes from
+ * the rooftop props + size tiers (+ the B19 hull tint), not suffixed
+ * model keys.
  */
 import { describe, expect, it } from 'vitest';
 import {
-  BUILDING_VARIANT_BASE,
   BUILDING_VARIANT_COUNT,
-  isVariantModelKey,
   sizeTierScale,
   variantExtraFor,
   variantExtraPoolKey,
   variantExtraTop,
-  variantModelKey,
 } from '../src/render/buildingVariants';
 import { bootModelKeys } from '../src/render/lazyModels';
 import { BUILDING_DEFS } from '../src/sim/city';
-
-describe('variantModelKey', () => {
-  it('variant 0 resolves to the kind itself (the boot-set key)', () => {
-    expect(variantModelKey('house', 0)).toBe('house');
-    expect(variantModelKey('house', BUILDING_VARIANT_BASE)).toBe('house');
-  });
-
-  it('variants 1..3 get suffixed keys recognized as variant keys', () => {
-    for (let v = 1; v < BUILDING_VARIANT_COUNT; v++) {
-      const key = variantModelKey('house', v);
-      expect(key).toBe(`house_v${v}`);
-      expect(isVariantModelKey(key)).toBe(true);
-    }
-  });
-
-  it('non-positive / non-integer variants fall back to the kind', () => {
-    expect(variantModelKey('house', -1)).toBe('house');
-    expect(variantModelKey('house', 1.5)).toBe('house');
-  });
-
-  it('plain kind keys are not variant keys', () => {
-    expect(isVariantModelKey('house')).toBe(false);
-    expect(isVariantModelKey('house_v0')).toBe(false);
-  });
-});
-
 describe('boot gate: variant keys never enter the boot set', () => {
   it('no variant key for any building def appears in bootModelKeys()', () => {
     const boot = new Set(bootModelKeys());
@@ -75,7 +50,9 @@ describe('boot gate: variant keys never enter the boot set', () => {
     expect(kinds.length).toBeGreaterThan(0);
     for (const kind of kinds) {
       for (let v = 1; v < BUILDING_VARIANT_COUNT; v++) {
-        expect(boot.has(variantModelKey(kind, v))).toBe(false);
+        // The old `_vN` suffixed-key shape (deleted in B19): the shape
+        // must still never appear in the boot set.
+        expect(boot.has(`${kind}_v${v}`)).toBe(false);
         expect(boot.has(variantExtraPoolKey(v))).toBe(false);
       }
     }
@@ -126,6 +103,8 @@ describe('variantExtraFor (procedural rooftop props)', () => {
     expect(variantExtraPoolKey(1)).toBe('variantExtra:v1');
     expect(variantExtraPoolKey(2)).toBe('variantExtra:v2');
     expect(variantExtraPoolKey(3)).toBe('variantExtra:v3');
-    expect(isVariantModelKey(variantExtraPoolKey(1))).toBe(false);
+    // The old `_vN` suffixed-key shape (deleted in B19): extra pool keys
+    // never looked like it.
+    expect(/_v[1-9]\d*$/.test(variantExtraPoolKey(1))).toBe(false);
   });
 });

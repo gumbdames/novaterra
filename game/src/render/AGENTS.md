@@ -829,6 +829,21 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   (pinned by test). Use-after-dispose throws.
 - Debug/test hooks: `entityCount`, `poolStats()`, `debugMatrices(poolKey)`
   (determinism: identical op sequences → byte-identical matrices),
+  `debugColors(poolKey)` (B19: per-instance tint readback),
   `drawCallCount()` (pools with count > 0). `EntityRenderer.debugInstancer`
   exposes the instancer (null in legacy mode). Covered by
-  `tests/render.entityInstancing.test.ts` (14 tests).
+  `tests/render.entityInstancing.test.ts` (22 tests).
+- Roadmap B19 (2026-10-02): per-instance building hull tint — blocks of
+  identical housing read clone-stamped at city scale. `buildingHullTint`
+  (pure, splitmix32-seeded by building id: full hue wheel, 0–6%
+  saturation, 93–100% lightness) is written once per building into its
+  model pools' `instanceColor` at `addEntity` time (`hullTintSeed` opt),
+  never per frame. Building pools are defined with
+  `{ colored: true }` (sticky; late-enabling backfills white, never
+  black); unit pools stay uncolored. The team-color contract is
+  untouched — team identity lives on the stripe/pennant pools only, and
+  the near-white tint can never read as a team color. Swap-compaction
+  and pool growth carry tints with their instances (pinned by test).
+  The dead `_v1.._v3` GLB variant-key scaffolding (`variantModelKey` /
+  `isVariantModelKey`) was deleted in the same change — variant identity
+  comes from rooftop props + size tiers + this tint, not suffixed keys.

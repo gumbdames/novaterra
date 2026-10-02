@@ -2914,7 +2914,9 @@ export class EntityRenderer {
     const identQ = new THREE.Quaternion();
     const unitS = new THREE.Vector3(s, s, s);
     const pieces: InstancedPiece[] = resolved.pieces.map((p) => {
-      instancer.definePool(p.pool, p.model);
+      // Roadmap B19: building pools carry the per-instance hull tint
+      // (breaks the clone-stamp look); the tint seed is the building id.
+      instancer.definePool(p.pool, p.model, { colored: true });
       return {
         pool: p.pool,
         offset: new THREE.Matrix4().compose(
@@ -2928,6 +2930,7 @@ export class EntityRenderer {
       stripe: false,
       stripeScale: 0,
       team,
+      hullTintSeed: view.id,
     });
     const scaledTop = resolved.top * s;
     instancer.writeTransform(view.id, {

@@ -6,13 +6,6 @@
  * id — no RNG draws, digest-covered (`sim/city.ts`
  * `buildingVariantSeed`). This module is the render-side mapping:
  *
- *   - `variantModelKey(kind, variant)` → `${kind}_v${variant}` for
- *     variants 1..3 (variant 0 is the base model, keyed by `kind`
- *     itself — the sim's comment at city.ts:1799 names this shape).
- *     Variant keys NEVER enter the boot model set: they resolve
- *     through the lazy model pipeline (`render/lazyModels.ts`) like
- *     every other non-boot key, so the ~8 MiB startup gate is untouched
- *     (pinned by test).
  *   - `sizeTierScale(tier)` → 0.88 / 1.0 / 1.14: the whole building is
  *     uniformly scaled, so a size-3 house reads bigger than a size-1
  *     one without any new geometry.
@@ -39,21 +32,6 @@ export const BUILDING_VARIANT_COUNT = 4;
 
 /** The default variant: the base model, no extras. */
 export const BUILDING_VARIANT_BASE = 0;
-
-/**
- * The lazy-model key for a building variant. Variant 0 resolves to the
- * kind itself (the boot-set key); variants 1..3 get suffixed keys that
- * travel the lazy pipeline — never the boot set.
- */
-export function variantModelKey(kind: string, variant: number): string {
-  if (!Number.isInteger(variant) || variant <= BUILDING_VARIANT_BASE) return kind;
-  return `${kind}_v${variant}`;
-}
-
-/** True for the suffixed variant keys (the ones the lazy pipeline serves). */
-export function isVariantModelKey(key: string): boolean {
-  return /_v[1-9]\d*$/.test(key);
-}
 
 /**
  * Uniform scale for a size tier: tier 1 reads small, tier 2 is the
