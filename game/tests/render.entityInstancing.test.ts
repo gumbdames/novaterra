@@ -384,7 +384,9 @@ describe('EntityRenderer instanced mode', () => {
     // B13 (2026-10-02): +72 pooled overlay sprites — 48 building HP-bar
     // sprites (24 pairs) + 24 damage-smoke puffs, all hidden while no
     // building is damaged (visibility, not absence — still zero draws).
-    expect(sprites).toBe(96 + 72);
+    // B17 (2026-10-02): +16 construction-dust sprites (hidden while
+    // nothing is under construction).
+    expect(sprites).toBe(96 + 72 + 16);
     // 3 instancer pools + 3 chevron level meshes (always in the scene,
     // hidden while no veteran is alive — zero draw calls when empty)
     // + 1 blob-shadow InstancedMesh (final-review R5 visual lift).
@@ -409,8 +411,9 @@ describe('EntityRenderer instanced mode', () => {
     // sprites (all undamaged, bars hidden — visibility, not absence) +
     // 96 B16 VFX sprites (hidden while no combat is active) + 72 B13
     // overlay sprites (48 building HP-bar + 24 damage smoke, hidden
-    // while no building is damaged).
-    expect(sprites).toBe(24 + 96 + 72);
+    // while no building is damaged) + 16 B17 construction-dust sprites
+    // (hidden while nothing is under construction).
+    expect(sprites).toBe(24 + 96 + 72 + 16);
     renderer.dispose();
   });
 

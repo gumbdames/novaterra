@@ -115,6 +115,9 @@ import { CombatVfx } from './combatVfx';
 // state (HP bars + smoke) — same overlay ownership pattern as CombatVfx.
 import { DamageNumbers } from './damageNumbers';
 import { DamageStateOverlay } from './damageState';
+// Roadmap B17 (2026-10-02): construction-site dressing (scaffolds +
+// dust) — same overlay ownership pattern.
+import { ConstructionDressing } from './constructionDressing';
 import { XrayView } from './xrayView';
 import { BirdFlocks } from './birds';
 import { ambientSecondsForTick, setAmbientTimeSeconds } from './ambientTime';
@@ -1257,6 +1260,8 @@ export class EntityRenderer {
   private readonly damageNumbers: DamageNumbers;
   /** Roadmap B13: damaged-building HP bars + smoke. */
   private readonly damageState: DamageStateOverlay;
+  /** Roadmap B17: construction-site scaffolds + dust. */
+  private readonly constructionDressing: ConstructionDressing;
   // Workstream Z: zone-tint ground decals (visible by default).
   private readonly zoneOverlay: ZoneOverlay;
   // Workstream P (ambient city life): auto-paved zone decals +
@@ -1415,6 +1420,8 @@ export class EntityRenderer {
     // and the damaged-building overlay ride the same sync/dispose path.
     this.damageNumbers = new DamageNumbers(scene, HUMAN_PLAYER_ID);
     this.damageState = new DamageStateOverlay(scene);
+    // Roadmap B17: construction dressing rides the same path.
+    this.constructionDressing = new ConstructionDressing(scene);
     this.zoneOverlay = new ZoneOverlay(scene);
     // Workstream P (ambient city life): paving is a sibling of the zone
     // decals (same digest cadence); the crowd reads zones/roads/seed.
@@ -1488,6 +1495,8 @@ export class EntityRenderer {
     // event stream, plus the damaged-building HP-bar/smoke overlay.
     this.damageNumbers.update(world.combatEvents ?? [], 1 / 60);
     this.damageState.sync(world, 1 / 60);
+    // Roadmap B17 (2026-10-02): construction-site scaffolds + dust.
+    this.constructionDressing.sync(world, 1 / 60);
     // Final-review R5 visual lift: blob shadows for every unit +
     // building (1 instanced draw call).
     this.blobShadows.sync(world);
@@ -1991,6 +2000,8 @@ export class EntityRenderer {
     // Roadmap B13.
     this.damageNumbers.dispose();
     this.damageState.dispose();
+    // Roadmap B17.
+    this.constructionDressing.dispose();
     this.zoneOverlay.dispose();
     // Workstream P (ambient city life).
     this.pavingOverlay.dispose();

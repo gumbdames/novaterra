@@ -17,7 +17,8 @@
   Build feedback: while a building tool is armed, the armed card stays
   highlighted and a ghost of the footprint follows your cursor — green
   where the building is legal, red where it isn't — and a chime plays
-  when construction finishes.
+  when construction finishes. Rising buildings stand inside an orange
+  scaffold frame with dust hanging in the air until they complete.
 - **Production buildings** unlock your military: the **Barracks**
   trains advanced infantry, the **War Factory** builds armor, the
   **Airfield** builds aircraft, and the **Naval Yard** (must touch the

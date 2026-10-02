@@ -346,6 +346,22 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   offsets it by the deterministic `shakeOffset()` while trauma ≥ 0.02.
   Pure math tested in `tests/ui.cameraShake.test.ts`.
 
+## Construction dressing (`render/constructionDressing.ts`, roadmap B17, 2026-10-02)
+
+- Construction was a 55%-opacity ghost fade only. Now every building
+  with `progress < 1` gets a safety-orange scaffold frame (4 corner
+  poles + 3 horizontal levels, height scaled by footprint) plus
+  periodic tan dust puffs.
+- One merged `LineSegments` for all sites (1 draw call, 0 when nothing
+  builds), rebuilt only when the membership key (`constructionKey`:
+  sorted ids of `progress < 1` buildings) changes — never per frame.
+  Dust is a 16-sprite shared pool.
+- Path-independent: reads `world.city.buildings` directly, so sites
+  are dressed whether the view is on the legacy fade path or awaiting
+  instanced conversion. `EntityRenderer` owns one `ConstructionDressing`
+  (construct / sync / dispose). Pure helpers tested in
+  `tests/render.constructionDressing.test.ts` (7 tests).
+
 ## Zone overlay (`render/zoneOverlay.ts`, 0.1 Alpha)
 
 - Zone readability (grand-expansion Workstream Z): zoning was
