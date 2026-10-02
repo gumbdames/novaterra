@@ -107,26 +107,31 @@ function smooth(t: number): number {
 }
 
 /** Piecewise-smoothstep ramp over [daylight, value] stops. */
+function stopAt(stops: ReadonlyArray<readonly [number, number]>, i: number): readonly [number, number] {
+  const s = stops[i];
+  if (!s) throw new Error(`dayNight: stop index ${i} out of range`);
+  return s;
+}
 function ramp(stops: ReadonlyArray<readonly [number, number]>, d: number): number {
-  if (d <= stops[0]![0]) return stops[0]![1];
+  if (d <= stopAt(stops, 0)[0]) return stopAt(stops, 0)[1];
   for (let i = 1; i < stops.length; i++) {
-    const d0 = stops[i - 1]![0];
-    const v0 = stops[i - 1]![1];
-    const d1 = stops[i]![0];
-    const v1 = stops[i]![1];
+    const d0 = stopAt(stops, i - 1)[0];
+    const v0 = stopAt(stops, i - 1)[1];
+    const d1 = stopAt(stops, i)[0];
+    const v1 = stopAt(stops, i)[1];
     if (d <= d1) return lerp(v0, v1, smooth((d - d0) / (d1 - d0)));
   }
-  return stops[stops.length - 1]![1];
+  return stopAt(stops, stops.length - 1)[1];
 }
 
 /** Piecewise-smoothstep ramp over [daylight, sRGB hex] stops. */
 function rampColor(stops: ReadonlyArray<readonly [number, number]>, d: number): LinearRGB {
-  if (d <= stops[0]![0]) return hexToLinear(stops[0]![1]);
+  if (d <= stopAt(stops, 0)[0]) return hexToLinear(stopAt(stops, 0)[1]);
   for (let i = 1; i < stops.length; i++) {
-    const d0 = stops[i - 1]![0];
-    const h0 = stops[i - 1]![1];
-    const d1 = stops[i]![0];
-    const h1 = stops[i]![1];
+    const d0 = stopAt(stops, i - 1)[0];
+    const h0 = stopAt(stops, i - 1)[1];
+    const d1 = stopAt(stops, i)[0];
+    const h1 = stopAt(stops, i)[1];
     if (d <= d1) {
       const t = smooth((d - d0) / (d1 - d0));
       const c0 = hexToLinear(h0);
@@ -134,7 +139,7 @@ function rampColor(stops: ReadonlyArray<readonly [number, number]>, d: number): 
       return [lerp(c0[0], c1[0], t), lerp(c0[1], c1[1], t), lerp(c0[2], c1[2], t)];
     }
   }
-  return hexToLinear(stops[stops.length - 1]![1]);
+  return hexToLinear(stopAt(stops, stops.length - 1)[1]);
 }
 
 // --- Ramps (all keyed on daylight 0..1) -----------------------------------
