@@ -38,6 +38,7 @@ import {
   type MuseFrequency,
 } from '../muse/controller';
 import { isLiveEnabled } from '../muse/live';
+import { STRINGS, loc } from './strings';
 
 function el(tag: string, className: string, text?: string): HTMLElement {
   const e = document.createElement(tag);
@@ -98,7 +99,7 @@ export class MuseBox {
     if (this.hideTimer !== null) window.clearTimeout(this.hideTimer);
     this.hideTimer = window.setTimeout(() => {
       if (this.messageEl !== null) {
-        this.messageEl.textContent = 'Standing by, President.';
+        this.messageEl.textContent = loc(STRINGS.musebox.standingBy);
         this.messageEl.classList.add('muse-idle');
       }
       this.hideTimer = null;
@@ -111,7 +112,13 @@ export class MuseBox {
     if (this.threatFill !== null) this.threatFill.style.width = `${t}%`;
     if (this.threatLabel !== null) {
       this.threatLabel.textContent =
-        t >= 75 ? `${t}% — danger` : t >= 50 ? `${t}% — wary` : t >= 25 ? `${t}% — calm` : `${t}% — safe`;
+        t >= 75
+          ? `${t}% — ${loc(STRINGS.musebox.threatDanger)}`
+          : t >= 50
+            ? `${t}% — ${loc(STRINGS.musebox.threatWary)}`
+            : t >= 25
+              ? `${t}% — ${loc(STRINGS.musebox.threatCalm)}`
+              : `${t}% — ${loc(STRINGS.musebox.threatSafe)}`;
     }
     if (this.threatFill !== null) {
       this.threatFill.classList.toggle('high', t >= 75);
@@ -139,10 +146,10 @@ export interface MuseSettingsActions {
 }
 
 const FREQUENCY_LABELS: Array<{ value: MuseFrequency; label: string }> = [
-  { value: 'off', label: 'Off — Muse stays silent' },
-  { value: 'quiet', label: 'Quiet — milestones only' },
-  { value: 'normal', label: 'Normal — events and updates' },
-  { value: 'chatty', label: 'Chatty — taunts and commentary' },
+  { value: 'off', label: loc(STRINGS.musebox.frequencyOff) },
+  { value: 'quiet', label: loc(STRINGS.musebox.frequencyQuiet) },
+  { value: 'normal', label: loc(STRINGS.musebox.frequencyNormal) },
+  { value: 'chatty', label: loc(STRINGS.musebox.frequencyChatty) },
 ];
 
 export class MuseSettingsPanel {
@@ -159,11 +166,11 @@ export class MuseSettingsPanel {
     this.hide();
     const overlay = el('div', 'menu-overlay muse-settings');
     overlay.append(el('h1', '', 'Muse'));
-    overlay.append(el('p', 'tagline', 'Your chief of staff. Charming, never annoying — tune how often they speak.'));
+    overlay.append(el('p', 'tagline', loc(STRINGS.musebox.settingsTagline)));
 
     const current = loadMuseFrequency();
     const freqRow = el('div', 'setting-row');
-    freqRow.append(el('span', 'setting-label', 'Chattiness'));
+    freqRow.append(el('span', 'setting-label', loc(STRINGS.musebox.chattiness)));
     const select = document.createElement('select');
     for (const { value, label } of FREQUENCY_LABELS) {
       const opt = document.createElement('option');
@@ -195,14 +202,14 @@ export class MuseSettingsPanel {
     enableBox.type = 'checkbox';
     enableBox.checked = isLiveEnabled();
     enableBox.disabled = true; // not wired yet in 0.1 Alpha
-    enableBox.title = 'Live Muse is hopefully coming';
-    enableLabel.append(enableBox, document.createTextNode(' Enable Live Muse (hopefully coming)'));
+    enableBox.title = loc(STRINGS.musebox.liveMuseTitle);
+    enableLabel.append(enableBox, document.createTextNode(loc(STRINGS.musebox.enableLiveMuse)));
     enableRow.append(enableLabel);
     overlay.append(enableRow);
 
     const row = el('div', 'buttons');
     const back = document.createElement('button');
-    back.textContent = 'Back';
+    back.textContent = loc(STRINGS.musebox.back);
     back.addEventListener('click', () => this.actions.onClose());
     row.append(back);
     overlay.append(row);

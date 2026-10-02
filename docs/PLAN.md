@@ -166,6 +166,23 @@ scale). Entrepreneurs: deferred (documented in GAME_MECHANICS.md).
 Touch/mobile: skipped — no playtest evidence (documented in
 HOW_TO_PLAY.md).
 
+### Grand expansion ✅ COMPLETE (2026-09-30 → 2026-10-01)
+
+The big long-playable game (user brief 2026-09-30): utilities, transport,
+airports-as-zones with civilian airlines, veterancy, expanded navy/air,
+fuel/ammo logistics chains, intel/spies, civilian deep-dive, peaceful
+no-military mode. Roster: 97 units / 100 buildings / 21 upgrades.
+
+- ✅ Naval-model military half (commit a16200d, 2026-10-01): military
+  naval-building model — **Naval Shipyard** (renamed from Shipyard;
+  builds + repairs military ships at 3 hp/s), new **Naval Base**
+  (military docks for fuel/ammo/materials loading, side-gated sea
+  cargo, wired into the logistics AI), **Civilian Shipyard**
+  (builds/repairs civilian ships: freighter, fuel barge, liner, yacht),
+  **Commercial Harbor** reframed as civilian docks (trade routes +
+  cargo loading, no production). Shipyards = production+repair only;
+  docks = single logistics interface per side.
+
 ## Decisions (resolved with user 2026-09-28)
 
 1. Mode 2 = "Muse persona" adaptive AI director (offline default) + a

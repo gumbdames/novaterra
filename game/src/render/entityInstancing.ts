@@ -38,7 +38,7 @@
  *    frame, fg colored per instance by hp fraction — only damaged units
  *    write bar instances, so bars cost 2 draw calls total, not 2/view.
  *
- * Draw calls then scale with DISTINCT KINDS on the field (~58 GLB keys +
+ * Draw calls then scale with DISTINCT KINDS on the field (101 GLB keys +
  * gap models in the absolute worst case, typically a dozen), never with
  * entity count. Selection rings and superweapon FX stay individual meshes
  * (bounded counts, transient), and buildings under construction keep the

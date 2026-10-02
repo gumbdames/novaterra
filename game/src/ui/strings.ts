@@ -344,6 +344,43 @@ export const STRINGS = {
     saveAndExit: 'Save and exit',
     exitWithoutSaving: 'Exit without saving',
   },
+  /**
+   * Roadmap B28 (2026-10-02): transient HUD toasts that used to be
+   * hardcoded English in ui/game.ts. Routed through loc() like the
+   * rest of the UI so a future locale swaps them all at once.
+   */
+  toasts: {
+    stormTargeting: { en: 'Storm targeting: left-click the map. Right-click cancels.' },
+    frameGlitched: { en: 'A frame glitched, but the game kept running.' },
+    selectUnitsFirst: { en: 'Select units first, then appoint a general.' },
+    seaRouteCancelled: { en: 'Sea route cancelled.' },
+    airlineRouteCancelled: { en: 'Airline route cancelled.' },
+    cancelled: { en: 'Cancelled.' },
+    stormEngineFiring: { en: 'Storm Engine firing.' },
+  },
+  /**
+   * Roadmap B28 (2026-10-02): the Live-Muse advisory box copy — idle
+   * line, threat-meter labels, and the chattiness settings panel. All
+   * English-only in 0.1 Alpha, routed through loc() like the rest.
+   */
+  musebox: {
+    standingBy: { en: 'Standing by, President.' },
+    threatDanger: { en: 'danger' },
+    threatWary: { en: 'wary' },
+    threatCalm: { en: 'calm' },
+    threatSafe: { en: 'safe' },
+    frequencyOff: { en: 'Off — Muse stays silent' },
+    frequencyQuiet: { en: 'Quiet — milestones only' },
+    frequencyNormal: { en: 'Normal — events and updates' },
+    frequencyChatty: { en: 'Chatty — taunts and commentary' },
+    settingsTagline: {
+      en: 'Your chief of staff. Charming, never annoying — tune how often they speak.',
+    },
+    chattiness: { en: 'Chattiness' },
+    back: { en: 'Back' },
+    liveMuseTitle: { en: 'Live Muse is hopefully coming' },
+    enableLiveMuse: { en: ' Enable Live Muse (hopefully coming)' },
+  },
   cheats: {
     placeholder: 'Type a cheat… (`help` lists them)',
     welcome: 'Cheat console. Type `help` for commands. Using cheats marks the save.',

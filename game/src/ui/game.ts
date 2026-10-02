@@ -1090,7 +1090,7 @@ class GameController {
       onFireAegis: () => this.issueOrder(buildFireAegisOrder(HUMAN_PLAYER_ID)),
       onStormTarget: () => {
         this.placement = { kind: 'storm' };
-        this.hud.toast('Storm targeting: left-click the map. Right-click cancels.');
+        this.hud.toast(loc(STRINGS.toasts.stormTargeting));
       },
       onSetSpecialization: (spec) =>
         this.issueOrder(buildSetSpecializationOrder(HUMAN_PLAYER_ID, spec)),
@@ -1237,7 +1237,7 @@ class GameController {
         () => {
           if (now - lastFrameErrorToast > 5000) {
             lastFrameErrorToast = now;
-            this.hud.toast('A frame glitched, but the game kept running.');
+            this.hud.toast(loc(STRINGS.toasts.frameGlitched));
           }
         },
       );
@@ -1998,7 +1998,7 @@ class GameController {
   private issueAssignGeneral(stance: string): void {
     const ids = this.selection.unitIds;
     if (ids.length === 0) {
-      this.hud.toast('Select units first, then appoint a general.');
+      this.hud.toast(loc(STRINGS.toasts.selectUnitsFirst));
       return;
     }
     this.enqueue(buildAssignGeneralOrder(HUMAN_PLAYER_ID, ids, stance));
@@ -2267,7 +2267,7 @@ class GameController {
       this.audio.playSfx('select');
     } else if (res.kind === 'disarm') {
       this.disarmSeaTradeTool();
-      this.hud.toast('Sea route cancelled.');
+      this.hud.toast(loc(STRINGS.toasts.seaRouteCancelled));
     } else {
       this.hud.toast(res.message);
       this.audio.playSfx('error');
@@ -2321,7 +2321,7 @@ class GameController {
       this.disarmAirlineTool();
     } else if (res.kind === 'disarm') {
       this.disarmAirlineTool();
-      this.hud.toast('Airline route cancelled.');
+      this.hud.toast(loc(STRINGS.toasts.airlineRouteCancelled));
     } else {
       this.hud.toast(res.message);
       this.audio.playSfx('error');
@@ -2354,7 +2354,7 @@ class GameController {
     // Roadmap B11 (2026-10-02): cancelling also clears the armed-tool
     // indicator (the ghost hides itself next frame).
     this.hud.buildToolArmed = null;
-    this.hud.toast('Cancelled.');
+    this.hud.toast(loc(STRINGS.toasts.cancelled));
   }
 
   /**
@@ -2430,7 +2430,7 @@ class GameController {
     this.enqueue(buildFireStormOrder(HUMAN_PLAYER_ID, x, z));
     this.audio.playSfx('place');
     this.placement = null;
-    this.hud.toast('Storm Engine firing.');
+    this.hud.toast(loc(STRINGS.toasts.stormEngineFiring));
   }
 
   /**

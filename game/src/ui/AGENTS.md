@@ -446,7 +446,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   enqueue + apply, rejections toast loudly.
 - `palettes.ts` — headless-safe palette data + availability logic for
   the tabbed TRAIN/BUILD palettes and the research panel: `TRAIN_TABS`
-  (6 tabs, 96 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck;
+  (6 tabs, 97 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck;
   Phase 5 workstream B added the 16-aircraft air tab; the intel roster
   workstream (§3.8/S6, 2026-09-30) added the intel tab: spy + reconTeam;
   Phase 8 workstream D added the 28 Mk II/III tech variants next to their

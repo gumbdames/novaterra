@@ -301,7 +301,10 @@ factory, airfield, naval yard) before they can be trained.
 - **MLRS** — rocket artillery: devastating salvos against clumps of
   enemies, long reload (needs a war factory).
 - **AA** — the only ground unit that can hit aircraft (needs a war
-  factory).
+  factory; Mk II/III upgrades extend range and damage). Air defense at
+  sea comes from **Destroyers**, **Frigates**, **Cruisers**, and
+  **Carriers** (all `seaAir`), and in the air from **Fighters** and
+  **Naval Fighters** — the AA is your land-based answer.
 - **Mobile HQ** — moving command post that makes nearby units fight
   better.
 
@@ -504,7 +507,7 @@ automatically (3 hull/s) — the selection panel shows an
   refuels**, and its long-range missiles reach 40 cells. The fleet's
   ultimate deterrent (Information age).
 - **Corvette** — a fast, cheap escort that screens against light ships
-  and aircraft (Connectivity age, from a naval shipyard).
+  (Connectivity age, from a naval shipyard).
 - **Heavy Destroyer** — a tougher, longer-ranged destroyer.
 - **Cruiser** — a heavy gun platform with strong anti-air cover.
 - **Battleship** — the heaviest surface guns afloat: 800 hull points
@@ -666,6 +669,16 @@ might or economic boom, your choice:
   output per level. The first level costs 200 research, the next 400,
   then 600, and so on — research it again and again as long as your
   labs keep producing.
+- **Combustion Tech** — unlocks coal and gas power plants.
+- **Advanced Nuclear** — unlocks nuclear plants (requires Combustion
+  Tech).
+- **Fusion Research** — unlocks fusion plants (requires Advanced
+  Nuclear).
+- **Groundwater Survey** — unlocks water wells.
+- **Desalination Tech** — unlocks desalination plants.
+- **Grid Storage** — unlocks battery storage buildings.
+- **Advanced Logistics** — military supply upgrade (needs a Munitions
+  Factory).
 
 Each upgrade has prerequisites — buildings, ages, sometimes another
 upgrade — shown in the research panel with the reason when locked.
@@ -921,9 +934,10 @@ are unaffected.
 
 **Trade routes**: the sim commands exist (establish for 500 funds
 setup; each active route pays 3 funds/sec — but only while both you
-and your partner have working commercial buildings; cancel anytime),
-but 0.1 Alpha has no menu surface for them yet — routes cannot be
-established from the menu in this version.
+and your partner have working commercial buildings; cancel anytime).
+Routes are established from the **Trade** panel in the Management tab
+(**New route…**, then click the two docks) — sea routes anchor
+dock-to-dock at Commercial Docks, Container Ports, or Fishing Harbors.
 
 ## Phase 3: Logistics (fuel and ammo)
 

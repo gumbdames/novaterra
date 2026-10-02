@@ -294,7 +294,7 @@ harmless neighbor.
 - Ports must touch the coastline. The **Civilian Shipyard** builds
   and repairs civilian ships; the **Commercial Docks**, **Container
   Port**, and **Fishing Harbor** are the trade docks where sea routes
-  anchor. A Naval Base trains warships like a naval yard. On the
+  anchor. On the
 military side the split mirrors the civilian one: the **Naval
 Shipyard** builds and repairs light/support ships (missile boats,
 corvettes, ammo ships), the **Naval Yard** builds and repairs heavy

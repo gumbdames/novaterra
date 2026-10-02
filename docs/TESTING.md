@@ -8,7 +8,7 @@ From `game/` (requires Node ≥ 22 — see `.nvmrc`):
 
 ```sh
 npm install        # once: installs vite, vitest, typescript, three
-npm test           # full suite: npx vitest run (137 files, ~2100 tests)
+npm test           # full suite: npx vitest run (175 files, ~2700 tests)
 npm run typecheck  # npx tsc --noEmit — must be clean
 npm run build      # vite build + license stamp — must succeed
 ```

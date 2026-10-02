@@ -51,8 +51,8 @@ game/src/
     rng.ts        # mulberry32 + named streams; stream state in every snapshot
     world.ts      # the World store; owns city: CityState
     city.ts       # city grid, roads, zones, buildings, players, placement
-    units.ts      # unit defs (96) + UnitRecord store, spawnUnit
-                  # BUILDING_DEFS (99) lives in city.ts
+    units.ts      # unit defs (97) + UnitRecord store, spawnUnit
+                  # BUILDING_DEFS (100) lives in city.ts
     upgrades.ts   # 21 researchable upgrades + effect hooks
     ages.ts       # 5 technology ages + National Program choices
     variants.ts   # 28 Mk II/III tech-level variants (lazy getter, no new art)
@@ -124,7 +124,7 @@ game/src/
   net_save/       # IndexedDB driver, save slots, version validation
   main.ts         # boot, menu wiring, save-load entry, ?trailer=1 /
                   # ?bench=1 branches (trailer mode is dynamically imported)
-game/tests/       # 137 files, ~2100 tests — see docs/TESTING.md
+game/tests/       # 175 files, ~2700 tests — see docs/TESTING.md
 game/public/      # static assets: models/ (989 CC0 files), audio/
 ```
 
