@@ -221,3 +221,123 @@ describe('advisor', () => {
     }
   });
 });
+
+describe('advisor (B14: fuel / stranded / intel diagnosis)', () => {
+  function setFuel(world: World, fuel: number): void {
+    getPlayer(world.city, 0)!.fuel = fuel;
+  }
+
+  function addRefinery(world: World, powered: boolean): void {
+    const b = placeBuilding(world.city, {
+      kind: 'oilRefinery',
+      owner: 0,
+      cx: 20,
+      cz: 20,
+      facing: 0,
+    });
+    b.progress = 1;
+    b.operational = true;
+    b.powerDiag = powered ? 'ok' : 'disconnected';
+    b.waterDiag = 'ok';
+  }
+
+  it('stays silent on fuel when the stockpile is healthy', () => {
+    const world = setup();
+    setFuel(world, 400);
+    const items = evaluateAdvisor(world, 0);
+    expect(items.some((i) => i.title.toLowerCase().includes('fuel'))).toBe(false);
+  });
+
+  it('diagnoses low fuel with no refinery: build one', () => {
+    const world = setup();
+    setFuel(world, 10);
+    const items = evaluateAdvisor(world, 0);
+    const warn = items.find((i) => i.title.toLowerCase().includes('fuel'));
+    expect(warn).toBeDefined();
+    expect(warn?.severity).toBe('warning');
+    expect(warn?.detail).toContain('Oil Refinery');
+  });
+
+  it('diagnoses low fuel with an unpowered refinery: connect power', () => {
+    const world = setup();
+    setFuel(world, 10);
+    addRefinery(world, false);
+    const items = evaluateAdvisor(world, 0);
+    const warn = items.find((i) => i.title.toLowerCase().includes('fuel'));
+    expect(warn?.detail).toContain('power');
+  });
+
+  it('diagnoses low fuel with a working refinery: demand outstrips supply', () => {
+    const world = setup();
+    setFuel(world, 10);
+    addRefinery(world, true);
+    const items = evaluateAdvisor(world, 0);
+    const warn = items.find((i) => i.title.toLowerCase().includes('fuel'));
+    expect(warn?.detail).toContain('another Oil Refinery');
+  });
+
+  it('names the missing power plant as the root cause', () => {
+    const world = setup();
+    const b = placeBuilding(world.city, { kind: 'house', owner: 0, cx: 5, cz: 5, facing: 0 });
+    b.operational = true;
+    b.powerDiag = 'disconnected';
+    b.waterDiag = 'ok';
+    const items = evaluateAdvisor(world, 0);
+    const warn = items.find((i) => i.title.toLowerCase().includes('power'));
+    expect(warn?.detail).toContain('Power Plant');
+  });
+
+  it('flags a stranded fossil-fuel aircraft as critical', () => {
+    const world = setup();
+    const jet = spawnUnit(world, 'fighter', 0, 0, 0);
+    jet.fuel = 0;
+    const items = evaluateAdvisor(world, 0);
+    const crit = items.find((i) => i.title.toLowerCase().includes('stranded'));
+    expect(crit).toBeDefined();
+    expect(crit?.severity).toBe('critical');
+    expect(crit?.detail).toContain('Emergency Refuel');
+  });
+
+  it('does not flag a fuelled aircraft as stranded', () => {
+    const world = setup();
+    const jet = spawnUnit(world, 'fighter', 0, 0, 0);
+    jet.fuel = 30;
+    const items = evaluateAdvisor(world, 0);
+    expect(items.some((i) => i.title.toLowerCase().includes('stranded'))).toBe(false);
+  });
+
+  it('flags sabotaged buildings with counter-intel guidance', () => {
+    const world = setup();
+    const b = placeBuilding(world.city, { kind: 'farm', owner: 0, cx: 8, cz: 8, facing: 0 });
+    b.progress = 1;
+    b.operational = true;
+    b.sabotagedUntil = world.tick + 500;
+    const items = evaluateAdvisor(world, 0);
+    const warn = items.find((i) => i.title.toLowerCase().includes('sabotage'));
+    expect(warn).toBeDefined();
+    expect(warn?.severity).toBe('warning');
+    expect(warn?.detail).toContain('Signals Station');
+  });
+
+  it('flags a burned spy with extraction guidance', () => {
+    const world = setup();
+    const spy = spawnUnit(world, 'spy', 0, 0, 0);
+    spy.spottedUntil = world.tick + 500;
+    const items = evaluateAdvisor(world, 0);
+    const warn = items.find((i) => i.title.toLowerCase().includes('burned'));
+    expect(warn).toBeDefined();
+    expect(warn?.severity).toBe('warning');
+  });
+
+  it('ignores unspotted spies and expired sabotage', () => {
+    const world = setup();
+    const spy = spawnUnit(world, 'spy', 0, 0, 0);
+    spy.spottedUntil = 0;
+    const b = placeBuilding(world.city, { kind: 'farm', owner: 0, cx: 8, cz: 8, facing: 0 });
+    b.progress = 1;
+    b.sabotagedUntil = 0;
+    const items = evaluateAdvisor(world, 0);
+    expect(items.some((i) => i.title.toLowerCase().includes('burned'))).toBe(false);
+    expect(items.some((i) => i.title.toLowerCase().includes('sabotage'))).toBe(false);
+  });
+});

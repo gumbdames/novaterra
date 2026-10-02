@@ -661,6 +661,14 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   (single source of truth), rank copy from `STRINGS.veterancy.ranks`
   (pinned equal to the sim's `VET_RANK_NAMES` by test).
 - `advisor.ts` — pure `evaluateAdvisor(world, playerId)`, worst-first.
+  Roadmap B14 (2026-10-02): diagnosis coverage for the systems players
+  get stuck on — fuel (root-caused: no refinery / refinery unpowered /
+  demand outstrips refining), power/water (root-caused: no working plant
+  or pump at all vs. wiring), stranded fossil-fuel aircraft (critical,
+  points at Emergency Refuel), active sabotage (points at Signals
+  Station counter-intel), burned spies (extraction guidance). Copy lives
+  in `STRINGS.advisor` (plain-string section style); thresholds are
+  exported consts with tests pinning the trigger boundaries.
 - `strings.ts` — all NEW UI copy in one place, English-only (2026-09-30
   directive; see `docs/I18N.md` for how a future language is added):
   `LocalizedString` (`{en}` — the localization indirection, kept as the

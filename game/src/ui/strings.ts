@@ -248,8 +248,24 @@ export const STRINGS = {
     ageAffordableDetail: 'Pick a National Program to reach Connectivity.',
     powerShortage: 'Power shortage',
     powerShortageDetail: 'Drag power lines from a plant to your buildings (Civilian → Tools).',
+    // Roadmap B14 (2026-10-02): root-cause detail when the grid has no
+    // working plant at all.
+    powerNoPlantDetail: 'No working power plant — build a Power Plant (Civilian → Build).',
     waterShortage: 'Water shortage',
     waterShortageDetail: 'Drag water pipes from a pump to your buildings (Civilian → Tools).',
+    // Roadmap B14 (2026-10-02): root-cause detail when no pump works.
+    waterNoPumpDetail: 'No working water pump — build a Water Pump (Civilian → Build).',
+    // Roadmap B14 (2026-10-02): fuel / stranded-aircraft / intel diagnoses.
+    fuelLow: 'Fuel running low',
+    fuelNoRefinery: 'Nothing produces fuel — build an Oil Refinery (Connectivity age). Power plants burn fuel too: every plant you run raises demand.',
+    fuelRefineryUnpowered: 'Your refineries have no power — connect power lines from a plant (Civilian → Tools).',
+    fuelDemandHigh: 'Demand outstrips refining — build another Oil Refinery.',
+    aircraftStranded: 'Aircraft stranded',
+    aircraftStrandedDetail: 'Out of fuel and going nowhere — select it and order Emergency Refuel from the unit panel before it is lost.',
+    sabotageActive: 'Sabotage!',
+    sabotageActiveDetail: 'Sabotaged buildings stop working until it wears off — build a Signals Station to catch enemy spies.',
+    spyBurned: 'Spy burned',
+    spyBurnedDetail: 'Your spy was spotted and reports nothing now — pull it out or train a replacement.',
     allClear: 'All clear. Expand or advance.',
   },
   pause: {

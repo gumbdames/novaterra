@@ -35,9 +35,10 @@
  */
 
 import type { World } from '../sim/world';
-import { getPlayer } from '../sim/city';
+import { BUILDING_DEFS, getPlayer } from '../sim/city';
 import { UNIT_DEFS, type UnitKind } from '../sim/units';
 import { CONNECTIVITY_COST, getAgeState } from '../sim/ages';
+import { isSabotaged, isSpyUnit } from '../sim/intel';
 import { STRINGS } from './strings';
 
 /** How urgently the player should look at this. */
@@ -61,6 +62,8 @@ export const ADVISOR_FUNDS_CRITICAL = 300;
 export const ADVISOR_MATERIALS_LOW = 200;
 /** A unit below this hp fraction counts as "taking damage". */
 export const ADVISOR_DAMAGED_FRACTION = 0.5;
+/** Fuel below this triggers the fuel diagnosis (B14). */
+export const ADVISOR_FUEL_LOW = 100;
 
 /**
  * Evaluate the player's situation, worst problems first. Returns an empty
@@ -91,6 +94,36 @@ export function evaluateAdvisor(world: World, playerId: number): AdvisorItem[] {
     });
   }
 
+  // Roadmap B14 (2026-10-02): fuel diagnosis — not just "fuel is low"
+  // but WHY. Root causes in order: nothing produces fuel (no working
+  // refinery), refineries exist but are unpowered, or demand simply
+  // outstrips refining (power plants burn fuel too).
+  if (player.fuel < ADVISOR_FUEL_LOW) {
+    const refineries = world.city.buildings.filter(
+      (b) =>
+        b.owner === playerId &&
+        b.progress >= 1 &&
+        (BUILDING_DEFS[b.kind].output?.fuel ?? 0) > 0,
+    );
+    const working = refineries.filter(
+      (b) =>
+        b.operational &&
+        b.powerDiag !== 'shortage' &&
+        b.powerDiag !== 'disconnected',
+    );
+    const cause =
+      refineries.length === 0
+        ? s.fuelNoRefinery
+        : working.length === 0
+          ? s.fuelRefineryUnpowered
+          : s.fuelDemandHigh;
+    items.push({
+      severity: 'warning',
+      title: s.fuelLow,
+      detail: `${Math.max(0, Math.floor(player.fuel))} fuel — ${cause}`,
+    });
+  }
+
   // Food shortage stalls growth (set by the economy tick).
   if (world.city.foodShortage) {
     items.push({
@@ -103,28 +136,45 @@ export function evaluateAdvisor(world: World, playerId: number): AdvisorItem[] {
   // Power: completed buildings without power work at reduced strength.
   // (Tutorial A3, 2026-10-01: M1 promises "watch the advisor for
   // shortages" — the advisor must actually cover utilities.)
+  // Roadmap B14 (2026-10-02): root-cause detail — when no plant works
+  // at all, say so instead of just pointing at the wires.
   const unpowered = world.city.buildings.filter((b) => {
     if (b.owner !== playerId || !b.operational) return false;
     return b.powerDiag === 'shortage' || b.powerDiag === 'disconnected';
   }).length;
   if (unpowered > 0) {
+    const plants = world.city.buildings.filter(
+      (b) =>
+        b.owner === playerId &&
+        b.progress >= 1 &&
+        b.operational &&
+        BUILDING_DEFS[b.kind].powerSupply > 0,
+    ).length;
     items.push({
       severity: 'warning',
       title: s.powerShortage,
-      detail: `${unpowered} buildings — ${s.powerShortageDetail}`,
+      detail: `${unpowered} buildings — ${plants === 0 ? s.powerNoPlantDetail : s.powerShortageDetail}`,
     });
   }
 
   // Water: completed buildings without water work at reduced strength.
+  // B14: same root-cause treatment as power.
   const unwatered = world.city.buildings.filter((b) => {
     if (b.owner !== playerId || !b.operational) return false;
     return b.waterDiag === 'shortage' || b.waterDiag === 'disconnected';
   }).length;
   if (unwatered > 0) {
+    const pumps = world.city.buildings.filter(
+      (b) =>
+        b.owner === playerId &&
+        b.progress >= 1 &&
+        b.operational &&
+        BUILDING_DEFS[b.kind].waterSupply > 0,
+    ).length;
     items.push({
       severity: 'warning',
       title: s.waterShortage,
-      detail: `${unwatered} buildings — ${s.waterShortageDetail}`,
+      detail: `${unwatered} buildings — ${pumps === 0 ? s.waterNoPumpDetail : s.waterShortageDetail}`,
     });
   }
 
@@ -139,6 +189,53 @@ export function evaluateAdvisor(world: World, playerId: number): AdvisorItem[] {
       severity: 'warning',
       title: s.unitsDamaged,
       detail: `${damaged} damaged — ${s.unitsDamagedDetail}`,
+    });
+  }
+
+  // Roadmap B14 (2026-10-02): stranded aircraft — a fossil-fuel plane
+  // with an empty tank goes nowhere on its own. Critical, because the
+  // plane is effectively lost without action, and nothing else points
+  // at Emergency Refuel (the R5 order that saves it).
+  const stranded = world.units.filter((u) => {
+    if (u.owner !== playerId || u.hp <= 0 || u.domain !== 'air') return false;
+    const def = UNIT_DEFS[u.kind as UnitKind];
+    return def?.fuelType === 'fossil' && (u.fuel ?? 0) <= 0;
+  }).length;
+  if (stranded > 0) {
+    items.push({
+      severity: 'critical',
+      title: s.aircraftStranded,
+      detail: `${stranded} stranded — ${s.aircraftStrandedDetail}`,
+    });
+  }
+
+  // Roadmap B14 (2026-10-02): sabotage — the building stops working and
+  // the cause is invisible on the map. Name it and point at the counter.
+  const sabotaged = world.city.buildings.filter(
+    (b) => b.owner === playerId && isSabotaged(b, world.tick),
+  ).length;
+  if (sabotaged > 0) {
+    items.push({
+      severity: 'warning',
+      title: s.sabotageActive,
+      detail: `${sabotaged} ${sabotaged === 1 ? 'building' : 'buildings'} — ${s.sabotageActiveDetail}`,
+    });
+  }
+
+  // Roadmap B14 (2026-10-02): burned spy — a spotted spy reports nothing
+  // and will be captured; the player should extract or replace it.
+  const burned = world.units.filter(
+    (u) =>
+      u.owner === playerId &&
+      u.hp > 0 &&
+      isSpyUnit(u) &&
+      (u.spottedUntil ?? 0) > world.tick,
+  ).length;
+  if (burned > 0) {
+    items.push({
+      severity: 'warning',
+      title: s.spyBurned,
+      detail: `${burned} ${burned === 1 ? 'spy' : 'spies'} — ${s.spyBurnedDetail}`,
     });
   }
 
