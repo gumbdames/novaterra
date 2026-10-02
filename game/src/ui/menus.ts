@@ -60,11 +60,13 @@ export interface Settings {
   colorblind: boolean;
   /** Phase 3: UI scale multiplier (0.8 .. 1.5). */
   uiScale: number;
+  /** Roadmap B15: edge pan on/off (default on). */
+  edgePan: boolean;
 }
 
 const SETTINGS_KEY = 'novaterra.settings.v1';
 
-const DEFAULT_SETTINGS: Settings = { quality: 'high', colorblind: false, uiScale: 1 };
+const DEFAULT_SETTINGS: Settings = { quality: 'high', colorblind: false, uiScale: 1, edgePan: true };
 
 export function loadSettings(): Settings {
   try {
@@ -78,7 +80,10 @@ export function loadSettings(): Settings {
       const uiScale = typeof parsed.uiScale === 'number' && parsed.uiScale >= 0.8 && parsed.uiScale <= 1.5
         ? parsed.uiScale
         : 1;
-      return { quality, colorblind, uiScale };
+      // Roadmap B15: absent in pre-B15 saves → default on (existing
+      // players keep the behavior they know).
+      const edgePan = typeof parsed.edgePan === 'boolean' ? parsed.edgePan : true;
+      return { quality, colorblind, uiScale, edgePan };
     }
   } catch {
     // Corrupt or unavailable storage — fall through to defaults.
@@ -115,6 +120,8 @@ export interface MenuActions {
   onColorblindChange?: (v: boolean) => void;
   /** Phase 3: UI scale changed. Optional. */
   onUiScaleChange?: (v: number) => void;
+  /** Roadmap B15: edge pan toggled. Optional. */
+  onEdgePanChange?: (v: boolean) => void;
   /** Audio settings changed (live-apply when a game is running). Optional. */
   onAudioChange?: (patch: Partial<AudioSettings>) => void;
   /** Open the save-game slot picker (pause menu). Optional. */
@@ -200,6 +207,7 @@ export class MainMenu {
       onMuseFrequencyChange: this.actions.onMuseFrequencyChange,
       onColorblindChange: this.actions.onColorblindChange,
       onUiScaleChange: this.actions.onUiScaleChange,
+      onEdgePanChange: this.actions.onEdgePanChange,
       onClose: () => this.show(),
     }).show(), false, menuIcon('settings'));
     buttons.append(skirmish, loadGame, missions, settings);
@@ -357,6 +365,7 @@ export class PauseMenu {
           onMuseFrequencyChange: this.actions.onMuseFrequencyChange,
           onColorblindChange: this.actions.onColorblindChange,
           onUiScaleChange: this.actions.onUiScaleChange,
+          onEdgePanChange: this.actions.onEdgePanChange,
           onClose: () => this.show(),
         }).show(),
         false,
@@ -416,6 +425,7 @@ export class SettingsPanel {
   private readonly onMuseFrequencyChange: ((f: MuseFrequency) => void) | undefined;
   private readonly onColorblindChange: ((v: boolean) => void) | undefined;
   private readonly onUiScaleChange: ((v: number) => void) | undefined;
+  private readonly onEdgePanChange: ((v: boolean) => void) | undefined;
   private readonly onClose: () => void;
   private el: HTMLElement | null = null;
 
@@ -427,6 +437,7 @@ export class SettingsPanel {
       onMuseFrequencyChange?: (f: MuseFrequency) => void;
       onColorblindChange?: (v: boolean) => void;
       onUiScaleChange?: (v: number) => void;
+      onEdgePanChange?: (v: boolean) => void;
       onClose: () => void;
     },
   ) {
@@ -436,6 +447,7 @@ export class SettingsPanel {
     this.onMuseFrequencyChange = opts.onMuseFrequencyChange;
     this.onColorblindChange = opts.onColorblindChange;
     this.onUiScaleChange = opts.onUiScaleChange;
+    this.onEdgePanChange = opts.onEdgePanChange;
     this.onClose = opts.onClose;
   }
 
@@ -493,6 +505,19 @@ export class SettingsPanel {
     });
     scaleRow.append(scaleInput);
     panel.append(scaleRow);
+
+    // --- Roadmap B15: camera ---
+    panel.append(el('h3', '', 'Camera'));
+    const edgeRow = el('label', 'settings-row', 'Edge pan (mouse at screen edge): ');
+    const edgeBox = document.createElement('input');
+    edgeBox.type = 'checkbox';
+    edgeBox.checked = settings.edgePan;
+    edgeBox.addEventListener('change', () => {
+      saveSettings({ ...loadSettings(), edgePan: edgeBox.checked });
+      this.onEdgePanChange?.(edgeBox.checked);
+    });
+    edgeRow.append(edgeBox);
+    panel.append(edgeRow);
 
     // --- Audio ---
     panel.append(el('h3', '', s.audioTitle));

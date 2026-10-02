@@ -311,6 +311,12 @@ export const STRINGS = {
       ['W A S D / arrows', 'Move camera'],
       ['Mouse wheel', 'Zoom'],
       ['Q / E', 'Rotate camera'],
+      // Roadmap B15 (2026-10-02): the camera shortcuts that were never
+      // listed — G toggles the terrain grid, R/F tilt the camera, and
+      // edge pan (mouse at the screen edge) has a Settings toggle.
+      ['G', 'Toggle terrain grid'],
+      ['R / F', 'Tilt camera up / down'],
+      ['Mouse at screen edge', 'Pan camera (edge pan; toggle in Settings → Camera)'],
       ['`', 'Cheat console'],
     ] as Array<[string, string]>,
   },

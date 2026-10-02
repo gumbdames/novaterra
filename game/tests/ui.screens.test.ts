@@ -34,6 +34,7 @@ import {
   MissionDebrief,
 } from '../src/ui/campaignUi';
 import { EndScreen } from '../src/ui/endscreen';
+import { STRINGS } from '../src/ui/strings';
 import {
   MainMenu,
   PauseMenu,
@@ -300,5 +301,27 @@ describe('ui/saveslots', () => {
     });
     expect(() => dlg.show()).not.toThrow();
     expect(() => dlg.hide()).not.toThrow();
+  });
+});
+
+describe('ui/menus (B15: edge-pan setting + key list)', () => {
+  it('edgePan defaults to true for pre-B15 saves without the key', () => {
+    store.set(
+      'novaterra.settings.v1',
+      JSON.stringify({ quality: 'high', colorblind: false, uiScale: 1 }),
+    );
+    expect(loadSettings().edgePan).toBe(true);
+  });
+
+  it('edgePan survives a save/load round-trip when off', () => {
+    saveSettings({ ...loadSettings(), edgePan: false });
+    expect(loadSettings().edgePan).toBe(false);
+  });
+
+  it('the key list documents G and R/F', () => {
+    const keys = STRINGS.help.keys as Array<[string, string]>;
+    const labels = keys.map(([k]) => k);
+    expect(labels).toContain('G');
+    expect(labels).toContain('R / F');
   });
 });

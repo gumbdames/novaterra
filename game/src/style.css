@@ -221,6 +221,10 @@ body {
   padding: 8px 12px;
   background: linear-gradient(rgba(5, 10, 18, 0.85), rgba(5, 10, 18, 0.55));
   pointer-events: auto;
+  /* Roadmap B15: at high UI scale the chips no longer clip off-screen —
+     the bar wraps to a second row instead. */
+  flex-wrap: wrap;
+  row-gap: 4px;
 }
 
 .hud-chip {

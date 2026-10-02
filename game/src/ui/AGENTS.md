@@ -381,7 +381,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   container/canvas are built once and repainted imperatively).
 - `menus.ts` — main menu (skirmish setup: map picker + difficulty picker),
   pause overlay, settings (quality, key list, accessibility, audio). Quality,
-  colorblind mode, UI scale and audio persist in localStorage. Skirmish
+  colorblind mode, UI scale and audio persist in localStorage. Roadmap B15
+  (2026-10-02): settings gain a **Camera** section with the **edge-pan**
+  toggle (`Settings.edgePan`, default on for pre-B15 saves) — the game
+  controller gates `edgePanVector` on it; and the key list now documents
+  G (terrain grid), R/F (camera tilt) and edge pan itself. Skirmish
   setup shows all 8 MAP_PRESETS (name
   + water %) and all 5 AI difficulties, plus the grand-expansion Phase 8
   (workstream B, 2026-09-30) **Peaceful mode** checkbox with its one-line

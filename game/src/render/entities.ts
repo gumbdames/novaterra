@@ -1755,7 +1755,13 @@ export class EntityRenderer {
     const data = desirabilityOverlayData(t, world, HUMAN_PLAYER_ID);
     const heightFn =
       t === null ? undefined : (x: number, z: number): number => heightAt(t, x, z);
-    this.desirabilityOverlay.sync(data, { heightAt: heightFn });
+    // Roadmap B15: the overlay re-ramps to the colorblind-safe palette
+    // when the mode is on (the flag is folded into the overlay's cache
+    // key, so toggling rebuilds the tint).
+    const colorblind =
+      typeof document !== 'undefined' &&
+      document.documentElement.classList.contains('colorblind');
+    this.desirabilityOverlay.sync(data, { heightAt: heightFn, colorblind });
   }
 
   /**

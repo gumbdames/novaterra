@@ -734,6 +734,12 @@ class GameController {
   private shakeTrauma = 0;
   private lastShakeTick = -1;
   /**
+   * Roadmap B15 (2026-10-02): edge-pan preference from Settings →
+   * Camera (persisted). When off, the pointer near a screen edge no
+   * longer pans — WASD/arrows still do.
+   */
+  private edgePanEnabled = true;
+  /**
    * Phase 4 hardening (item 7): the last camera state that passed the
    * NaN guard. A poisoned state is never applied and never remembered —
    * the camera restores this instead of wedging permanently.
@@ -908,6 +914,8 @@ class GameController {
     const saved = loadSettings();
     this.setColorblind(saved.colorblind);
     this.setUiScale(saved.uiScale);
+    // Roadmap B15: edge pan preference (default on for pre-B15 saves).
+    this.edgePanEnabled = saved.edgePan !== false;
 
     this.hud = new HUD(container, {
       onPauseToggle: () => this.togglePause(),
@@ -1122,6 +1130,10 @@ class GameController {
       onMuseFrequencyChange: (f) => this.setMuseFrequency(f),
       onColorblindChange: (v) => this.setColorblind(v),
       onUiScaleChange: (v) => this.setUiScale(v),
+      // Roadmap B15: edge-pan toggle (Settings → Camera).
+      onEdgePanChange: (v) => {
+        this.edgePanEnabled = v;
+      },
       onSaveGame: () => this.openSaveDialog(),
       onConfirmExit: (saveFirst) => void this.confirmExit(saveFirst),
     });
@@ -2939,7 +2951,8 @@ class GameController {
     // the pure edgePanVector (ui/camera.ts) — same yaw-aware axes as the
     // key pan. mouseClient is tracked on window (not just the canvas) so
     // HUD panels overlapping an edge cannot starve the edge zone.
-    if (this.mouseClient) {
+    // Roadmap B15: gated by the Settings → Camera toggle.
+    if (this.mouseClient && this.edgePanEnabled) {
       const v = edgePanVector({
         pointerX: this.mouseClient.x,
         pointerY: this.mouseClient.y,

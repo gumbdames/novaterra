@@ -283,3 +283,34 @@ describe('DesirabilityOverlay', () => {
     overlay.dispose();
   });
 });
+
+describe('desirabilityColor (B15: colorblind ramp)', () => {
+  it('pins the colorblind anchors: blue (0) -> pale (50) -> orange (100)', () => {
+    const lo = desirabilityColor(0, new THREE.Color(), true);
+    expect(lo.r).toBeCloseTo(0x2a / 255, 6);
+    expect(lo.g).toBeCloseTo(0x6d / 255, 6);
+    expect(lo.b).toBeCloseTo(0xb5 / 255, 6);
+    const mid = desirabilityColor(50, new THREE.Color(), true);
+    expect(mid.r).toBeCloseTo(0xcf / 255, 6);
+    expect(mid.g).toBeCloseTo(0xe3 / 255, 6);
+    expect(mid.b).toBeCloseTo(0xf5 / 255, 6);
+    const hi = desirabilityColor(100, new THREE.Color(), true);
+    expect(hi.r).toBeCloseTo(0xff / 255, 6);
+    expect(hi.g).toBeCloseTo(0xaa / 255, 6);
+    expect(hi.b).toBeCloseTo(0x00 / 255, 6);
+  });
+
+  it('differs from the default ramp at the anchors', () => {
+    for (const v of [0, 50, 100]) {
+      const a = desirabilityColor(v);
+      const b = desirabilityColor(v, new THREE.Color(), true);
+      expect([b.r, b.g, b.b]).not.toEqual([a.r, a.g, a.b]);
+    }
+  });
+
+  it('keeps the default ramp when the flag is false', () => {
+    const a = desirabilityColor(0);
+    const b = desirabilityColor(0, new THREE.Color(), false);
+    expect([b.r, b.g, b.b]).toEqual([a.r, a.g, a.b]);
+  });
+});

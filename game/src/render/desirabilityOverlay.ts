@@ -21,9 +21,11 @@
  * The TOGGLEABLE overlay — off by default, flipped from the top bar
  * ("Land value"). It shows every residential-zone cell as a ground tint
  * colored by its 0–100 desirability: red (low) → amber (modest) →
- * green (prime). One merged decal mesh (1 draw call, 0 when empty),
- * rebuilt only when the sim model's cache key changes (structural
- * change — never per frame).
+ * green (prime); colorblind mode re-ramps to blue → pale → orange
+ * (roadmap B15, 2026-10-02 — the flag rides the overlay's cache key so
+ * toggling rebuilds the tint). One merged decal mesh (1 draw call, 0
+ * when empty), rebuilt only when the sim model's cache key changes
+ * (structural change — never per frame).
  *
  * Data flows in as `DesirabilityOverlayData` (ui/desirability.ts — a pure
  * view of the sim's derived model; the overlay never touches sim state).
@@ -45,9 +47,27 @@ export const DESIRABILITY_OVERLAY_OPACITY = 0.28;
 /**
  * Desirability → tint color: red (0) → amber (50) → green (100).
  * Pure: same value ⇒ byte-identical color, pinned by test.
+ *
+ * Roadmap B15 (2026-10-02): the red→green ramp is unreadable with the
+ * most common color-vision deficiencies, so colorblind mode gets a
+ * blue (low) → pale (mid) → orange (high) ramp instead — the same
+ * two-stop shape, none of the red/green confusion. Opt-in third
+ * parameter; existing callers/tests are unaffected.
  */
-export function desirabilityColor(value: number, out = new THREE.Color()): THREE.Color {
+export function desirabilityColor(
+  value: number,
+  out = new THREE.Color(),
+  colorblind = false,
+): THREE.Color {
   const v = Math.max(0, Math.min(100, value)) / 100;
+  if (colorblind) {
+    // Blue → pale → orange.
+    const r = v < 0.5 ? 0x2a + (0xcf - 0x2a) * (v / 0.5) : 0xcf + (0xff - 0xcf) * ((v - 0.5) / 0.5);
+    const g = v < 0.5 ? 0x6d + (0xe3 - 0x6d) * (v / 0.5) : 0xe3 + (0xaa - 0xe3) * ((v - 0.5) / 0.5);
+    const b = v < 0.5 ? 0xb5 + (0xf5 - 0xb5) * (v / 0.5) : 0xf5 + (0x00 - 0xf5) * ((v - 0.5) / 0.5);
+    out.setRGB(r / 255, g / 255, b / 255);
+    return out;
+  }
   // Two-stop gradient: red → amber → green.
   const r = v < 0.5 ? 0xd4 + (0xd8 - 0xd4) * (v / 0.5) : 0xd8 + (0x3f - 0xd8) * ((v - 0.5) / 0.5);
   const g = v < 0.5 ? 0x3d + (0xa9 - 0x3d) * (v / 0.5) : 0xa9 + (0xae - 0xa9) * ((v - 0.5) / 0.5);
@@ -108,13 +128,14 @@ class DecalQuadList {
 export function buildDesirabilityDecalGeometry(
   data: DesirabilityOverlayData,
   heightAt?: (x: number, z: number) => number,
+  colorblind = false,
 ): THREE.BufferGeometry {
   const quads = new DecalQuadList();
   const scratch = new THREE.Color();
   const ordered = [...data.cells].sort((a, b) => a.cell - b.cell);
   for (const c of ordered) {
     const { cx, cz } = cellCoords(c.cell);
-    desirabilityColor(c.value, scratch);
+    desirabilityColor(c.value, scratch, colorblind);
     quads.quad(cellCenterWorld(cx), cellCenterWorld(cz), scratch, heightAt);
   }
   return quads.build();
@@ -134,6 +155,8 @@ export function desirabilityOverlayDigest(data: DesirabilityOverlayData): number
 
 export interface DesirabilityOverlaySyncOpts {
   heightAt?: (x: number, z: number) => number;
+  /** Roadmap B15: colorblind-safe blue→orange ramp (re-ramp on toggle). */
+  colorblind?: boolean;
 }
 
 /**
@@ -159,12 +182,14 @@ export class DesirabilityOverlay {
   /**
    * Rebuild the decal mesh only when the model's cache key changed since
    * the last sync (structural change). The common path is a single
-   * string compare.
+   * string compare. The colorblind flag is folded into the key so
+   * toggling the mode re-ramps the tint (roadmap B15).
    */
   sync(data: DesirabilityOverlayData, opts: DesirabilityOverlaySyncOpts = {}): void {
     if (!this.visible) return;
-    if (data.key === this.lastKey) return;
-    this.lastKey = data.key;
+    const key = opts.colorblind === true ? `${data.key}|cb` : data.key;
+    if (key === this.lastKey) return;
+    this.lastKey = key;
     this.rebuilds += 1;
     if (this.mesh !== null) {
       this.group.remove(this.mesh);
@@ -173,7 +198,7 @@ export class DesirabilityOverlay {
       this.mesh = null;
     }
     if (data.cells.length === 0) return;
-    const geo = buildDesirabilityDecalGeometry(data, opts.heightAt);
+    const geo = buildDesirabilityDecalGeometry(data, opts.heightAt, opts.colorblind === true);
     const mat = new THREE.MeshBasicMaterial({
       vertexColors: true,
       transparent: true,
