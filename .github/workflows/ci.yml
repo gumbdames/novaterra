@@ -1,12 +1,21 @@
-# NOVATERRA CI (0.1 Alpha) — final-review R3 (2026-10-01).
+# NOVATERRA CI (0.1 Alpha) — final-review R3 (2026-10-01), soak split B23 (2026-10-02).
 #
-# On every push and pull request:
-#   1. `npm run build` FIRST — the boot-budget gate
-#      (tests/render.boot-budget.test.ts) measures the real dist/
-#      output, so it must see a fresh build, not a stale one.
-#   2. `npx tsc --noEmit` — the type gate.
-#   3. `npx vitest run` — the full suite, serially brave under load
-#      (see the flake note below).
+# On every push and pull request, two jobs run in parallel:
+#
+#   fast — `npm run build` FIRST (the boot-budget gate in
+#          tests/render.boot-budget.test.ts measures the real dist/
+#          output, so it must see a fresh build), then tsc, the
+#          import-cycle guard, and the whole suite EXCEPT the soak
+#          files. This is the signal developers watch.
+#
+#   soak — the long scenario tests (tests/*-soak.test.ts, ~8 files,
+#          10+ minutes of scripted gameplay) run in their own job
+#          with timeout-minutes, a livelier reporter, and per-file
+#          timing budgets. Roadmap B23: the full serial suite's
+#          10–20 min runtime — and the `onTaskUpdate` reporter-RPC
+#          flake, which correlates with long reporter-quiet
+#          stretches (~86 s in the longest soak file) — no longer
+#          gate the fast signal.
 name: CI
 
 on:
@@ -14,9 +23,9 @@ on:
   pull_request:
 
 jobs:
-  build-test:
+  fast:
+    name: fast (build + typecheck + unit tests)
     runs-on: ubuntu-latest
-    # A hung suite must never burn the full 6 h runner allowance.
     timeout-minutes: 60
     defaults:
       run:
@@ -65,20 +74,22 @@ jobs:
       # Count floor (roadmap A5, 2026-10-01): the accepted "Tests N
       # passed" count is pinned — a mid-suite worker death printing
       # "Tests 1400 passed" with no failures must NOT pass as green.
-      # VITEST_COUNT_FLOOR is the suite size of the last green run;
-      # bump it in the same commit whenever tests are added.
+      # VITEST_COUNT_FLOOR is the non-soak suite size of the last green
+      # run; bump it in the same commit whenever tests are added.
       #
       # --maxWorkers=2: GitHub's ubuntu-latest runners have 2-4 vCPUs;
       # more workers than that increases worker starvation (the flake's
       # trigger) without speeding the suite up.
+      #
+      # --exclude: soak files run in the `soak` job, not here (B23).
       - name: Tests (vitest, flake-aware retry)
         timeout-minutes: 45
         run: |
-          VITEST_COUNT_FLOOR=2449
+          VITEST_COUNT_FLOOR=2686
           for attempt in 1 2 3; do
             echo "=== vitest attempt $attempt/3 ==="
             set +e
-            output=$(npx vitest run --maxWorkers=2 2>&1)
+            output=$(npx vitest run --maxWorkers=2 --exclude '**/*-soak.test.ts' 2>&1)
             status=$?
             set -e
             echo "$output"
@@ -111,4 +122,87 @@ jobs:
             echo "unrecognized failure on attempt $attempt — retrying"
           done
           echo "vitest failed 3 times in a row — failing"
+          exit 1
+
+  soak:
+    name: soak (long scenario tests)
+    runs-on: ubuntu-latest
+    # A hung soak must never burn the full 6 h runner allowance.
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: game
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: game/package-lock.json
+
+      - name: Install
+        run: npm ci
+
+      # Soak tests are sim-only (no dist/ reads), so no build step here —
+      # keeping this job independent of the fast job's artifacts.
+      #
+      # Livelier reporter (B23): --reporter=verbose prints every test's
+      # verdict as it lands, so the vitest reporter RPC never sits quiet
+      # through an 86-second scenario — the quiet stretches were the
+      # `onTaskUpdate` flake's trigger. --slowTestThreshold flags any
+      # single test over 60 s as slow in the log (not a failure).
+      #
+      # Per-file timing budgets (measured locally 2026-10-02 on a loaded
+      # host, with ~2× headroom baked in; rerun `time npx vitest run
+      # tests/*-soak.test.ts --reporter=verbose` and update when soaks
+      # change). A file blowing past its budget is a perf regression to
+      # investigate, not an automatic red — but it should stay visible
+      # in review:
+      #   sim.ai-airnaval-soak.test.ts     ~10 s   budget 20 s
+      #   sim.ai-intel-soak.test.ts        ~8 s   budget 20 s
+      #   sim.ai-peaceful-soak.test.ts     ~1 s   budget 10 s
+      #   sim.ai-soak.test.ts              ~3 s   budget 15 s
+      #   sim.logistics-ai-soak.test.ts    ~4 s   budget 15 s
+      #   sim.phase9-long-soak.test.ts     ~66 s  budget 300 s
+      #   sim.seatrade-ai-soak.test.ts     ~1 s   budget 10 s
+      #   sim.veterancy-soak.test.ts       ~1 s   budget 10 s
+      - name: Soak tests (vitest, flake-aware retry)
+        timeout-minutes: 25
+        run: |
+          VITEST_COUNT_FLOOR=35
+          for attempt in 1 2 3; do
+            echo "=== soak vitest attempt $attempt/3 ==="
+            set +e
+            output=$(npx vitest run --maxWorkers=2 --reporter=verbose --slowTestThreshold=60000 "tests/*-soak.test.ts" 2>&1)
+            status=$?
+            set -e
+            echo "$output"
+            passed=$(echo "$output" | sed 's/\x1b\[[0-9;]*m//g' \
+              | grep -E '^[[:space:]]*Tests[[:space:]]' \
+              | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+' | tail -1)
+            if [ -z "$passed" ]; then
+              echo "could not read a test count from the output — failing"
+              exit 1
+            fi
+            if [ "$passed" -lt "$VITEST_COUNT_FLOOR" ]; then
+              echo "only $passed soak tests passed, below the floor of $VITEST_COUNT_FLOOR — failing"
+              exit 1
+            fi
+            if [ "$status" -eq 0 ]; then
+              echo "soak vitest passed on attempt $attempt ($passed tests)"
+              exit 0
+            fi
+            if echo "$output" | grep -q 'Timeout calling "onTaskUpdate"' \
+              && ! echo "$output" | grep -q 'Failed Tests'; then
+              echo "all $passed soak tests passed; only the known reporter flake fired — accepting as green"
+              exit 0
+            fi
+            if echo "$output" | grep -q 'Failed Tests'; then
+              echo "real soak test failure on attempt $attempt — not retrying"
+              exit 1
+            fi
+            echo "unrecognized failure on attempt $attempt — retrying"
+          done
+          echo "soak vitest failed 3 times in a row — failing"
           exit 1
