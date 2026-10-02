@@ -240,3 +240,24 @@ Pack page: https://opengameart.org/content/lowpoly-textured-trees
 ("License(s): CC0", author quaternius — verified 2026-09-30; the pack's
 texture files are served anonymously).
 
+
+## AI-generated end-screen illustrations (shipped in game/public/img/endscreens/)
+
+The six victory/defeat end-screen illustrations were generated with an
+AI image model (exploration bet C6, 2026-10-02) and are the original
+work product commissioned for this project:
+
+- `victory-conquest.jpg` — carrier strike group at dawn
+- `victory-economic.jpg` — thriving container port at golden hour
+- `victory-population.jpg` — coastal metropolis at dusk
+- `victory-monument.jpg` — national monument plaza at sunset
+- `defeat-annihilation.jpg` — darkened city and harbor at night
+- `defeat-race.jpg` — rival city celebrating across a dark bay
+
+Art direction (user directive 2026-10-02): photorealistic contemporary
+Earth — modern coastal city and harbor, realistic present-day military
+hardware, believable city lights, natural sky; NOT science fiction. No
+text is baked into any image; all end-screen copy stays in code
+(`ui/strings.ts`, English and English only). The JPEGs are lazy-loaded
+(the browser fetches them only when an end screen shows), so they do
+not enter the boot payload.

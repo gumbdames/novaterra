@@ -97,6 +97,12 @@ land, sea and air — or play a fully peaceful game with war disabled.
   plays a deterministic ~4-minute in-game movie — a real skirmish vs a
   cadet AI with title cards and a scripted camera — recorded straight
   to a downloadable `.webm` (see `docs/trailer.md`).
+  Exploration bet C6 (2026-10-02) is in too: illustrated victory/defeat
+  end screens — six AI-generated illustrations (one per victory kind +
+  annihilation vs lost-the-race defeat), lazy-loaded so they never enter
+  the boot payload, with a slow cinematic camera drift over the final
+  battlefield while the overlay is up (your camera is restored exactly
+  on dismiss). Provenance in `THIRD_PARTY_NOTICES.md`.
   See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 

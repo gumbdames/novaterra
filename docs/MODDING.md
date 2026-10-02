@@ -1,5 +1,10 @@
 # MODDING.md — NOVATERRA 0.1 Alpha
 
+> Honesty first: in 0.1 Alpha, **modding = fork the repo and edit
+> TypeScript**. There is no mod loader, no Steam Workshop integration,
+> no asset-pack drop-in. NOVATERRA's roster is data-driven, which makes
+> the fork-and-edit path unusually clean — this guide shows how.
+
 NOVATERRA's roster is **data-driven**: units, buildings, and upgrades are
 plain TypeScript records. Adding a new unit (or building, or upgrade) is a
 recipe, not an engine change — no new systems to wire, just data in the

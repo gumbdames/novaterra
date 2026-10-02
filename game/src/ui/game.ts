@@ -232,6 +232,13 @@ import { AudioEventTracker, snapshotForAudio, type AudioWorldSnapshot } from '..
 import { MoodTracker, enemyProximityFromWorld } from '../audio/music';
 import { CheatConsole, cheatHelpText, type CheatAction } from './cheatConsole';
 import { EndScreen } from './endscreen';
+import type { EndArt } from './endscreen';
+import {
+  startEndDrift,
+  advanceEndDrift,
+  endDriftYaw,
+  type EndDrift,
+} from './endDrift';
 import { SaveSlotsDialog } from './saveslots';
 import type { SaveFile, SaveSlotId } from '../netSave/savefile';
 import { AUTOSAVE_SLOT, createSaveFile } from '../netSave/savefile';
@@ -731,6 +738,15 @@ class GameController {
   private unbindUiClicks: (() => void) | null = null;
   private cameraState: CameraState = createCameraState();
   /**
+   * Exploration bet C6 (2026-10-02): end-screen camera drift. While the
+   * victory/defeat overlay is up, the camera slow-orbits the battlefield
+   * (see ui/endDrift.ts). `preEndCameraState` is the exact player camera
+   * saved at show time and restored on dismiss — control returns
+   * precisely where the player left it.
+   */
+  private endDrift: EndDrift | null = null;
+  private preEndCameraState: CameraState | null = null;
+  /**
    * Roadmap B13 (2026-10-02): screen-shake trauma 0..1. Explosions feed
    * it (scaled by distance from the camera target); it decays every
    * frame and the render step offsets the camera by shakeOffset().
@@ -1150,7 +1166,23 @@ class GameController {
       onKeepPlaying: () => undefined,
       onExitToMenu: () => this.exitToMenu(),
       // Final-review R5 (2026-10-01): victory/defeat stingers.
-      onShow: (kind) => this.audio.playSfx(kind === 'victory' ? 'victory' : 'defeat'),
+      onShow: (kind) => {
+        this.audio.playSfx(kind === 'victory' ? 'victory' : 'defeat');
+        // Exploration bet C6 (2026-10-02): start the cinematic drift —
+        // save the player's exact camera so dismiss restores it.
+        this.preEndCameraState = { ...this.cameraState };
+        this.endDrift = startEndDrift(this.cameraState.yaw);
+      },
+      // Exploration bet C6 (2026-10-02): stop the drift and hand the
+      // camera back exactly as it was.
+      onHide: () => {
+        this.endDrift = null;
+        if (this.preEndCameraState !== null) {
+          this.cameraState = this.preEndCameraState;
+          this.preEndCameraState = null;
+          this.applyCameraStateGuarded();
+        }
+      },
     });
 
     // Phase 2: campaign mission + Muse persona. The mission run is
@@ -1913,20 +1945,32 @@ class GameController {
       this.victoryShown = true;
       // Roadmap B2 (2026-10-02): the end screen names the victory that
       // was actually won — conquest keeps the classic default copy.
+      // Exploration bet C6 (2026-10-02): each victory kind gets its
+      // own illustration.
       const e = STRINGS.end;
       const kind = this.session.world.victoryKind;
-      if (kind === 'economic') this.endScreen.showVictory(e.victoryEconomicTitle, e.victoryEconomicDetail);
-      else if (kind === 'population') this.endScreen.showVictory(e.victoryPopulationTitle, e.victoryPopulationDetail);
-      else if (kind === 'monument') this.endScreen.showVictory(e.victoryMonumentTitle, e.victoryMonumentDetail);
-      else this.endScreen.showVictory();
+      const art: EndArt =
+        kind === 'economic' ? 'victory-economic'
+        : kind === 'population' ? 'victory-population'
+        : kind === 'monument' ? 'victory-monument'
+        : 'victory-conquest';
+      if (kind === 'economic') this.endScreen.showVictory(e.victoryEconomicTitle, e.victoryEconomicDetail, art);
+      else if (kind === 'population') this.endScreen.showVictory(e.victoryPopulationTitle, e.victoryPopulationDetail, art);
+      else if (kind === 'monument') this.endScreen.showVictory(e.victoryMonumentTitle, e.victoryMonumentDetail, art);
+      else this.endScreen.showVictory(undefined, undefined, art);
     } else if (outcome === 'defeat') {
       this.defeatShown = true;
       const e = STRINGS.end;
       const kind = this.session.world.victoryKind;
-      if (kind === 'economic') this.endScreen.showDefeat(e.defeatEconomicTitle, e.defeatEconomicDetail);
-      else if (kind === 'population') this.endScreen.showDefeat(e.defeatPopulationTitle, e.defeatPopulationDetail);
-      else if (kind === 'monument') this.endScreen.showDefeat(e.defeatMonumentTitle, e.defeatMonumentDetail);
-      else this.endScreen.showDefeat();
+      // Exploration bet C6 (2026-10-02): conquest defeat means the
+      // player's forces were annihilated; any other kind means the
+      // rival won the race first.
+      const art: EndArt =
+        kind === 'conquest' ? 'defeat-annihilation' : 'defeat-race';
+      if (kind === 'economic') this.endScreen.showDefeat(e.defeatEconomicTitle, e.defeatEconomicDetail, art);
+      else if (kind === 'population') this.endScreen.showDefeat(e.defeatPopulationTitle, e.defeatPopulationDetail, art);
+      else if (kind === 'monument') this.endScreen.showDefeat(e.defeatMonumentTitle, e.defeatMonumentDetail, art);
+      else this.endScreen.showDefeat(undefined, undefined, art);
     }
   }
 
@@ -2972,6 +3016,15 @@ class GameController {
   }
 
   private updateCamera(dtSec: number): void {
+    // Exploration bet C6 (2026-10-02): while the end screen is up, the
+    // camera slow-orbits instead of taking input — the drift state
+    // advances on frame dt (not sim ticks, so pause still drifts; the
+    // overlay is UI, not sim).
+    if (this.endDrift !== null) {
+      this.endDrift = advanceEndDrift(this.endDrift, dtSec);
+      this.cameraState = { ...this.cameraState, yaw: endDriftYaw(this.endDrift) };
+      return;
+    }
     let dx = 0;
     let dz = 0;
     const k = this.keys;
