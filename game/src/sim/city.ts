@@ -103,6 +103,48 @@ export function cellCenterWorld(c: number): number {
   return -MAP_HALF_SIZE + c * CELL_WORLD_SIZE + CELL_WORLD_SIZE / 2;
 }
 
+/**
+ * The player's capital — the centroid of their buildings, in world
+ * units. NOVATERRA has no HQ building (see session.ts: the "capital"
+ * for elimination is the military building set); for ceremony siting
+ * (the envoy's park point, the luminary's arrival) the building
+ * centroid is the honest "downtown". Deterministic: building order is
+ * spawn order. Fallbacks (degenerate worlds only): the owner's unit
+ * centroid, then the map center.
+ *
+ * Moved here from sim/envoy.ts (fun-audit Tier 4 / E2, 2026-10-02) so
+ * both the envoy and the luminary systems share it without opening a
+ * luminaries→envoy value edge (which would pull `envoy` into the
+ * sim-core import cycle — see scripts/check-import-cycles.mjs).
+ */
+export function capitalCenter(world: World, owner: number): { x: number; z: number } {
+  let sx = 0;
+  let sz = 0;
+  let n = 0;
+  for (const b of world.city.buildings) {
+    if (b.owner !== owner) continue;
+    sx += b.cx;
+    sz += b.cz;
+    n += 1;
+  }
+  if (n > 0) {
+    // cellCenterWorld is linear in the cell coordinate, so the
+    // centroid of building centers is the center of the centroid.
+    return { x: cellCenterWorld(sx / n), z: cellCenterWorld(sz / n) };
+  }
+  let ux = 0;
+  let uz = 0;
+  let m = 0;
+  for (const u of world.units) {
+    if (u.owner !== owner || u.hp <= 0) continue;
+    ux += u.x;
+    uz += u.z;
+    m += 1;
+  }
+  if (m > 0) return { x: ux / m, z: uz / m };
+  return { x: 0, z: 0 };
+}
+
 /** True when the cell's center is under water. */
 export function cellIsWater(t: TerrainData, cx: number, cz: number): boolean {
   return isWater(t, cellCenterWorld(cx), cellCenterWorld(cz));

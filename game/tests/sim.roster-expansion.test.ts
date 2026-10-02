@@ -274,8 +274,8 @@ function findCoastalFootprint(
 }
 
 describe('roster definitions (§2)', () => {
-  it('has exactly the 100 unit kinds (35 + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel + 28 Phase 8 tech-level variants + 1 Half-A sea-trade + 2 D1 doctrine signature units + 1 E1 envoy SUV)', () => {
-    expect(UNIT_KINDS).toHaveLength(100);
+  it('has exactly the 102 unit kinds (35 + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel + 28 Phase 8 tech-level variants + 1 Half-A sea-trade + 2 D1 doctrine signature units + 1 E1 envoy SUV + 2 E2 luminary kinds)', () => {
+    expect(UNIT_KINDS).toHaveLength(102);
     const expected = [
       'engineer', 'rifles', 'spectre', 'sniperTeam', 'combatMedic',
       'tank', 'apc', 'tankDestroyer', 'artillery', 'mlrs', 'aa',
@@ -315,6 +315,10 @@ describe('roster definitions (§2)', () => {
       'aegisBattery', 'tempestCannon',
       // Fun-audit Tier 4 (E1, 2026-10-02): the neutral envoy SUV.
       'envoySUV',
+      // Fun-audit Tier 4 (E2, 2026-10-02): the luminary guest (neutral)
+      // and the drill instructor (player-owned).
+      'luminary',
+      'drillInstructor',
     ];
     expect([...UNIT_KINDS].sort()).toEqual([...expected].sort());
   });

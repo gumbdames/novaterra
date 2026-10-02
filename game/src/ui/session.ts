@@ -69,6 +69,8 @@ import { createCombatSystem, registerCombatCommands } from '../sim/combat';
 import { createIntelSystem, registerIntelCommands } from '../sim/intel';
 import { registerDiplomacyCommands } from '../sim/diplomacy';
 import { registerEnvoyCommands, createEnvoySystem } from '../sim/envoy';
+// Fun-audit Tier 4 (E2, 2026-10-02): the luminary decision system.
+import { registerLuminaryCommands, createLuminarySystem } from '../sim/luminaries';
 import { registerLogisticsCommands } from '../sim/commands';
 import { registerAgeCommands, getProgramForAge, type Age, type NationalProgram } from '../sim/ages';
 import { registerCheatCommands } from '../sim/cheats';
@@ -619,6 +621,8 @@ export function createSession(options: SessionOptions): GameSession {
   registerDiplomacyCommands(queue);
   // Fun-audit Tier 4 (E1, 2026-10-02): the envoy's answer command.
   registerEnvoyCommands(queue);
+  // Fun-audit Tier 4 (E2, 2026-10-02): the luminary's resolve command.
+  registerLuminaryCommands(queue);
   // Phase 3 logistics (workstream 3): resupply + supply toggles.
   registerLogisticsCommands(queue, terrain);
   registerAgeCommands(queue);
@@ -640,6 +644,12 @@ export function createSession(options: SessionOptions): GameSession {
       // also clears world.ceremonyEvents at tick start (the earliest
       // ceremony emitter; combine/luminary systems register after it).
       createEnvoySystem(terrain),
+      // Fun-audit Tier 4 (E2, 2026-10-02): the luminary state machine —
+      // right after the envoy system (both are ceremony systems; they
+      // touch disjoint state, so order between them is irrelevant).
+      // Handles the 3-minute answer deadline, the Whistleblower
+      // cover-up leak, and pruning expired production marks.
+      createLuminarySystem(),
       createCombatSystem(terrain),
       createSuperweaponSystem(),
       createEconomySystem(terrain),

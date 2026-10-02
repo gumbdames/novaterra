@@ -83,8 +83,15 @@ for (const v of names) if (!idx.has(v)) visit(v);
 // world.ts owns the FogState store (createFogState, called inside
 // createWorld, never at module level). No TDZ hazard; the shroud and
 // the AI perception model share one sight source by construction.
+// 2026-10-02 (fun-audit E2): `luminaries` joins sim-core — the luminary
+// state lives on world (initLuminaries, called inside createWorld,
+// never at module level) while ages.ts hooks the draw (maybeDrawLuminary),
+// economy.ts reads the upkeep cut, and veterancy.ts reads the XP aura
+// (all function-body use). No TDZ hazard; `capitalCenter` was moved to
+// city.ts specifically so no luminaries→envoy edge pulls `envoy` into
+// the group (envoy stays a leaf).
 const ALLOWLIST = new Set([
-  'ages,ai,city,combat,commands,delegation,desirability,diplomacy,fog,intel,movement,pathfinding,rail,seaTrade,shipyardRepair,superweapons,units,upgrades,utilityNetworks,variants,veterancy,world',
+  'ages,ai,city,combat,commands,delegation,desirability,diplomacy,fog,intel,luminaries,movement,pathfinding,rail,seaTrade,shipyardRepair,superweapons,units,upgrades,utilityNetworks,variants,veterancy,world',
 ]);
 
 const bad = sccs.filter((s) => !ALLOWLIST.has(s));

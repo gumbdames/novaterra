@@ -783,6 +783,18 @@ export function buildAnswerEnvoyOrder(owner: number, accept: boolean): OrderInte
 }
 
 /**
+ * Fun-audit Tier 4 (E2, 2026-10-02): answer the luminary's card —
+ * `resolveLuminary` through the command queue. Rejects loudly when no
+ * luminary awaits or the choice is unknown for the drawn card.
+ */
+export function buildResolveLuminaryOrder(owner: number, choiceId: string): OrderIntent {
+  return {
+    kind: 'resolveLuminary',
+    payload: { owner, choiceId },
+  };
+}
+
+/**
  * Sabotage an enemy building (25 operational assets; the building goes
  * offline until `sabotagedUntil`). The UI resolves the target building
  * before building the order — the sim requires `buildingId`.

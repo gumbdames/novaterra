@@ -56,6 +56,11 @@ export type PersonaEvent =
         | 'timedOut'
         | 'recalled';
     }
+  | {
+      kind: 'luminary';
+      phase: 'arrived' | 'resolved' | 'timedOut' | 'leakBuried' | 'leaked';
+      cardId?: string;
+    }
   | { kind: 'enemyDown' }
   | { kind: 'enemySpotted' }
   | { kind: 'combatStarted' }
@@ -162,6 +167,33 @@ const LINES: Record<string, string[]> = {
     'No war, no envoy. They are driving home, President.',
     'The ceremony is cancelled — the war it was about just ended.',
   ],
+  // Fun-audit Tier 4 (E2, 2026-10-02): the luminaries. Same dry
+  // presidential humor; the joke is the audience, never the person.
+  'luminary:arrived': [
+    'Someone remarkable is at the gates, President — and they asked for you by title. I recommend the good chair.',
+    'A visitor with a reputation just walked into the capital. Three minutes of your time, they say.',
+    'The gates report a guest of unusual interest, President. No army, no demands — just an audience requested.',
+  ],
+  'luminary:resolved': [
+    'Audience concluded, President. The guest departs — history will decide if you chose well.',
+    'Done. The luminary bows out; the consequences stay behind.',
+    'The guest has left the capital, President. Your move, as they say, is already made.',
+  ],
+  'luminary:timedOut': [
+    'Three minutes passed, so the guest decided for you, President. Decisive people are the best kind.',
+    'The luminary took your silence as an answer and departed. A bold negotiating tactic.',
+    'You said nothing, and the guest heard everything. They have gone.',
+  ],
+  'luminary:leakBuried': [
+    'Counter-intel buried that story so deep it needs a mining permit, President.',
+    'The cover-up held. No leaks, no questions, no awkward press conferences.',
+    'That story will never see daylight, President. My lips — and the archives — are sealed.',
+  ],
+  'luminary:leaked': [
+    'The cover-up leaked, President. Minus two hundred influence, plus one hard lesson about paper trails.',
+    'It got out. The treasury clerk talked, the press listened, and the presidency is two hundred influence poorer.',
+    'Leaked, President. Somewhere a journalist is having the best day of their career.',
+  ],
   'offensiveWarning:offensive': [
     'The rival is massing for a genuine offensive. I suggest we greet them with more than harsh language.',
     'Scouts confirm it: a real attack is forming up. Reinforce the line, President.',
@@ -258,6 +290,8 @@ function eventKey(event: PersonaEvent): string {
       return `offensiveLaunched:${event.phase}`;
     case 'envoy':
       return `envoy:${event.phase}`;
+    case 'luminary':
+      return `luminary:${event.phase}`;
     default:
       return event.kind;
   }

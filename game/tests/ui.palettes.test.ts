@@ -77,12 +77,16 @@ describe('train tabs', () => {
     // delisted civilian transports are intentionally absent from the
     // palette (mechanically duplicate; defs retained for save compat).
     // Fun-audit Tier 4 (E1, 2026-10-02): neutral non-combatants (the
-    // envoy SUV) are never trainable — absent from the palette by
-    // design (the shared immunity gate).
+    // envoy SUV, the luminary guest) are never trainable — absent from
+    // the palette by design (the shared immunity gate).
+    // Fun-audit Tier 4 (E2, 2026-10-02): the drill instructor is
+    // scripted-only (created by the War Hero "retire" choice, never
+    // trained) — absent from the palette by design.
     const expected = Object.keys(UNIT_DEFS).filter(
       (k) =>
         !(DELISTED_TRANSPORT_KINDS as readonly string[]).includes(k) &&
-        !isNeutralNonCombatantKind(k),
+        !isNeutralNonCombatantKind(k) &&
+        k !== 'drillInstructor',
     );
     expect(sortedKinds(seen.keys())).toEqual(sortedKinds(expected));
     for (const [kind, count] of seen) {

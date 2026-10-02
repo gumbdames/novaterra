@@ -57,6 +57,8 @@ import { encodeSuperweaponState, decodeSuperweaponState, initSuperweapons } from
 import { encodeUpgrades, decodeUpgrades, encodeUpgradeLevels, decodeUpgradeLevels } from './upgrades';
 import type { DiplomacyState } from './diplomacy';
 import { decodeDiplomacyState } from './diplomacy';
+import type { LuminariesState } from './luminaries';
+import { decodeLuminariesState, encodeLuminariesState } from './luminaries';
 import type { WonderCountdown, WonderRaceKind } from './wonderCountdown';
 import type { FogState } from './fog';
 import type { DoctrineId } from './doctrine';
@@ -211,6 +213,12 @@ export interface Snapshot {
    * neutral fresh state (no old save had any diplomacy).
    */
   diplomacy: DiplomacyState;
+  /**
+   * Fun-audit Tier 4 (E2, 2026-10-02): the luminary state. Added without
+   * a version bump — legacy snapshots predate the field and decode to a
+   * neutral fresh state (no old save had any luminaries).
+   */
+  luminaries: LuminariesState;
   /**
    * Fun-audit B2 (2026-10-02): the wonder countdown. Added without a
    * version bump — legacy snapshots predate the field and decode to
@@ -621,6 +629,9 @@ export function takeSnapshot(world: World): Snapshot {
     victoryKind: world.victoryKind,
     // Roadmap B3: faithful copy of the diplomacy state (plain data).
     diplomacy: JSON.parse(JSON.stringify(world.diplomacy)) as DiplomacyState,
+    // Fun-audit Tier 4 (E2, 2026-10-02): faithful copy of the luminary
+    // state (plain data, via the canonical encoder).
+    luminaries: encodeLuminariesState(world.luminaries) as LuminariesState,
     // Fun-audit B2: faithful copy of the wonder countdown (plain data,
     // null when idle).
     wonderCountdown:
@@ -752,6 +763,11 @@ function restoreSnapshotInner(snap: Snapshot): World {
   // version bump). decodeDiplomacyState is defensive against corrupt
   // values too.
   world.diplomacy = decodeDiplomacyState(snap.diplomacy);
+  // Fun-audit Tier 4 (E2, 2026-10-02): pre-luminary snapshots decode to
+  // a neutral fresh state — no old save had any luminaries (AD9 neutral
+  // default, no version bump). decodeLuminariesState is defensive
+  // against corrupt values too.
+  world.luminaries = decodeLuminariesState(snap.luminaries);
   // Fun-audit B2: pre-countdown snapshots decode to null — no old save
   // had a countdown running (AD9 neutral default, no version bump).
   // Defensive against corrupt values: kind must be a race kind, leader

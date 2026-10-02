@@ -1107,4 +1107,28 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'diplomacy-section envoy line (management-panel branch, di: ' +
       'segment) covers the digest-rebuild side.',
   },
+  {
+    // Fun-audit Tier 4 (E2, 2026-10-02): the luminary decision card —
+    // the presidential audience card pinned top-center while a
+    // luminary awaits a decision.
+    id: 'luminary-card',
+    renderedIn: 'updateLuminaryCard',
+    domClasses: [
+      'luminary-card',
+      'luminary-card-title',
+      'luminary-card-sub',
+      'luminary-card-choices',
+      'luminary-card-btn',
+      'luminary-card-btn-label',
+      'luminary-card-btn-hint',
+      'luminary-card-default',
+    ],
+    digestLabels: [],
+    noDigestReason:
+      'Built once in the Hud constructor (LuminaryCard widget, ' +
+      'ui/luminaryCard.ts); refreshed write-on-change from the pure ' +
+      'luminaryCardView contract (ui/luminaries.ts) — nodes are never ' +
+      'rebuilt per frame (choice buttons rebuild only when the card ' +
+      'id changes), so no digest segment is needed.',
+  },
 ];

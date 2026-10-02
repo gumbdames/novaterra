@@ -52,6 +52,8 @@ import { initDelegation } from './delegation';
 import type { DiplomacyState } from './diplomacy';
 import { initDiplomacy } from './diplomacy';
 import type { CeremonyEvent } from './envoy';
+import type { LuminariesState } from './luminaries';
+import { initLuminaries } from './luminaries';
 import type { WonderCountdown } from './wonderCountdown';
 import type { DoctrineId } from './doctrine';
 import type { FogState } from './fog';
@@ -196,6 +198,13 @@ export interface World {
    * NOT digested — pure view, derived from deterministic state.
    */
   ceremonyEvents: CeremonyEvent[];
+  /**
+   * Fun-audit Tier 4 (E2, 2026-10-02): the luminary state — the pending
+   * presidential decision, Defector production marks, the Whistleblower
+   * cover-up, the Prodigy's upkeep cut, and retired drill instructors.
+   * Plain data: snapshotted + digested (AD9).
+   */
+  luminaries: LuminariesState;
 }
 
 /**
@@ -273,6 +282,8 @@ export function createWorld(seed: number): World {
     // Fun-audit Tier 4 (E1/E2/E3, 2026-10-02): ceremony VFX stream
     // starts empty; the envoy system clears it at tick start.
     ceremonyEvents: [],
+    // Fun-audit Tier 4 (E2, 2026-10-02): the luminary state starts fresh.
+    luminaries: initLuminaries(),
   };
 }
 

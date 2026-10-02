@@ -82,6 +82,9 @@ import {
   type UtilitySideModel,
 } from './utilityNetworks';
 import { UNIT_DEFS, supplyLevel, supplyServicesOf, runTraining, type UnitRecord } from './units';
+// Fun-audit Tier 4 (E2, 2026-10-02): the Prodigy's streamline upkeep cut
+// (economy → luminaries is acyclic — luminaries never imports economy).
+import { getLuminaryUpkeepMult } from './luminaries';
 import { runIntelAccrual, isSabotaged } from './intel';
 import { createSpatialHash, shInsert, shQueryRadius } from './spatial';
 import { dist2 } from './deterministic';
@@ -354,8 +357,12 @@ function allocateUtilities(world: World, city: CityState): UtilityAllocation {
     const byIdDesc = [...completed].sort((a, b) => b.id - a.id);
     let affordable = player.funds;
     const funded = new Set<number>();
+    // Fun-audit Tier 4 (E2, 2026-10-02): the Logistics Prodigy's
+    // "streamline" cuts building upkeep (−25% for 5 min). Applied in
+    // both the funding race and the charge below, from one multiplier.
+    const upkeepMult = getLuminaryUpkeepMult(world, player.id);
     for (const b of byIdDesc) {
-      const upkeep = BUILDING_DEFS[b.kind].upkeepFundsPerSec;
+      const upkeep = BUILDING_DEFS[b.kind].upkeepFundsPerSec * upkeepMult;
       if (affordable >= upkeep) {
         affordable -= upkeep;
         funded.add(b.id);
@@ -364,7 +371,7 @@ function allocateUtilities(world: World, city: CityState): UtilityAllocation {
     // Charge the upkeep of funded buildings.
     let charged = 0;
     for (const b of completed) {
-      if (funded.has(b.id)) charged += BUILDING_DEFS[b.kind].upkeepFundsPerSec;
+      if (funded.has(b.id)) charged += BUILDING_DEFS[b.kind].upkeepFundsPerSec * upkeepMult;
     }
     // Grand-expansion Phase 8 (civilian ordinances, workstream E):
     // policies fund AFTER buildings (buildings always win the funding

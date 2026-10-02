@@ -186,6 +186,14 @@ export const UNIT_KINDS = [
   // ------------------------------------------------------------------
   'envoySUV',
   // ------------------------------------------------------------------
+  // Fun-audit Tier 4 (E2, 2026-10-02): the luminary guest — a scripted
+  // neutral non-combatant spawned by sim/luminaries.ts at the capital
+  // on age advance. The drill instructor is the retired war hero
+  // (player-owned civilian, +50% XP aura) — NOT neutral.
+  // ------------------------------------------------------------------
+  'luminary',
+  'drillInstructor',
+  // ------------------------------------------------------------------
   // Grand-expansion Phase 8 — tech-level variants (workstream D,
   // 2026-09-30). 28 kinds: Mk II / Mk III of the 14 workhorse kinds
   // (land: tank, artillery, aa, apc, hauler; air: fighter,
@@ -1390,6 +1398,33 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     fuelCapacity: 60, fuelPerSecond: 0.15, fuelType: 'fossil', // 400 s — plenty for the cross-map drive
     neutralNonCombatant: true,
     artBase: 'reconTeam',
+  },
+  // ------------------------------------------------------------------
+  // Fun-audit Tier 4 (E2, 2026-10-02): the luminary guest — a scripted
+  // neutral non-combatant (see `neutralNonCombatant` on UnitDef).
+  // Spawned by the luminary system (sim/luminaries.ts) at the capital
+  // on age advance; never trained or spawned via commands.
+  // ------------------------------------------------------------------
+  luminary: {
+    kind: 'luminary', name: 'Luminary', domain: 'land', hp: 60, speed: 8, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'foundation',
+    manpowerCost: 0, trainFunds: 0, trainMaterials: 0,
+    neutralNonCombatant: true,
+    artBase: 'spy',
+  },
+  // ------------------------------------------------------------------
+  // Fun-audit Tier 4 (E2, 2026-10-02): the drill instructor — a retired
+  // war hero (War Hero "retire" choice). Player-owned civilian with a
+  // +50% kill-XP aura (see sim/luminaries.ts getDrillInstructorXpMult).
+  // NOT a neutral non-combatant: it's your unit, you protect it.
+  // ------------------------------------------------------------------
+  drillInstructor: {
+    kind: 'drillInstructor', name: 'Drill Instructor', domain: 'land', hp: 100, speed: 8, armor: 'light',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'foundation',
+    manpowerCost: 0, trainFunds: 0, trainMaterials: 0,
+    artBase: 'spy',
   },
   // ------------------------------------------------------------------
   // Grand-expansion Phase 8 — tech-level variants (workstream D,

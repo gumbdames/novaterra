@@ -334,6 +334,18 @@ const BASE_UNIT_ICONS: Record<Exclude<UnitKind, VariantUnitKind>, string> = {
     '<path d="M3 16l2-6h9l3 3h4v3"/>' +
     '<circle cx="7.5" cy="18.5" r="1.8"/><circle cx="16.5" cy="18.5" r="1.8"/>' +
     '<path d="M18 10V4h5l-2 2.5L23 9h-5"/>',
+  // Fun-audit Tier 4 (E2, 2026-10-02): the luminary — a person with a
+  // gold-ring halo (the "someone remarkable" guest).
+  luminary:
+    '<circle cx="12" cy="8" r="3"/>' +
+    '<path d="M6 20c0-4 2.5-6 6-6s6 2 6 6"/>' +
+    '<circle cx="12" cy="12" r="9" stroke-dasharray="3 2"/>',
+  // Fun-audit Tier 4 (E2, 2026-10-02): the drill instructor — a person
+  // with chevrons (the retired war hero, now teaching).
+  drillInstructor:
+    '<circle cx="12" cy="7" r="3"/>' +
+    '<path d="M6 20c0-4 2.5-6 6-6s6 2 6 6"/>' +
+    '<path d="M8 13l4 3 4-3"/>',
 };
 
 // ---------------------------------------------------------------------------

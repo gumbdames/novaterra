@@ -764,6 +764,34 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `world.ceremonyEvents` (view-only, not snapshotted) to the render
   layer (doves). Snapshot-covered (AD9 neutral null, stays v8) and
   digest-covered (`envoy=` / `pending=` in `|diplomacy=…|`).
+- `luminaries.ts` — the Luminary system (fun-audit Tier 4 / E2,
+  2026-10-02): the six-card data deck (`LUMINARY_DECK` — Defector, War
+  Hero, Whistleblower, Tycoon, Logistics Prodigy, Cartographer), each
+  with pure `eligibility` predicates and a `defaultChoiceId`. Hooked
+  into `ages.ts` — on age advance (human owner only in 0.1 Alpha),
+  filter by eligibility (none eligible ⇒ no luminary that age), draw
+  from the rng `events` stream, and spawn a neutral non-combatant
+  `luminary` guest (owner NEUTRAL_OWNER, `artBase: 'spy'`) at the
+  capital via `capitalCenter` (sim/envoy.ts). `world.luminaries.pending`
+  = 3 min (5,400 ticks) to answer via `resolveLuminary`; the deadline
+  applies the default. Card effects in `applyLuminaryChoice` (the one
+  switch writers extend): Defector (turn: +200 surveillance + enemy
+  production marked 90 s / interrogate: +150 research / trial: +100
+  influence −10 disposition), War Hero (retire: the most decorated
+  veteran becomes a named `drillInstructor` with a +50% XP aura /
+  keep: +50 influence), Whistleblower (transparency: −500 funds +150
+  influence / cover-up: leaks in 5 min, −200 influence, unless
+  counter-intel > 100 at leak time), Tycoon (sign: +3000 funds −15
+  influence / expose: +120 influence), Logistics Prodigy (streamline:
+  −25% upkeep 5 min via `getLuminaryUpkeepMult` in economy.ts /
+  publish: +150 research), Cartographer (chart: +120 surveillance /
+  sell: +800 funds). `createLuminarySystem` (wired in ui/session.ts
+  after the envoy system) handles the deadline, the cover-up leak,
+  and pruning. The drill instructor's aura hooks `awardKillXp` via
+  `getDrillInstructorXpMult`. New kinds: `luminary` (neutral) +
+  `drillInstructor` (player-owned civilian, scripted-only — never in
+  the train palette). Snapshot + digest covered (AD9;
+  `|luminaries=…|`).
 - `veterancy.ts` — unit veterancy (grand-expansion Phase 1, pure: no
   imports from combat/city, so no cycles). `UnitRecord.xp` grows on
   kills (`xpForKillValue = trainFunds + trainMaterials`), `vetLevel`

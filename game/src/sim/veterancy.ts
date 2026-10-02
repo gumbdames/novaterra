@@ -42,6 +42,9 @@ import type { World } from './world';
 import type { UnitRecord } from './units';
 import { UNIT_DEFS, type UnitDef, type UnitKind } from './units';
 import { effectiveMaxHp } from './upgrades';
+// Fun-audit Tier 4 (E2, 2026-10-02): the drill instructor's +50% XP aura
+// (veterancy → luminaries is acyclic — luminaries never imports veterancy).
+import { getDrillInstructorXpMult } from './luminaries';
 
 /** Max veterancy level. XP above it overflows to nearby allies. */
 export const VET_MAX_LEVEL = 3;
@@ -151,8 +154,12 @@ export function vetAdjustedMaxHp(world: World, unit: UnitRecord): number {
  * integer floor arithmetic.
  */
 export function awardKillXp(world: World, killer: UnitRecord, targetDef: UnitDef): void {
-  const award = xpForKillValue(targetDef);
+  let award = xpForKillValue(targetDef);
   if (award <= 0) return;
+  // Fun-audit Tier 4 (E2, 2026-10-02): a living drill instructor of the
+  // killer's owner in aura range boosts the award by +50% (floored —
+  // XP stays integer).
+  award = Math.floor(award * getDrillInstructorXpMult(world, killer.owner, killer.x, killer.z));
 
   const setLevel = (u: UnitRecord, xp: number): void => {
     u.xp = xp;

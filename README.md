@@ -124,6 +124,13 @@ land, sea and air — or play a fully peaceful game with war disabled.
   unattackable; a banner offers Accept/Decline with a 60-second
   countdown (silence accepts); accepting starts the 5-minute ceasefire
   clock with a dove release over your capital.
+  Fun-audit Tier 4 / E2 (2026-10-02) is in too: **the six Luminary
+  cards** — once per age, a remarkable guest (gold ring on the map)
+  asks for an audience at your capital: the Defector, the War Hero,
+  the Whistleblower, the Tycoon, the Logistics Prodigy, and the
+  Cartographer. Each card is a presidential call with costs on both
+  sides (3 minutes to decide; silence applies the default) — the
+  story engine of the peaceful endless mode.
   See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
@@ -131,7 +138,7 @@ land, sea and air — or play a fully peaceful game with war disabled.
 
 - City building with visible zoning, terrain-following roads, and
   power/water utility networks you drag-paint across the map
-- 100 buildings and 100 units across land, sea, and air, with tech ages
+- 100 buildings and 102 units across land, sea, and air, with tech ages
 - Command menu (rebuilt 2026-10-01): a slim icon rail with three tabs
   — **Civilian** (Tools / Build / Airlines), **Military** (Train /
   Build / Superweapons), **Management** (Taxes / City focus / Cabinet /

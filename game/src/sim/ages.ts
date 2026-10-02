@@ -53,6 +53,9 @@
 import type { World } from './world';
 import type { Command, CommandQueue } from './commands';
 import { getPlayer } from './city';
+// Fun-audit Tier 4 (E2, 2026-10-02): the age-advance hook draws a
+// luminary (ages → luminaries is acyclic — luminaries never imports ages).
+import { maybeDrawLuminary } from './luminaries';
 import {
   doctrineSightBonus,
   doctrineTaxMultiplier,
@@ -424,6 +427,10 @@ export function registerAgeCommands(queue: CommandQueue): void {
       }
       st.age = prog.next;
       st.program = program as NationalProgram;
+      // Fun-audit Tier 4 (E2, 2026-10-02): on age advance, maybe draw a
+      // luminary — the data-deck draw (seeded `events` stream), filtered
+      // by pure eligibility; none eligible ⇒ no luminary that age.
+      maybeDrawLuminary(world, owner);
       return { age: prog.next, program };
     },
   });

@@ -393,7 +393,10 @@ describe('EntityRenderer instanced mode', () => {
     // + 1 ship-wake InstancedMesh (roadmap B21 — hidden while no ship
     // moves, zero draw calls when empty).
     expect(instanced).toBe(8);
-    expect(meshes).toBe(0);
+    // Fun-audit Tier 4 (E2, 2026-10-02): +7 luminary marker meshes (1
+    // guest gold ring + 6 Defector mark diamonds — hidden while no
+    // luminary is active, zero draw calls when empty).
+    expect(meshes).toBe(7);
     renderer.dispose();
   });
 
@@ -470,7 +473,9 @@ describe('EntityRenderer instanced mode', () => {
     // + 1 blob-shadow InstancedMesh (final-review R5 visual lift)
     // + 1 ship-wake InstancedMesh (roadmap B21).
     expect(counts.instanced).toBe(7);
-    expect(counts.meshes).toBe(0);
+    // Fun-audit Tier 4 (E2, 2026-10-02): the 7 luminary marker meshes
+    // (1 ring + 6 diamonds, hidden while no luminary is active).
+    expect(counts.meshes).toBe(7);
     expect(inst.drawCallCount()).toBe(2);
     renderer.dispose();
   });

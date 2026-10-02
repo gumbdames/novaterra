@@ -179,6 +179,8 @@ import {
   buildProposeCeasefireOrder,
   // Fun-audit Tier 4 (E1, 2026-10-02): answer the waiting envoy.
   buildAnswerEnvoyOrder,
+  // Fun-audit Tier 4 (E2, 2026-10-02): resolve the luminary's card.
+  buildResolveLuminaryOrder,
   buildSetMayorBuildPolicyOrder,
   buildSetGeneralStanceOrder,
   buildSetSpecializationOrder,
@@ -1003,6 +1005,19 @@ class GameController {
   private envoyKey: string | null = null;
   private envoyNarrated: Set<string> = new Set();
   /**
+   * Fun-audit Tier 4 (E2, 2026-10-02): which beats of the current
+   * luminary visit were already narrated ('arrived' / 'resolved' /
+   * 'timedOut'). Keyed by pending identity; a new key resets it.
+   * UI-owned, presentational — the sim owns the decision.
+   */
+  private luminaryKey: string | null = null;
+  private luminaryNarrated: Set<string> = new Set();
+  /**
+   * Fun-audit Tier 4 (E2, 2026-10-02): the last narrated cover-up
+   * outcome, so the buried/leaked line fires once per cover-up.
+   */
+  private luminaryCoverUpOutcome: string | null = null;
+  /**
    * Fun-audit B6 (2026-10-02): telegraph/launch beats already narrated,
    * keyed `tele:<owner>:<nextPhase>:<telegraphTick>` /
    * `launch:<owner>:<activePhase>:<activeUntilTick>`. The keys include
@@ -1325,6 +1340,12 @@ class GameController {
       onAnswerEnvoy: (accept: boolean) => {
         this.enqueue(buildAnswerEnvoyOrder(HUMAN_PLAYER_ID, accept));
       },
+      // Fun-audit Tier 4 (E2, 2026-10-02): resolve the luminary's card.
+      // Rejections toast via enqueue (CommandRejectedError → loud).
+      onResolveLuminary: (choiceId: string) => {
+        this.luminaryNarrated.add('resolved');
+        this.enqueue(buildResolveLuminaryOrder(HUMAN_PLAYER_ID, choiceId));
+      },
       // Phase 3: superweapons, specialization, trade, delegation.
       onFireAegis: () => this.issueOrder(buildFireAegisOrder(HUMAN_PLAYER_ID)),
       onStormTarget: () => {
@@ -1604,6 +1625,10 @@ class GameController {
         // Fun-audit Tier 4 (E1, 2026-10-02): the envoy banner —
         // write-on-change inside; hidden unless an envoy visits.
         this.hud.updateEnvoyBanner(world);
+        // Fun-audit Tier 4 (E2, 2026-10-02): the luminary decision
+        // card — write-on-change inside; hidden unless a luminary
+        // awaits an audience.
+        this.hud.updateLuminaryCard(world);
         // Fun-audit B5 (2026-10-02): reposition the event-ping markers
         // every frame (the camera moves under them).
         this.eventPings?.update(
@@ -1975,6 +2000,11 @@ class GameController {
     // inbound, waiting (offer or refusal), resolution. All UI-side;
     // the sim owns the visit (world.diplomacy.envoy).
     this.pollEnvoy(world);
+
+    // Fun-audit Tier 4 (E2, 2026-10-02): the luminary ceremony's beats —
+    // arrival, resolution, timeout. All UI-side; the sim owns the
+    // decision (world.luminaries.pending).
+    this.pollLuminary(world);
 
     // Fun-audit B8 (2026-10-02): rival age-ups are global events. The
     // detector is pure (ui/session.ts); this poll only narrates the
@@ -2455,6 +2485,60 @@ class GameController {
       else if (r === 'declined') say('declined', loc(s.toastDeclined));
       else if (r === 'timedOut') say('timedOut', loc(s.toastTimedOut));
       else say('recalled', loc(s.toastRecalled));
+    }
+  }
+
+  /**
+   * Fun-audit Tier 4 (E2, 2026-10-02): narrate the luminary ceremony —
+   * arrival (Muse + toast + a 'build'-style map ping on the guest),
+   * resolution, and the cover-up's buried/leaked outcome. The sim owns
+   * the decision; this poll only narrates transitions, ~1×/sec like
+   * the Muse poll. Timeout vs. answer is distinguished by whether the
+   * pending cleared via the command (narrated 'resolved') or the
+   * deadline (narrated 'timedOut') — tracked via the key transition.
+   */
+  private pollLuminary(world: World): void {
+    const pending = world.luminaries.pending;
+    const s = STRINGS.luminaries;
+    const say = (
+      phase: 'arrived' | 'resolved' | 'timedOut' | 'leakBuried' | 'leaked',
+      toast: string,
+      cardId?: string,
+    ): void => {
+      if (this.muse !== null) {
+        this.muse.notify(personaLine({ kind: 'luminary', phase, cardId }, world.tick));
+      }
+      this.hud.toast(toast);
+    };
+    if (pending !== null && pending.owner === HUMAN_PLAYER_ID) {
+      const key = `${pending.cardId}:${pending.unitId}:${pending.deadlineTick}`;
+      if (key !== this.luminaryKey) {
+        this.luminaryKey = key;
+        this.luminaryNarrated = new Set();
+      }
+      if (!this.luminaryNarrated.has('arrived')) {
+        this.luminaryNarrated.add('arrived');
+        say('arrived', loc(s.toastArrived), pending.cardId);
+        const unit = world.units.find((u) => u.id === pending.unitId);
+        if (unit) this.eventPings?.ping('build', unit.x, unit.z);
+      }
+    } else {
+      // No pending decision: if we were tracking one, it resolved.
+      if (this.luminaryKey !== null) {
+        const wasTimedOut = !this.luminaryNarrated.has('resolved');
+        this.luminaryKey = null;
+        // 'resolved' is marked by the action handler below when the
+        // player answers; a silent clear means the deadline fired.
+        if (wasTimedOut) say('timedOut', loc(s.toastTimedOut));
+        else say('resolved', loc(s.toastResolved));
+      }
+    }
+    // The cover-up's outcome, narrated once per resolution.
+    const outcome = world.luminaries.lastCoverUpOutcome;
+    if (outcome !== null && outcome !== this.luminaryCoverUpOutcome) {
+      this.luminaryCoverUpOutcome = outcome;
+      if (outcome === 'buried') say('leakBuried', loc(s.toastLeakBuried));
+      else say('leaked', loc(s.toastLeak));
     }
   }
 

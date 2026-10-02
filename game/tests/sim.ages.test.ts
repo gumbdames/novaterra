@@ -621,6 +621,11 @@ describe('age-gated units', () => {
       // non-combatant (never trainable); foundation so the ceremony
       // can visit in any age.
       envoySUV: 'foundation',
+      // Fun-audit Tier 4 (E2, 2026-10-02): the luminary guest (neutral,
+      // never trainable) and the drill instructor (scripted-only) —
+      // foundation so they can appear in any age.
+      luminary: 'foundation',
+      drillInstructor: 'foundation',
     };
     expect(Object.keys(UNIT_DEFS).sort()).toEqual(Object.keys(expected).sort());
     for (const [kind, age] of Object.entries(expected)) {

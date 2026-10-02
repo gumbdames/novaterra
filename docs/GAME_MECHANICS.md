@@ -861,6 +861,37 @@ replay can diverge. Demands and ceasefires are war-game tools and are
 not offered in peaceful mode (sending tribute works there too, as a
 plain gift).
 
+## Luminaries
+
+Once per age, someone remarkable walks into your capital and asks for
+an audience — a real guest (gold ring on the map) with a presidential
+decision card. Six cards, drawn from a seeded deck when you advance an
+age; if none fits your situation, no one comes that age:
+
+- **The Defector** (at war) — a Kestrel scientist. Turn them (+200
+  surveillance, enemy production marked with gold diamonds for 90s),
+  interrogate (+150 research), or hold a public trial (+100 influence,
+  −10 disposition).
+- **The War Hero** (you field a Veteran+ unit) — retire your most
+  decorated veteran as a named drill instructor (+50% XP aura for
+  nearby troops) or keep them in the field (+50 influence).
+- **The Whistleblower** (treasury ≥ 500) — full transparency (−500
+  funds, +150 influence) or cover it up (free now — but it leaks in
+  5 minutes for −200 influence unless your counter-intel is above 100
+  when it lands).
+- **The Tycoon** (treasury < 8,000) — sign the suspicious charter
+  (+3,000 funds, −15 influence) or expose them (+120 influence).
+- **The Logistics Prodigy** (4+ buildings) — streamline (−25%
+  building upkeep for 5 minutes) or publish their methods (+150
+  research).
+- **The Cartographer** (always) — chart the frontier (+120
+  surveillance) or sell the charts (+800 funds).
+
+You have 3 minutes to decide; silence applies the card's default. The
+guest is a neutral non-combatant (the shared immunity gate) and
+departs after your answer. Luminaries are the story engine of the
+peaceful endless mode — no victory, but always a heartbeat.
+
 ## Peaceful mode
 
 Prefer building to fighting? A **peaceful** skirmish disables war

@@ -590,6 +590,11 @@ export const STRINGS = {
     // Fun-audit Tier 4 (E1, 2026-10-02): the neutral envoy SUV —
     // visible and selectable on the map (never trainable).
     envoySUV: { en: 'Envoy SUV' },
+    // Fun-audit Tier 4 (E2, 2026-10-02): the luminary guest (neutral,
+    // never trainable) and the drill instructor (scripted-only, never
+    // trained) — both visible and selectable on the map.
+    luminary: { en: 'Luminary' },
+    drillInstructor: { en: 'Drill Instructor' },
     hauler: { en: 'Hauler' },
     // Phase 3 SIM workstream (2026-09-30): provisional names for the two
     // new logistics trucks — the UI workstream owns final copy/palettes.
@@ -1435,6 +1440,73 @@ export const STRINGS = {
     toastTimedOut: { en: 'The envoy took your silence as consent — the ceasefire stands.' },
     toastRecalled: { en: 'The war ended under the ceremony — the envoy was recalled.' },
     toastRefusal: { en: 'The rival refused. Their envoy delivers the no in person.' },
+  },
+  /**
+   * Fun-audit Tier 4 (E2, 2026-10-02): the six luminary cards — titles,
+   * flavor, and choice labels/hints. Keyed `cardId` / `cardId:choiceId`.
+   * English-only via loc()/fillLoc().
+   */
+  luminaries: {
+    /** Card titles. */
+    title_defector: { en: 'The Defector' },
+    title_warHero: { en: 'The War Hero' },
+    title_whistleblower: { en: 'The Whistleblower' },
+    title_tycoon: { en: 'The Tycoon' },
+    title_logisticsProdigy: { en: 'The Logistics Prodigy' },
+    title_cartographer: { en: 'The Cartographer' },
+    /** One-line flavor per card. */
+    flavor_defector: {
+      en: 'A Kestrel scientist has crossed the wire with a folder full of production schedules. They ask for an audience.',
+    },
+    flavor_warHero: {
+      en: 'Your most decorated veteran stands at attention, waiting to hear what the presidency asks of them.',
+    },
+    flavor_whistleblower: {
+      en: 'A clerk from the treasury has proof of missing funds — and a price for their silence.',
+    },
+    flavor_tycoon: {
+      en: 'A shipping magnate offers a charter no auditor would sign. The money is real. So is the smell.',
+    },
+    flavor_logisticsProdigy: {
+      en: 'A young quartermaster claims they can cut your supply overhead by a quarter — if you let them rewrite the ledgers.',
+    },
+    flavor_cartographer: {
+      en: 'A mapmaker returns from the frontier with charts of lands no satellite has properly seen.',
+    },
+    /** Choice buttons: label + the honest hint of what it does. */
+    defector_turn_label: { en: 'Turn them' },
+    defector_turn_hint: { en: '+200 surveillance — enemy production marked for 90s' },
+    defector_interrogate_label: { en: 'Interrogate' },
+    defector_interrogate_hint: { en: '+150 research' },
+    defector_trial_label: { en: 'Public trial' },
+    defector_trial_hint: { en: '+100 influence, −10 disposition' },
+    warHero_retire_label: { en: 'Retire as instructor' },
+    warHero_retire_hint: { en: 'Your most decorated veteran becomes a named drill instructor (+50% XP aura)' },
+    warHero_keep_label: { en: 'Keep in the field' },
+    warHero_keep_hint: { en: '+50 influence' },
+    whistleblower_transparency_label: { en: 'Full transparency' },
+    whistleblower_transparency_hint: { en: '−500 funds, +150 influence' },
+    whistleblower_coverUp_label: { en: 'Cover it up' },
+    whistleblower_coverUp_hint: { en: 'Free now — but it leaks in 5 min (−200 influence) unless counter-intel > 100' },
+    tycoon_sign_label: { en: 'Sign the charter' },
+    tycoon_sign_hint: { en: '+3,000 funds, −15 influence' },
+    tycoon_expose_label: { en: 'Expose them' },
+    tycoon_expose_hint: { en: '+120 influence' },
+    logisticsProdigy_streamline_label: { en: 'Streamline' },
+    logisticsProdigy_streamline_hint: { en: '−25% building upkeep for 5 minutes' },
+    logisticsProdigy_publish_label: { en: 'Publish the methods' },
+    logisticsProdigy_publish_hint: { en: '+150 research' },
+    cartographer_chart_label: { en: 'Chart the frontier' },
+    cartographer_chart_hint: { en: '+120 surveillance' },
+    cartographer_sell_label: { en: 'Sell the charts' },
+    cartographer_sell_hint: { en: '+800 funds' },
+    /** Card chrome. */
+    decidePrompt: { en: 'A luminary asks for an audience — decide within {time}.' },
+    toastArrived: { en: 'A luminary asks for an audience at your capital.' },
+    toastResolved: { en: 'The audience is over — the luminary departs.' },
+    toastTimedOut: { en: 'The luminary took your silence as an answer and departed.' },
+    toastLeakBuried: { en: 'Counter-intel buried the story. No one will ever know.' },
+    toastLeak: { en: 'The cover-up leaked — −200 influence.' },
   },
   /**
    * Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):

@@ -421,6 +421,65 @@ body {
   border-color: #5d4037;
   color: #fff;
 }
+/* Fun-audit Tier 4 (E2, 2026-10-02): the luminary decision card —
+   the presidential audience, pinned top-center below the envoy
+   banner's slot. Gold accent (the "gold ring" guest). */
+.luminary-card {
+  position: absolute;
+  top: 64px;
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 360px;
+  max-width: 520px;
+  background: var(--panel);
+  border: 1px solid #c9a227;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  z-index: 29;
+}
+.luminary-card-title {
+  color: #c9a227;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.luminary-card-sub {
+  color: var(--ink-dim);
+  margin-bottom: 8px;
+}
+.luminary-card-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.luminary-card-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  background: #2a2f3a;
+  border: 1px solid #4a5263;
+  border-radius: 6px;
+  color: var(--ink);
+  padding: 8px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.luminary-card-btn:hover {
+  border-color: #c9a227;
+}
+.luminary-card-btn-label {
+  font-weight: 600;
+}
+.luminary-card-btn-hint {
+  color: var(--ink-dim);
+  font-size: 12px;
+}
+.luminary-card-default {
+  border-color: #c9a227;
+}
 .victory-hud-objective {
   color: var(--ink);
   font-weight: 600;

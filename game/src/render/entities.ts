@@ -117,6 +117,9 @@ import {
 } from './roads';
 import { surfaceRoughnessTexture } from './surfaceTextures';
 import { ChevronOverlay } from './chevrons';
+// Fun-audit Tier 4 (E2, 2026-10-02): the luminary gold-ring + Defector
+// mark diamonds.
+import { LuminaryMarkers } from './luminaryMarkers';
 import { ZoneOverlay } from './zoneOverlay';
 import { AmbientCrowd, PavingOverlay } from './cityLife';
 import { CombatVfx } from './combatVfx';
@@ -1291,6 +1294,12 @@ export class EntityRenderer {
    * render path (legacy or Phase 0 instanced).
    */
   private readonly chevrons: ChevronOverlay;
+  /**
+   * Fun-audit Tier 4 (E2, 2026-10-02): the luminary markers (guest
+   * gold ring + Defector mark diamonds). Read-only view of
+   * world.luminaries; synced with the chevrons.
+   */
+  private readonly luminaryMarkers: LuminaryMarkers;
   // B16 (2026-10-01): combat VFX (muzzle/tracer/impact/explosion).
   private readonly combatVfx: CombatVfx;
   /** Roadmap B13: floating damage numbers (pooled digit sprites). */
@@ -1454,6 +1463,9 @@ export class EntityRenderer {
     ctx.fillRect(0, 0, 1, 1);
     this.barTexture = new THREE.CanvasTexture(c);
     this.chevrons = new ChevronOverlay(scene);
+    // Fun-audit Tier 4 (E2, 2026-10-02): the luminary markers ride the
+    // same construct/sync/dispose path as the chevrons.
+    this.luminaryMarkers = new LuminaryMarkers(scene);
     this.combatVfx = new CombatVfx(scene);
     // Roadmap B13: damage numbers (tinted by human-side involvement)
     // and the damaged-building overlay ride the same sync/dispose path.
@@ -1708,6 +1720,18 @@ export class EntityRenderer {
       this.waterLevel,
       (kind) => this.modelTopForKind(kind),
       this.camera,
+    );
+    // Fun-audit Tier 4 (E2, 2026-10-02): the guest's gold ring follows
+    // the normal unit-visibility gate; Defector marks are intel and
+    // show through fog by design.
+    this.luminaryMarkers.sync(
+      world,
+      this.terrain,
+      this.waterLevel,
+      (unitId) => {
+        const u = world.units.find((x) => x.id === unitId);
+        return u ? this.fogHidesUnit(u) : true;
+      },
     );
   }
 
@@ -2175,6 +2199,8 @@ export class EntityRenderer {
     this.ringMat.dispose();
     this.barTexture.dispose();
     this.chevrons.dispose();
+    // Fun-audit Tier 4 (E2, 2026-10-02).
+    this.luminaryMarkers.dispose();
     this.combatVfx.dispose();
     // Roadmap B13.
     this.damageNumbers.dispose();

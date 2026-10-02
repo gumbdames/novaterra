@@ -123,6 +123,22 @@ function pendingEnvoyDigest(d: World['diplomacy'] | undefined): string {
       `envoy=${envoyDigest(d)},` +
       `pending=${pendingEnvoyDigest(d)}|`;
   }
+  // Fun-audit Tier 4 (E2, 2026-10-02): the luminary state is
+  // behavior-affecting (pending decisions, marks, cover-ups, upkeep
+  // cuts, instructors all change the sim) ⇒ digest-covered. `??` keeps
+  // hand-built fixture worlds (which predate the field) digestible.
+  {
+    const l = world.luminaries;
+    const p = l?.pending;
+    out +=
+      `|luminaries=` +
+      `${p ? `${p.cardId}:${p.unitId}:${p.owner}:${p.deadlineTick}` : '-'},` +
+      `marks=${(l?.productionMarks ?? []).map((m) => `${m.buildingId}:${m.untilTick}`).join('.') || '-'},` +
+      `coverUp=${l?.coverUp ? l.coverUp.leakAtTick : '-'},` +
+      `upkeepCut=${l?.upkeepCutUntilTick ?? 0},` +
+      `coverUpOutcome=${l?.lastCoverUpOutcome ?? '-'},` +
+      `instructors=${(l?.instructors ?? []).map((i) => `${i.unitId}:${i.owner}:${i.name}`).join('.') || '-'}|`;
+  }
   // Fun-audit B2 (2026-10-02): the wonder countdown is
   // behavior-affecting (it decides race victories) ⇒ digest-covered.
   // `?? null` keeps hand-built fixture worlds (which predate the field)

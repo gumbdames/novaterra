@@ -236,12 +236,17 @@ export function bootModelKeys(
   };
   for (const kind of Object.keys(UNIT_DEFS)) {
     const def = UNIT_DEFS[kind as UnitKind];
-    // Fun-audit Tier 4 (E1, 2026-10-02): neutral non-combatants (the
-    // envoy SUV) spawn mid-game through their own systems — never in
-    // the starting forces. Their models load lazily on first spawn,
-    // keeping the boot set lean (the shared immunity gate's kinds are
-    // the only foundation-age units excluded).
-    if (def?.minAge === 'foundation' && def?.neutralNonCombatant !== true) {
+    // Fun-audit Tier 4 (E1/E2, 2026-10-02): scripted-only kinds spawn
+    // mid-game through their own systems — never in the starting
+    // forces. Neutral non-combatants (envoy SUV, luminary guest) via
+    // the shared immunity gate, plus the drill instructor (from the
+    // War Hero "retire" choice). Their models load lazily on first
+    // spawn, keeping the boot set lean.
+    if (
+      def?.minAge === 'foundation' &&
+      def?.neutralNonCombatant !== true &&
+      kind !== 'drillInstructor'
+    ) {
       for (const key of keysForKind(kind, paths)) add(key);
     }
   }

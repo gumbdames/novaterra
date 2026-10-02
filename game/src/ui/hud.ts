@@ -170,6 +170,8 @@ import { Minimap, type MinimapView } from './minimap';
 import { VictoryHud } from './victoryHud';
 import { EnvoyBanner } from './envoyBanner';
 import { envoyBannerView } from './envoy';
+import { LuminaryCard } from './luminaryCard';
+import { luminaryCardView } from './luminaries';
 import {
   allBuildTabs,
   buildingUtilityLine,
@@ -385,6 +387,12 @@ export interface HUDActions {
    * when no envoy waits.
    */
   onAnswerEnvoy(accept: boolean): void;
+  /**
+   * Fun-audit Tier 4 (E2, 2026-10-02): resolve the waiting luminary's
+   * card with one of its choices. The sim applies the effect and
+   * rejects loudly when no luminary awaits.
+   */
+  onResolveLuminary(choiceId: string): void;
   /** Phase 3 (logistics): set a supply unit's field services. */
   onSetSupplyToggles(
     unitId: number,
@@ -531,6 +539,14 @@ export class HUD {
    * noDigestReason.
    */
   private readonly envoyBanner: EnvoyBanner;
+  /**
+   * Fun-audit Tier 4 (E2, 2026-10-02): the luminary decision card —
+   * the presidential card pinned top-center while a luminary awaits
+   * an audience. Built once, refreshed write-on-change (see
+   * ui/luminaryCard.ts); the AD11 branch is registered in
+   * HUD_PANEL_BRANCHES with a noDigestReason.
+   */
+  private readonly luminaryCard: LuminaryCard;
   /**
    * Roadmap B12 (minimap): the tactical overview widget, built once in
    * the constructor. Null only when the DOM is unavailable (headless).
@@ -811,6 +827,17 @@ export class HUD {
     // are built in ui/envoyBanner.ts — named here so the contract
     // test's stale-class check sees them (the minimap precedent).
     this.envoyBanner = new EnvoyBanner(hud, (accept) => actions.onAnswerEnvoy(accept));
+
+    // Fun-audit Tier 4 (E2, 2026-10-02): the luminary decision card —
+    // pinned top-center, shown only while a luminary awaits the
+    // player's decision. AD11: the widget's DOM classes
+    // ('luminary-card', 'luminary-card-title', 'luminary-card-sub',
+    // 'luminary-card-choices', 'luminary-card-btn',
+    // 'luminary-card-btn-label', 'luminary-card-btn-hint',
+    // 'luminary-card-default') are built in ui/luminaryCard.ts — named
+    // here so the contract test's stale-class check sees them (the
+    // minimap precedent).
+    this.luminaryCard = new LuminaryCard(hud, (choiceId) => actions.onResolveLuminary(choiceId));
 
     // ---- advisor ----
     this.advisorPanel = el('div', 'hud-advisor');
@@ -3274,6 +3301,16 @@ export class HUD {
    */
   updateEnvoyBanner(world: World): void {
     this.envoyBanner.update(envoyBannerView(world, HUMAN_PLAYER_ID));
+  }
+
+  /**
+   * Fun-audit Tier 4 (E2, 2026-10-02): refresh the luminary decision
+   * card. The card shows only for the human player's own pending
+   * decision (the contract module gates on owner) — called every frame
+   * from game.ts's updateHud, write-on-change inside.
+   */
+  updateLuminaryCard(world: World): void {
+    this.luminaryCard.update(luminaryCardView(world, HUMAN_PLAYER_ID));
   }
 
   /** Pump the toast queue (called from update(), every frame). */
