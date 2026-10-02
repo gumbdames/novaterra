@@ -114,6 +114,36 @@ function pmat(
   });
 }
 
+/**
+ * Render-equivalence signature for a material (roadmap B26): two materials
+ * merge into one InstancedMesh pool iff every render-relevant parameter
+ * matches. Textures merge only by identity (same instance); anything else
+ * about the material (name, userData beyond the surface category) does not
+ * affect the rendered pixel.
+ */
+function materialSignature(mat: THREE.Material): string {
+  const std = mat as THREE.MeshStandardMaterial;
+  const mapId =
+    std.map === undefined || std.map === null
+      ? ''
+      : `|map=${(std.map as { id?: number }).id ?? 'x'}`;
+  return [
+    (mat.userData as { surfaceCategory?: string }).surfaceCategory ?? '',
+    std.color !== undefined ? std.color.getHex() : 0,
+    std.roughness ?? 0,
+    std.metalness ?? 0,
+    std.emissive !== undefined ? std.emissive.getHex() : 0,
+    std.emissiveIntensity ?? 1,
+    std.flatShading === true ? 1 : 0,
+    std.transparent === true ? 1 : 0,
+    std.opacity ?? 1,
+    std.side ?? 0,
+    std.depthWrite === false ? 0 : 1,
+    std.vertexColors === true ? 1 : 0,
+    mapId,
+  ].join('|');
+}
+
 /** Compose a transform matrix from position / euler / scale. */
 function tr(
   px = 0,
@@ -174,18 +204,40 @@ class ModelBuilder {
   build(): LoadedModel {
     const geometries: THREE.BufferGeometry[] = [];
     const materials: THREE.Material[] = [];
+    // Roadmap B26: merge by material SIGNATURE, not instance identity.
+    // The smat()/pmat() factories clone per call, so two parts with
+    // identical material params previously landed in separate buckets
+    // (one InstancedMesh pool per part instead of per material). Parts
+    // are visually identical iff every render-relevant param matches;
+    // materials are never mutated post-build (per-instance tinting goes
+    // through instanceColor), so sharing the representative is safe.
+    const bySig = new Map<string, { mat: THREE.Material; geos: THREE.BufferGeometry[] }>();
     for (const [mat, geos] of this.buckets) {
-      const merged = mergeGeometries(geos, false);
-      if (merged !== null) {
-        for (const g of geos) g.dispose();
-        geometries.push(merged);
-        materials.push(mat);
-      } else {
-        // Attribute mismatch (shouldn't happen: all parts carry
-        // position/normal/uv) — keep pieces unmerged rather than drop.
-        for (const g of geos) {
-          geometries.push(g);
+      const sig = materialSignature(mat);
+      const entry = bySig.get(sig);
+      if (entry !== undefined) entry.geos.push(...geos);
+      else bySig.set(sig, { mat, geos: [...geos] });
+    }
+    for (const { mat, geos } of bySig.values()) {
+      // mergeGeometries needs consistent index-ness: partition indexed
+      // vs non-indexed so a mixed bucket merges as two pools, not zero
+      // (with a console warning) — still far fewer than one per part.
+      const indexed = geos.filter((g) => g.index !== null);
+      const plain = geos.filter((g) => g.index === null);
+      for (const group of [indexed, plain]) {
+        if (group.length === 0) continue;
+        const merged = mergeGeometries(group, false);
+        if (merged !== null) {
+          for (const g of group) g.dispose();
+          geometries.push(merged);
           materials.push(mat);
+        } else {
+          // Attribute mismatch (shouldn't happen: all parts carry
+          // position/normal/uv) — keep pieces unmerged rather than drop.
+          for (const g of group) {
+            geometries.push(g);
+            materials.push(mat);
+          }
         }
       }
     }

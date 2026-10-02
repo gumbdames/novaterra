@@ -85,7 +85,7 @@ jobs:
       - name: Tests (vitest, flake-aware retry)
         timeout-minutes: 45
         run: |
-          VITEST_COUNT_FLOOR=2686
+          VITEST_COUNT_FLOOR=2687
           for attempt in 1 2 3; do
             echo "=== vitest attempt $attempt/3 ==="
             set +e
