@@ -17,21 +17,25 @@
 /**
  * NOVATERRA — Phase 3 logistics: AI depot/truck behavior + soak (workstream 3).
  *
- * The Classic AI owns NO physical buildings in 0.1 Alpha (all virtual), so
- * it cannot issue physical `resupply` orders. Instead its completed
- * VIRTUAL depots yield abstract stocks (`virtualAmmoStock` /
- * `virtualFuelStock`, credited per think) that its consumer units draw
- * top-ups from — the same virtual-building abstraction as the
- * virtual-economy credit. Supply/fuel trucks are still trained at the
- * documented ratios (1 per 6 consumers, ceil) and role-specialized through
- * the real `setSupplyToggles` command. Ammo-dry magazine units stop
- * getting new attack orders and fall back instead of chasing unarmed.
+ * C1 (2026-10-02): the Classic AI now owns PHYSICAL forward-base
+ * buildings (commander+). Its virtual depot stocks are anchored to them:
+ * stocks accrue only while the matching physical depot stands complete
+ * and operational; destroying the depot zeroes the reserve. The AI
+ * cannot issue physical `resupply` orders, so its consumer units draw
+ * top-ups from the anchored abstract stocks (`virtualAmmoStock` /
+ * `virtualFuelStock`, credited per think while the depot lives) — the
+ * same virtual-building abstraction as the virtual-economy credit.
+ * Supply/fuel trucks are still trained at the documented ratios (1 per
+ * 6 consumers, ceil) and role-specialized through the real
+ * `setSupplyToggles` command. Ammo-dry magazine units stop getting new
+ * attack orders and fall back instead of chasing unarmed.
  *
  * Covered here:
- *  - end-to-end: 6 fuel-dry tanks ⇒ the AI virtually constructs a
- *    fuelDepot (foundation age, no fiddling) and refills them abstractly;
- *  - seeded-completed ordnanceDepot ⇒ ammo-dry MLRS refill from the
- *    abstract stock, and a supply truck is trained + role-specialized;
+ *  - end-to-end: 6 fuel-dry tanks ⇒ the AI builds a PHYSICAL fuelDepot
+ *    (foundation age, no fiddling) and refills them from the anchored
+ *    stock;
+ *  - completed physical ordnanceDepot ⇒ ammo-dry MLRS refill from the
+ *    anchored stock, and a supply truck is trained + role-specialized;
  *  - below the consumer threshold (4): no depot construction;
  *  - 3600-tick AI-vs-AI soak with depletion on both sides: no crashes,
  *    logistics stay active, virtual stocks never go negative, same seed
@@ -52,7 +56,7 @@ import {
   isWater,
   type TerrainData,
 } from '../src/sim/terrain';
-import { MAP_HALF_SIZE } from '../src/sim/city';
+import { MAP_HALF_SIZE, BUILDING_DEFS, registerCityCommands } from '../src/sim/city';
 import { createEconomySystem } from '../src/sim/economy';
 import { registerUnitCommands, spawnUnit, UNIT_DEFS, type UnitKind } from '../src/sim/units';
 import {
@@ -105,6 +109,7 @@ function setupAI(seed: number, withEnemy: boolean): Ctx {
   }
   const queue = createCommandQueue();
   registerCoreCommands(queue);
+  registerCityCommands(queue, terrain);
   registerLogisticsCommands(queue, terrain);
   registerUnitCommands(queue, terrain);
   registerMovementCommands(queue, terrain);
@@ -116,7 +121,9 @@ function setupAI(seed: number, withEnemy: boolean): Ctx {
       createMovementSystem(terrain),
       createCombatSystem(),
       createEconomySystem(terrain),
-      createAISystem(queue),
+      // C1 (2026-10-02): the AI system needs terrain for physical
+      // forward-depot siting (thinkForwardDepots).
+      createAISystem(queue, terrain),
     ],
   });
   return { terrain, world, queue, driver };
@@ -156,7 +163,7 @@ function freeConstructionSlot(ctx: Ctx, owner: number): void {
 }
 
 describe('AI logistics — virtual depots and abstract resupply', () => {
-  it('builds a virtual fuelDepot for a fuel-dry tank squad and refills it', { timeout: 60000 }, () => {
+  it('builds a physical fuelDepot for a fuel-dry tank squad and refills it', { timeout: 60000 }, () => {
     const ctx = setupAI(20260930, false);
     giveAI(ctx, 0, 'tank', 6);
     for (const u of ctx.world.units) {
@@ -164,19 +171,26 @@ describe('AI logistics — virtual depots and abstract resupply', () => {
     }
     freeConstructionSlot(ctx, 0);
     const ai = aiOf(ctx, 0);
-    expect(ai.virtualBuildings.completed).not.toContain('fuelDepot');
+    // C1 (2026-10-02): the commander builds a PHYSICAL fuelDepot at its
+    // forward base (not a virtual one). Seed the forward base so the
+    // siting has an anchor; the 6 tanks satisfy the 4-unit army floor.
+    const base = findLandNear(ctx.terrain, -100, -100);
+    ai.forwardBase = { x: base.x, z: base.z };
+    expect(
+      ctx.world.city.buildings.some((b) => b.owner === 0 && b.kind === 'fuelDepot'),
+    ).toBe(false);
 
-    // fuelDepot: 40 s build = 1200 ticks, completing on the first think
-    // at/after tick 1260. Then the honest fuel chain yields 3.0/think
-    // (commander cadence 60 ticks = 2 sim-seconds × the 1.5/s
-    // refinery-equivalent rate, paying the 0.3/s materials input).
-    // 6 tanks × 60 fuel = 360 needed ⇒ 120 thinks = 7200 ticks after
-    // the depot completes; 9000 ticks covers build + refill with
-    // margin. (The old 24/think flat trickle filled this in 3600 —
-    // that was the ~6x hidden cheat this now replaces.)
+    // fuelDepot: 40 s build = 1200 ticks via the placeBuilding command.
+    // Then the anchored stock accrues per think while the depot stands
+    // complete and operational. 6 tanks × 60 fuel = 360 needed; 9000
+    // ticks covers build + refill with margin.
     runTicks(ctx, 9000);
 
-    expect(ai.virtualBuildings.completed).toContain('fuelDepot');
+    const depot = ctx.world.city.buildings.find(
+      (b) => b.owner === 0 && b.kind === 'fuelDepot',
+    );
+    expect(depot).toBeDefined();
+    expect(depot!.progress).toBeGreaterThanOrEqual(1);
     const tanks = ctx.world.units.filter((u) => u.owner === 0 && u.kind === 'tank');
     expect(tanks.length).toBe(6);
     for (const t of tanks) expect(t.fuel).toBeGreaterThan(0);
@@ -190,16 +204,35 @@ describe('AI logistics — virtual depots and abstract resupply', () => {
     }
   });
 
-  it('refills ammo-dry MLRS from a completed virtual ordnanceDepot', { timeout: 60000 }, () => {
+  it('refills ammo-dry MLRS from a completed physical ordnanceDepot', { timeout: 60000 }, () => {
     const ctx = setupAI(20260931, false);
     giveAI(ctx, 0, 'mlrs', 6);
     for (const u of ctx.world.units) {
       if (u.owner === 0 && u.kind === 'mlrs') u.ammo = 0;
     }
-    // ordnanceDepot is industry-gated; seed it completed (the foundation-
-    // gated fuelDepot path above proves the construction loop itself).
+    // C1 (2026-10-02): ordnanceDepot is industry-gated and now PHYSICAL.
+    // Place a live one directly (the foundation-gated fuelDepot path
+    // above proves the AI construction loop itself).
     const ai = aiOf(ctx, 0);
-    ai.virtualBuildings.completed.push('ordnanceDepot');
+    const spot = findLandNear(ctx.terrain, -100, -100);
+    const def = BUILDING_DEFS['ordnanceDepot'];
+    ctx.world.city.buildings.push({
+      id: ctx.world.nextId++,
+      kind: 'ordnanceDepot',
+      owner: 0,
+      cx: spot.x,
+      cz: spot.z,
+      facing: 0,
+      progress: 1,
+      level: 1,
+      operational: true,
+      powered: true,
+      watered: true,
+      hp: def.hp,
+      maxHp: def.hp,
+    });
+    // Adopt the depot into the tracker so the stock anchors.
+    ai.forwardDepots = [{ kind: 'ordnanceDepot', buildingId: ctx.world.city.buildings[ctx.world.city.buildings.length - 1]!.id, destroyedTick: -1 }];
     runTicks(ctx, 900);
 
     const mlrs = ctx.world.units.filter((u) => u.owner === 0 && u.kind === 'mlrs');
@@ -255,17 +288,40 @@ describe('AI logistics — soak', () => {
   function setupDepletedSoak(seed: number): Ctx {
     const ctx = setupAI(seed, true);
     // West: fuel-dry tanks (foundation-gated fuelDepot builds itself).
+    // C1: the physical depot needs a forward base — seed one.
     giveAI(ctx, 0, 'tank', 6);
     for (const u of ctx.world.units) {
       if (u.owner === 0 && u.kind === 'tank') u.fuel = 10;
     }
     freeConstructionSlot(ctx, 0);
-    // East: ammo-dry MLRS with a completed virtual ordnanceDepot.
+    const wbase = findLandNear(ctx.terrain, -100, -100);
+    aiOf(ctx, 0).forwardBase = { x: wbase.x, z: wbase.z };
+    // East: ammo-dry MLRS with a completed PHYSICAL ordnanceDepot
+    // (C1: virtual no longer yields stocks).
     giveAI(ctx, 1, 'mlrs', 6);
     for (const u of ctx.world.units) {
       if (u.owner === 1 && u.kind === 'mlrs') u.ammo = 0;
     }
-    aiOf(ctx, 1).virtualBuildings.completed.push('ordnanceDepot');
+    const ai1 = aiOf(ctx, 1);
+    const spot = findLandNear(ctx.terrain, 100, 100);
+    const odef = BUILDING_DEFS['ordnanceDepot'];
+    const ob = {
+      id: ctx.world.nextId++,
+      kind: 'ordnanceDepot' as const,
+      owner: 1,
+      cx: spot.x,
+      cz: spot.z,
+      facing: 0 as const,
+      progress: 1,
+      level: 1,
+      operational: true,
+      powered: true,
+      watered: true,
+      hp: odef.hp,
+      maxHp: odef.hp,
+    };
+    ctx.world.city.buildings.push(ob);
+    ai1.forwardDepots = [{ kind: 'ordnanceDepot', buildingId: ob.id, destroyedTick: -1 }];
     return ctx;
   }
 
@@ -273,13 +329,16 @@ describe('AI logistics — soak', () => {
     const ctx = setupDepletedSoak(777001);
     runTicks(ctx, SOAK_TICKS);
 
-    // West's tanks got fuel from their virtually-built depot.
+    // C1 (2026-10-02): West's tanks got fuel from their PHYSICALLY-built
+    // depot (not virtual).
     const ai0 = aiOf(ctx, 0);
-    expect(ai0.virtualBuildings.completed).toContain('fuelDepot');
+    expect(
+      ctx.world.city.buildings.some((b) => b.owner === 0 && b.kind === 'fuelDepot'),
+    ).toBe(true);
     const tanks = ctx.world.units.filter((u) => u.owner === 0 && u.kind === 'tank');
     expect(tanks.length).toBeGreaterThan(0);
     for (const t of tanks) expect(t.fuel).toBeGreaterThan(0);
-    // East's MLRS refilled from the abstract ammo stock.
+    // East's MLRS refilled from the anchored ammo stock.
     const mlrs = ctx.world.units.filter((u) => u.owner === 1 && u.kind === 'mlrs');
     expect(mlrs.length).toBeGreaterThan(0);
     for (const m of mlrs) expect(m.ammo).toBeGreaterThan(0);

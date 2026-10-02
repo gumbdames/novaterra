@@ -873,9 +873,10 @@ export function registerLogisticsCommands(queue: CommandQueue, t: TerrainData): 
   });
 
   // A10 (2026-10-01): `loadCargoVirtual` — the AI's counterpart to
-  // `loadCargo`. The Classic AI owns no physical buildings, so it can
-  // never park at a physical naval supply point; its completed virtual
-  // navalBase is its docks. Fuel/ammo move from the AI's abstract
+  // `loadCargo`. The Classic AI owns no physical NAVAL supply point
+  // (C1, 2026-10-02, gives it physical land depots, but the navalBase
+  // stays virtual), so it can never park at a physical naval supply
+  // point; its completed virtual navalBase is its docks. Fuel/ammo move from the AI's abstract
   // virtual stocks (credited at honest production economics — see
   // creditVirtualDepotStocks in ai.ts) into the supply ship's holds,
   // through the command queue like the player's: validated at enqueue

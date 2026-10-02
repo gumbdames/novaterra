@@ -303,6 +303,10 @@ export function canonicalizeWorld(world: World): string {
     // Phase 3 logistics (workstream 3): virtual depot stocks. Behavior-
     // affecting (they refill AI units) ⇒ digest-covered (PLAN §11).
     out += `vls=${canonicalNumber(p.virtualAmmoStock ?? 0)},${canonicalNumber(p.virtualFuelStock ?? 0)},`;
+    // C1 (AI physical forward base, 2026-10-02): the tracked
+    // forward-depot buildings — behavior-affecting (they gate stock
+    // accrual and rebuilds) ⇒ digest-covered (PLAN §11).
+    out += `fd=${(p.forwardDepots ?? []).map((e) => `${e.kind}:${e.buildingId}:${e.destroyedTick}`).join('.')},`;
     // Final-review R2-B (AI siege doctrine): the quiet-think counter
     // drives when a siege starts and the target id drives where the
     // force converges — both behavior-affecting ⇒ digest-covered.

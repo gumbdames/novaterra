@@ -249,10 +249,11 @@ export function buildingCenterWorld(b: BuildingRecord): { x: number; z: number }
  * positions — zero snapshot/digest cost (PLAN §4 S6).
  *
  * Grand-expansion Phase 7 (AI intel play): the AI's VIRTUAL intel
- * buildings contribute too — see `virtualDetectorEntries`. The AI
- * owns no physical buildings in 0.1 Alpha; its completed virtual
- * listeningPost/signalsStation detect from the AI's base. Virtual
- * detectors are never sabotaged or unpowered, so they always accrue
+ * buildings contribute too — see `virtualDetectorEntries`. The AI's
+ * intel buildings are all virtual (C1, 2026-10-02, gives the AI
+ * physical forward-base depots/radar — logistics/sensor, not intel);
+ * the AI's completed virtual listeningPost/signalsStation detect from
+ * the AI's base. Virtual detectors are never sabotaged or unpowered, so they always accrue
  * (the human player's counter-play is that the coverage is
  * base-centered and the intel panel shows when a spy stands inside
  * rival coverage — the detection is telegraphed, not invisible).

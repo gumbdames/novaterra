@@ -336,8 +336,11 @@ export function checkSkirmishVictory(world: World): boolean {
   // AND zero rival buildings — reachable now that buildings are
   // destructible (C3): siege orders (`attackBuilding`) let an army
   // raze a base instead of whack-a-moling retraining units forever.
-  // The AI's own production is virtual (no physical buildings), so vs
-  // the AI this still reduces to wiping its fielded army.
+  // The AI's production is mostly virtual, but C1 (2026-10-02) gives
+  // commander+ REAL forward-base buildings (fuelDepot/ordnanceDepot/
+  // radarStation, all military: true) — so vs the AI conquest now
+  // requires wiping its fielded army AND razing its forward base
+  // (isConquestEliminated counts military buildings).
   //
   // Roadmap B8 (2026-10-02): symmetric with checkSkirmishDefeat — the
   // capital / war-weariness short-circuit (see isConquestEliminated)

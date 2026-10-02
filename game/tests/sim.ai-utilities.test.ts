@@ -215,13 +215,20 @@ describe('AD2 fallback: virtual buildings need no network', () => {
 });
 
 describe('thinkUtilityConnections: the documented no-op', () => {
-  it('the AI owns no physical buildings after a long run (the verdict premise)', () => {
+  it('the AI owns no physical PLANTS after a long run (the verdict premise)', () => {
     const ctx = setup(4242);
     const base = findLandNear(ctx.terrain, -100, -100);
     addAIPlayer(ctx.world, 1, 'commander', base.x, base.z);
     runTicks(ctx, 3600);
     const physical = ctx.world.city.buildings.filter((b) => b.owner === 1);
-    expect(physical).toEqual([]);
+    // C1 (2026-10-02): the commander may own a physical forward-base
+    // fuelDepot — but never a utility PLANT (power/water producer), so
+    // the stranded-plant condition still cannot arise.
+    const plants = physical.filter((b) => {
+      const def = BUILDING_DEFS[b.kind];
+      return (def.powerSupply ?? 0) > 0 || (def.waterSupply ?? 0) > 0;
+    });
+    expect(plants).toEqual([]);
     // ...but it did build virtually (construction still progresses).
     expect(aiOf(ctx.world).virtualBuildings.completed.length).toBeGreaterThan(0);
   });

@@ -109,6 +109,13 @@ land, sea and air — or play a fully peaceful game with war disabled.
   from dawn gold through noon blue to a readable deep-blue night with
   stars. Visual only, driven by the sim tick (pause freezes the sky;
   saves carry no new fields).
+  Exploration bet C1 (2026-10-02) is in too: the AI physical forward
+  base — commander+ now owns real forward-base buildings (commander a
+  fuel depot, general + an ordnance depot, marshal + a radar station;
+  cadet/citizen build none), and its virtual supply stocks are anchored
+  to them: stocks accrue only while the matching depot stands complete
+  and operational, and destroying a depot zeroes its reserve. Conquest
+  now requires razing the forward base too.
   See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 

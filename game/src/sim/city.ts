@@ -3924,9 +3924,11 @@ export function isBuildingAgeMet(currentAge: Age, minAge: Age): boolean {
  * either a real one on the city grid (progress >= 1) or one the Classic
  * AI virtually constructed (spec docs/research/roster-expansion.md §7.1:
  * the AI pays the full funds/materials cost and waits the full build
- * time, but owns no physical footprint — it paints no zones and lays no
- * roads). Human players never have virtual buildings, so for them this
- * is exactly the real-building check.
+ * time; pre-C1 it owned no physical footprint at all, and its
+ * production buildings are still virtual — C1, 2026-10-02, adds only
+ * physical forward-base depots/radar, which this check also matches on
+ * the real-building leg). Human players never have virtual buildings,
+ * so for them this is exactly the real-building check.
  *
  * Shared by `spawnUnit` production gating (units.ts) and `researchUpgrade`
  * building prerequisites (upgrades.ts) so the AI's virtual construction

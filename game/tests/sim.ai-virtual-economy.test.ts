@@ -19,10 +19,11 @@
  * NOVATERRA — tests/sim.ai-virtual-economy.test.ts — R1 final-review C2:
  * the Classic AI's virtual economy.
  *
- * The military AI owns no physical buildings, so every funds-income path
- * in economy.ts was closed to it (runTaxes/runHarvest iterate physical
- * buildings; the old creditVirtualEconomy only credited def.output —
- * and the civilAirport def carries no funds output at all). The C2 fix
+ * The military AI's funds-income paths in economy.ts are effectively
+ * closed to it (C1, 2026-10-02: its physical forward-base buildings sit
+ * in UTILITY_ZONE, which runTaxes skips, and none has a harvest; the old
+ * creditVirtualEconomy only credited def.output — and the civilAirport
+ * def carries no funds output at all). The C2 fix
  * credits def.harvest, adds a modest deterministic virtual tax stipend
  * scaled by difficulty (taxBasePerSec × DEFAULT_TAX_RATE ×
  * VIRTUAL_TAX_FACTOR[difficulty], mirroring runTaxes), and reinvests

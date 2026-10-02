@@ -15,7 +15,8 @@
  */
 
 /**
- * NOVATERRA — A10: Marshal logistics cheat removal (2026-10-01).
+ * NOVATERRA — A10: Marshal logistics cheat removal (2026-10-01);
+ * C1: AI physical forward base (2026-10-02).
  *
  * The AI's old logistics was a hidden cheat in two parts:
  *  - completed virtual depots minted a flat 12 ammo / 24 fuel PER THINK
@@ -25,13 +26,17 @@
  *    (`u.cargoFuel += take`), bypassing the command queue.
  *
  * The honest model, pinned here:
- *  - creditVirtualDepotStocks: a completed virtual ordnanceDepot yields
+ *  - creditVirtualDepotStocks: a LIVE physical ordnanceDepot (C1:
+ *    complete, operational, hp > 0 — see findLiveForwardDepot) yields
  *    the munitionsFactory's effective production rate (2.0/s, Advanced
  *    Logistics x1.5) and PAYS the factory's input costs (materials 0.4/s
- *    + funds 0.6/s); a completed virtual fuelDepot/navalBase yields the
- *    oilRefinery's rate (1.5 fuel/s) and pays its input (materials 0.3/s).
- *    Per think, scaled by the think cadence, all-or-nothing (a starved
- *    chain produces nothing), capped at the depots' effective storage.
+ *    + funds 0.6/s); a live physical fuelDepot — or the legacy virtual
+ *    navalBase sea chain (unchanged) — yields the oilRefinery's rate
+ *    (1.5 fuel/s) and pays its input (materials 0.3/s). Per think,
+ *    scaled by the think cadence, all-or-nothing (a starved chain
+ *    produces nothing), capped at the depots' effective storage.
+ *    No live depot (or no virtual navalBase) ⇒ no yield, nothing
+ *    minted from nothing.
  *  - `loadCargoVirtual`: the AI's counterpart to the player's `loadCargo`
  *    — its completed virtual navalBase is its docks. Fuel/ammo move from
  *    the abstract virtual stocks into supply-ship holds through the
@@ -56,7 +61,7 @@ import {
   spawnUnit,
   UNIT_DEFS,
 } from '../src/sim/units';
-import { getPlayer } from '../src/sim/city';
+import { getPlayer, placeBuilding } from '../src/sim/city';
 import { hasUpgrade } from '../src/sim/upgrades';
 import {
   addAIPlayer,
@@ -64,6 +69,7 @@ import {
   creditVirtualDepotStocks,
   type AIDifficulty,
   type AIPlayerState,
+  type ForwardDepotKind,
 } from '../src/sim/ai';
 import {
   generateTerrain,
@@ -103,10 +109,24 @@ function playerStocks(world: World): { funds: number; materials: number } {
   return { funds: p.funds, materials: p.materials };
 }
 
+/**
+ * C1 (2026-10-02): place a LIVE physical forward depot for the AI owner —
+ * complete, operational, standing. This is the anchor
+ * creditVirtualDepotStocks requires (findLiveForwardDepot). The direct
+ * placeBuilding helper (not the command) keeps the economics tests
+ * focused on the credit, not the command queue.
+ */
+function placeLiveDepot(world: World, kind: ForwardDepotKind, cx = 20, cz = 20): void {
+  const b = placeBuilding(world.city, { kind, owner: 0, cx, cz, facing: 0 });
+  b.progress = 1;
+  b.operational = true;
+  expect(b.hp).toBeGreaterThan(0);
+}
+
 describe('creditVirtualDepotStocks — honest production economics', () => {
-  it('a completed virtual ordnanceDepot yields the munitionsFactory rate and pays its inputs', () => {
+  it('a live physical ordnanceDepot yields the munitionsFactory rate and pays its inputs', () => {
     const { world, ai } = setupEconomics();
-    ai.virtualBuildings.completed.push('ordnanceDepot');
+    placeLiveDepot(world, 'ordnanceDepot');
     const before = playerStocks(world);
     creditVirtualDepotStocks(world, ai);
     // Marshal thinks every 30 ticks = 1 sim-second: 2.0 ammo produced,
@@ -118,9 +138,18 @@ describe('creditVirtualDepotStocks — honest production economics', () => {
     expect(ai.virtualFuelStock ?? 0).toBe(0);
   });
 
-  it('the ammo chain is all-or-nothing when inputs are unaffordable', () => {
+  it('a virtual ordnanceDepot alone yields NOTHING — the land chain is physical now (C1)', () => {
     const { world, ai } = setupEconomics();
     ai.virtualBuildings.completed.push('ordnanceDepot');
+    const before = playerStocks(world);
+    creditVirtualDepotStocks(world, ai);
+    expect(ai.virtualAmmoStock ?? 0).toBe(0);
+    expect(playerStocks(world)).toEqual(before);
+  });
+
+  it('the ammo chain is all-or-nothing when inputs are unaffordable', () => {
+    const { world, ai } = setupEconomics();
+    placeLiveDepot(world, 'ordnanceDepot');
     const p = getPlayer(world.city, 0)!;
     p.materials = 0.2; // below the 0.4/s input cost
     p.funds = 1000;
@@ -132,16 +161,34 @@ describe('creditVirtualDepotStocks — honest production economics', () => {
 
   it('the ammo stock is capped at the depot effective storage', () => {
     const { world, ai } = setupEconomics();
-    ai.virtualBuildings.completed.push('ordnanceDepot');
+    placeLiveDepot(world, 'ordnanceDepot');
     ai.virtualAmmoStock = 149;
     creditVirtualDepotStocks(world, ai);
     // ordnanceDepot ammoStorage is 150 — the +2.0 is clamped, not dropped.
     expect(ai.virtualAmmoStock).toBe(150);
   });
 
-  it('a completed virtual fuelDepot yields the oilRefinery rate and pays its input', () => {
+  it('an incomplete depot yields nothing — the anchor needs progress >= 1 (C1)', () => {
     const { world, ai } = setupEconomics();
-    ai.virtualBuildings.completed.push('fuelDepot');
+    const b = placeBuilding(world.city, { kind: 'ordnanceDepot', owner: 0, cx: 20, cz: 20, facing: 0 });
+    b.progress = 0.5; // still constructing
+    b.operational = true;
+    creditVirtualDepotStocks(world, ai);
+    expect(ai.virtualAmmoStock ?? 0).toBe(0);
+  });
+
+  it('a non-operational depot yields nothing — the anchor needs operational (C1)', () => {
+    const { world, ai } = setupEconomics();
+    const b = placeBuilding(world.city, { kind: 'ordnanceDepot', owner: 0, cx: 20, cz: 20, facing: 0 });
+    b.progress = 1;
+    b.operational = false; // upkeep unfunded
+    creditVirtualDepotStocks(world, ai);
+    expect(ai.virtualAmmoStock ?? 0).toBe(0);
+  });
+
+  it('a live physical fuelDepot yields the oilRefinery rate and pays its input', () => {
+    const { world, ai } = setupEconomics();
+    placeLiveDepot(world, 'fuelDepot');
     const before = playerStocks(world);
     creditVirtualDepotStocks(world, ai);
     // 1.5 fuel/s produced, 0.3 materials/s of input paid.
@@ -151,16 +198,25 @@ describe('creditVirtualDepotStocks — honest production economics', () => {
     expect(ai.virtualAmmoStock ?? 0).toBe(0);
   });
 
-  it('one fuel chain even with two depots — a second depot is a cache, not a refinery', () => {
+  it('a virtual fuelDepot alone yields NOTHING — the land chain is physical now (C1)', () => {
     const { world, ai } = setupEconomics();
-    ai.virtualBuildings.completed.push('fuelDepot', 'navalBase');
+    ai.virtualBuildings.completed.push('fuelDepot');
+    creditVirtualDepotStocks(world, ai);
+    expect(ai.virtualFuelStock ?? 0).toBe(0);
+  });
+
+  it('one fuel chain even with depot + navalBase — a second source is a cache, not a refinery', () => {
+    const { world, ai } = setupEconomics();
+    placeLiveDepot(world, 'fuelDepot');
+    ai.virtualBuildings.completed.push('navalBase');
     creditVirtualDepotStocks(world, ai);
     expect(ai.virtualFuelStock).toBe(1.5);
   });
 
-  it('the fuel cap is the largest completed fuel-capable depot storage', () => {
+  it('the fuel cap is the largest live fuel-capable source storage', () => {
     const { world, ai } = setupEconomics();
-    ai.virtualBuildings.completed.push('fuelDepot', 'navalBase');
+    placeLiveDepot(world, 'fuelDepot');
+    ai.virtualBuildings.completed.push('navalBase');
     ai.virtualFuelStock = 299.5;
     creditVirtualDepotStocks(world, ai);
     // navalBase fuelStorage 300 > fuelDepot 250: clamped to 300, not 251.
@@ -184,17 +240,21 @@ describe('creditVirtualDepotStocks — honest production economics', () => {
     expect(playerStocks(world)).toEqual(before);
   });
 
-  it('Advanced Logistics multiplies the virtual ammo rate, like the physical factory', () => {
+  it('Advanced Logistics multiplies the physical ammo rate, like the physical factory', () => {
     const { world, ai } = setupEconomics();
-    ai.virtualBuildings.completed.push('ordnanceDepot');
+    placeLiveDepot(world, 'ordnanceDepot');
     grantUpgrade(world, 0, 'advancedLogistics');
     creditVirtualDepotStocks(world, ai);
     expect(ai.virtualAmmoStock).toBe(3.0); // 2.0 x 1.5
   });
 
   it('the per-think yield scales with the think cadence (citizen: 4 sim-seconds)', () => {
+    // C1: citizen builds no depots, so this pins the cadence scaling
+    // with directly-placed physical depots (the credit is cadence-driven,
+    // not roster-driven).
     const { world, ai } = setupEconomics(20261002, 'citizen');
-    ai.virtualBuildings.completed.push('ordnanceDepot', 'fuelDepot');
+    placeLiveDepot(world, 'ordnanceDepot', 20, 20);
+    placeLiveDepot(world, 'fuelDepot', 24, 20);
     const before = playerStocks(world);
     creditVirtualDepotStocks(world, ai);
     // Citizen thinks every 120 ticks = 4 sim-seconds.

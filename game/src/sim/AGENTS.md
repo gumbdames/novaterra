@@ -226,6 +226,14 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   load with full internals decoded verbatim. Digest note: a v9-restored
   world digests its REBUILT fields, so the "restore preserves the digest
   exactly" pin holds only for worlds with no live fields/builds.
+  C1 (2026-10-02): encode/decode must COPY every mutable array they
+  capture — `encodeAIState` aliased the AI's `seenBuildingIds` latch
+  (mutated in place by `getKnownEnemyBuildings`), so a mid-game snapshot
+  silently absorbed post-snapshot sightings and the restored world
+  digested differently (caught by the phase9 save/load soak; latent
+  while the AI owned no physical buildings). Both directions copy now;
+  `restoreSnapshot`'s "shares no references with the snapshot" contract
+  is pinned by tests in sim.ai-forward-base.test.ts.
 - `terrain.ts` — seeded mapgen (not snapshotted); `spatial.ts` — hash grid.
 - `units.ts` — `UnitRecord` store (stable ids, owner/kind/speed/state),
   `spawnUnit` command. Final-review R2 (2026-10-01):
@@ -388,8 +396,9 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   final-review C2, 2026-10-01: the marshal's civilAirport landing fees
   are harvest, not output), plus a modest virtual tax stipend scaled by
   difficulty (taxBasePerSec × DEFAULT_TAX_RATE × per-difficulty factor —
-  the AI owns no physical buildings, so every economy.ts funds path is
-  closed to it) and a materials leg that buys materials on the fixed
+  C1, 2026-10-02: the AI's physical forward-base buildings sit in
+  UTILITY_ZONE (runTaxes skips them) and earn nothing, so every
+  economy.ts funds path is effectively closed to it) and a materials leg that buys materials on the fixed
   market rate (the industry age's 2500-material cost is unreachable on
   the warFactory trickle alone); upkeep is waived — the AI's abstract
   economy has no tax loop to pay it from. Peaceful AI holds no virtual
@@ -458,12 +467,14 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   digest-unchanged tests).
   Utility networks (grand-expansion Phase 2, §AD2): `thinkConstruction`
   runs the `thinkUtilityConnections` sub-phase, a documented no-op in
-  0.1 Alpha — the AI owns no physical buildings (all virtual, no
-  footprint), so no AI plant can be stranded and virtual buildings stay
-  on the global pool fallback. The hook's comment records the exact
-  contract for wiring it to the sim's network diagnostics if the AI ever
-  gains physical buildings (think cadence only, `ai-<owner>` stream
-  draws only, orders through the queue).
+  0.1 Alpha — the AI owns no physical PLANTS (its production buildings
+  are all virtual, no footprint; C1, 2026-10-02, adds physical
+  forward-base depots/radar — logistics/sensor, not plants), so no AI
+  plant can be stranded and virtual buildings stay on the global pool
+  fallback. The hook's comment records the exact contract for wiring
+  it to the sim's network diagnostics if the AI ever gains physical
+  plants (think cadence only, `ai-<owner>` stream draws only, orders
+  through the queue).
   Air/naval (grand-expansion Phase 5/6, workstream D): `canTrain` is
   hangar-aware — infrastructure aircraft (a `requiredBuilding` AND a
   `hangarClass`) train only while the AI holds a free virtual hangar

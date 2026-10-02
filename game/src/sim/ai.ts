@@ -107,6 +107,27 @@
  *    and the AI's stockpiled counter-intel sharpens its spot checks
  *    (the sim-core rule in sim/intel.ts).
  *
+ * C1 (AI physical forward base, 2026-10-02):
+ *  - Once the AI has established its forward-base coordinates,
+ *    commander+ owns REAL forward-base buildings there: commander a
+ *    fuelDepot; general + an ordnanceDepot; marshal + a radarStation.
+ *    Cadet/citizen build none. The buildings are placed with the real
+ *    `placeBuilding` command (real costs, real construction time) at a
+ *    deterministic center-out site near the forward base.
+ *  - The virtual land-depot path is retired for commander+: the virtual
+ *    depot STOCKS are anchored to the physical buildings — they accrue
+ *    only while the matching depot is live, complete and operational,
+ *    and destroying the depot zeroes the reserve
+ *    (`thinkForwardDepots` / `creditVirtualDepotStocks` /
+ *    `findLiveForwardDepot`). The virtual navalBase sea chain is
+ *    unchanged.
+ *  - Rebuilds wait a 2700-tick (90s) cooldown AND a 4-unit army floor
+ *    (the forward detachment supplies the defense). The depots are
+ *    military buildings, so conquest now requires razing them too.
+ *  - Tracked in `ai.forwardDepots` (plain data, snapshotted +
+ *    digested); the kind leaves `virtualBuildings.completed` as it
+ *    goes physical (no double-counting).
+ *
  * Per-match personality (seeded, deterministic — not "entirely deterministic"
  * across matches):
  *  - At `addAIPlayer` time each AI draws a small personality record from
@@ -431,15 +452,37 @@ export interface AIPlayerState {
   };
   /**
    * Phase 3 logistics (workstream 3): abstract supply stocks yielded by
-   * completed virtual depots. The AI owns no physical buildings in
-   * 0.1 Alpha (all virtual), so its depots are virtual too — these stocks
-   * are the virtual-depot abstraction its consumer units draw top-ups
-   * from (thinkLogistics), exactly as `creditVirtualEconomy` credits
-   * virtual-building output. Plain data — snapshotted + digested
+   * the AI's depots. C1 (2026-10-02): commander+ owns REAL forward-base
+   * depot buildings, and these stocks are ANCHORED to them — they accrue
+   * only while the matching physical depot is live, complete and
+   * operational, and destroying the depot zeros the reserve
+   * (thinkForwardDepots / creditVirtualDepotStocks). The legacy virtual
+   * navalBase sea chain is unchanged. Consumer units draw top-ups from
+   * these stocks (thinkLogistics), exactly as `creditVirtualEconomy`
+   * credits virtual-building output. Plain data — snapshotted + digested
    * (missing decodes to 0, the AD9 precedent).
    */
   virtualAmmoStock?: number;
   virtualFuelStock?: number;
+  /**
+   * C1 (AI physical forward base, 2026-10-02): the AI's REAL forward-base
+   * buildings. Commander+ builds its difficulty-roster depots as physical
+   * buildings at its forward base once the coordinates are established
+   * (cadet/citizen build none — their roster is empty). Each entry tracks
+   * one roster building: its kind, the physical building id (0 = ordered
+   * but not yet observed — commands apply at the next tick start), and
+   * the tick its last physical instance was destroyed (-1 = never) for
+   * the rebuild cooldown. The virtual depot stocks above are ANCHORED to
+   * these buildings: they accrue only while the matching depot is live,
+   * complete and operational, and destroying the depot zeros the reserve
+   * (see thinkForwardDepots / creditVirtualDepotStocks).
+   * Plain data — snapshotted + digested (AD9: missing decodes to []).
+   */
+  forwardDepots?: Array<{
+    kind: 'fuelDepot' | 'ordnanceDepot' | 'radarStation';
+    buildingId: number;
+    destroyedTick: number;
+  }>;
   /** Water scouting result: found by probe spawns, never by maphack. */
   navalStatus: AINavalStatus;
   /** Index into the deterministic naval probe ring. */
@@ -466,9 +509,10 @@ export interface AIPlayerState {
   personality: AIPersonality;
   /**
    * Grand-expansion Phase 7 (AI intel play, 2026-09-30): the AI's
-   * virtual intel infrastructure. The AI owns no physical buildings in
-   * 0.1 Alpha, so its listeningPost / intelHQ / signalsStation /
-   * satelliteUplink are virtual — a SECOND one-at-a-time construction
+   * virtual intel infrastructure. The AI's intel buildings are all
+   * virtual (C1, 2026-10-02, gives it physical forward-base
+   * depots/radar — logistics/sensor, not intel), so its listeningPost
+   * / intelHQ / signalsStation / satelliteUplink are virtual — a SECOND one-at-a-time construction
    * queue (parallel to `virtualBuildings`, so intel never stalls the
    * war-production pipeline) whose completed kinds join
    * `virtualBuildings.completed` (unlocking spy training and the
@@ -554,6 +598,10 @@ export function addAIPlayer(
     superweapons: { aegisReadyTick: 0, stormReadyTick: 0 },
     virtualBuildings: { completed: [], constructing: null },
     navalStatus: 'unknown',
+    // C1 (2026-10-02): initialized to [] (never undefined) so snapshot
+    // round-trips are stable. Pre-C1 snapshots (missing field) decode
+    // to [] via the ?? [] in decodeAIState (AD9).
+    forwardDepots: [],
     navalProbeIndex: 0,
     navalWater: null,
     seenSubmarine: false,
@@ -1183,9 +1231,11 @@ export function canTrain(world: World, owner: number, kind: UnitKind): boolean {
   if (!isUnitAvailableForAge(world, owner, def.minAge)) return false;
   if (def.requiredBuilding && !hasProductionBuilding(world, owner, def.requiredBuilding)) return false;
   // Hangar-aware (grand-expansion Phase 5, S4): aircraft that need a
-  // hangar slot only train while the AI has a free one. The Classic AI
-  // owns no physical buildings in 0.1 Alpha, so the capacity is virtual
-  // (PLAN §6: "virtual airfields get virtual capacity").
+  // hangar slot only train while the AI has a free one. The Classic
+  // AI's production buildings are all virtual (C1, 2026-10-02, adds
+  // physical forward-base depots/radar only — no hangars), so the
+  // capacity is virtual (PLAN §6: "virtual airfields get virtual
+  // capacity").
   // The gate applies only to infrastructure-based aircraft — units
   // with a requiredBuilding (airfield-trained). Field-operated
   // micro-UAVs like the scout drone (no requiredBuilding,
@@ -1200,10 +1250,10 @@ export function canTrain(world: World, owner: number, kind: UnitKind): boolean {
 }
 
 /**
- * The AI's virtual hangar capacity, in slots by class. The Classic AI
- * owns no physical buildings in 0.1 Alpha — every production building
- * is virtual (a kind name in `ai.virtualBuildings.completed`, no
- * footprint) — so hangar parking is virtual too: each completed
+ * The AI's virtual hangar capacity, in slots by class. The Classic
+ * AI's production buildings are all virtual (C1, 2026-10-02, adds
+ * physical forward-base depots/radar only — no hangars), so hangar
+ * parking is virtual too: each completed
  * virtual building yields `defaultHangarSlots(kind)` virtual slots,
  * exactly the legacy decode default the snapshot module gives real
  * buildings (snapshot.ts v8). Deterministic: no RNG, fixed order.
@@ -1329,11 +1379,13 @@ function thinkConstruction(world: World, ai: AIPlayerState): void {
 /**
  * Utility-connection sub-phase (grand-expansion Phase 2, §AD2).
  *
- * 0.1 Alpha verdict: the Classic AI owns NO physical buildings — every
+ * 0.1 Alpha verdict: the Classic AI owns no physical PLANTS — every
  * production building is virtual (a kind name in
- * `ai.virtualBuildings.completed`, no footprint, no grid position), and
- * the AI places no physical buildings anywhere in 0.1 Alpha (see the
- * module header and game/src/sim/AGENTS.md). A "stranded plant" is a
+ * `ai.virtualBuildings.completed`, no footprint, no grid position).
+ * C1 (2026-10-02) gives it physical forward-base depots/radar, but
+ * those are logistics/sensor buildings, not power/water plants, and
+ * the AI still places no plants anywhere (see the module header and
+ * game/src/sim/AGENTS.md). A "stranded plant" is a
  * physical plant touching no conductor; with no physical plants, the
  * stranded condition cannot arise for the AI, so there is nothing to
  * connect and no line order to issue.
@@ -1346,9 +1398,12 @@ function thinkConstruction(world: World, ai: AIPlayerState): void {
  * — explicitly tested either way", PLAN.md §9 Phase 2) — pinned by
  * game/tests/sim.ai-utilities.test.ts.
  *
- * Extension hook: if the AI ever gains physical buildings, the stranded
- * check goes here. The sim workstream's network model is
- * `sim/utilityNetworks.ts` (`getUtilityModel(city, input)` →
+ * Extension hook: if the AI ever gains physical PLANTS (power/water
+ * producers), the stranded check goes here. C1 (2026-10-02) gives the
+ * AI physical forward-base buildings, but they are logistics/sensor
+ * depots — not plants — so the stranded-plant condition still cannot
+ * arise and the hook stays a no-op. The sim workstream's network model
+ * is `sim/utilityNetworks.ts` (`getUtilityModel(city, input)` →
  * `UtilityModel`; per-player `UtilitySideModel` carries
  * `plantNetwork: Map<plantId, networkId>` and
  * `unreached: number[]` — buildings reached by no network, which the
@@ -1373,15 +1428,21 @@ function thinkUtilityConnections(world: World, ai: AIPlayerState): void {
 }
 
 // ---------------------------------------------------------------------------
-// Phase 3 logistics (workstream 3): virtual depots, truck ratios,
+// Phase 3 logistics (workstream 3): forward-base depots, truck ratios,
 // abstract resupply, ammo-dry retreats.
 //
-// Honest abstraction statement: the Classic AI owns NO physical buildings
-// in 0.1 Alpha — every production building is virtual (a kind name in
-// `ai.virtualBuildings.completed`, no footprint, no grid position). So the
-// AI cannot issue physical `resupply` orders (there is no depot on the map
-// to route to) and its trucks never physically shuttle. Instead:
-//  - completed virtual ordnance/fuel depots yield ABSTRACT stocks
+// Honest abstraction statement: the Classic AI's production buildings
+// are all virtual (a kind name in `ai.virtualBuildings.completed`, no
+// footprint, no grid position). C1 (2026-10-02) gives commander+ REAL
+// forward-base depot buildings (fuelDepot/ordnanceDepot/radarStation —
+// see thinkForwardDepots), and the virtual land-depot path is retired:
+// the physical depots are the single source of truth. The virtual
+// depot STOCKS (`virtualAmmoStock` / `virtualFuelStock`) remain an
+// abstraction, but they are now ANCHORED to the physical buildings —
+// they accrue only while the matching depot is live, complete and
+// operational, and destroying the depot zeros the reserve
+// (creditVirtualDepotStocks). So:
+//  - live physical ordnance/fuel depots yield ABSTRACT stocks
 //    (`virtualAmmoStock` / `virtualFuelStock`, credited per think at
 //    honest production economics — the physical chain's rates and
 //    input costs, never minted from nothing; see
@@ -1397,14 +1458,17 @@ function thinkUtilityConnections(world: World, ai: AIPlayerState): void {
 // This is the automated layer the Phase 3 plan calls for ("logistics via
 // the automated layer (no physical builder required)"). The human
 // player's path — physical depots, reservations, the refill aura — is the
-// real one; the AI's never touches the map. No RNG in any of it;
+// real one; the AI's stocks never touch the map. No RNG in any of it;
 // id-ordered iteration throughout.
 // ---------------------------------------------------------------------------
 
 /**
- * The AI starts depot-building once it fields this many consumers of one
- * supply type: 4 = a real squad (an MLRS section, a tank platoon), not a
- * stray or two — below that the build slot isn't worth it.
+ * C1 (2026-10-02): the retired virtual land-depot path used this as its
+ * consumer floor ("the AI starts depot-building once it fields this many
+ * consumers of one supply type: 4 = a real squad, not a stray or two").
+ * Forward depots are now physical and gated on the army floor
+ * (FORWARD_DEPOT_MIN_ARMY); the constant is kept for the logistics
+ * soak test's consumer-count assertion.
  */
 export const LOGISTICS_CONSUMER_THRESHOLD = 4;
 /** One supply truck per this many ammo consumers (rounded up). */
@@ -1419,10 +1483,18 @@ const FUEL_TRUCK_RATIO = 6;
  * navalBase PRODUCE nothing — they only pull from the owner's fuel
  * stockpile at FUEL_DEPOT_PULL_RATE_PER_SEC (economy.ts).
  *
- * A completed virtual depot is the AI's abstraction for the whole
- * production chain behind it (the AI owns no physical buildings), so
- * it yields that chain's physical rates and pays that chain's physical
- * input costs — never minting from nothing:
+ * C1 (AI physical forward base, 2026-10-02): the land-depot chains are
+ * ANCHORED to the AI's physical forward-base buildings — stocks accrue
+ * ONLY while the matching depot is live, complete and operational
+ * (progress >= 1 && operational && hp > 0; see findLiveForwardDepot).
+ * Destroying the depot zeros the reserve (thinkForwardDepots). The
+ * virtual land-depot construction path is retired; the virtual navalBase
+ * sea chain is unchanged (out of C1 scope).
+ *
+ * A live physical depot is the AI's abstraction for the whole
+ * production chain behind it, so it yields that chain's physical rates
+ * and pays that chain's physical input costs — never minting from
+ * nothing:
  *  - virtual ordnanceDepot ~= one virtual munitionsFactory: yields
  *    effectiveAmmoProduction (2.0/s, Advanced Logistics x1.5 included)
  *    and pays the factory's input (materials 0.4/s + funds 0.6/s);
@@ -1442,11 +1514,10 @@ const FUEL_TRUCK_RATIO = 6;
 export function creditVirtualDepotStocks(world: World, ai: AIPlayerState): void {
   const player = getPlayer(world.city, ai.owner);
   if (!player) return;
-  const completed = ai.virtualBuildings.completed;
   const dtSec = AI_THINK_TICKS[ai.difficulty] / TICK_HZ;
-  // Ammo chain: the virtual ordnanceDepot stands in for the
-  // munitionsFactory + depot chain behind it.
-  if (completed.includes('ordnanceDepot')) {
+  // Ammo chain: the live physical ordnanceDepot stands in for the
+  // munitionsFactory + depot chain behind it (C1 anchor).
+  if (findLiveForwardDepot(world, ai.owner, 'ordnanceDepot') !== undefined) {
     const factoryDef = BUILDING_DEFS.munitionsFactory;
     const ratePerSec = effectiveAmmoProduction(world, ai.owner, factoryDef);
     const materialsCost = (factoryDef.input.materials ?? 0) * dtSec;
@@ -1458,24 +1529,274 @@ export function creditVirtualDepotStocks(world: World, ai: AIPlayerState): void 
       ai.virtualAmmoStock = Math.min(cap, (ai.virtualAmmoStock ?? 0) + ratePerSec * dtSec);
     }
   }
-  // Fuel chain: the virtual fuelDepot / navalBase stands in for the
-  // oilRefinery + depot chain behind it.
-  if (completed.includes('fuelDepot') || completed.includes('navalBase')) {
+  // Fuel chain: the live physical fuelDepot — or the legacy virtual
+  // navalBase sea chain (unchanged) — stands in for the oilRefinery +
+  // depot chain behind it.
+  const fuelDepotLive = findLiveForwardDepot(world, ai.owner, 'fuelDepot') !== undefined;
+  const navalBaseVirtual = ai.virtualBuildings.completed.includes('navalBase');
+  if (fuelDepotLive || navalBaseVirtual) {
     const refineryDef = BUILDING_DEFS.oilRefinery;
     const ratePerSec = refineryDef.output.fuel ?? 0;
     const materialsCost = (refineryDef.input.materials ?? 0) * dtSec;
     if (ratePerSec > 0 && player.materials >= materialsCost) {
       player.materials -= materialsCost;
       const caps: number[] = [];
-      if (completed.includes('fuelDepot')) {
+      if (fuelDepotLive) {
         caps.push(effectiveFuelStorage(world, ai.owner, BUILDING_DEFS.fuelDepot));
       }
-      if (completed.includes('navalBase')) {
+      if (navalBaseVirtual) {
         caps.push(effectiveFuelStorage(world, ai.owner, BUILDING_DEFS.navalBase));
       }
       const cap = Math.max(...caps);
       ai.virtualFuelStock = Math.min(cap, (ai.virtualFuelStock ?? 0) + ratePerSec * dtSec);
     }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// C1 (AI physical forward base, 2026-10-02): the military AI owns REAL
+// forward-base buildings once it has established its forward-base
+// coordinates. Commander builds a fuelDepot; general adds an
+// ordnanceDepot; marshal adds a radarStation; cadet/citizen build none.
+// The virtual depot stocks (virtualAmmoStock/virtualFuelStock) are
+// ANCHORED to these buildings: they accrue only while the matching
+// depot is live, complete and operational, and destroying the depot
+// zeros the reserve (creditVirtualDepotStocks).
+// ---------------------------------------------------------------------------
+
+/** C1: the physical forward-base building kinds. Exported for tests. */
+export type ForwardDepotKind = 'fuelDepot' | 'ordnanceDepot' | 'radarStation';
+
+/**
+ * C1: difficulty → physical forward-base roster, in build-priority
+ * order. Cadet/citizen: none — they never establish the physical
+ * logistics hub.
+ */
+export const FORWARD_DEPOT_ROSTER: Record<AIDifficulty, ForwardDepotKind[]> = {
+  cadet: [],
+  citizen: [],
+  commander: ['fuelDepot'],
+  general: ['fuelDepot', 'ordnanceDepot'],
+  marshal: ['fuelDepot', 'ordnanceDepot', 'radarStation'],
+};
+
+/**
+ * Ticks before a destroyed forward depot may be rebuilt (90
+ * sim-seconds): long enough that killing the depot matters, short
+ * enough that the AI recovers inside a session. Deterministic.
+ */
+export const FORWARD_DEPOT_REBUILD_COOLDOWN_TICKS = 2700;
+
+/**
+ * Minimum living army to (re)build a forward depot. The 4-unit forward
+ * detachment the AI sends when it establishes the base supplies the
+ * defense — below that the base can't be held, so don't build.
+ */
+export const FORWARD_DEPOT_MIN_ARMY = 4;
+
+/**
+ * Siting search half-extent, in cells, around the forward-base point.
+ * The scan is center-out and deterministic; a think that finds no
+ * legal site retries next think (bounded retries on unsuitable
+ * terrain — the placePeaceful siting pattern).
+ */
+const FORWARD_DEPOT_SITE_RADIUS = 10;
+
+/**
+ * C1: find a legal site for a forward-depot building near the AI's
+ * forward-base point. Bounded center-out scan over the
+ * (2*R+1)^2-cell square: candidates are ordered by (dist^2, dz, dx)
+ * so the closest legal site wins deterministically, and every
+ * candidate goes through validatePlacement (terrain, overlap,
+ * affordability — the placePeaceful siting contract). `claimed` holds
+ * footprint cells already taken by earlier orders this think.
+ * Returns null when no legal site exists — the caller retries next
+ * think. No RNG.
+ */
+function findForwardDepotSite(
+  world: World,
+  terrain: TerrainData,
+  ai: AIPlayerState,
+  kind: ForwardDepotKind,
+  claimed: Set<number>,
+): { cx: number; cz: number } | null {
+  const def = BUILDING_DEFS[kind];
+  if (!def || !ai.forwardBase) return null;
+  const ccx = worldToCell(ai.forwardBase.x);
+  const ccz = worldToCell(ai.forwardBase.z);
+  const cands: Array<{ cx: number; cz: number; d2: number }> = [];
+  for (let dz = -FORWARD_DEPOT_SITE_RADIUS; dz <= FORWARD_DEPOT_SITE_RADIUS; dz++) {
+    for (let dx = -FORWARD_DEPOT_SITE_RADIUS; dx <= FORWARD_DEPOT_SITE_RADIUS; dx++) {
+      cands.push({ cx: ccx + dx, cz: ccz + dz, d2: dx * dx + dz * dz });
+    }
+  }
+  cands.sort((a, b) => a.d2 - b.d2 || a.cz - b.cz || a.cx - b.cx);
+  for (const c of cands) {
+    let taken = false;
+    for (const cell of footprintCells(c.cx, c.cz, def.footprintW, def.footprintH)) {
+      if (claimed.has(cell)) {
+        taken = true;
+        break;
+      }
+    }
+    if (taken) continue;
+    const err = validatePlacement(terrain, world.city, {
+      kind,
+      owner: ai.owner,
+      cx: c.cx,
+      cz: c.cz,
+      facing: 0,
+    });
+    // placePeaceful precedent: accept on clean validation; affordability
+    // is ledger-guarded by the caller and the command re-validates at
+    // apply (loud rejection, never silent).
+    if (err === null || err.includes('cannot afford')) {
+      return { cx: c.cx, cz: c.cz };
+    }
+  }
+  return null;
+}
+
+/**
+ * C1: the AI's live forward-depot building of a kind — live means
+ * complete (progress >= 1), operational (funded upkeep, not sabotaged)
+ * and standing (hp > 0). This is the exact liveness the virtual-stock
+ * anchor requires (creditVirtualDepotStocks). Exported for tests.
+ */
+export function findLiveForwardDepot(
+  world: World,
+  owner: number,
+  kind: ForwardDepotKind,
+): BuildingRecord | undefined {
+  for (const b of world.city.buildings) {
+    if (b.owner === owner && b.kind === kind && b.progress >= 1 && b.operational && (b.hp ?? 0) > 0) {
+      return b;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * C1: reconcile + build the AI's physical forward-base buildings.
+ * Called from thinkLogistics (military difficulties) BEFORE
+ * creditVirtualDepotStocks, so a destroyed depot's virtual reserve is
+ * zeroed before any accrual runs.
+ *
+ * Per roster kind, in priority order:
+ *  1. Adopt: a live building of the kind owned by the AI that isn't
+ *     tracked yet (ordered last think — commands apply at the next
+ *     tick start — or predating the tracker) is adopted into the
+ *     tracker.
+ *  2. Reconcile: a tracked building that is gone (destroyBuilding
+ *     removes the record) or at 0 hp was destroyed — clear the track,
+ *     stamp destroyedTick, and ZERO the matching virtual reserve (the
+ *     non-negotiable anchor: no depot, no stock).
+ *  3. Build: when nothing is tracked or standing, the rebuild cooldown
+ *     has elapsed, the army meets the floor (the 4-unit detachment
+ *     supplies defense), the age gate is met and the treasury covers
+ *     the cost (ledger-guarded, like placePeaceful), site the building
+ *     and issue placeBuilding through the queue. The kind is purged
+ *     from virtualBuildings.completed as it goes physical — the real
+ *     depot replaces the virtual one, never doubling it.
+ *
+ * No RNG: siting is a deterministic scan, ordering is roster order.
+ * Peaceful worlds never reach here (military defs are locked out there
+ * and the military thinks are gated on !world.peaceful). Exported for
+ * tests.
+ */
+export function thinkForwardDepots(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  terrain: TerrainData | undefined,
+  armySize: number,
+): void {
+  if (world.peaceful === true) return;
+  const roster = FORWARD_DEPOT_ROSTER[ai.difficulty];
+  if (roster.length === 0) return;
+  if (!ai.forwardBase) return;
+  if (!terrain) return; // no siting without terrain — retry next think
+  const player = getPlayer(world.city, ai.owner);
+  if (!player) return;
+  const ledger = thinkLedger(ai);
+  const tracked = (ai.forwardDepots ??= []);
+  // Claim the footprints of tracked live buildings so a new site never
+  // overlaps them (validatePlacement would reject anyway; the claim
+  // just skips the wasted check).
+  const claimed = new Set<number>();
+  for (const e of tracked) {
+    if (e.buildingId === 0) continue;
+    const b = world.city.buildings.find((x) => x.id === e.buildingId);
+    if (!b || (b.hp ?? 0) <= 0) continue;
+    const def = BUILDING_DEFS[e.kind];
+    if (!def) continue;
+    for (const cell of footprintCells(b.cx, b.cz, def.footprintW, def.footprintH)) {
+      claimed.add(cell);
+    }
+  }
+  for (const kind of roster) {
+    let entry = tracked.find((e) => e.kind === kind);
+    if (!entry) {
+      entry = { kind, buildingId: 0, destroyedTick: -1 };
+      tracked.push(entry);
+    }
+    // --- Adopt / reconcile -----------------------------------------
+    if (entry.buildingId === 0) {
+      // Ordered but not yet observed (applies next tick), or standing
+      // from before the tracker existed: adopt it.
+      const existing = world.city.buildings.find(
+        (b) => b.owner === ai.owner && b.kind === kind && (b.hp ?? 0) > 0,
+      );
+      if (existing) entry.buildingId = existing.id;
+    } else {
+      const b = world.city.buildings.find((x) => x.id === entry.buildingId);
+      if (!b || (b.hp ?? 0) <= 0 || b.owner !== ai.owner) {
+        // Destroyed. Stamp the cooldown and zero the reserve — the
+        // non-negotiable anchor (no depot, no stock).
+        entry.buildingId = 0;
+        entry.destroyedTick = world.tick;
+        if (kind === 'ordnanceDepot') ai.virtualAmmoStock = 0;
+        else if (kind === 'fuelDepot') ai.virtualFuelStock = 0;
+        // (radarStation anchors no virtual stock.)
+      }
+    }
+    if (entry.buildingId !== 0) continue; // held or building — nothing to do
+    // --- Build gates -------------------------------------------------
+    if (
+      entry.destroyedTick >= 0 &&
+      world.tick - entry.destroyedTick < FORWARD_DEPOT_REBUILD_COOLDOWN_TICKS
+    ) {
+      continue;
+    }
+    if (armySize < FORWARD_DEPOT_MIN_ARMY) continue;
+    const def = BUILDING_DEFS[kind];
+    if (!def) continue;
+    // The placeBuilding command enforces the age gate at validate; the
+    // pre-check avoids futile orders (the thinkVirtualDepot precedent).
+    if (!isBuildingAgeMet(getAgeState(world, ai.owner).age, def.minAge)) continue;
+    if (player.funds - ledger.funds < def.costFunds) continue;
+    if (player.materials - ledger.materials < def.costMaterials) continue;
+    const site = findForwardDepotSite(world, terrain, ai, kind, claimed);
+    if (!site) continue; // unsuitable terrain — retry next think
+    const ok = issue(world, queue, 'placeBuilding', {
+      kind,
+      owner: ai.owner,
+      cx: site.cx,
+      cz: site.cz,
+      facing: 0,
+    });
+    if (!ok) continue; // rejected at enqueue — retry next think
+    ledger.funds += def.costFunds;
+    ledger.materials += def.costMaterials;
+    for (const cell of footprintCells(site.cx, site.cz, def.footprintW, def.footprintH)) {
+      claimed.add(cell);
+    }
+    // The physical depot replaces the virtual one: purge the kind from
+    // the virtual completed list so creditVirtualEconomy and the stock
+    // credit never count it twice (no double-taxing).
+    const vc = ai.virtualBuildings.completed;
+    const vi = vc.indexOf(kind);
+    if (vi >= 0) vc.splice(vi, 1);
   }
 }
 
@@ -1487,6 +1808,11 @@ export function creditVirtualDepotStocks(world: World, ai: AIPlayerState): void 
  * flight, when the def is absent, or when the age gate isn't met.
  */
 function thinkVirtualDepot(world: World, ai: AIPlayerState, kind: BuildingKind): void {
+  // C1 (AI physical forward base, 2026-10-02): the land-depot kinds are
+  // retired from the virtual path — commander+ builds them as physical
+  // forward-base buildings (thinkForwardDepots), and cadet/citizen build
+  // no depots at all. The virtual navalBase sea chain is unchanged.
+  if (kind === 'fuelDepot' || kind === 'ordnanceDepot') return;
   if (hasProductionBuilding(world, ai.owner, kind)) return;
   const vb = ai.virtualBuildings;
   if (vb.constructing) return;
@@ -1780,9 +2106,9 @@ function thinkNavalSupply(world: World, queue: CommandQueue, ai: AIPlayerState):
  *   peaceful: civilian AI trader rival is a later feature"). The think
  *   function that will actually run civilian transit belongs to that
  *   future rival, not to this one.
- * - The AI owns no physical buildings, roads or rails in 0.1 Alpha
- *   (all virtual), so it cannot lay the networks civilian transport
- *   needs. railStation / busDepot / ferryTerminal / marina stay off
+ * - The AI owns no physical buildings (C1 forward depots excepted),
+ *   roads or rails in 0.1 Alpha (all virtual), so it cannot lay the
+ *   networks civilian transport needs. railStation / busDepot / ferryTerminal / marina stay off
  *   CONSTRUCTION_PRIORITY for the same reason — and so do the seven
  *   tiered transit stops/stations (busStop, taxiStand, tramStop,
  *   ferryPier, neighborhoodStation, centralStation,
@@ -1827,26 +2153,31 @@ export function thinkRoadClasses(world: World, ai: AIPlayerState): void {
  * thinkCommander (general/marshal inherit); cadet never calls it —
  * cadet fields rifles only, which track neither fuel nor ammo.
  */
-function thinkLogistics(world: World, queue: CommandQueue, ai: AIPlayerState): void {
+function thinkLogistics(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  terrain?: TerrainData,
+): void {
   let ammoConsumers = 0;
   let fuelConsumers = 0;
+  let n = 0;
   for (const u of world.units) {
     if (u.owner !== ai.owner || u.hp <= 0) continue;
+    n++;
     const def = UNIT_DEFS[u.kind as UnitKind];
     if (!def) continue;
     if ((def.ammoCapacity ?? 0) > 0) ammoConsumers++;
     if (def.fuelType === 'fossil' && (def.fuelCapacity ?? 0) > 0) fuelConsumers++;
   }
-  // Virtual depot construction (one-at-a-time path, shared with
-  // production buildings). ordnanceDepot is industry-gated; fuelDepot is
-  // foundation — the age check inside thinkVirtualDepot handles it.
-  if (ammoConsumers >= LOGISTICS_CONSUMER_THRESHOLD) {
-    thinkVirtualDepot(world, ai, 'ordnanceDepot');
-  }
-  if (fuelConsumers >= LOGISTICS_CONSUMER_THRESHOLD) {
-    thinkVirtualDepot(world, ai, 'fuelDepot');
-  }
-  // Completed virtual depots yield abstract stocks each think, at
+  // C1 (AI physical forward base): reconcile + build the real
+  // forward-base depots BEFORE the stock credit, so a destroyed depot's
+  // reserve is zeroed before any accrual runs. The retired virtual
+  // land-depot path no longer serves fuelDepot/ordnanceDepot — the
+  // physical buildings are the single source of truth (no
+  // double-building, no double-crediting).
+  thinkForwardDepots(world, queue, ai, terrain, n);
+  // Completed physical depots yield abstract stocks each think, at
   // honest production economics (creditVirtualDepotStocks): physical
   // rates, physical input costs, storage-capped — never from nothing.
   creditVirtualDepotStocks(world, ai);
@@ -1857,14 +2188,17 @@ function thinkLogistics(world: World, queue: CommandQueue, ai: AIPlayerState): v
 
 /**
  * Per-difficulty virtual tax stipend factors (R1 final-review C2,
- * 2026-10-01). The Classic AI owns no physical buildings, so every
- * funds-income path in economy.ts is closed to it: runTaxes and
- * runHarvest iterate physical buildings, trade routes need physical
- * commercial buildings, kill bounties don't exist. Without a stipend
- * the age ladder is arithmetically unreachable (industry costs 6000
- * funds against the 4000 starting-funds lifetime budget — the Phase 9
- * soak's "marshals reached connectivity; industry never reached").
- * Cadet keeps 0: it builds nothing and spends nothing, by design.
+ * 2026-10-01). The Classic AI's funds-income paths in economy.ts are
+ * effectively closed to it even under C1 (2026-10-02): its physical
+ * forward-base buildings sit in UTILITY_ZONE (runTaxes skips them),
+ * none has a harvest (runHarvest), and the marshal's radarStation earns
+ * only a negligible research trickle via runProduction. Trade routes
+ * need physical commercial buildings; kill bounties don't exist.
+ * Without a stipend the age ladder is arithmetically unreachable
+ * (industry costs 6000 funds against the 4000 starting-funds lifetime
+ * budget — the Phase 9 soak's "marshals reached connectivity; industry
+ * never reached"). Cadet keeps 0: it builds nothing and spends nothing,
+ * by design.
  */
 const VIRTUAL_TAX_FACTOR: Record<AIDifficulty, number> = {
   cadet: 0,
@@ -2359,9 +2693,9 @@ function thinkResearch(world: World, queue: CommandQueue, ai: AIPlayerState, cou
 // ---------------------------------------------------------------------------
 // Grand-expansion Phase 7: AI intel play (spies, sabotage, counter-intel).
 //
-// The AI owns no physical buildings in 0.1 Alpha, so its intel
-// infrastructure is virtual: a second one-at-a-time construction queue
-// (`ai.intel.constructing`) that runs PARALLEL to the production queue —
+// The AI's intel infrastructure is virtual (the C1 forward depots are
+// logistics/sensor buildings, not intel ones): a second one-at-a-time
+// construction queue (`ai.intel.constructing`) that runs PARALLEL to the production queue —
 // intel construction never stalls the war-production pipeline, and the
 // production queue never stalls intel. Completed virtual intel kinds
 // join `virtualBuildings.completed` (so `hasProductionBuilding`
@@ -3420,9 +3754,9 @@ function thinkCommander(
   thinkUpkeep(world, ai, visible);
   thinkResearch(world, queue, ai, counts);
 
-  // Phase 3 logistics (workstream 3): virtual depots, truck ratios,
-  // abstract resupply, ammo-dry retreats.
-  thinkLogistics(world, queue, ai);
+  // Phase 3 logistics (workstream 3): physical forward depots (C1),
+  // truck ratios, abstract resupply, ammo-dry retreats.
+  thinkLogistics(world, queue, ai, terrain);
 
   // Phase 4 transport (S7): civilian-transport AI hook — a documented
   // no-op in 0.1 Alpha (see thinkCivilianTransport).
@@ -4963,11 +5297,24 @@ export function encodeAIState(ai: AIState): unknown {
       navalProbeIndex: p.navalProbeIndex ?? 0,
       navalWater: p.navalWater ? { x: p.navalWater.x, z: p.navalWater.z } : null,
       seenSubmarine: p.seenSubmarine ?? false,
-      seenBuildingIds: p.seenBuildingIds ?? [],
+      // A2 (2026-10-01): the seen-building latch. The array is mutated
+      // in place by getKnownEnemyBuildings (latched.push), so it MUST be
+      // copied here — capturing the reference would alias the live AI
+      // state, and a snapshot taken mid-game would silently absorb
+      // post-snapshot sightings (caught by the phase9 save/load soak).
+      seenBuildingIds: [...(p.seenBuildingIds ?? [])],
       // Phase 3 logistics (workstream 3): virtual depot stocks. ?? 0 so
       // pre-logistics snapshots decode to empty — no version bump (AD9).
       virtualAmmoStock: p.virtualAmmoStock ?? 0,
       virtualFuelStock: p.virtualFuelStock ?? 0,
+      // C1 (AI physical forward base, 2026-10-02): the tracked
+      // forward-depot buildings. Missing (pre-C1 snapshots) decodes
+      // to [] — no version bump (AD9).
+      forwardDepots: (p.forwardDepots ?? []).map((e) => ({
+        kind: e.kind,
+        buildingId: e.buildingId,
+        destroyedTick: e.destroyedTick,
+      })),
       // Grand-expansion Phase 7 (AI intel play): the virtual intel
       // queue. Missing (pre-Phase-6 snapshots) decodes to the default —
       // no version bump (AD9).
@@ -5016,6 +5363,13 @@ export function decodeAIState(data: unknown): AIState {
       seenBuildingIds?: number[];
       virtualAmmoStock?: number;
       virtualFuelStock?: number;
+      // C1 (AI physical forward base, 2026-10-02): pre-C1 snapshots
+      // carry no forward-depot tracker — decodes to [] (AD9).
+      forwardDepots?: Array<{
+        kind: 'fuelDepot' | 'ordnanceDepot' | 'radarStation';
+        buildingId?: number;
+        destroyedTick?: number;
+      }>;
       // Final-review R2-B (AI siege doctrine): pre-siege snapshots
       // carry neither field (AD9).
       siegeQuietThinks?: number;
@@ -5054,11 +5408,21 @@ export function decodeAIState(data: unknown): AIState {
       navalProbeIndex: p.navalProbeIndex ?? 0,
       navalWater: p.navalWater ? { x: p.navalWater.x, z: p.navalWater.z } : null,
       seenSubmarine: p.seenSubmarine ?? false,
-      seenBuildingIds: p.seenBuildingIds ?? [],
+      // A2 (2026-10-01): copy the latch — restoreSnapshot promises the
+      // result shares no references with the snapshot, and a restored
+      // world that keeps ticking mutates this array in place.
+      seenBuildingIds: [...(p.seenBuildingIds ?? [])],
       // Phase 3 logistics (workstream 3): ?? 0 keeps pre-logistics saves
       // loading with empty virtual stocks — no version bump (AD9).
       virtualAmmoStock: p.virtualAmmoStock ?? 0,
       virtualFuelStock: p.virtualFuelStock ?? 0,
+      // C1 (AI physical forward base): pre-C1 saves have no tracker —
+      // decode to [] (no version bump, AD9).
+      forwardDepots: (p.forwardDepots ?? []).map((e) => ({
+        kind: e.kind,
+        buildingId: e.buildingId ?? 0,
+        destroyedTick: e.destroyedTick ?? -1,
+      })),
       // Grand-expansion Phase 7 (AI intel play): missing (pre-Phase-6
       // snapshots) decodes to the default — no version bump (AD9).
       intel: decodeAIIntelState(p.intel),
