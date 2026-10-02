@@ -59,6 +59,7 @@ import {
   type AIDifficulty,
 } from '../src/sim/ai';
 import { hasUpgrade } from '../src/sim/upgrades';
+import { variantBaseOf } from '../src/sim/variants';
 import { digestWorld } from '../src/sim/digest';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
 import {
@@ -481,7 +482,15 @@ describe('expanded counters', () => {
     // frigates (sea units) launch from the probed water.
     expect(ai.navalStatus).toBe('coastal');
     expect(ai.seenSubmarine).toBe(true);
-    expect(ai.builtCounts['frigate'] ?? 0).toBeGreaterThan(0);
+    // B6 (commander age advancement) + M15 (variant substitution): the
+    // commander advances to ascendance during the run and the counter
+    // then trains the best frigate available (frigateMk3), not the base
+    // kind — builtCounts is keyed by the trained kind, so count the
+    // whole frigate family via variantBaseOf.
+    const frigatesBuilt = Object.entries(ai.builtCounts)
+      .filter(([kind]) => variantBaseOf(kind as UnitKind) === 'frigate')
+      .reduce((sum, [, n]) => sum + n, 0);
+    expect(frigatesBuilt).toBeGreaterThan(0);
   });
 
   it('commander answers artillery parks with spectres', () => {
