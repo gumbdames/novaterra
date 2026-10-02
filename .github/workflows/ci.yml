@@ -85,7 +85,9 @@ jobs:
       - name: Tests (vitest, flake-aware retry)
         timeout-minutes: 45
         run: |
-          VITEST_COUNT_FLOOR=2721
+          # Non-soak suite size of the last green run: 2722 total - 35
+          # soak = 2687. Bump in the same commit whenever tests are added.
+          VITEST_COUNT_FLOOR=2687
           for attempt in 1 2 3; do
             echo "=== vitest attempt $attempt/3 ==="
             set +e
@@ -155,8 +157,9 @@ jobs:
       #
       # Per-file timing budgets (measured locally 2026-10-02 on a loaded
       # host, with ~2× headroom baked in; rerun `time npx vitest run
-      # tests/*-soak.test.ts --reporter=verbose` and update when soaks
-      # change). A file blowing past its budget is a perf regression to
+      # tests/*-soak.test.ts --reporter=verbose` (unquoted — bash expands
+      # the glob; a quoted glob reaches vitest as a literal filter and
+      # matches nothing) and update when soaks change. A file blowing past its budget is a perf regression to
       # investigate, not an automatic red — but it should stay visible
       # in review:
       #   sim.ai-airnaval-soak.test.ts     ~10 s   budget 20 s
@@ -174,7 +177,11 @@ jobs:
           for attempt in 1 2 3; do
             echo "=== soak vitest attempt $attempt/3 ==="
             set +e
-            output=$(npx vitest run --maxWorkers=2 --reporter=verbose --slowTestThreshold=60000 "tests/*-soak.test.ts" 2>&1)
+            output=$(npx vitest run --maxWorkers=2 --reporter=verbose --slowTestThreshold=60000 \
+              tests/sim.ai-airnaval-soak.test.ts tests/sim.ai-intel-soak.test.ts \
+              tests/sim.ai-peaceful-soak.test.ts tests/sim.ai-soak.test.ts \
+              tests/sim.logistics-ai-soak.test.ts tests/sim.phase9-long-soak.test.ts \
+              tests/sim.seatrade-ai-soak.test.ts tests/sim.veterancy-soak.test.ts 2>&1)
             status=$?
             set -e
             echo "$output"
