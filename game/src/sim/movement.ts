@@ -54,6 +54,7 @@
 import type { World } from './world';
 import type { TerrainData } from './terrain';
 import { heightAt, isWater } from './terrain';
+import { dist, dist2 } from './deterministic';
 import {
   CITY_GRID_CELLS,
   MAP_HALF_SIZE,
@@ -209,14 +210,14 @@ function arriveUnit(unit: UnitRecord): void {
 function moveAirUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: UnitRecord, dt: number): void {
   const dxFinal = unit.arriveX - unit.x;
   const dzFinal = unit.arriveZ - unit.z;
-  const distFinal = Math.hypot(dxFinal, dzFinal);
+  const distFinal = dist(dxFinal, dzFinal);
   if (distFinal < ARRIVAL_RADIUS) {
     arriveUnit(unit);
     return;
   }
   let vx = dxFinal;
   let vz = dzFinal;
-  const dist = Math.hypot(vx, vz);
+  const vmag0 = dist(vx, vz);
   // Phase 3 logistics (AD3): degraded cruise speed — ×(0.7+0.3×level),
   // the speed half of the single supply curve. Also caps separation
   // pushes below, so a dry unit is slower, period. Exempt kinds: ×1.0.
@@ -226,9 +227,9 @@ function moveAirUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: 
     const factor = Math.max(MIN_SLOW_FACTOR, distFinal / SLOW_RADIUS);
     speed *= factor;
   }
-  if (dist > 1e-9) {
-    vx = (vx / dist) * speed;
-    vz = (vz / dist) * speed;
+  if (vmag0 > 1e-9) {
+    vx = (vx / vmag0) * speed;
+    vz = (vz / vmag0) * speed;
   } else {
     vx = 0;
     vz = 0;
@@ -246,7 +247,7 @@ function moveAirUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: 
       if (!other || other.domain !== unit.domain) continue;
       const ox = unit.x - other.x;
       const oz = unit.z - other.z;
-      const d = Math.hypot(ox, oz);
+      const d = dist(ox, oz);
       if (d >= SEPARATION_RADIUS) continue;
       if (d < 1e-9) {
         const dir = unit.id < other.id ? -1 : 1;
@@ -260,7 +261,7 @@ function moveAirUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: 
   }
   vx += sx;
   vz += sz;
-  const vmag = Math.hypot(vx, vz);
+  const vmag = dist(vx, vz);
   if (vmag > ratedSpeed && vmag > 1e-9) {
     vx = (vx / vmag) * ratedSpeed;
     vz = (vz / vmag) * ratedSpeed;
@@ -286,7 +287,7 @@ function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: Uni
   // 1. Arrival backstop: close enough to the unit's own slot.
   const dxFinal = unit.arriveX - unit.x;
   const dzFinal = unit.arriveZ - unit.z;
-  const distFinal = Math.hypot(dxFinal, dzFinal);
+  const distFinal = dist(dxFinal, dzFinal);
   if (distFinal < ARRIVAL_RADIUS) {
     arriveUnit(unit);
     return;
@@ -307,7 +308,7 @@ function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: Uni
   if (unit.path.length > 0) {
     const dxw = target.x - unit.x;
     const dzw = target.z - unit.z;
-    if (Math.hypot(dxw, dzw) < WAYPOINT_REACH) {
+    if (dist2(dxw, dzw) < WAYPOINT_REACH * WAYPOINT_REACH) {
       unit.pathAt += 1;
       if (unit.pathAt >= unit.path.length) {
         arriveUnit(unit);
@@ -321,7 +322,7 @@ function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: Uni
   // 4. Seek velocity with arrival slowdown.
   let vx = target.x - unit.x;
   let vz = target.z - unit.z;
-  const dist = Math.hypot(vx, vz);
+  const vmag0 = dist(vx, vz);
   // Phase 3 logistics (AD3): degraded cruise speed — ×(0.7+0.3×level),
   // the speed half of the single supply curve (see moveAirUnitTick).
   let ratedSpeed = unit.speed * supplySpeedFactor(UNIT_DEFS[unit.kind as UnitKind], unit);
@@ -339,9 +340,9 @@ function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: Uni
     const factor = Math.max(MIN_SLOW_FACTOR, distFinal / SLOW_RADIUS);
     speed *= factor;
   }
-  if (dist > 1e-9) {
-    vx = (vx / dist) * speed;
-    vz = (vz / dist) * speed;
+  if (vmag0 > 1e-9) {
+    vx = (vx / vmag0) * speed;
+    vz = (vz / vmag0) * speed;
   } else {
     vx = 0;
     vz = 0;
@@ -365,7 +366,7 @@ function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: Uni
       if (!other || other.domain !== unit.domain) continue;
       const ox = unit.x - other.x;
       const oz = unit.z - other.z;
-      const d = Math.hypot(ox, oz);
+      const d = dist(ox, oz);
       if (d >= SEPARATION_RADIUS) continue;
       if (d < 1e-9) {
         // Exact overlap: no direction exists to normalize. Push apart
@@ -386,7 +387,7 @@ function moveUnitTick(world: World, t: TerrainData, hash: SpatialHash, unit: Uni
   vz += sz;
 
   // 6. Clamp to unit speed and integrate; water/map guard.
-  const vmag = Math.hypot(vx, vz);
+  const vmag = dist(vx, vz);
   if (vmag > ratedSpeed && vmag > 1e-9) {
     vx = (vx / vmag) * ratedSpeed;
     vz = (vz / vmag) * ratedSpeed;
@@ -783,8 +784,8 @@ export function orderMoveTo(world: World, unit: UnitRecord, x: number, z: number
   unit.arriveZ = z;
   unit.failReason = null;
   if (unit.domain === 'air') {
-    const d = Math.hypot(x - unit.x, z - unit.z);
-    unit.state = d < ARRIVAL_RADIUS ? 'idle' : 'moving';
+    const arrived = dist2(x - unit.x, z - unit.z) < ARRIVAL_RADIUS * ARRIVAL_RADIUS;
+    unit.state = arrived ? 'idle' : 'moving';
     return;
   }
   // Phase 4 (S7): rail-bound units (trains) never touch A*/flow fields —
@@ -822,10 +823,11 @@ export function orderTrainMoveTo(world: World, unit: UnitRecord, x: number, z: n
   if (
     station === undefined ||
     def === undefined ||
-    Math.hypot(
+    dist2(
       cellCenterWorld(station.cx + (def.footprintW - 1) / 2) - x,
       cellCenterWorld(station.cz + (def.footprintH - 1) / 2) - z,
-    ) > RAIL_STATION_SNAP_RADIUS
+    ) >
+      RAIL_STATION_SNAP_RADIUS * RAIL_STATION_SNAP_RADIUS
   ) {
     failUnitOrder(unit, 'no rail station near destination');
     return;
@@ -1033,8 +1035,8 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
         unit.arriveZ = z;
         unit.failReason = null;
         if (unit.domain === 'air') {
-          const d = Math.hypot(x - unit.x, z - unit.z);
-          if (d < ARRIVAL_RADIUS) {
+          const arrived = dist2(x - unit.x, z - unit.z) < ARRIVAL_RADIUS * ARRIVAL_RADIUS;
+          if (arrived) {
             unit.state = 'idle'; // already there
             airAtDestCount += 1;
           } else {
@@ -1042,8 +1044,8 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
             airWaiting.push(unit);
           }
         } else if (unit.domain === 'sea') {
-          const d = Math.hypot(x - unit.x, z - unit.z);
-          if (d < ARRIVAL_RADIUS) {
+          const arrived = dist2(x - unit.x, z - unit.z) < ARRIVAL_RADIUS * ARRIVAL_RADIUS;
+          if (arrived) {
             unit.state = 'idle'; // already there
             seaAtDestCount += 1;
           } else {

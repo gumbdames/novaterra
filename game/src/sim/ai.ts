@@ -167,6 +167,7 @@ import type { World } from './world';
 import type { CommandQueue } from './commands';
 import type { SimSystem } from './tick';
 import { TICK_HZ } from './tick';
+import { detSin, detCos } from './deterministic';
 import { findUnit, isSheltered, UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
 import { chooseVariant, variantBaseOf } from './variants';
 import { rngBank } from './world';
@@ -3208,7 +3209,7 @@ function probePoint(ai: AIPlayerState, i: number): { x: number; z: number } {
   // B27: no `!` — the fallback is the last radius (always defined).
   const r = PROBE_RADII[Math.floor(i / PROBE_DIRS)] ?? PROBE_RADII[PROBE_RADII.length - 1] ?? 220;
   const a = ((i % PROBE_DIRS) / PROBE_DIRS) * Math.PI * 2;
-  return { x: ai.baseX + Math.round(Math.cos(a) * r), z: ai.baseZ + Math.round(Math.sin(a) * r) };
+  return { x: ai.baseX + Math.round(detCos(a) * r), z: ai.baseZ + Math.round(detSin(a) * r) };
 }
 
 /**
@@ -3892,8 +3893,8 @@ function thinkCommander(
       fz = (ai.baseZ + nearest.z) / 2;
     } else {
       const a = ai.personality.expansionAngle;
-      fx = ai.baseX + Math.round(Math.cos(a) * 80);
-      fz = ai.baseZ + Math.round(Math.sin(a) * 80);
+      fx = ai.baseX + Math.round(detCos(a) * 80);
+      fz = ai.baseZ + Math.round(detSin(a) * 80);
     }
     // Phase 9 balance pass (soak finding 6.2): the midpoint can be
     // water (e.g. a river between the bases). A water forward base

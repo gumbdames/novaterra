@@ -24,6 +24,7 @@
 import { BUILDING_DEFS, buildingCenterWorld, type BuildingKind } from './city';
 import { UNIT_DEFS, type UnitKind, type UnitRecord } from './units';
 import { vetAdjustedMaxHp } from './veterancy';
+import { dist2 } from './deterministic';
 import type { World } from './world';
 
 /** Drydock aura radius, world units (heal-aura scale: medic 12, repairShip 15). */
@@ -87,8 +88,8 @@ export function runShipyardRepair(world: World, dt: number): void {
     const unitMilitary = !!udef.military;
     for (const d of docks) {
       if (d.owner !== u.owner || d.military !== unitMilitary) continue;
-      const dist = Math.hypot(u.x - d.x, u.z - d.z);
-      if (dist <= SHIPYARD_REPAIR_RADIUS) {
+      const inDrydockRange = dist2(u.x - d.x, u.z - d.z) <= SHIPYARD_REPAIR_RADIUS * SHIPYARD_REPAIR_RADIUS;
+      if (inDrydockRange) {
         u.hp = Math.min(maxHp, u.hp + amount);
         break; // one drydock is enough; no stacking
       }
@@ -108,7 +109,7 @@ export function isShipUnderRepair(world: World, unit: UnitRecord): boolean {
   const unitMilitary = !!udef.military;
   for (const d of liveDrydocks(world)) {
     if (d.owner !== unit.owner || d.military !== unitMilitary) continue;
-    if (Math.hypot(unit.x - d.x, unit.z - d.z) <= SHIPYARD_REPAIR_RADIUS) return true;
+    if (dist2(unit.x - d.x, unit.z - d.z) <= SHIPYARD_REPAIR_RADIUS * SHIPYARD_REPAIR_RADIUS) return true;
   }
   return false;
 }

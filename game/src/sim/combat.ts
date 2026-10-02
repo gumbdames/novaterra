@@ -68,6 +68,7 @@
 import type { World } from './world';
 import type { SimSystem } from './tick';
 import { TICK_DT, TICK_HZ } from './tick';
+import { dist, dist2 } from './deterministic';
 import type { CommandQueue } from './commands';
 // Phase 3 logistics: death releases the unit's in-flight depot
 // reservation (value import — the release logic lives in commands.ts).
@@ -269,8 +270,8 @@ export function damageMultiplier(
   for (const src of auraSources(world)) {
     if (src.owner !== attacker.owner || src.kind === attacker.kind) continue;
     if (src.domain !== undefined && attacker.domain !== src.domain) continue;
-    const d = Math.hypot(src.x - attacker.x, src.z - attacker.z);
-    if (d <= src.radius) {
+    const d2 = dist2(src.x - attacker.x, src.z - attacker.z);
+    if (d2 <= src.radius * src.radius) {
       mult *= 1 + src.bonus;
       break;
     }
@@ -390,9 +391,9 @@ function targetGridFor(world: World): Map<number, UnitRecord[]> {
  * nearest-with-id-tiebreak is an order-independent argmin, so it
  * reproduces the legacy full scan's result exactly regardless of
  * visit order. Every legacy filter (sheltered, stealth/detection,
- * domain, exact range via Math.hypot, min range) is applied per
+ * domain, exact range via dist() (deterministic.ts), min range) is applied per
  * candidate, unchanged — the squared-distance pre-check only skips
- * candidates Math.hypot would also reject.
+ * candidates dist() would also reject.
  */
 export function acquireTarget(world: World, unit: UnitRecord, def: UnitDef): UnitRecord | undefined {
   if (def.damage <= 0 || def.targets === 'none') return undefined;
@@ -443,7 +444,7 @@ export function acquireTarget(world: World, unit: UnitRecord, def: UnitDef): Uni
         // side cannot see (the `isDetected` stealth contract in intel.ts).
         if (!isDetected(other, unit.owner, world)) continue;
         if (!canTarget(def, other)) continue;
-        const d = Math.hypot(dx, dz);
+        const d = dist(dx, dz);
         if (d > range || d < def.minRange) continue;
         if (d < bestDist - 1e-9 || (Math.abs(d - bestDist) < 1e-9 && other.id < (best?.id ?? Infinity))) {
           best = other;
@@ -570,7 +571,7 @@ export function siegeStandCell(
       const cell = cellIndex(cx, cz);
       const x = cellCenterWorld(cx);
       const z = cellCenterWorld(cz);
-      const d = Math.hypot(x - ux, z - uz);
+      const d = dist(x - ux, z - uz);
       if (d < bestD - 1e-9 || (Math.abs(d - bestD) <= 1e-9 && cell < best)) {
         best = cell;
         bestD = d;
@@ -850,7 +851,7 @@ function applyNavalMineDetonations(world: World): void {
     for (const u of world.units) {
       if (u.hp <= 0 || u.owner === mine.owner) continue;
       if (u.domain !== 'sea' || u.kind === 'navalMine') continue;
-      const d = Math.hypot(u.x - mine.x, u.z - mine.z);
+      const d = dist(u.x - mine.x, u.z - mine.z);
       if (d <= nearestDist && (nearest === undefined || d < nearestDist || u.id < nearest.id)) {
         nearest = u;
         nearestDist = d;
@@ -889,8 +890,8 @@ function applyHealAuras(world: World): void {
       // and medics can fill the bonus hp too.
       const maxHp = vetAdjustedMaxHp(world, u);
       if (u.hp >= maxHp) continue;
-      const d = Math.hypot(u.x - medic.x, u.z - medic.z);
-      if (d <= radius) {
+      const inHealRange = dist2(u.x - medic.x, u.z - medic.z) <= radius * radius;
+      if (inHealRange) {
         u.hp = Math.min(maxHp, u.hp + amount);
       }
     }
@@ -1043,7 +1044,7 @@ export function createCombatSystem(t?: TerrainData): SimSystem {
         aimX = foe.x;
         aimZ = foe.z;
       }
-      const d = Math.hypot(aimX - u.x, aimZ - u.z);
+      const d = dist(aimX - u.x, aimZ - u.z);
       const range = effectiveRange(world, u.owner, def);
       const canFire = siege ? canTargetBuilding(def) : canTarget(def, foe);
       if (d <= range && d >= def.minRange && canFire) {
@@ -1066,14 +1067,14 @@ export function createCombatSystem(t?: TerrainData): SimSystem {
           // Deterministic: pure function of unit/target positions.
           const dx = u.x - aimX;
           const dz = u.z - aimZ;
-          const dist = Math.hypot(dx, dz);
-          if (dist > 1e-9) {
+          const dd = dist(dx, dz);
+          if (dd > 1e-9) {
             const backOff = def.minRange - d + 2; // +2 buffer to clear minRange
             const m = MAP_HALF_SIZE - 0.01;
-            const bx = Math.min(Math.max(u.x + (dx / dist) * backOff, -m), m);
-            const bz = Math.min(Math.max(u.z + (dz / dist) * backOff, -m), m);
-            const destDist = Math.hypot(bx - u.destX, bz - u.destZ);
-            if (u.state === 'idle' || destDist > 10) {
+            const bx = Math.min(Math.max(u.x + (dx / dd) * backOff, -m), m);
+            const bz = Math.min(Math.max(u.z + (dz / dd) * backOff, -m), m);
+            const destDist2 = dist2(bx - u.destX, bz - u.destZ);
+            if (u.state === 'idle' || destDist2 > 100) {
               orderMoveTo(world, u, bx, bz);
             }
           }
@@ -1088,8 +1089,8 @@ export function createCombatSystem(t?: TerrainData): SimSystem {
           const stand = siege && t ? siegeStandCell(t, world.city, siege, u.x, u.z) : null;
           const tx = stand ? stand.x : aimX;
           const tz = stand ? stand.z : aimZ;
-          const destDist = Math.hypot(tx - u.destX, tz - u.destZ);
-          if (u.state === 'idle' || destDist > 10) {
+          const destDist2 = dist2(tx - u.destX, tz - u.destZ);
+          if (u.state === 'idle' || destDist2 > 100) {
             orderMoveTo(world, u, tx, tz);
           }
         }

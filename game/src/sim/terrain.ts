@@ -30,9 +30,9 @@
  * Determinism (the determinism contract, see sim/AGENTS.md):
  *  - All randomness flows through `rng.ts` stream `'terrain'`, drawn in a
  *    fixed order (noise lattice octave by octave, then river/lake params).
- *  - `Math.sin` shapes the river winding and `Math.hypot` the lake disc;
- *    both are deterministic in one engine build (same-machine bar, D5).
- *    They are documented here as the call sites.
+ *  - `detSin` shapes the river winding and `dist` the lake disc (both from
+ *    `deterministic.ts`: cross-engine deterministic, no longer just the
+ *    same-machine bar). They are documented here as the call sites.
  *  - The percentile sort uses an explicit numeric comparator; lattice
  *    lookups are bounds-clamped, never order-dependent.
  *
@@ -51,6 +51,7 @@
 import { createRngBank } from './rng';
 import type { RngBank } from './rng';
 import { fnv1a32 } from './rng';
+import { detSin, detCos, dist } from './deterministic';
 
 /** Locked Meridian Plains constants (see docs/research/game-design.md §A4). */
 export const MERIDIAN_PLAINS = {
@@ -215,10 +216,10 @@ function drawLattice(bank: RngBank, cells: number): number[] {
   return out;
 }
 
-/** River centerline x as a function of world z (call-site doc: Math.sin). */
+/** River centerline x as a function of world z (detSin: deterministic.ts). */
 function riverCenterX(z: number, p1: number, p2: number): number {
-  // Deterministic in one engine build (D5); shapes the S-curves.
-  return 60 * Math.sin(z * 0.008 + p1) + 25 * Math.sin(z * 0.021 + p2);
+  // Cross-engine deterministic (detSin); shapes the S-curves.
+  return 60 * detSin(z * 0.008 + p1) + 25 * detSin(z * 0.021 + p2);
 }
 
 /** Smooth carve profile: 1 at center, 0 at radius. */
@@ -251,8 +252,8 @@ function findLand(
     const steps = ring === 0 ? 1 : 16;
     for (let k = 0; k < steps; k++) {
       const a = (k / steps) * Math.PI * 2;
-      const x = cx + Math.cos(a) * radius;
-      const z = cz + Math.sin(a) * radius;
+      const x = cx + detCos(a) * radius;
+      const z = cz + detSin(a) * radius;
       if (at(x, z) >= waterLevel + 0.5) {
         return { x, z };
       }
@@ -322,8 +323,8 @@ export function generateTerrain(seed: number, preset?: MapPreset): TerrainData {
     const z = vertexCoord(layout, vz);
     for (let vx = 0; vx < V; vx++) {
       const x = vertexCoord(layout, vx);
-      // Call-site doc: Math.hypot is deterministic in one engine build (D5).
-      const r = Math.hypot(x - lx, z - lz);
+      // dist(): cross-engine deterministic (deterministic.ts).
+      const r = dist(x - lx, z - lz);
       const idx = vz * V + vx;
       const h = heights[idx] as number;
       heights[idx] = h - 14 * carveProfile(r, 34);
@@ -351,7 +352,7 @@ export function generateTerrain(seed: number, preset?: MapPreset): TerrainData {
         const vx = cvx + dx;
         const vz = cvz + dz;
         if (vx < 0 || vz < 0 || vx >= V || vz >= V) continue;
-        const d = Math.hypot(dx * P.spacing, dz * P.spacing);
+        const d = dist(dx * P.spacing, dz * P.spacing);
         if (d > R) continue;
         const idx = vz * V + vx;
         const h = heights[idx] as number;

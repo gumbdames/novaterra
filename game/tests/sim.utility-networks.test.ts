@@ -441,10 +441,12 @@ describe('map-edge trade', () => {
 describe('daylight and wind', () => {
   it('daylightFactor follows the 240-second day', () => {
     expect(daylightFactor(0)).toBe(0); // dawn
-    expect(daylightFactor(1800)).toBe(1); // noon (tick 1800 = 60 s)
+    // Determinism hardening (2026-10-02): detSin peaks at 1 ± 7e-10 rather
+    // than exactly 1 — rebaselined from toBe(1); gameplay-identical.
+    expect(daylightFactor(1800)).toBeCloseTo(1, 8); // noon (tick 1800 = 60 s)
     expect(daylightFactor(3600)).toBeCloseTo(0, 12); // dusk
     expect(daylightFactor(5400)).toBe(0); // midnight
-    expect(daylightFactor(1800 + 30 * 240)).toBe(1); // next noon
+    expect(daylightFactor(1800 + 30 * 240)).toBeCloseTo(1, 8); // next noon
   });
 
   it('windFactor stays in [0.3, 1.0] and is deterministic', () => {

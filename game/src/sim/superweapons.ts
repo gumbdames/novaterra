@@ -55,6 +55,7 @@
 
 import type { World } from './world';
 import { rngBank } from './world';
+import { dist2 } from './deterministic';
 import type { CommandQueue, CommandSpec } from './commands';
 import type { SimSystem } from './tick';
 import { BUILDING_DEFS, getPlayer, buildingCenterWorld, cellCenterWorld } from './city';
@@ -449,7 +450,7 @@ export function createSuperweaponSystem(): SimSystem {
         // Copy: killUnit splices world.units during iteration.
         for (const unit of [...world.units]) {
           if (unit.owner === strike.owner || unit.hp <= 0) continue;
-          if (Math.hypot(unit.x - sx, unit.z - sz) > STORM_RADIUS) continue;
+          if (dist2(unit.x - sx, unit.z - sz) > STORM_RADIUS * STORM_RADIUS) continue;
           if (isAegisActive(world, unit.owner)) continue; // shield holds
           unit.hp -= STORM_DAMAGE;
           if (unit.hp <= 0) killUnit(world, unit);
@@ -465,7 +466,7 @@ export function createSuperweaponSystem(): SimSystem {
           if (b.owner === strike.owner) continue;
           if (isAegisActive(world, b.owner)) continue; // shield holds
           const c = buildingCenterWorld(b);
-          if (Math.hypot(c.x - sx, c.z - sz) > STORM_RADIUS) continue;
+          if (dist2(c.x - sx, c.z - sz) > STORM_RADIUS * STORM_RADIUS) continue;
           damageBuilding(world, b, STORM_DAMAGE);
         }
         sw.fx.push({ kind: 'storm', x: sx, z: sz, untilTick: world.tick + STORM_FX_TICKS });

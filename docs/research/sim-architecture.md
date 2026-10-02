@@ -193,6 +193,10 @@ Consequences:
   bar they're fine; for a future cross-machine bar we'd wrap or table them.
   Note: engines change rarely, but a Chrome update mid-campaign could
   theoretically alter a replay — acceptable risk, documented.
+  **Update 2026-10-02:** the wrap is done — `src/sim/deterministic.ts`
+  replaces every sim transcendental with correctly-rounded-primitive
+  equivalents (see §3.4.1); B27 bans regressions. The cross-machine bar
+  now holds for the sim without fixed-point.
 - **Never in the sim:** `Math.random()` (unseeded), `Date.now()`,
   `performance.now()`, wall-clock anything, object identity / pointer values,
   iteration over plain `Object`/`Map` in **insertion-order-unsafe** ways
@@ -248,6 +252,38 @@ transcendentals need lookup tables, and it's a pervasive code-style tax.
 **Verdict: not now.** Floats-in-one-engine satisfy our bar; keep a
 `math.ts` seam (wrap `sin/cos/sqrt` in named functions) so a future
 fixed-point swap touches one module, not the world.
+
+#### 3.4.1 Update 2026-10-02 — the transcendental seam is built (no fixed-point needed)
+
+The one known cross-engine blocker identified in §3.1 — *implementation-
+approximated transcendentals may differ ~1 ulp across JS engines* (the
+ECMAScript spec only requires approximate correctness for
+`Math.hypot/sin/cos/log` etc., unlike `+ - * /` and `Math.sqrt`, which are
+IEEE-754 correctly rounded and therefore bit-identical everywhere) — is now
+removed without going fixed-point:
+
+- New `game/src/sim/deterministic.ts`: `dist`/`dist2` (`Math.sqrt` of a sum
+  of products), `detSin`/`detCos` (fixed Taylor polynomial through x^13 on
+  a range-reduced [-π/2, π/2], Horner form — only `+`/`*`; max error 6.7e-10
+  vs the true sine, and deliberately NOT a `Math.sin`-seeded lookup table,
+  which would bake one engine's approximation into the "deterministic" path),
+  `detLog10` (decimal/binary exponent extraction + atanh series, error
+  < 5e-13). Every function uses only correctly-rounded primitives plus
+  decimal literals, so the same input yields the same double on every
+  conforming engine.
+- All 34 `Math.hypot` call sites in `src/sim/` replaced (radius comparisons
+  use `dist2` against the squared radius; value uses use `dist`), plus the
+  `Math.sin` uses (daylight/wind economy, AI placement, terrain gen) and the
+  `Math.log10` peaceful-score curve.
+- B27 lint guard (`game/scripts/check-import-cycles.mjs`) extended to ban
+  `Math.hypot/sin/cos/tan/asin/acos/atan/exp/log/log10/pow` in `src/sim/`
+  (verified it rejects a planted violation). `Math.sqrt`, `Math.PI`,
+  `Math.abs/min/max/floor/round/imul` stay allowed (exact or correctly
+  rounded per spec).
+- The sim is now cross-engine deterministic *by construction* for all
+  arithmetic — no fixed-point tax was needed. Remaining (accepted,
+  non-sim) risks: none in `src/sim/`; render/UI may use transcendentals
+  freely since they never feed sim state.
 
 Sources: popyapp multiplayer-netcode SKILL (determinism contract: fixed-point
 *or* deterministic soft-float, one seeded PRNG, fixed update order);

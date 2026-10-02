@@ -64,6 +64,7 @@ import { rngBank } from './world';
 import { UNIT_DEFS, findUnit, type UnitKind, type UnitRecord } from './units';
 import { canTarget } from './combat';
 import { getVisibleEnemies } from './ai';
+import { dist, dist2 } from './deterministic';
 
 /** Mayor tax policy: the player picks the goal, the mayor sets the rates. */
 export type MayorPolicy = 'balanced' | 'growth' | 'revenue';
@@ -547,7 +548,7 @@ function nearestHittable(
   let bestDist = Infinity;
   for (const e of enemies) {
     if (!canTarget(def, e)) continue;
-    const d = Math.hypot(e.x - unit.x, e.z - unit.z);
+    const d = dist(e.x - unit.x, e.z - unit.z);
     if (d < bestDist - 1e-9 || (Math.abs(d - bestDist) < 1e-9 && e.id < (best?.id ?? Infinity))) {
       best = e;
       bestDist = d;
@@ -618,7 +619,7 @@ export function createGeneralSystem(queue: CommandQueue): SimSystem {
       cx /= group.length;
       cz /= group.length;
       const near = visible.filter(
-        (e) => Math.hypot(e.x - cx, e.z - cz) <= GENERAL_DEFENSIVE_RADIUS,
+        (e) => dist2(e.x - cx, e.z - cz) <= GENERAL_DEFENSIVE_RADIUS * GENERAL_DEFENSIVE_RADIUS,
       );
       for (const unit of group) {
         const enemy = nearestHittable(unit, near);

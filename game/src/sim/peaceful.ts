@@ -54,6 +54,7 @@
 
 import type { World } from './world';
 import { BUILDING_DEFS, getPlayer } from './city';
+import { detLog10 } from './deterministic';
 
 /** Status view for the peaceful-mode UI panel. */
 export interface PeacefulStatus {
@@ -127,7 +128,7 @@ export function peacefulScore(
   const population = player?.population ?? 0;
   const funds = player?.funds ?? 0;
   const treasury =
-    funds >= 0 ? Math.min(1, Math.log10(1 + funds / 1000) / 3) : 0;
+    funds >= 0 ? Math.min(1, detLog10(1 + funds / 1000) / 3) : 0;
   let workers = 0;
   let jobs = 0;
   let ridershipIncome = 0;

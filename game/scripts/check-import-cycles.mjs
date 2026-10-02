@@ -228,5 +228,27 @@ for (const flag of ['strict', 'noUncheckedIndexedAccess']) {
     lintFailed = true;
   }
 }
+// Determinism hardening (2026-10-02): no implementation-approximated
+// transcendentals in the sim. `Math.hypot/sin/cos/tan/asin/acos/atan/exp/`
+// `log`/`log10`/`pow` may differ ~1 ulp across JS engines (the spec only
+// requires approximate correctness), which is the one known cross-engine
+// determinism blocker. Sim code must use `src/sim/deterministic.ts`
+// (`dist`/`dist2`, `detSin`/`detCos`, `detLog10`) — built only from
+// IEEE-754 correctly-rounded primitives. `Math.sqrt`, `Math.PI`,
+// `Math.abs/min/max/floor/round/imul` stay allowed (exact or correctly
+// rounded per spec). Comments/strings are stripped first, so prose about
+// the ban never trips it.
+for (const f of allSrcFiles(join(srcDir, 'sim'))) {
+  const clean = stripNoise(readFileSync(f, 'utf8'));
+  for (const m of clean.matchAll(
+    /\bMath\.(hypot|sin|cos|tan|asin|acos|atan|exp|log10|log|pow)\b/g,
+  )) {
+    const line = clean.slice(0, m.index).split('\n').length;
+    console.error(
+      `B27 lint guard: transcendental \`Math.${m[1]}\` in ${f}:${line} — use src/sim/deterministic.ts.`,
+    );
+    lintFailed = true;
+  }
+}
 if (lintFailed) process.exit(1);
 console.log('lint-invariant check OK: zero `any`, zero `!`, strict + noUncheckedIndexedAccess.');

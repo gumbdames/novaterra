@@ -69,6 +69,7 @@ import {
   type CityState,
   type ZoneType,
 } from './city';
+import { detSin } from './deterministic';
 
 // ---------------------------------------------------------------------------
 // Time-of-day / weather / meltdown — pure functions of (tick, seed, id)
@@ -78,16 +79,16 @@ import {
 export const DAY_LENGTH_SECONDS = 240;
 
 /**
- * Daylight factor 0..1 for a sim tick. Smooth dawn/dusk: the sine is
+ * Daylight factor 0..1 for a sim tick. Smooth dawn/dusk: the detSin is
  * positive for the day half of the 240-second cycle, clamped to 0 at
  * night. Day starts at dawn (tick 0 = sunrise). The solarFarm's supply
  * is multiplied by this each economy tick.
- * (Transcendental use: Math.sin on a pure function of tick — same input
- * ⇒ same double on every engine, so determinism holds.)
+ * (Was a transcendental use: Math.sin on a pure function of tick. Now
+ * detSin from deterministic.ts — bit-identical on every engine.)
  */
 export function daylightFactor(tick: number): number {
   const phase = (tick / 30 / DAY_LENGTH_SECONDS) % 1;
-  return Math.max(0, Math.sin(phase * Math.PI * 2));
+  return Math.max(0, detSin(phase * Math.PI * 2));
 }
 
 /**
@@ -95,11 +96,11 @@ export function daylightFactor(tick: number): number {
  * wobble (period ~97 sim-seconds, phase from the world seed): wind
  * farms are weak and intermittent, never still, never full blast for
  * long. Pure function of (seed, tick) — no RNG stream is drawn.
- * (Transcendental use documented like daylightFactor above.)
+ * (detSin, like daylightFactor above — cross-engine deterministic.)
  */
 export function windFactor(seed: number, economyTickIndex: number): number {
   const phase = ((seed % 360) * Math.PI) / 180;
-  const w = 0.65 + 0.35 * Math.sin((economyTickIndex / 97) * Math.PI * 2 + phase);
+  const w = 0.65 + 0.35 * detSin((economyTickIndex / 97) * Math.PI * 2 + phase);
   return Math.min(1, Math.max(0.3, w));
 }
 

@@ -8,6 +8,13 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 ## Module map
 
 - `rng.ts` — mulberry32 + named streams via `createRngBank` / `rngBank`.
+- `deterministic.ts` — (determinism hardening, 2026-10-02) cross-engine
+  deterministic math: `dist`/`dist2` (sqrt-based, correctly rounded —
+  unlike `Math.hypot`), `detSin`/`detCos` (fixed Taylor polynomial, never
+  a `Math.sin`-seeded table), `detLog10` (algebraic: decimal/binary
+  exponent extraction + atanh series). The ONLY transcendental-free math
+  seam: B27 bans `Math.hypot/sin/cos/tan/asin/acos/atan/exp/log/pow`
+  in `src/sim/`.
 - `world.ts` — the `World` store; owns `city: CityState` (imports
   `initCity` from `city.ts`). Grand-expansion Phase 8 (peaceful mode,
   workstream A, 2026-09-30): `World.peaceful: boolean` — tick-0,
@@ -874,9 +881,13 @@ Everything in this directory serves that:
   `commands.ts`, sorted by (tick, issuer, seq). Nothing reads UI/AI state
   mid-tick.
 - **Floats are fine, dust is not.** IEEE-754 doubles are deterministic in
-  one engine; transcendental use is documented per call site. The
-  accumulator epsilon in `tick.ts` exists because float subtraction dust
-  (~1e-13/tick) can lose whole ticks — see D9 in ARCHITECTURE.md.
+  one engine; cross-engine determinism additionally holds because
+  implementation-approximated transcendentals are BANNED in `src/sim/`
+  (B27 lint guard) — use `deterministic.ts` (`dist`/`dist2`, `detSin`/
+  `detCos`, `detLog10`), which is built only from correctly-rounded
+  primitives. The accumulator epsilon in `tick.ts` exists because float
+  subtraction dust (~1e-13/tick) can lose whole ticks — see D9 in
+  ARCHITECTURE.md.
 - **RNG streams are named and independent.** `rngBank(world).next('combat')`
   never shifts `'economy'`. Stream state lives in `world.rng` — part of
   every snapshot and digest.
