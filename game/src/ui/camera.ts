@@ -316,3 +316,48 @@ export function applyCameraState(cam: PerspectiveCamera, state: CameraState): vo
   );
   cam.lookAt(s.targetX, 0, s.targetZ);
 }
+
+/**
+ * Screen shake (roadmap B13, 2026-10-02) — explosions rattle the camera.
+ * Trauma 0..1 accumulates per explosion (scaled by distance from the
+ * camera target) and decays; the applied offset scales with trauma² so
+ * small hits barely register and big ones thump. The noise is a
+ * deterministic sin/cos mix of wall-clock time — render-only, no RNG,
+ * no sim impact. Pure — headless-tested.
+ */
+
+/** Trauma above this is clamped (a full barrage still reads as one). */
+export const SHAKE_MAX_TRAUMA = 1;
+/** Trauma decayed per second. */
+export const SHAKE_DECAY_PER_SEC = 1.6;
+/** Camera offset in world units at full trauma. */
+export const SHAKE_FULL_OFFSET = 2.4;
+
+/** Add explosion trauma, clamped to [0, 1]. */
+export function addShakeTrauma(current: number, amount: number): number {
+  return Math.min(
+    SHAKE_MAX_TRAUMA,
+    Math.max(0, current + amount),
+  );
+}
+
+/** Decay trauma over dt seconds. */
+export function decayShakeTrauma(current: number, dtSec: number): number {
+  return Math.max(0, current - SHAKE_DECAY_PER_SEC * dtSec);
+}
+
+/**
+ * Camera offset for the current trauma at `timeSec`. Below 0.02 trauma
+ * the offset is exactly zero (lets the controller skip the re-apply).
+ */
+export function shakeOffset(
+  trauma: number,
+  timeSec: number,
+): { dx: number; dy: number } {
+  if (trauma < 0.02) return { dx: 0, dy: 0 };
+  const s = trauma * trauma * SHAKE_FULL_OFFSET;
+  return {
+    dx: s * Math.sin(timeSec * 39.7) * Math.cos(timeSec * 17.3),
+    dy: s * Math.sin(timeSec * 44.3 + 1.7) * Math.cos(timeSec * 23.9),
+  };
+}

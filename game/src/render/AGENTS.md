@@ -318,6 +318,34 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   disposed in `dispose()`. Tested in `tests/sim.combat-vfx.test.ts`
   (sim emission); render pooling is tsc-verified.
 
+## Combat feedback: damage numbers + building damage state (roadmap B13, 2026-10-02)
+
+- The `CombatEvent` impact/explosion variants now carry `damage` +
+  `victimOwner` + `attackerOwner` (sim/combat.ts, additive — B16
+  consumers ignore the new fields). Two new pooled-sprite overlays,
+  both owned by `EntityRenderer` like `CombatVfx`:
+- `render/damageNumbers.ts` — floating damage numbers. Digits 0-9 are
+  rasterized once onto canvas textures in the constructor (browser-only;
+  the module imports Node-safe); each hit composes up to 4 digit
+  sprites from a pool of 20 numbers (80 sprites). Gold = the human side
+  dealt it, red = the human side took it, white = AI-vs-AI. Numbers
+  rise 6 world units over 0.9s while fading; pool exhaustion drops.
+  Pure helpers (`splitDamageDigits`, `damageNumberColor`) tested in
+  `tests/render.damageNumbers.test.ts`.
+- `render/damageState.ts` — on-map building damage state. Damaged
+  buildings (below full HP) get a floating HP bar (green → yellow →
+  red by fraction, 14 world units up) plus gray smoke puffs that
+  thicken as the building nears destruction. Bar pairs come from a
+  free-list (no double-assign); repaired/destroyed buildings release
+  theirs. Pure helpers (`buildingHpFraction`, `hpBarColor`) tested in
+  `tests/render.damageState.test.ts`.
+- Screen shake lives in `ui/camera.ts` + `ui/game.ts` (not the render
+  layer): trauma 0..1 fed by explosion events (scaled by distance from
+  the camera target, once per tick via a `lastShakeTick` guard),
+  decaying 1.6/s; the render step re-applies the camera state and
+  offsets it by the deterministic `shakeOffset()` while trauma ≥ 0.02.
+  Pure math tested in `tests/ui.cameraShake.test.ts`.
+
 ## Zone overlay (`render/zoneOverlay.ts`, 0.1 Alpha)
 
 - Zone readability (grand-expansion Workstream Z): zoning was

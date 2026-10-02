@@ -111,6 +111,10 @@ import { ChevronOverlay } from './chevrons';
 import { ZoneOverlay } from './zoneOverlay';
 import { AmbientCrowd, PavingOverlay } from './cityLife';
 import { CombatVfx } from './combatVfx';
+// Roadmap B13 (2026-10-02): floating damage numbers + building damage
+// state (HP bars + smoke) — same overlay ownership pattern as CombatVfx.
+import { DamageNumbers } from './damageNumbers';
+import { DamageStateOverlay } from './damageState';
 import { XrayView } from './xrayView';
 import { BirdFlocks } from './birds';
 import { ambientSecondsForTick, setAmbientTimeSeconds } from './ambientTime';
@@ -1249,6 +1253,10 @@ export class EntityRenderer {
   private readonly chevrons: ChevronOverlay;
   // B16 (2026-10-01): combat VFX (muzzle/tracer/impact/explosion).
   private readonly combatVfx: CombatVfx;
+  /** Roadmap B13: floating damage numbers (pooled digit sprites). */
+  private readonly damageNumbers: DamageNumbers;
+  /** Roadmap B13: damaged-building HP bars + smoke. */
+  private readonly damageState: DamageStateOverlay;
   // Workstream Z: zone-tint ground decals (visible by default).
   private readonly zoneOverlay: ZoneOverlay;
   // Workstream P (ambient city life): auto-paved zone decals +
@@ -1403,6 +1411,10 @@ export class EntityRenderer {
     this.barTexture = new THREE.CanvasTexture(c);
     this.chevrons = new ChevronOverlay(scene);
     this.combatVfx = new CombatVfx(scene);
+    // Roadmap B13: damage numbers (tinted by human-side involvement)
+    // and the damaged-building overlay ride the same sync/dispose path.
+    this.damageNumbers = new DamageNumbers(scene, HUMAN_PLAYER_ID);
+    this.damageState = new DamageStateOverlay(scene);
     this.zoneOverlay = new ZoneOverlay(scene);
     // Workstream P (ambient city life): paving is a sibling of the zone
     // decals (same digest cadence); the crowd reads zones/roads/seed.
@@ -1472,6 +1484,10 @@ export class EntityRenderer {
     // Fixed 1/60 dt: VFX timing doesn't need frame-perfect deltas.
     // (?? []: hand-built test worlds without the field.)
     this.combatVfx.update(world.combatEvents ?? [], 1 / 60);
+    // Roadmap B13 (2026-10-02): floating damage numbers from the same
+    // event stream, plus the damaged-building HP-bar/smoke overlay.
+    this.damageNumbers.update(world.combatEvents ?? [], 1 / 60);
+    this.damageState.sync(world, 1 / 60);
     // Final-review R5 visual lift: blob shadows for every unit +
     // building (1 instanced draw call).
     this.blobShadows.sync(world);
@@ -1966,6 +1982,9 @@ export class EntityRenderer {
     this.barTexture.dispose();
     this.chevrons.dispose();
     this.combatVfx.dispose();
+    // Roadmap B13.
+    this.damageNumbers.dispose();
+    this.damageState.dispose();
     this.zoneOverlay.dispose();
     // Workstream P (ambient city life).
     this.pavingOverlay.dispose();

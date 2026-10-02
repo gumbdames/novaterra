@@ -120,7 +120,9 @@ import { createSession, getSkirmishOutcome, HUMAN_PLAYER_ID, AI_PLAYER_ID, type 
 import type { SkirmishVictoryKind } from '../sim/world';
 import {
   applyCameraState,
+  addShakeTrauma,
   createCameraState,
+  decayShakeTrauma,
   edgePanVector,
   guardCameraState,
   orbitDrag,
@@ -128,6 +130,7 @@ import {
   panDragTarget,
   pressDragKind,
   rotateCamera,
+  shakeOffset,
   tiltCamera,
   worldPerPixelAtTarget,
   zoomCamera,
@@ -722,6 +725,15 @@ class GameController {
   private unbindUiClicks: (() => void) | null = null;
   private cameraState: CameraState = createCameraState();
   /**
+   * Roadmap B13 (2026-10-02): screen-shake trauma 0..1. Explosions feed
+   * it (scaled by distance from the camera target); it decays every
+   * frame and the render step offsets the camera by shakeOffset().
+   * `lastShakeTick` keeps a multi-frame sim tick from feeding the same
+   * explosion twice (combatEvents clear at tick start, not on drain).
+   */
+  private shakeTrauma = 0;
+  private lastShakeTick = -1;
+  /**
    * Phase 4 hardening (item 7): the last camera state that passed the
    * NaN guard. A poisoned state is never applied and never remembered —
    * the camera restores this instead of wedging permanently.
@@ -1259,7 +1271,42 @@ class GameController {
       pollCampaign: (world, nowMs) => this.pollCampaign(world, nowMs),
       updateAudioListener: () =>
         this.audio.updateListener(this.cameraState.targetX, this.cameraState.targetZ),
-      renderFrame: () => this.renderer.render(this.scene, this.camera),
+      renderFrame: () => {
+        // Roadmap B13 (screen shake): feed this tick's explosions into
+        // the trauma exactly once, then re-apply the camera state and
+        // offset it while trauma remains. Re-applying the state each
+        // frame is what resets the previous frame's offset (the apply is
+        // idempotent — every camera move already goes through
+        // cameraState).
+        const world = this.session.world;
+        if (world.tick !== this.lastShakeTick) {
+          this.lastShakeTick = world.tick;
+          for (const e of world.combatEvents ?? []) {
+            if (e.kind !== 'explosion') continue;
+            const dx = e.x - this.cameraState.targetX;
+            const dz = e.z - this.cameraState.targetZ;
+            const dist = Math.sqrt(dx * dx + dz * dz);
+            const falloff = Math.max(0, 1 - dist / 450);
+            if (falloff > 0) {
+              this.shakeTrauma = addShakeTrauma(
+                this.shakeTrauma,
+                (e.large ? 0.5 : 0.22) * falloff,
+              );
+            }
+          }
+        }
+        this.applyCameraStateGuarded();
+        if (this.shakeTrauma >= 0.02) {
+          const { dx, dy } = shakeOffset(
+            this.shakeTrauma,
+            performance.now() / 1000,
+          );
+          this.camera.position.x += dx;
+          this.camera.position.y += dy;
+          this.shakeTrauma = decayShakeTrauma(this.shakeTrauma, 1 / 60);
+        }
+        this.renderer.render(this.scene, this.camera);
+      },
       getLastAdvisorRefresh: () => this.lastAdvisorRefresh,
       setLastAdvisorRefresh: (nowMs) => {
         this.lastAdvisorRefresh = nowMs;

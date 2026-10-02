@@ -393,6 +393,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `overflow-y: auto`) so every map/difficulty stays clickable on short
   viewports.
 - `camera.ts` / `selection.ts` — pure state + transitions, fully tested.
+  Roadmap B13 (2026-10-02): screen-shake math lives here —
+  `addShakeTrauma` / `decayShakeTrauma` / `shakeOffset` (trauma 0..1,
+  offset ∝ trauma², deterministic sin/cos noise, zero below 0.02). The
+  controller (game.ts) feeds explosion events into the trauma once per
+  tick and offsets the camera in its `renderFrame` closure.
   Roadmap B4 (2026-10-02): `militaryUnitIds(units, owner, isMilitary)` —
   the pure core of the select-all-military hotkey (A), returning the ids
   of every living unit of `owner` whose kind is military, in input order.

@@ -386,6 +386,10 @@ bunkers 800–1000.
   a ground attack…) can attack buildings; anti-air batteries and other
   specialized weapons cannot. Your units never fire at buildings on
   their own — a siege is always an explicit order, from you or the AI.
+- **Reading a battle:** every hit floats its damage — gold numbers are
+  damage your forces dealt, red numbers damage they took. Explosions
+  rattle the camera (closer = harder). Damaged buildings show an HP bar
+  and trail smoke that thickens as they near collapse.
 - **Damage is raw weapon damage.** Buildings have no armor class: no
   armor counters, no command auras, no upgrade bonuses apply. Skilled
   (veterancy) and well-supplied crews still hit harder; starving ones

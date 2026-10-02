@@ -135,11 +135,38 @@ import { runShipyardRepair } from './shipyardRepair';
  *   hit flash / spark at (x,z).
  * - `explosion`: a unit or building was destroyed. Render: explosion
  *   flash + smoke at (x,z); `large` for buildings / heavy units.
+ *
+ * Roadmap B13 (2026-10-02): `impact` and `explosion` also carry the
+ * damage dealt and both owners, so the render layer can float damage
+ * numbers (colored by whether the human side dealt or took the hit)
+ * and shake the camera on explosions. Additive — B16 consumers read
+ * only the fields they need.
  */
 export type CombatEvent =
   | { kind: 'muzzle'; x: number; z: number; targetX: number; targetZ: number }
-  | { kind: 'impact'; x: number; z: number }
-  | { kind: 'explosion'; x: number; z: number; large: boolean };
+  | {
+      kind: 'impact';
+      x: number;
+      z: number;
+      /** Damage dealt by this hit (B13). */
+      damage: number;
+      /** Owner of the thing that was hit (B13). */
+      victimOwner: number;
+      /** Owner of the shooter (B13). */
+      attackerOwner: number;
+    }
+  | {
+      kind: 'explosion';
+      x: number;
+      z: number;
+      large: boolean;
+      /** Damage dealt by the killing blow (B13). */
+      damage: number;
+      /** Owner of the thing that was destroyed (B13). */
+      victimOwner: number;
+      /** Owner of the shooter (B13). */
+      attackerOwner: number;
+    };
 
 /** Can this weapon be aimed at that target's domain? */
 export function canTarget(def: UnitDef, target: UnitRecord): boolean {
@@ -452,7 +479,8 @@ function fireWeapon(world: World, attacker: UnitRecord, def: UnitDef, target: Un
     attacker.cooldownLeft = cooldown;
     return false; // shield absorbs the shot
   }
-  target.hp -= def.damage * mult;
+  const dmg = def.damage * mult;
+  target.hp -= dmg;
   // Phase 3 logistics (S2): the shot actually fired (past the Aegis
   // check above) — burn the magazine. The gate guarantees
   // ammo >= perShot, so no clamp is needed. (?? 0: hand-built records.)
@@ -462,6 +490,8 @@ function fireWeapon(world: World, attacker: UnitRecord, def: UnitDef, target: Un
   attacker.cooldownLeft = cooldown;
   // B16 (2026-10-01): emit the visual cue. Muzzle always; impact if the
   // target survived, explosion if it died.
+  // B13 (2026-10-02): impact/explosion also carry the damage and both
+  // owners for damage numbers + screen shake.
   const died = target.hp <= 0;
   world.combatEvents.push({
     kind: 'muzzle',
@@ -472,8 +502,23 @@ function fireWeapon(world: World, attacker: UnitRecord, def: UnitDef, target: Un
   });
   world.combatEvents.push(
     died
-      ? { kind: 'explosion', x: target.x, z: target.z, large: false }
-      : { kind: 'impact', x: target.x, z: target.z },
+      ? {
+          kind: 'explosion',
+          x: target.x,
+          z: target.z,
+          large: false,
+          damage: dmg,
+          victimOwner: target.owner,
+          attackerOwner: attacker.owner,
+        }
+      : {
+          kind: 'impact',
+          x: target.x,
+          z: target.z,
+          damage: dmg,
+          victimOwner: target.owner,
+          attackerOwner: attacker.owner,
+        },
   );
   return died;
 }
@@ -603,13 +648,16 @@ function fireWeaponAtBuilding(
     attacker.cooldownLeft = cooldown;
     return false; // shield absorbs the shot
   }
-  const destroyed = damageBuilding(world, b, def.damage * mult);
+  const dmg = def.damage * mult;
+  const destroyed = damageBuilding(world, b, dmg);
   if ((def.ammoCapacity ?? 0) > 0) {
     attacker.ammo = (attacker.ammo ?? 0) - perShot;
   }
   attacker.cooldownLeft = cooldown;
   // B16 (2026-10-01): visual cue. Buildings get the large explosion
   // when destroyed.
+  // B13 (2026-10-02): impact/explosion also carry the damage and both
+  // owners for damage numbers + screen shake.
   const c = buildingCenterWorld(b);
   world.combatEvents.push({
     kind: 'muzzle',
@@ -620,8 +668,23 @@ function fireWeaponAtBuilding(
   });
   world.combatEvents.push(
     destroyed
-      ? { kind: 'explosion', x: c.x, z: c.z, large: true }
-      : { kind: 'impact', x: c.x, z: c.z },
+      ? {
+          kind: 'explosion',
+          x: c.x,
+          z: c.z,
+          large: true,
+          damage: dmg,
+          victimOwner: b.owner,
+          attackerOwner: attacker.owner,
+        }
+      : {
+          kind: 'impact',
+          x: c.x,
+          z: c.z,
+          damage: dmg,
+          victimOwner: b.owner,
+          attackerOwner: attacker.owner,
+        },
   );
   return destroyed;
 }
