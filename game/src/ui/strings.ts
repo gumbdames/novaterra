@@ -450,6 +450,16 @@ export const STRINGS = {
     endless: { en: 'Endless mode: no victory, no defeat — build without limits.' },
   },
   /**
+   * Fun-audit C4 (2026-10-02): the skirmish opening verbs hint — the
+   * three right-click verbs, toasted right after the B1 objective toast
+   * so a new player knows what to DO with their army.
+   */
+  verbsHint: {
+    hint: {
+      en: 'Right-click: move. Right-click an enemy: attack. Right-click an enemy building: siege.',
+    },
+  },
+  /**
    * Fun-audit B4 (2026-10-02): the victory-progress "rival watch" strip.
    */
   victoryHud: {

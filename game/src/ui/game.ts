@@ -1455,6 +1455,10 @@ class GameController {
       if (this.missionRun === null) {
         const key = this.session.world.peaceful === true ? 'endless' : this.session.world.victoryKind;
         this.hud.toast(loc(STRINGS.objectives[key]));
+        // Fun-audit C4 (2026-10-02): right after the objective, the
+        // verbs — a new player knows what to DO with their starting
+        // army (move / attack / siege on right-click).
+        this.hud.toast(loc(STRINGS.verbsHint.hint));
       }
     }
     // Fun-audit B5 (2026-10-02): the off-screen event pings live on the

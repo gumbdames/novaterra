@@ -57,7 +57,7 @@ import { createTickDriver, TICK_MS } from '../sim/tick';
 import type { TerrainData } from '../sim/terrain';
 import { generateTerrain, getMapPreset, isWater } from '../sim/terrain';
 import { digestWorld } from '../sim/digest';
-import { registerCityCommands, getPlayer, BUILDING_DEFS } from '../sim/city';
+import { registerCityCommands, getPlayer, BUILDING_DEFS, placeBuilding, CELL_WORLD_SIZE, MAP_HALF_SIZE } from '../sim/city';
 import { createEconomySystem, registerEconomyCommands } from '../sim/economy';
 import { registerUnitCommands } from '../sim/units';
 import {
@@ -658,6 +658,43 @@ export function createSession(options: SessionOptions): GameSession {
     // Apply the starting forces now (one fixed tick) so a fresh session
     // already has both armies on the field.
     driver.step(world, TICK_MS);
+
+    // Fun-audit C4 (2026-10-02): mission-preplaced buildings (the M1
+    // "fix a disconnected building" beat). Placed AFTER the setup tick
+    // so the grant never participates in it: complete and operational,
+    // refunded (the mission grants them, the player didn't buy them),
+    // and left unpowered so the tutorial has a dark building to flag.
+    // The next economy tick recomputes the honest powered=false.
+    if (mission?.preplacedBuildings !== undefined) {
+      for (const pb of mission.preplacedBuildings) {
+        const pos = findLandNear(terrain, humanBase.x + pb.dx, humanBase.z + pb.dz);
+        const cx = Math.min(
+          Math.max(Math.floor((pos.x + MAP_HALF_SIZE) / CELL_WORLD_SIZE), 0),
+          255,
+        );
+        const cz = Math.min(
+          Math.max(Math.floor((pos.z + MAP_HALF_SIZE) / CELL_WORLD_SIZE), 0),
+          255,
+        );
+        const rec = placeBuilding(world.city, {
+          kind: pb.kind,
+          owner: HUMAN_PLAYER_ID,
+          cx,
+          cz,
+          facing: 0,
+        });
+        const def = BUILDING_DEFS[pb.kind];
+        const human = world.city.players[HUMAN_PLAYER_ID];
+        if (def !== undefined && human !== undefined) {
+          human.funds += def.costFunds;
+          human.materials += def.costMaterials;
+        }
+        rec.progress = 1;
+        rec.operational = true;
+        rec.powered = false;
+        rec.powerDiag = 'disconnected';
+      }
+    }
 
     if (mission?.startingResources !== undefined) {
       // Campaign funds fix: the mission's starting resources are the

@@ -70,13 +70,31 @@ export type MissionEventTrigger =
   | { kind: 'onFirstBuilding'; building: BuildingKind }
   | { kind: 'onFirstCombat' }
   | { kind: 'onAgeAdvanced'; age: Age }
-  | { kind: 'onLowFunds' };
+  | { kind: 'onLowFunds' }
+  /**
+   * Fun-audit C4 (2026-10-02): fires when a complete player-owned
+   * building has no power — the "fix a disconnected building" beat.
+   * The advisor flags it; the player learns the connect verb.
+   */
+  | { kind: 'onUnpoweredBuilding' }
+  /**
+   * Fun-audit C4 (2026-10-02): fires once the player has seen an
+   * unpowered building and every complete player building is powered
+   * again — the "you fixed it" payoff. Pairs with onUnpoweredBuilding.
+   */
+  | { kind: 'onBuildingPowered' };
 
 export interface MissionEventDef {
   id: string;
   trigger: MissionEventTrigger;
   /** Shown through the Muse box / toast when the event fires. */
   message: string;
+  /**
+   * Fun-audit C4 (2026-10-02): only fire after the named event has
+   * fired (e.g. the "fixed it" payoff requires the "disconnected"
+   * warning first; the warning can wait for the welcome message).
+   */
+  requiresEvent?: string;
   /**
    * Optional scripted raid: spawn enemy units at a map edge and order
    * them toward the player's base. Deterministic: positions derive from
@@ -99,6 +117,16 @@ export interface MissionDef {
   aiDifficulty: AIDifficulty | 'none';
   /** Override starting stocks for the human player (partial). */
   startingResources?: Partial<Record<ResourceKey, number>>;
+  /**
+   * Fun-audit C4 (2026-10-02): buildings the mission places for the
+   * player at setup — complete and operational but unpaid-for
+   * (refunded) and, for the tutorial beat, unpowered. `dx`/`dz` are
+   * world-unit offsets from the player's starting base (snapped to
+   * land). Powers the M1 "fix a disconnected building" beat: the
+   * advisor flags the dark building and walks the player through
+   * dragging a power line to it.
+   */
+  preplacedBuildings?: Array<{ kind: BuildingKind; dx: number; dz: number }>;
   debriefWin: string;
   debriefLose: string;
 }
@@ -261,7 +289,54 @@ export const MISSIONS: readonly MissionDef[] = [
           'Line (or Water Pipe), then drag from the plant to your ' +
           'buildings. The advisor warns you about shortages.',
       },
+      {
+        id: 'm1-disconnected',
+        trigger: { kind: 'onUnpoweredBuilding' },
+        // Wait for the welcome before flagging the dark house — the
+        // first thing the player hears should be the greeting.
+        requiresEvent: 'm1-welcome',
+        message:
+          // Fun-audit C4 (2026-10-02): the "fix a disconnected
+          // building" beat — teach the verb "connect", not just the
+          // control "drag". A placed building is not a working
+          // building until it is connected.
+          'Muse here — one of your buildings is dark: it has no power. ' +
+          'A placed building is not a WORKING building until it is ' +
+          'connected. Drag a power line to it: Civilian tab → Tools → ' +
+          'Power Line, then drag from your power plant to the dark ' +
+          'building. Watch it light up.',
+      },
+      {
+        id: 'm1-reconnected',
+        trigger: { kind: 'onBuildingPowered' },
+        requiresEvent: 'm1-disconnected',
+        message:
+          // Fun-audit C4 (2026-10-02): the payoff — the mental model
+          // in one line: connection is what makes buildings work.
+          'Power is flowing — well done, President. Remember this: ' +
+          'zones grow, buildings produce, but only CONNECTED buildings ' +
+          'work at full strength. Power lines and water pipes are the ' +
+          'nervous system of your city.',
+      },
+      {
+        id: 'm1-economy',
+        trigger: { kind: 'atTick', tick: 900 },
+        message:
+          // Fun-audit C4 (2026-10-02): the economy-literacy moment —
+          // the mental model in one breath: what each resource gates.
+          'A word on the economy, President — four things to hold in ' +
+          'your head. FUNDS are the constraint: taxes fill the treasury, ' +
+          'everything costs funds. MATERIALS gate construction: no ' +
+          'materials, no buildings. MANPOWER gates armies: citizens ' +
+          'become soldiers. FOOD gates growth: hungry cities do not ' +
+          'grow. Watch which one runs out first — that is your real ' +
+          'objective.',
+      },
     ],
+    // Fun-audit C4 (2026-10-02): the disconnected-building beat needs
+    // a dark building to exist — one pre-placed unpowered house near
+    // the player's base, flagged by the m1-disconnected event above.
+    preplacedBuildings: [{ kind: 'house', dx: 14, dz: -10 }],
     mapPreset: 'Meridian Plains',
     aiDifficulty: 'none',
     debriefWin:

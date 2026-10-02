@@ -177,6 +177,31 @@ describe('fog snapshot round-trip', () => {
   });
 });
 
+describe('fog system change detection', () => {
+  it('skips the rasterization when nothing changed, recomputes on movement', async () => {
+    const { createFogSystem } = await import('../src/sim/fog');
+    const world = setup();
+    tank(world, 0, 0, 0);
+    const sys = createFogSystem();
+    sys(world, 0); // prime
+    expect(isExplored(world, 0, 0, 0)).toBe(true);
+    // Idle cadence: no recompute needed, explored unchanged.
+    world.tick = FOG_UPDATE_EVERY_TICKS;
+    sys(world, 0);
+    expect(isExplored(world, 0, 200, 0)).toBe(false);
+    // The tank moves: the next cadence picks it up.
+    world.units[0]!.x = 200;
+    world.tick = FOG_UPDATE_EVERY_TICKS * 2;
+    sys(world, 0);
+    expect(isExplored(world, 0, 200, 0)).toBe(true);
+    // A sight upgrade also invalidates the cache.
+    world.units[0]!.x = 0;
+    world.tick = FOG_UPDATE_EVERY_TICKS * 3;
+    sys(world, 0);
+    expect(isExplored(world, 0, 0, 0)).toBe(true);
+  });
+});
+
 describe('fog determinism', () => {
   it('two same-seed worlds end with identical explored memory', () => {
     const run = (): number[] => {

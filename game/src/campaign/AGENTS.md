@@ -20,6 +20,17 @@
   (spawn now, `moveGroup` once the fresh unit ids appear) because
   `moveGroup` validates unit existence at enqueue time. Raid positions
   derive from the mission seed — deterministic for equal tick streams.
+- Fun-audit C4 (2026-10-02, onboarding): `MissionDef.preplacedBuildings`
+  (mission-granted buildings placed in `ui/session.ts` setup — complete,
+  operational, refunded, and unpowered for the tutorial beat; offsets in
+  world units from the player's base, snapped to land); new trigger
+  kinds `onUnpoweredBuilding` (any complete player building without
+  power — latches `MissionRunState.sawUnpowered`) and `onBuildingPowered`
+  (fires once everything is lit again after the warning); optional
+  `MissionEventDef.requiresEvent` (fire only after the named event
+  fired). M1 uses all three for the "fix a disconnected building" beat
+  plus an `m1-economy` atTick economy-literacy moment. Pinned in
+  `tests/campaign.onboarding.test.ts`.
 - `progress.ts` — `CampaignProgress` (completed ids, diplomat/commander
   points), pure `scoreMission` / `recordCompletion` /
   `isMissionUnlocked` / `campaignEnding` ('peacemaker' wins ties), and

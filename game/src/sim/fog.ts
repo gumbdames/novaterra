@@ -107,13 +107,49 @@ export function computeVisibleCells(world: World, owner: number): Uint8Array {
 }
 
 /**
+ * Cheap change-detection hash for one owner's perception inputs:
+ * living unit count + integer-rounded positions, plus the count of
+ * operational buildings (coverage changes on construction/sabotage/
+ * demolition). A collision only delays a shroud refresh by one cadence
+ * — never a correctness issue, since explored is monotonic display
+ * memory. Costs O(units + buildings); the rasterization it skips is
+ * O(cells × discs).
+ */
+function perceptionHash(world: World, owner: number): string {
+  let n = 0;
+  let h = 0;
+  for (const u of world.units) {
+    if (u.owner !== owner || u.hp <= 0) continue;
+    n++;
+    h = (h + Math.round(u.x) * 31 + Math.round(u.z) * 17) | 0;
+  }
+  let b = 0;
+  for (const bd of world.city.buildings) {
+    if (bd.owner !== owner || bd.progress < 1 || !bd.operational) continue;
+    b++;
+  }
+  // Sight upgrades change the discs without moving anything.
+  const up = world.upgrades[owner]?.length ?? 0;
+  return `${n}:${h}:${b}:${up}`;
+}
+
+/**
  * Fold current visibility into explored memory, for every player.
  * Monotonic: bits only turn on. Called by the fog system.
+ *
+ * `hashCache` (owned by the fog system) skips the rasterization for
+ * owners whose perception inputs haven't changed since the last update
+ * — idle ticks stay cheap, which keeps the sim-tick p95 budget green.
  */
-export function updateFog(world: World): void {
+export function updateFog(world: World, hashCache?: Map<number, string>): void {
   const fog = getFogState(world);
   for (const p of world.city.players) {
     const owner = p.id;
+    if (hashCache !== undefined) {
+      const h = perceptionHash(world, owner);
+      if (hashCache.get(owner) === h) continue;
+      hashCache.set(owner, h);
+    }
     let exp = fog.explored[owner];
     if (!exp) {
       exp = new Array<number>(FOG_GRID * FOG_GRID).fill(0);
@@ -136,13 +172,16 @@ export function isExplored(world: World, owner: number, x: number, z: number): b
 /**
  * The fog system: refresh explored memory every FOG_UPDATE_EVERY_TICKS
  * ticks, plus once on the first invocation (priming) so a fresh session
- * opens with its starting base already explored.
+ * opens with its starting base already explored. Owners whose
+ * perception inputs haven't changed skip the rasterization (see
+ * updateFog) — idle ticks stay far under the sim p95 budget.
  */
 export function createFogSystem(): SimSystem {
   let primed = false;
+  const hashCache = new Map<number, string>();
   return (world: World): void => {
     if (!primed || world.tick % FOG_UPDATE_EVERY_TICKS === 0) {
-      updateFog(world);
+      updateFog(world, hashCache);
       primed = true;
     }
   };

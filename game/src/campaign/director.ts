@@ -73,6 +73,12 @@ export interface MissionRunState {
   initialBuildingCounts: Map<BuildingKind, number>;
   /** Raids waiting for their spawned units to appear. */
   pendingRaids: PendingRaid[];
+  /**
+   * Fun-audit C4 (2026-10-02): latched when an unpowered player
+   * building is seen — pairs onUnpoweredBuilding with onBuildingPowered
+   * (the "you fixed it" payoff only makes sense after the warning).
+   */
+  sawUnpowered: boolean;
   /** Set once victory/defeat is reported (directives fire exactly once). */
   finished: boolean;
   /** The winning path, if victory was achieved. */
@@ -112,6 +118,7 @@ export function createMissionRun(mission: MissionDef, world: World): MissionRunS
     lastAge: getAgeState(world, MISSION_HUMAN_ID).age, // per-side ages: the mission player's own age
     initialBuildingCounts,
     pendingRaids: [],
+    sawUnpowered: false,
     finished: false,
     wonPath: null,
   };
@@ -153,6 +160,11 @@ export function updateMissionRun(
   // --- Fire scripted events. ---
   for (const event of mission.events) {
     if (run.eventsFired.has(event.id)) continue;
+    // Fun-audit C4 (2026-10-02): requiresEvent gates an event on
+    // another event having fired first.
+    if (event.requiresEvent !== undefined && !run.eventsFired.has(event.requiresEvent)) {
+      continue;
+    }
     if (eventTriggered(run, event, world)) {
       run.eventsFired.add(event.id);
       directives.push({ kind: 'message', text: event.message });
@@ -232,6 +244,23 @@ function eventTriggered(
     case 'onLowFunds': {
       const player = getPlayer(world.city, MISSION_HUMAN_ID);
       return (player?.funds ?? 0) < 200;
+    }
+    case 'onUnpoweredBuilding': {
+      // Fun-audit C4: any complete player-owned building without
+      // power — latches sawUnpowered for the onBuildingPowered payoff.
+      const dark = world.city.buildings.some(
+        (b) => b.owner === MISSION_HUMAN_ID && b.progress >= 1 && b.powered !== true,
+      );
+      if (dark) run.sawUnpowered = true;
+      return dark;
+    }
+    case 'onBuildingPowered': {
+      // Fun-audit C4: the payoff — fires once the player has seen a
+      // dark building and every complete building is lit again.
+      if (!run.sawUnpowered) return false;
+      return !world.city.buildings.some(
+        (b) => b.owner === MISSION_HUMAN_ID && b.progress >= 1 && b.powered !== true,
+      );
     }
   }
 }
