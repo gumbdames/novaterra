@@ -94,6 +94,27 @@ export function fillLoc(
   return loc(fill(template, vars));
 }
 
+/**
+ * Fun-audit B8 (2026-10-02): the single display-name map for National
+ * Programs (hud.ts carried two inline copies). Unknown ids pass
+ * through unchanged — never a blank label.
+ */
+export function programDisplayName(program: string | null): string {
+  if (program === null) return '';
+  const s = STRINGS.hud;
+  const names: Record<string, string> = {
+    fiberGrid: s.programFiber,
+    signalsGrid: s.programSignals,
+    heavyIndustry: s.programHeavyIndustry,
+    greenTech: s.programGreenTech,
+    cyberCommand: s.programCyberCommand,
+    globalMedia: s.programGlobalMedia,
+    arsenalProgram: s.programArsenal,
+    prosperityProgram: s.programProsperity,
+  };
+  return names[program] ?? program;
+}
+
 export const STRINGS = {
   menu: {
     title: 'NOVATERRA',
@@ -379,6 +400,13 @@ export const STRINGS = {
     offensiveProbeLaunched: { en: 'Rival probe inbound — a small enemy force is on the move.' },
     offensiveLaunched: { en: 'The rival offensive has begun!' },
     offensiveAllInLaunched: { en: 'The rival is all-in — everything they have is coming at us!' },
+    /**
+     * Fun-audit B8 (2026-10-02): rival age-ups are global events. {age}
+     * and {program} name what they took; the copy says the strategic
+     * part out loud — they just sank thousands into tech instead of
+     * army (the AoE2 tension, finally legible).
+     */
+    rivalAgeUp: { en: 'The rival has entered the {age} ({program}) — their funds went to labs, not tanks. A window of opportunity.' },
   },
   /**
    * Fun-audit B1 (2026-10-02): the skirmish opening beat — one toast

@@ -118,7 +118,7 @@ import {
   LazyModelStore,
   TREE_MODEL_KEYS,
 } from '../render/lazyModels';
-import { createSession, getSkirmishOutcome, humanBaseWorld, isHumanWarCoreFallen, HUMAN_PLAYER_ID, AI_PLAYER_ID, type GameSession } from './session';
+import { createSession, getSkirmishOutcome, humanBaseWorld, isHumanWarCoreFallen, rivalAgeUpOf, HUMAN_PLAYER_ID, AI_PLAYER_ID, type GameSession } from './session';
 import { formatDuration, endGameStatsOf } from './endStats';
 import type { SkirmishVictoryKind } from '../sim/world';
 import {
@@ -220,7 +220,7 @@ import {
   resolveNetworkToolClick,
 } from './linearNetworkDrag';
 import { PauseMenu, loadSettings, type QualityLevel } from './menus';
-import { STRINGS, loc, fillLoc } from './strings';
+import { STRINGS, loc, fillLoc, programDisplayName } from './strings';
 import { peacefulScore } from '../sim/peaceful';
 import {
   avgDesirabilityOf,
@@ -972,6 +972,12 @@ class GameController {
    * when the age actually changes, with the real age name.
    */
   private prevAge: string | null = null;
+  /**
+   * Fun-audit B8 (2026-10-02): the last RIVAL age we announced. Rival
+   * age-ups are global events — banner + Muse line + threat nudge +
+   * ping at the rival base — not silent state changes.
+   */
+  private prevRivalAge: string | null = null;
   private lastObjectivePanelRefresh = 0;
   /**
    * Roadmap B1 (2026-10-02): peaceful score milestone tracking.
@@ -1798,6 +1804,27 @@ class GameController {
     // owns the clock (world.wonderCountdown); this poll only narrates
     // its transitions, ~1×/sec like the Muse poll.
     this.pollWonderCountdown(world);
+
+    // Fun-audit B8 (2026-10-02): rival age-ups are global events. The
+    // detector is pure (ui/session.ts); this poll only narrates the
+    // transition — toast + Muse line + threat nudge + ping at the
+    // rival base, and the copy says the strategic part out loud (they
+    // sank thousands into tech instead of army).
+    const ageUp = rivalAgeUpOf(world, this.prevRivalAge);
+    if (this.prevRivalAge === null) {
+      this.prevRivalAge = (world.ages[AI_PLAYER_ID]?.age ?? 'foundation') as string;
+    } else if (ageUp !== null) {
+      this.prevRivalAge = ageUp.age;
+      const ageName = loc(STRINGS.ageNames[ageUp.age] ?? STRINGS.ageNames.foundation);
+      const progName = programDisplayName(ageUp.program);
+      this.hud.toast(fillLoc(STRINGS.toasts.rivalAgeUp, { age: ageName, program: progName }));
+      if (this.muse !== null) {
+        this.muse.notify(personaLine({ kind: 'rivalAgeUp', age: ageName, program: progName }, world.tick));
+      }
+      this.museBox?.flashThreat();
+      const rival = world.ai?.players.find((p) => p.owner === AI_PLAYER_ID);
+      if (rival !== undefined) this.eventPings?.ping('attack', rival.baseX, rival.baseZ);
+    }
 
     // Fun-audit B6 (2026-10-02): narrate the AI's scheduled offensive
     // phases — warning beats ~60 s ahead, launch beats on begin. The

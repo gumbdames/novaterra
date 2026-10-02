@@ -69,7 +69,7 @@ import { createCombatSystem, registerCombatCommands } from '../sim/combat';
 import { createIntelSystem, registerIntelCommands } from '../sim/intel';
 import { registerDiplomacyCommands } from '../sim/diplomacy';
 import { registerLogisticsCommands } from '../sim/commands';
-import { registerAgeCommands } from '../sim/ages';
+import { registerAgeCommands, getProgramForAge, type Age, type NationalProgram } from '../sim/ages';
 import { registerCheatCommands } from '../sim/cheats';
 import { addAIPlayer, AI_MAX_UNITS, createAISystem, type AIDifficulty } from '../sim/ai';
 import {
@@ -452,6 +452,23 @@ export function checkSkirmishDefeat(world: World): boolean {
 export function isHumanWarCoreFallen(world: World): boolean {
   if (world.peaceful === true) return false;
   return isConquestEliminated(world, HUMAN_PLAYER_ID);
+}
+
+/**
+ * Fun-audit B8 (2026-10-02): rival age-ups as announced global events.
+ * Detects the transition: returns the rival's new age + chosen program
+ * when it differs from `prevAge` (null = first sighting, no event).
+ * Reads `world.ages` directly — never the lazy `getAgeState`, so a
+ * poll can't mutate sim state. Pure function of world state, no wall
+ * clock, no RNG.
+ */
+export function rivalAgeUpOf(
+  world: World,
+  prevAge: string | null,
+): { age: Age; program: NationalProgram } | null {
+  const age = (world.ages[AI_PLAYER_ID]?.age ?? 'foundation') as Age;
+  if (prevAge === null || age === prevAge) return null;
+  return { age, program: getProgramForAge(world, AI_PLAYER_ID, age) };
 }
 
 /**

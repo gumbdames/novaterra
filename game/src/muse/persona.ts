@@ -44,6 +44,7 @@ export type PersonaEvent =
   | { kind: 'wonderCountdown'; phase: 'start' | 'warn' | 'cancelled'; detail: string }
   | { kind: 'offensiveWarning'; phase: 'probe' | 'offensive' | 'allIn' }
   | { kind: 'offensiveLaunched'; phase: 'probe' | 'offensive' | 'allIn' }
+  | { kind: 'rivalAgeUp'; age: string; program: string }
   | { kind: 'enemyDown' }
   | { kind: 'enemySpotted' }
   | { kind: 'combatStarted' }
@@ -133,6 +134,11 @@ const LINES: Record<string, string[]> = {
   'offensiveLaunched:allIn': [
     'They are all in. So are we. For the republic!',
     'The all-out assault has begun. Everything we have built comes down to this.',
+  ],
+  rivalAgeUp: [
+    'The rival just aged up, President — and spent a fortune doing it. Their labs are humming; their barracks are not. Opportunity knocks.',
+    'Intelligence confirms: the rival has advanced, and it cost them dearly. Tech instead of tanks — shall we send a welcoming committee?',
+    'The rival bought progress instead of an army. Bold. Expensive. Let us make them regret the timing.',
   ],
   enemyDown: [
     'Enemy unit destroyed. Their insurance premiums just went up.',
@@ -239,6 +245,10 @@ export function personaLine(event: PersonaEvent, tick: number): string {
   if (event.kind === 'programChosen') line = `${line} (${event.program})`;
   if (event.kind === 'unitLost') line = `${line.replace(/\.*$/, '')} (${event.unit} lost).`;
   if (event.kind === 'wonderCountdown') line = `${line} (${event.detail})`;
+  if (event.kind === 'rivalAgeUp') {
+    const prog = event.program ? ` — ${event.program}` : '';
+    line = `${line} (${event.age}${prog})`;
+  }
   return line;
 }
 
