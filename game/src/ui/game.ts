@@ -229,7 +229,7 @@ import {
 import { trainPlacementToast } from './palettes';
 import { AudioEngine } from '../audio/engine';
 import { AudioEventTracker, snapshotForAudio, type AudioWorldSnapshot } from '../audio/events';
-import { MoodTracker } from '../audio/music';
+import { MoodTracker, enemyProximityFromWorld } from '../audio/music';
 import { CheatConsole, cheatHelpText, type CheatAction } from './cheatConsole';
 import { EndScreen } from './endscreen';
 import { SaveSlotsDialog } from './saveslots';
@@ -1481,11 +1481,17 @@ class GameController {
         this.audio.playSfx('underAttack');
       }
 
-      // Adaptive music via hysteresis tracker (final-review L7).
+      // Adaptive music via hysteresis tracker (final-review L7;
+      // roadmap B20, 2026-10-02: the tracker now has a tension state —
+      // sighted enemies near player assets (never maphack: the sim's
+      // sight model decides what's visible) lift peace to tension
+      // before the first shot, and war relaxes to tension (not peace)
+      // while enemies are still near).
       const mood = this.moodTracker.update({
         nowMs,
         combatUnits: events.combatUnits,
         damageEvents: events.damageEvents,
+        enemyProximity: enemyProximityFromWorld(world, HUMAN_PLAYER_ID),
       });
       this.audio.setMusicMood(mood);
     }

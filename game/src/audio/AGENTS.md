@@ -33,17 +33,35 @@ state. Pause = ctx.suspend(); settings persist to localStorage.
   per `prev.progress < 1 → now.progress >= 1` transition on standing
   buildings; game.ts plays the `buildComplete` cue positionally for
   friendly completions only.
-- `music.ts` — adaptive music: `selectMood({playerUnitsInCombat})` is a pure
-  function (`war` iff any player unit has a live target). `MusicDirector`
-  owns two looping `<audio>` tracks (peace/war) routed through the music
-  bus, with an equal-power crossfade on mood change. Files carry baked 2s
-  fades so loop seams stay inaudible. Both tracks CC-BY Kevin MacLeod —
-  see THIRD_PARTY_NOTICES.md. `MoodTracker` (final-review R5, 2026-10-01)
-  is the shipped hysteresis: 2 consecutive active polls (combat units OR
-  damage events — being bombed with no live targets counts) to enter
-  war, 20s quiet window to exit. The game loop calls
-  `tracker.update({nowMs, combatUnits, damageEvents})` then
-  `engine.setMusicMood(mood)`.
+- `music.ts` — adaptive music: `selectMood({playerUnitsInCombat,
+  enemiesNear})` is a pure function (`war` when fighting, `tension`
+  when sighted enemies are near but no fight has started, `peace`
+  otherwise). `MusicDirector` owns the looping voices — peace/war are
+  `<audio>` file tracks, tension is a procedural pulsing drone bed
+  (`createTensionBedBuffer`: 8s seamless loop, low A1+E2 drone +
+  distant war-drum pulse, zero download, zero license) — routed through
+  the music bus, with an equal-power crossfade on mood change. File
+  tracks carry baked 2s fades so loop seams stay inaudible. Both file
+  tracks CC-BY Kevin MacLeod — see THIRD_PARTY_NOTICES.md.
+  `MoodTracker` (final-review R5, 2026-10-01; tension state roadmap B20,
+  2026-10-02) is the shipped hysteresis: 2 consecutive active polls
+  (combat units OR damage events — being bombed with no live targets
+  counts) to enter war, 20s quiet window to exit; the B20 tension state
+  uses the same shape (2 proximity polls to enter, 10s quiet to leave):
+  sustained enemy proximity lifts peace→tension, combat jumps straight
+  to war from either state, war relaxes to tension (not peace) while
+  enemies are still near. The proximity driver
+  (`enemyProximityFromWorld`) uses the sim's sight model
+  (`getVisibleEnemies` — the same call the minimap uses), so the music
+  never maphacks: only enemies the player's side can actually see, and
+  within `TENSION_RADIUS` (60 world units) of a player unit/building,
+  raise the tension. The game loop calls
+  `tracker.update({nowMs, combatUnits, damageEvents, enemyProximity})`
+  then `engine.setMusicMood(mood)`.
+  Licensed-track upgrade path: drop a CC-BY `tension.mp3` into
+  `public/audio/`, add it to the director's `tracks` map like
+  peace/war, and document it in THIRD_PARTY_NOTICES.md — the
+  procedural bed is the fallback that always works.
 - `sfx.ts` — procedural SFX synth: every cue is declarative data
   (`SFX_CUES: Record<SfxId, SfxCue>`, tone/noise layers), `playSfxCue`
   renders it. Zero download cost; the game is never silent on audio

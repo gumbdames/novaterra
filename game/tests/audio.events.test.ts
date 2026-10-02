@@ -31,6 +31,8 @@ import {
 } from '../src/audio/events';
 import {
   MoodTracker,
+  TENSION_ENTER_POLLS,
+  TENSION_EXIT_QUIET_MS,
   WAR_ENTER_POLLS,
   WAR_EXIT_QUIET_MS,
 } from '../src/audio/music';
@@ -369,6 +371,78 @@ describe('MoodTracker', () => {
     // The full quiet window exits to peace.
     expect(
       tracker.update({ nowMs: 1000 + WAR_EXIT_QUIET_MS, combatUnits: 0, damageEvents: 0 }),
+    ).toBe('peace');
+  });
+
+  // Roadmap B20 (2026-10-02): the tension state.
+  it('needs sustained proximity to enter tension (no single-blip flip)', () => {
+    const tracker = new MoodTracker();
+    expect(
+      tracker.update({ nowMs: 1000, combatUnits: 0, damageEvents: 0, enemyProximity: true }),
+    ).toBe('peace');
+    // A quiet poll resets the streak...
+    expect(
+      tracker.update({ nowMs: 2000, combatUnits: 0, damageEvents: 0, enemyProximity: false }),
+    ).toBe('peace');
+    expect(
+      tracker.update({ nowMs: 3000, combatUnits: 0, damageEvents: 0, enemyProximity: true }),
+    ).toBe('peace');
+    // ...but TENSION_ENTER_POLLS consecutive proximity polls flip it.
+    expect(
+      tracker.update({ nowMs: 4000, combatUnits: 0, damageEvents: 0, enemyProximity: true }),
+    ).toBe('tension');
+    expect(TENSION_ENTER_POLLS).toBe(2);
+  });
+
+  it('jumps from tension straight to war when combat starts', () => {
+    const tracker = new MoodTracker();
+    tracker.update({ nowMs: 1000, combatUnits: 0, damageEvents: 0, enemyProximity: true });
+    tracker.update({ nowMs: 2000, combatUnits: 0, damageEvents: 0, enemyProximity: true });
+    expect(tracker.current).toBe('tension');
+    tracker.update({ nowMs: 3000, combatUnits: 1, damageEvents: 0, enemyProximity: true });
+    expect(
+      tracker.update({ nowMs: 4000, combatUnits: 1, damageEvents: 0, enemyProximity: true }),
+    ).toBe('war');
+  });
+
+  it('war relaxes to tension (not peace) while enemies are still near', () => {
+    const tracker = new MoodTracker();
+    tracker.update({ nowMs: 0, combatUnits: 2, damageEvents: 0 });
+    tracker.update({ nowMs: 1000, combatUnits: 2, damageEvents: 0 });
+    expect(tracker.current).toBe('war');
+    // Quiet window elapses with proximity: tension, not peace.
+    expect(
+      tracker.update({
+        nowMs: 1000 + WAR_EXIT_QUIET_MS,
+        combatUnits: 0,
+        damageEvents: 0,
+        enemyProximity: true,
+      }),
+    ).toBe('tension');
+  });
+
+  it('tension relaxes to peace after its own quiet window', () => {
+    const tracker = new MoodTracker();
+    tracker.update({ nowMs: 1000, combatUnits: 0, damageEvents: 0, enemyProximity: true });
+    tracker.update({ nowMs: 2000, combatUnits: 0, damageEvents: 0, enemyProximity: true });
+    expect(tracker.current).toBe('tension');
+    // Proximity clears: still tension inside the window...
+    expect(
+      tracker.update({
+        nowMs: 2000 + TENSION_EXIT_QUIET_MS - 1,
+        combatUnits: 0,
+        damageEvents: 0,
+        enemyProximity: false,
+      }),
+    ).toBe('tension');
+    // ...peace once the window elapses.
+    expect(
+      tracker.update({
+        nowMs: 2000 + TENSION_EXIT_QUIET_MS,
+        combatUnits: 0,
+        damageEvents: 0,
+        enemyProximity: false,
+      }),
     ).toBe('peace');
   });
 });

@@ -311,10 +311,13 @@ ammo, and materials. A damaged ship moored at a friendly yard shows
 
 ## Sound
 
-Music changes when your units enter combat. Open **Settings** (pause
+Music changes with the battle: a tense drone fades in when enemy forces
+are sighted near yours, and full combat music takes over once the
+fighting starts. Open **Settings** (pause
 menu) to adjust master, music, and sound-effect volumes, or mute all.
 Music: "Meditation Impromptu 01" and "Volatile Reaction" by Kevin
-MacLeod (incompetech.com), CC BY 4.0.
+MacLeod (incompetech.com), CC BY 4.0; the tension bed is synthesized
+in-game.
 
 ## Muse
 
