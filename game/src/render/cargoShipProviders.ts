@@ -140,8 +140,10 @@ function bakeRoute(stops: readonly CargoRouteStop[]): BakedRoute {
   const legs: RouteLeg[] = [];
   let totalLen = 0;
   for (let s = 0; s < n; s++) {
-    const a = kept[s]!;
-    const b = kept[(s + 1) % n]!;
+    // B27: no `!` — s < n <= kept.length by loop bound.
+    const a = kept[s];
+    const b = kept[(s + 1) % n];
+    if (a === undefined || b === undefined) continue;
     const dx = b.x - a.x;
     const dz = b.z - a.z;
     const len = Math.hypot(dx, dz);
@@ -178,7 +180,10 @@ interface ShipPart {
 function coloredBox(part: ShipPart): THREE.BufferGeometry {
   const geo = new THREE.BoxGeometry(part.w, part.h, part.d);
   geo.translate(part.x, part.y, part.z);
-  const count = geo.attributes['position']!.count;
+  const posAttr = geo.attributes['position'];
+  // B27: no `!` — BoxGeometry always has a position attribute.
+  if (posAttr === undefined) throw new Error('coloredBox: BoxGeometry without position');
+  const count = posAttr.count;
   const colors = new Float32Array(count * 3);
   const c = new THREE.Color(part.color);
   for (let i = 0; i < count; i++) {
@@ -191,7 +196,10 @@ function coloredBox(part: ShipPart): THREE.BufferGeometry {
 }
 
 function buildShipGeometry(parts: ShipPart[]): THREE.BufferGeometry {
-  return mergeGeometries(parts.map(coloredBox), false)!;
+  // B27: no `!` — a null merge is a loud build error, never silent.
+  const merged = mergeGeometries(parts.map(coloredBox), false);
+  if (merged === null) throw new Error('buildShipGeometry: mergeGeometries failed');
+  return merged;
 }
 
 /** Shared flat-shaded vertex-color material for ambient cargo ships. */
@@ -222,7 +230,8 @@ function cargoShipGeometry(): THREE.BufferGeometry {
   // Container stacks: three rows, two high, faded shipping colors.
   for (let r = 0; r < 3; r++) {
     for (let c = 0; c < 4; c++) {
-      const color = containers[(r + c) % containers.length]!;
+      // B27: no `!` — modulo containers.length is always in bounds.
+      const color = containers[(r + c) % containers.length] ?? 0x888888;
       parts.push({
         w: 3.6,
         h: 1.5,
@@ -286,12 +295,15 @@ export function createCargoShipProvider(
       for (let s = 0; s < n; s++) {
         // Dwell at the port: loading cargo, facing the next leg.
         if (t < CARGO_SHIP_DWELL_TICKS) {
-          const stop = route.stops[s]!;
-          const leg = route.legs[s]!;
+          // B27: no `!` — s < route.stops.length by the loop above.
+          const stop = route.stops[s];
+          const leg = route.legs[s];
+          if (stop === undefined || leg === undefined) continue;
           return { x: stop.x, y: waterY + swell, z: stop.z, yaw: leg.yaw };
         }
         t -= CARGO_SHIP_DWELL_TICKS;
-        const leg = route.legs[s]!;
+        const leg = route.legs[s];
+        if (leg === undefined) continue;
         const legTicks = leg.len / CARGO_SHIP_SPEED;
         if (t < legTicks && leg.len > 0) {
           const f = t / legTicks;
@@ -302,8 +314,10 @@ export function createCargoShipProvider(
         t -= legTicks;
       }
       // Numerical safety: park at the first port.
-      const stop = route.stops[0]!;
-      const leg = route.legs[0]!;
+      // B27: no `!` — routes always have at least one stop/leg.
+      const stop = route.stops[0];
+      const leg = route.legs[0];
+      if (stop === undefined || leg === undefined) return { x: 0, y: waterY, z: 0, yaw: 0 };
       return { x: stop.x, y: waterY + swell, z: stop.z, yaw: leg.yaw };
     },
     dispose() {

@@ -183,7 +183,10 @@ export function newlyCrossedMilestones(
 ): number[] {
   const out: number[] = [];
   for (let i = 0; i < PEACEFUL_MILESTONES.length; i++) {
-    if (score >= PEACEFUL_MILESTONES[i]!.threshold && !seen.has(i)) out.push(i);
+    // B27: no `!` — the loop bound keeps i in range; unreachable.
+    const milestone = PEACEFUL_MILESTONES[i];
+    if (milestone === undefined) continue;
+    if (score >= milestone.threshold && !seen.has(i)) out.push(i);
   }
   return out;
 }
@@ -192,7 +195,9 @@ export function newlyCrossedMilestones(
 export function milestoneToastLine(index: number, score: number): string {
   const p = STRINGS.peaceful;
   const names = p.milestoneNames.en;
-  const name = index >= 0 && index < names.length ? names[index]! : `#${index + 1}`;
+  // B27: no `!` — index is range-checked, so the access is defined; the
+  // `??` keeps the `#n` fallback for out-of-range indexes, same as before.
+  const name = names[index] ?? `#${index + 1}`;
   return fillLoc(p.milestoneToast, { name, score: formatCount(score) });
 }
 

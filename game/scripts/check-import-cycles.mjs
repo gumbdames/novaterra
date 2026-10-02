@@ -14,7 +14,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// check-import-cycles: fail CI on NEW value-import cycles in game/src/sim/.
+// check-import-cycles: fail CI on NEW value-import cycles in game/src/sim/
+// AND on lint-invariant regressions (roadmap B27).
 //
 // ESM cycles work via live bindings, but one module-level `const`
 // initialized from a cross-cycle import = an import-time TDZ crash, so the
@@ -23,7 +24,14 @@
 // exact member set is not in ALLOWLIST fails the run. Shrinking an
 // allowlisted group (intentional cleanup) also fails — update the
 // allowlist in that commit, documenting why the remaining cycles are
-// intentional. Run: `node scripts/check-import-cycles.mjs` (CI runs it too).
+// intentional.
+//
+// Lint invariants (B27, 2026-10-02): the codebase holds zero `any` types,
+// zero `!` non-null assertions, and strict + noUncheckedIndexedAccess —
+// previously by convention only (tsconfig even said "enforced by
+// convention + review"). This script locks them in CI: any new `any` or
+// `!` in game/src, or a tsconfig that drops strict/noUncheckedIndexedAccess,
+// fails the run. Run: `node scripts/check-import-cycles.mjs` (CI runs it too).
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -71,7 +79,7 @@ for (const v of names) if (!idx.has(v)) visit(v);
 // pathfinding edge stays absent. Shrinking this group is welcome cleanup;
 // growing it (a new member) fails CI.
 const ALLOWLIST = new Set([
-  'ages,ai,city,combat,commands,delegation,desirability,intel,movement,pathfinding,rail,seaTrade,shipyardRepair,superweapons,units,upgrades,utilityNetworks,variants,veterancy,world',
+  'ages,ai,city,combat,commands,delegation,desirability,diplomacy,intel,movement,pathfinding,rail,seaTrade,shipyardRepair,superweapons,units,upgrades,utilityNetworks,variants,veterancy,world',
 ]);
 
 const bad = sccs.filter((s) => !ALLOWLIST.has(s));
@@ -82,3 +90,143 @@ if (bad.length > 0) {
   process.exit(1);
 }
 console.log(`import-cycle check OK: ${sccs.length} cycle group(s), all allowlisted.`);
+
+// ---------------------------------------------------------------------------
+// Roadmap B27: lint-invariant guards (zero `any`, zero `!`, strict config).
+// ---------------------------------------------------------------------------
+
+/** Strip comments and string literals so the English word "any" in prose
+ *  and "Victory!" in UI strings never trip the guards. Single-pass state
+ *  machine (regex stripping misaligns when backticks appear in comments).
+ *  Template literals are removed wholesale. */
+function stripNoise(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  // Newlines in stripped regions are preserved so reported line numbers
+  // match the original file.
+  const keepNewlines = (from, to) => {
+    for (let k = from; k < to; k++) if (src[k] === '\n') out += '\n';
+  };
+  while (i < n) {
+    const c = src[i];
+    const d = src[i + 1];
+    // Line comment.
+    if (c === '/' && d === '/') {
+      const from = i;
+      while (i < n && src[i] !== '\n') i++;
+      keepNewlines(from, i);
+      continue;
+    }
+    // Block comment.
+    if (c === '/' && d === '*') {
+      const from = i;
+      i += 2;
+      while (i < n && !(src[i] === '*' && src[i + 1] === '/')) i++;
+      i += 2;
+      keepNewlines(from, i);
+      continue;
+    }
+    // String literal (', ", `) with backslash escapes.
+    if (c === "'" || c === '"' || c === '`') {
+      const q = c;
+      const from = i;
+      i++;
+      while (i < n) {
+        if (src[i] === '\\') i += 2;
+        else if (src[i] === q) { i++; break; }
+        else i++;
+      }
+      keepNewlines(from, i);
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
+const srcDir = join(dirname(fileURLToPath(import.meta.url)), '..', 'src');
+/** All .ts files under game/src (not tests — tests may use looser idioms). */
+function allSrcFiles(dir) {
+  const out = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const p = join(dir, e.name);
+    if (e.isDirectory()) out.push(...allSrcFiles(p));
+    else if (e.name.endsWith('.ts')) out.push(p);
+  }
+  return out;
+}
+
+let lintFailed = false;
+// `any` as a type: after noise-stripping, the identifier `any` can only be
+// the any-type (no variable is named `any`; the English word lived in
+// comments/strings, now stripped).
+for (const f of allSrcFiles(srcDir)) {
+  const clean = stripNoise(readFileSync(f, 'utf8'));
+  const m = clean.match(/\bany\b/);
+  if (m) {
+    const line = clean.slice(0, m.index).split('\n').length;
+    console.error(`B27 lint guard: \`any\` type in ${f}:${line} — use a precise type.`);
+    lintFailed = true;
+  }
+}
+// `!` non-null assertion: postfix `!` after an identifier, `)`, or `]`,
+// not followed by `=` (excludes `!=` / `!==`). Prefix logical-not (`!x`)
+// has no identifier before the `!`, so it never matches.
+for (const f of allSrcFiles(srcDir)) {
+  const clean = stripNoise(readFileSync(f, 'utf8'));
+  for (const m of clean.matchAll(/[A-Za-z0-9_$)\]]!(?!=)/g)) {
+    const line = clean.slice(0, m.index).split('\n').length;
+    console.error(
+      `B27 lint guard: non-null assertion \`!\` in ${f}:${line} — narrow with an explicit check.`,
+    );
+    lintFailed = true;
+  }
+}
+// tsconfig must keep strict + noUncheckedIndexedAccess. The file carries
+// `//` comments, so strip them (string-aware) before JSON.parse.
+function stripJsonComments(json) {
+  let out = '';
+  let i = 0;
+  const n = json.length;
+  while (i < n) {
+    const c = json[i];
+    const d = json[i + 1];
+    if (c === '/' && d === '/') {
+      while (i < n && json[i] !== '\n') i++;
+      continue;
+    }
+    if (c === '/' && d === '*') {
+      i += 2;
+      while (i < n && !(json[i] === '*' && json[i + 1] === '/')) i++;
+      i += 2;
+      continue;
+    }
+    if (c === '"') {
+      out += c;
+      i++;
+      while (i < n) {
+        if (json[i] === '\\') { out += json.slice(i, i + 2); i += 2; }
+        else { out += json[i]; i++; if (json[i - 1] === '"') break; }
+      }
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+const tsconfigRaw = readFileSync(
+  join(dirname(fileURLToPath(import.meta.url)), '..', 'tsconfig.json'),
+  'utf8',
+);
+const tsconfig = JSON.parse(stripJsonComments(tsconfigRaw));
+for (const flag of ['strict', 'noUncheckedIndexedAccess']) {
+  if (tsconfig.compilerOptions?.[flag] !== true) {
+    console.error(`B27 lint guard: tsconfig compilerOptions.${flag} must stay true.`);
+    lintFailed = true;
+  }
+}
+if (lintFailed) process.exit(1);
+console.log('lint-invariant check OK: zero `any`, zero `!`, strict + noUncheckedIndexedAccess.');

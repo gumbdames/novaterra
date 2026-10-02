@@ -103,7 +103,12 @@ export const MAP_PRESETS: readonly MapPreset[] = [
 
 /** Get a preset by name, or the default (Meridian Plains). */
 export function getMapPreset(name: string): MapPreset {
-  return MAP_PRESETS.find((p) => p.name === name) ?? MAP_PRESETS[0]!;
+  const found = MAP_PRESETS.find((p) => p.name === name);
+  if (found !== undefined) return found;
+  const fallback = MAP_PRESETS[0];
+  // B27: no `!` — MAP_PRESETS is non-empty, so [0] always exists; unreachable.
+  if (fallback === undefined) throw new Error('terrain: MAP_PRESETS is empty');
+  return fallback;
 }
 
 /** Per-vertex biome ids. The renderer maps these to vertex colors. */

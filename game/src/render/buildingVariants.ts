@@ -85,7 +85,10 @@ function buildPropModel(parts: PropPart[]): LoadedModel {
   const geometries: THREE.BufferGeometry[] = [];
   const materials: THREE.Material[] = [];
   for (const [color, geos] of byColor) {
-    geometries.push(mergeGeometries(geos, false)!);
+    // B27: no `!` — a null merge is a loud build error, never silent.
+    const merged = mergeGeometries(geos, false);
+    if (merged === null) throw new Error('buildingVariants: mergeGeometries failed');
+    geometries.push(merged);
     materials.push(
       new THREE.MeshStandardMaterial({
         color,

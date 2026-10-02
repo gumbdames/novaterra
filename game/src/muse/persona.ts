@@ -167,8 +167,10 @@ export function personaLine(event: PersonaEvent, tick: number): string {
   if (event.kind === 'missionMessage') return event.text;
   if (event.kind === 'advice') return `Live Muse suggests: ${event.text}`;
   const key = eventKey(event);
-  const lines = LINES[key] ?? LINES['taunt:stalemate']!;
-  let line = lines[hash32(`${key}:${tick}`) % lines.length]!;
+  // B27: no `!` — the stalemate fallback is always populated; the modulo
+  // index is always in bounds.
+  const lines = LINES[key] ?? LINES['taunt:stalemate'] ?? [];
+  let line = lines[hash32(`${key}:${tick}`) % lines.length] ?? '';
   if (event.kind === 'trick') line = line.replace('{description}', event.description);
   if (event.kind === 'objectiveComplete') line = `${line} (${event.label})`;
   if (event.kind === 'gameStart' && event.missionName) {

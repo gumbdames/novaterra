@@ -272,9 +272,14 @@ export async function runTrailerMode(search: string): Promise<void> {
     // Title cards: exactly one visible at a time (schedules don't overlap).
     const tick = session.world.tick;
     for (let i = 0; i < TRAILER_TITLE_CARDS.length; i += 1) {
-      const card = TRAILER_TITLE_CARDS[i]!;
+      // B27: no `!` — the loop bound keeps i in range; unreachable.
+      const card = TRAILER_TITLE_CARDS[i];
+      if (card === undefined) continue;
       const visible = tick >= card.startTick && tick < card.endTick;
-      cardEls[i]!.classList.toggle('visible', visible);
+      // B27: no `!` — cardEls is built in parallel with TRAILER_TITLE_CARDS; unreachable.
+      const cardEl = cardEls[i];
+      if (cardEl === undefined) continue;
+      cardEl.classList.toggle('visible', visible);
     }
 
     // Subtle water shimmer; render-side only, never touches the sim.

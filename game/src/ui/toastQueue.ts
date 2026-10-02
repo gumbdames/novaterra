@@ -81,7 +81,10 @@ export class ToastQueue {
     if (this.pending.length > 0) {
       const gap = this.hiddenOnce ? now - this.lastHideAt >= this.gapMs : true;
       if (gap) {
-        this.visible = this.pending.shift()!;
+        // B27: no `!` — length > 0 above, so shift() is defined.
+        const next = this.pending.shift();
+        if (next === undefined) throw new Error('toastQueue: shift() on non-empty queue');
+        this.visible = next;
         this.visibleSince = now;
         return this.visible;
       }

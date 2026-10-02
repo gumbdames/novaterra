@@ -67,8 +67,12 @@ function distToSegment(
 function pointInPolygon(x: number, y: number, poly: ReadonlyArray<readonly [number, number]>): boolean {
   let inside = false;
   for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
-    const [xi, yi] = poly[i]!;
-    const [xj, yj] = poly[j]!;
+    // B27: no `!` — i and j are bounded by poly.length (j wraps from i).
+    const pi = poly[i];
+    const pj = poly[j];
+    if (pi === undefined || pj === undefined) continue;
+    const [xi, yi] = pi;
+    const [xj, yj] = pj;
     if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
       inside = !inside;
     }
@@ -89,8 +93,12 @@ function indicatorSDF(kind: UtilityIndicatorKind, x: number, y: number): number 
       // the inside test.
       let d = Infinity;
       for (let i = 0; i < BOLT_POLY.length; i++) {
-        const [ax, ay] = BOLT_POLY[i]!;
-        const [bx, by] = BOLT_POLY[(i + 1) % BOLT_POLY.length]!;
+        // B27: no `!` — i and (i+1)%length are bounded by BOLT_POLY.length.
+        const pa = BOLT_POLY[i];
+        const pb = BOLT_POLY[(i + 1) % BOLT_POLY.length];
+        if (pa === undefined || pb === undefined) continue;
+        const [ax, ay] = pa;
+        const [bx, by] = pb;
         d = Math.min(d, distToSegment(x, y, ax, ay, bx, by));
       }
       return pointInPolygon(x, y, BOLT_POLY) ? -d : d;
@@ -315,7 +323,11 @@ export class UtilityIndicators {
     const digest = utilityIndicatorsDigest(indicators);
     const byKind = new Map<UtilityIndicatorKind, UtilityIndicator[]>();
     for (const kind of UTILITY_INDICATOR_KINDS) byKind.set(kind, []);
-    for (const m of indicators) byKind.get(m.kind)!.push(m);
+    for (const m of indicators) {
+      // Pre-populated above; the undefined branch is unreachable.
+      const list = byKind.get(m.kind);
+      if (list !== undefined) list.push(m);
+    }
     if (digest !== this.lastDigest) {
       this.lastDigest = digest;
       this.restructure(byKind);
@@ -331,7 +343,9 @@ export class UtilityIndicators {
    */
   private restructure(byKind: Map<UtilityIndicatorKind, UtilityIndicator[]>): void {
     for (const kind of UTILITY_INDICATOR_KINDS) {
-      const list = byKind.get(kind)!;
+      // Pre-populated above; the undefined branch is unreachable.
+      const list = byKind.get(kind);
+      if (list === undefined) continue;
       this.lastCounts[kind] = list.length;
       if (list.length === 0) {
         // Fully supplied: hide the layer (0 draw calls).
@@ -381,10 +395,13 @@ export class UtilityIndicators {
     for (const kind of UTILITY_INDICATOR_KINDS) {
       const mesh = this.indicatorMeshes.get(kind);
       if (mesh === undefined) continue;
-      const list = byKind.get(kind)!;
+      // Pre-populated by the caller; the undefined branch is unreachable.
+      const list = byKind.get(kind);
+      if (list === undefined) continue;
       if (list.length === 0) continue;
       for (let i = 0; i < list.length; i++) {
-        const m = list[i]!;
+        const m = list[i];
+        if (m === undefined) continue; // unreachable: i < list.length
         const ground = heightFn !== undefined ? heightFn(m.x, m.z) : 0;
         const top = buildingTop !== undefined ? buildingTop(m.buildingKind) : 4;
         // A building with both problems shows the bolt left, the drop

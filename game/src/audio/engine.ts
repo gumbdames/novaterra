@@ -154,7 +154,8 @@ function createAmbientBedBuffer(ctx: AudioContext): AudioBuffer {
     for (let i = 0; i < fade; i++) {
       const a = i / fade;
       const j = len - fade + i;
-      const blended = data[i]! * a + data[j]! * (1 - a);
+      // B27: no `!` — i, j < len by construction.
+      const blended = (data[i] ?? 0) * a + (data[j] ?? 0) * (1 - a);
       data[j] = blended;
     }
   }

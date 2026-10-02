@@ -114,7 +114,8 @@ export function parseDirectives(responseText: string): LiveDirective[] {
   for (const line of responseText.split('\n')) {
     const m = DIRECTIVE_RE.exec(line.trim());
     if (m) {
-      const text = m[1]!.trim();
+      // B27: no `!` — the regex has one capture group.
+      const text = (m[1] ?? '').trim();
       if (text.length > 0 && text.length <= 280) out.push({ kind: 'advise', text });
     }
   }

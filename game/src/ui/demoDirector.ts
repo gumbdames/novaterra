@@ -340,8 +340,10 @@ export class DemoDirector {
   /** Fire every chapter whose tick has arrived. Never throws. */
   update(): void {
     const world = this.session.world;
-    while (this.fired < this.chapters.length && this.chapters[this.fired]!.tick <= world.tick) {
-      const chapter = this.chapters[this.fired]!;
+    while (this.fired < this.chapters.length) {
+      // B27: no `!` — the loop bound keeps the index in range; unreachable.
+      const chapter = this.chapters[this.fired];
+      if (chapter === undefined || chapter.tick > world.tick) break;
       this.fired += 1;
       try {
         chapter.run(this);
@@ -624,7 +626,9 @@ export class DemoDirector {
         { x: town.x + 120, z: town.z + 180 },
         { x: town.x - 200, z: town.z + 60 },
       ];
-      const route = routes[d.rng.intBelow('demo', routes.length)]!;
+      // B27: no `!` — intBelow returns an index below routes.length; unreachable.
+      const route = routes[d.rng.intBelow('demo', routes.length)];
+      if (route === undefined) return;
       const dest = findLandPoint(d.session.terrain, route.x, route.z);
       d.issue('patrol', buildMoveOrder([truck.id], DEMO_OWNER, dest.x, dest.z));
     });

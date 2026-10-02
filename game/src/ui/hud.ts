@@ -2912,7 +2912,10 @@ export class HUD {
       this.trainTab = id as TrainTabId;
     }));
     const grid = el('div', 'palette-grid');
-    const tab = TRAIN_TABS.find((t) => t.id === this.trainTab) ?? TRAIN_TABS[0]!;
+    // B27: no `!` — TRAIN_TABS is a non-empty literal; unreachable.
+    const trainFallback = TRAIN_TABS[0];
+    if (trainFallback === undefined) throw new Error('hud: TRAIN_TABS is empty');
+    const tab = TRAIN_TABS.find((t) => t.id === this.trainTab) ?? trainFallback;
     for (const kind of tab.kinds) {
       // Locked units stay visible but greyed, with the blocker named —
       // the same rule as spawn validation (age → building → cost).
@@ -2991,7 +2994,10 @@ export class HUD {
       if (line !== null) wrap.append(el('div', 'panel-status', line));
     }
     const grid = el('div', 'palette-grid');
-    const tab = tabs.find((t) => t.id === this.buildTab) ?? tabs[0]!;
+    // B27: no `!` — the build tab list is non-empty; unreachable.
+    const buildFallback = tabs[0];
+    if (buildFallback === undefined) throw new Error('hud: build tab list is empty');
+    const tab = tabs.find((t) => t.id === this.buildTab) ?? buildFallback;
     for (const kind of tab.kinds) {
       // Phase 2 (utilities): the new kinds live in ui/utilities.ts until
       // the sim registers them in BUILDING_DEFS — same visible greyed-out

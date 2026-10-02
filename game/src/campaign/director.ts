@@ -302,7 +302,9 @@ function fireRaid(
   const minUnitId = world.nextId;
   const kinds: UnitKind[] = [];
   for (let i = 0; i < raid.count; i += 1) {
-    kinds.push(raid.kinds[i % raid.kinds.length]!);
+    // B27: no `!` — i % length is always in bounds.
+    const kind = raid.kinds[i % raid.kinds.length];
+    if (kind !== undefined) kinds.push(kind);
   }
   kinds.forEach((kind, i) => {
     const domain = UNIT_DEFS[kind].domain;

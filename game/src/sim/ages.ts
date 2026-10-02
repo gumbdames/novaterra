@@ -401,7 +401,7 @@ export function registerAgeCommands(queue: CommandQueue): void {
       if (st.program) {
         st.programs[leavingAge] = st.program;
       }
-      st.age = prog.next!;
+      st.age = prog.next;
       st.program = program as NationalProgram;
       return { age: prog.next, program };
     },

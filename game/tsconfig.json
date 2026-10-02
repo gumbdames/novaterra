@@ -3,8 +3,8 @@
     // NOVATERRA — TypeScript 7 (tsgo) strict config.
     // The deterministic sim (src/sim) depends on this strictness:
     // no implicit any, no unchecked indexed access, no non-null assertions
-    // (the last two are enforced by convention + review until
-    // typescript-eslint supports TS 7 — see game report 2026-09-28).
+    // (roadmap B27, 2026-10-02: the no-`any` / no-`!` invariants are locked
+    // in CI by scripts/check-import-cycles.mjs, not by convention).
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",

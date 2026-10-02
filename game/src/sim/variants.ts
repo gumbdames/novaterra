@@ -281,7 +281,12 @@ export function chooseVariant(
     return candidates.reduce((a, b) => (variantTierOf(b) > variantTierOf(a) ? b : a));
   }
   // Otherwise: best combat value per cost — the situational pick.
-  let best = candidates[0]!;
+  const firstCandidate = candidates[0];
+  if (firstCandidate === undefined) {
+    // B27: no `!` — the empty check above guarantees [0] exists; unreachable.
+    return kind;
+  }
+  let best = firstCandidate;
   let bestScore = valuePerCost(best);
   for (const c of candidates.slice(1)) {
     const score = valuePerCost(c);

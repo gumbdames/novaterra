@@ -245,17 +245,26 @@ export class ChevronOverlay {
     const byLevel: UnitRecord[][] = [[], [], []];
     for (const u of chevronUnits(units)) {
       const level = Math.max(1, Math.min(3, u.vetLevel ?? 0));
-      byLevel[level - 1]!.push(u);
+      // B27: no `!` — level is clamped to 1..3, so the slot always exists.
+      const slot = byLevel[level - 1];
+      if (slot !== undefined) slot.push(u);
     }
     const billboard = camera !== null ? camera.quaternion : _q.identity();
     for (let i = 0; i < this.meshes.length; i++) {
-      let mesh = this.meshes[i]!;
-      const list = byLevel[i]!;
+      // B27: no `!` — i is bounded by this.meshes.length, and byLevel
+      // always holds exactly 3 slots.
+      const meshAt = this.meshes[i];
+      const listAt = byLevel[i];
+      if (meshAt === undefined || listAt === undefined) continue;
+      let mesh = meshAt;
+      const list = listAt;
       if (list.length > mesh.instanceMatrix.count) {
         mesh = this.grow(mesh, i, list.length);
       }
       for (let j = 0; j < list.length; j++) {
-        const u = list[j]!;
+        // B27: no `!` — j is bounded by list.length.
+        const u = list[j];
+        if (u === undefined) continue;
         const a = chevronAnchor(u, terrain, waterLevel, modelTopFor(u.kind));
         _m.compose(_p.set(a.x, a.y, a.z), billboard, _s);
         mesh.setMatrixAt(j, _m);
@@ -276,13 +285,25 @@ export class ChevronOverlay {
 
   /** Instance counts per level (level 1..3 order). Test/debug hook. */
   levelCounts(): [number, number, number] {
-    return [this.meshes[0]!.count, this.meshes[1]!.count, this.meshes[2]!.count];
+    // B27: no `!` — the constructor pushes exactly one mesh per level.
+    const a = this.meshes[0];
+    const b = this.meshes[1];
+    const c = this.meshes[2];
+    if (a === undefined || b === undefined || c === undefined) {
+      throw new Error('chevrons: level mesh missing — constructor must push one mesh per level');
+    }
+    return [a.count, b.count, c.count];
   }
 
   /** Read back one instance matrix (test hook). */
   debugMatrix(level: 1 | 2 | 3, index: number): THREE.Matrix4 {
     const out = new THREE.Matrix4();
-    this.meshes[level - 1]!.getMatrixAt(index, out);
+    // B27: no `!` — level is 1..3 and the constructor pushes 3 meshes.
+    const mesh = this.meshes[level - 1];
+    if (mesh === undefined) {
+      throw new Error(`chevrons: no mesh for level ${level}`);
+    }
+    mesh.getMatrixAt(index, out);
     return out;
   }
 

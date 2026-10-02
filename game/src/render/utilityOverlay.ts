@@ -350,12 +350,16 @@ export class UtilityOverlay {
     for (const kind of UTILITY_MARKER_KINDS) byKind.set(kind, []);
     for (const m of data.markers) {
       if ((UTILITY_MARKER_KINDS as readonly string[]).includes(m.kind)) {
-        byKind.get(m.kind as UtilityMarkerKind)!.push(m);
+        // Pre-populated above; the undefined branch is unreachable.
+        const list = byKind.get(m.kind as UtilityMarkerKind);
+        if (list !== undefined) list.push(m);
       }
     }
     const dummy = new THREE.Object3D();
     for (const kind of UTILITY_MARKER_KINDS) {
-      const list = byKind.get(kind)!;
+      // Pre-populated above; the undefined branch is unreachable.
+      const list = byKind.get(kind);
+      if (list === undefined) continue;
       if (list.length === 0 && !this.markerMeshes.has(kind)) continue;
       const mesh = this.ensureMarkerMesh(kind);
       if (list.length > mesh.instanceMatrix.count / 16) {
@@ -388,7 +392,9 @@ export class UtilityOverlay {
     const heightFn = opts.heightFn;
     const buildingTop = opts.buildingTop;
     for (let i = 0; i < list.length; i++) {
-      const m = list[i]!;
+      // B27: no `!` — i is bounded by list.length.
+      const m = list[i];
+      if (m === undefined) continue;
       const ground = heightFn !== undefined ? heightFn(m.x, m.z) : 0;
       const top = buildingTop !== undefined ? buildingTop(m.buildingKind) : 4;
       dummy.position.set(

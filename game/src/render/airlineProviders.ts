@@ -175,14 +175,19 @@ export function createAirlinerProvider(
   const { geometry, material } = buildAirlinerModel();
 
   // Closed circuit through the stops (waypoint list + segment lengths).
+  // B27: no `!` — stops.length === 1 above, so stops[0] is defined.
+  const first = stops[0];
+  if (first === undefined) throw new Error('airlineProviders: no stops');
   const waypoints: AirlinerStop[] = stops.length === 1
-    ? holdingEllipse(stops[0]!)
+    ? holdingEllipse(first)
     : stops;
   const segLens: number[] = [];
   let total = 0;
   for (let i = 0; i < waypoints.length; i++) {
-    const a = waypoints[i]!;
-    const b = waypoints[(i + 1) % waypoints.length]!;
+    // B27: no `!` — i < waypoints.length by loop bound.
+    const a = waypoints[i];
+    const b = waypoints[(i + 1) % waypoints.length];
+    if (a === undefined || b === undefined) continue;
     const len = Math.max(0.001, Math.hypot(b.x - a.x, b.z - a.z));
     segLens.push(len);
     total += len;
@@ -192,10 +197,12 @@ export function createAirlinerProvider(
   const poseAtDistance = (d: number): { x: number; z: number; yaw: number } => {
     let rem = ((d % total) + total) % total;
     for (let i = 0; i < waypoints.length; i++) {
-      const len = segLens[i]!;
+      // B27: no `!` — i < waypoints.length by loop bound.
+      const len = segLens[i] ?? 0;
       if (rem <= len) {
-        const a = waypoints[i]!;
-        const b = waypoints[(i + 1) % waypoints.length]!;
+        const a = waypoints[i];
+        const b = waypoints[(i + 1) % waypoints.length];
+        if (a === undefined || b === undefined) continue;
         const t = len === 0 ? 0 : rem / len;
         return {
           x: a.x + (b.x - a.x) * t,
@@ -205,7 +212,9 @@ export function createAirlinerProvider(
       }
       rem -= len;
     }
-    const last = waypoints[waypoints.length - 1]!;
+    // B27: no `!` — waypoints is non-empty (holdingEllipse or stops).
+    const last = waypoints[waypoints.length - 1];
+    if (last === undefined) return { x: 0, z: 0, yaw: 0 };
     return { x: last.x, z: last.z, yaw: 0 };
   };
 

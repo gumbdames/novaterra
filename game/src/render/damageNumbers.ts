@@ -175,7 +175,9 @@ export class DamageNumbers {
       const y = f.y + t * DAMAGE_NUMBER_RISE;
       const alpha = t < 0.7 ? 1 : 1 - (t - 0.7) / 0.3;
       for (let i = 0; i < f.count; i++) {
-        const s = f.digits[i]!;
+        // B27: no `!` — i < f.count <= f.digits.length (4 sprites per floater).
+        const s = f.digits[i];
+        if (s === undefined) continue;
         s.position.set(f.x + (i - (f.count - 1) / 2) * DIGIT_ADVANCE, y, f.z);
         (s.material as THREE.SpriteMaterial).opacity = alpha;
       }
@@ -193,10 +195,15 @@ export class DamageNumbers {
     f.z = z;
     f.count = digits.length;
     for (let i = 0; i < f.digits.length; i++) {
-      const s = f.digits[i]!;
+      // B27: no `!` — i is bounded by f.digits.length.
+      const s = f.digits[i];
+      if (s === undefined) continue;
       const mat = s.material as THREE.SpriteMaterial;
       if (i < digits.length) {
-        mat.map = this.digitTextures[digits[i]!] ?? null;
+        // B27: no `!` — i < digits.length, so the digit exists.
+        const digit = digits[i];
+        if (digit === undefined) continue;
+        mat.map = this.digitTextures[digit] ?? null;
         mat.color.set(color);
         mat.opacity = 1;
         s.visible = true;

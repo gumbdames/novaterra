@@ -383,7 +383,10 @@ export function selectionDigest(
   } else {
     // No selection: the train/build palettes render the active tab's
     // buttons; only each button's availability can move per tick.
-    const trainTabDef = TRAIN_TABS.find((t) => t.id === trainTab) ?? TRAIN_TABS[0]!;
+    // B27: no `!` — TRAIN_TABS is a non-empty literal; unreachable.
+    const trainFallback = TRAIN_TABS[0];
+    if (trainFallback === undefined) throw new Error('paletteDigest: TRAIN_TABS is empty');
+    const trainTabDef = TRAIN_TABS.find((t) => t.id === trainTab) ?? trainFallback;
     for (const kind of trainTabDef.kinds) {
       parts.push(`ta:${kind}:${unitAvailability(world, HUMAN_PLAYER_ID, kind).ok ? 1 : 0}`);
     }
@@ -407,7 +410,11 @@ export function selectionDigest(
         `aa:${airlineArmedFrom === undefined ? 'off' : airlineArmedFrom === null ? 'pick' : airlineArmedFrom}`,
       );
     }
-    const buildTabDef = allBuildTabs().find((t) => t.id === buildTab) ?? allBuildTabs()[0]!;
+    // B27: no `!` — allBuildTabs() returns the non-empty canonical list; unreachable.
+    const allTabs = allBuildTabs();
+    const buildFallback = allTabs[0];
+    if (buildFallback === undefined) throw new Error('paletteDigest: allBuildTabs() is empty');
+    const buildTabDef = allTabs.find((t) => t.id === buildTab) ?? buildFallback;
     for (const kind of buildTabDef.kinds) {
       // Phase 2 (utilities): the new kinds digest through their own
       // availability mirror until the sim registers them.

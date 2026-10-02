@@ -43,7 +43,10 @@ export function clampVetLevel(level: number): number {
 
 /** Rank display name for a veterancy level (0..3), via the loc machinery. */
 export function vetRankLabel(level: number): string {
-  return loc(STRINGS.veterancy.ranks[clampVetLevel(level)]!);
+  // B27: no `!` — clampVetLevel pins the index to 0..3 and ranks holds all four; unreachable.
+  const rank = STRINGS.veterancy.ranks[clampVetLevel(level)];
+  if (rank === undefined) throw new Error('veterancy: rank names are missing');
+  return loc(rank);
 }
 
 /** Chevron glyphs for a level: '▲'.repeat(level) ('' for Recruit). */
@@ -66,6 +69,8 @@ export function vetXpLine(u: UnitRecord): string {
   if (level >= VET_XP_THRESHOLDS.length) {
     return fillLoc(STRINGS.veterancy.xpElite, { rank: rankPart, xp });
   }
-  const next = VET_XP_THRESHOLDS[level]!;
+  // B27: no `!` — the elite return above pins level below the threshold count; unreachable.
+  const next = VET_XP_THRESHOLDS[level];
+  if (next === undefined) throw new Error('veterancy: threshold index out of range');
   return fillLoc(STRINGS.veterancy.xpProgress, { rank: rankPart, xp, next });
 }

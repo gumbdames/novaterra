@@ -159,12 +159,17 @@ export function poseAtTick(
   tick: number,
   anchors: TrailerAnchors,
 ): CamPose {
-  if (shots.length === 0) {
+  const first = shots[0];
+  // B27: no `!` — an empty shot list throws, same as before.
+  if (first === undefined) {
     throw new Error('poseAtTick: no shots defined');
   }
-  const first = shots[0]!;
   if (tick <= first.startTick) return first.from(anchors);
-  const last = shots[shots.length - 1]!;
+  // B27: no `!` — the empty check above guarantees a last shot; unreachable.
+  const last = shots[shots.length - 1];
+  if (last === undefined) {
+    throw new Error('poseAtTick: no shots defined');
+  }
   if (tick >= last.endTick) return last.to(anchors);
   for (const shot of shots) {
     if (tick >= shot.startTick && tick < shot.endTick) {
@@ -190,12 +195,16 @@ export function poseAtTick(
 export function validateShots(shots: TrailerShot[]): string[] {
   const problems: string[] = [];
   for (let i = 0; i < shots.length; i += 1) {
-    const s = shots[i]!;
+    // B27: no `!` — the loop bound keeps i in range; unreachable.
+    const s = shots[i];
+    if (s === undefined) continue;
     if (s.endTick <= s.startTick) {
       problems.push(`shot ${i}: endTick ${s.endTick} <= startTick ${s.startTick}`);
     }
     if (i > 0) {
-      const prev = shots[i - 1]!;
+      // B27: no `!` — i > 0 keeps i - 1 in range; unreachable.
+      const prev = shots[i - 1];
+      if (prev === undefined) continue;
       if (s.startTick < prev.endTick) {
         problems.push(`shot ${i}: overlaps previous shot (${s.startTick} < ${prev.endTick})`);
       } else if (s.startTick > prev.endTick) {

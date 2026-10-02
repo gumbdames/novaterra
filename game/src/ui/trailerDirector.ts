@@ -441,8 +441,10 @@ export class TrailerDirector {
   /** Fire every chapter whose tick has arrived. Never throws. */
   update(): void {
     const world = this.session.world;
-    while (this.fired < this.chapters.length && this.chapters[this.fired]!.tick <= world.tick) {
-      const chapter = this.chapters[this.fired]!;
+    while (this.fired < this.chapters.length) {
+      // B27: no `!` — the loop bound keeps the index in range; unreachable.
+      const chapter = this.chapters[this.fired];
+      if (chapter === undefined || chapter.tick > world.tick) break;
       this.fired += 1;
       try {
         chapter.run(this);
@@ -892,7 +894,14 @@ export class TrailerDirector {
         d.fail('searoute', 'establishSeaRoute', `only ${docks.length} completed trade docks`);
         return;
       }
-      d.issue('searoute', buildEstablishSeaRouteOrder(TRAILER_OWNER, docks[0]!.id, docks[1]!.id, 'funds'));
+      // B27: no `!` — the length check above guarantees two docks; unreachable.
+      const fromDock = docks[0];
+      const toDock = docks[1];
+      if (fromDock === undefined || toDock === undefined) {
+        d.fail('searoute', 'establishSeaRoute', 'trade docks vanished after length check');
+        return;
+      }
+      d.issue('searoute', buildEstablishSeaRouteOrder(TRAILER_OWNER, fromDock.id, toDock.id, 'funds'));
     });
 
     add(3320, 'freighters', (d) => {
@@ -907,7 +916,13 @@ export class TrailerDirector {
         d.fail('freighters', 'spawnUnit', 'no completed shipyard');
         return;
       }
-      const hw = cellWorld(harbors[0]!.cx + 2, harbors[0]!.cz + 1);
+      // B27: no `!` — the length check above guarantees one harbor; unreachable.
+      const harbor = harbors[0];
+      if (harbor === undefined) {
+        d.fail('freighters', 'spawnUnit', 'no completed shipyard');
+        return;
+      }
+      const hw = cellWorld(harbor.cx + 2, harbor.cz + 1);
       for (let i = 0; i < 2; i += 1) {
         const spawn = findWaterPoint(t, hw.x + i * 10, hw.z);
         d.issue('freighters', buildTrainOrder('cargoFreighter', TRAILER_OWNER, spawn.x, spawn.z));
@@ -944,7 +959,14 @@ export class TrailerDirector {
         d.fail('airline', 'establishAirlineRoute', `only ${airports.length} completed airports`);
         return;
       }
-      d.issue('airline', buildEstablishAirlineRouteOrder(TRAILER_OWNER, airports[0]!.id, airports[1]!.id));
+      // B27: no `!` — the length check above guarantees two airports; unreachable.
+      const fromAirport = airports[0];
+      const toAirport = airports[1];
+      if (fromAirport === undefined || toAirport === undefined) {
+        d.fail('airline', 'establishAirlineRoute', 'airports vanished after length check');
+        return;
+      }
+      d.issue('airline', buildEstablishAirlineRouteOrder(TRAILER_OWNER, fromAirport.id, toAirport.id));
     });
 
     // -- ENDURE ---------------------------------------------------------
@@ -1020,7 +1042,9 @@ export class TrailerDirector {
         return;
       }
       attackers.forEach((attacker, i) => {
-        const target = targets[i % targets.length]!;
+        // B27: no `!` — i % targets.length is always a valid index; unreachable.
+        const target = targets[i % targets.length];
+        if (target === undefined) return;
         for (const intent of buildAttackOrders([attacker.id], TRAILER_OWNER, target.id)) {
           d.issue('assault', intent);
         }

@@ -167,7 +167,9 @@ export class BlobShadowSystem {
     const entries = collectBlobShadows(world, heightAt);
     const n = Math.min(entries.length, BLOB_SHADOW_CAPACITY);
     for (let i = 0; i < n; i++) {
-      const e = entries[i]!;
+      // B27: no `!` — i < n <= entries.length by loop bound.
+      const e = entries[i];
+      if (e === undefined) continue;
       this.dummy.position.set(e.x, e.y, e.z);
       this.dummy.scale.set(e.diameter, 1, e.diameter);
       this.dummy.rotation.set(0, 0, 0);

@@ -226,7 +226,10 @@ export class MainMenu {
   private showSkirmishSetup(buttons: HTMLElement): void {
     const s = STRINGS.menu;
     buttons.textContent = '';
-    let selectedMap = MAP_PRESETS[0]!.name;
+    // B27: no `!` — MAP_PRESETS is non-empty; unreachable.
+    const firstPreset = MAP_PRESETS[0];
+    if (firstPreset === undefined) throw new Error('menus: MAP_PRESETS is empty');
+    let selectedMap = firstPreset.name;
 
     buttons.append(el('div', 'difficulty-title', s.chooseMap));
     const mapRow = el('div', 'map-row');

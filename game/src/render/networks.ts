@@ -184,8 +184,15 @@ export function buildPowerLineGeometry(
       ends.push({ nx: n.x, nz: n.z, nh: n.h });
     }
     for (let i = 1; i < ends.length; i++) {
-      const a = ends[0]!;
-      const b = ends[i]!;
+      // B27: no `!` — ends always holds the origin pushed above; a
+      // missing origin is a loud build error, never silent.
+      const a = ends[0];
+      if (a === undefined) {
+        throw new Error('networks: power-line ends[0] missing');
+      }
+      // B27: no `!` — i is bounded by ends.length.
+      const b = ends[i];
+      if (b === undefined) continue;
       const ax = a.nx;
       const az = a.nz;
       const bx = b.nx;

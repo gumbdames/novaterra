@@ -142,8 +142,10 @@ function bakeRoute(stops: readonly TransitRouteStop[]): BakedRoute {
   const legs: RouteLeg[] = [];
   let totalLen = 0;
   for (let s = 0; s < n; s++) {
-    const a = kept[s]!;
-    const b = kept[(s + 1) % n]!;
+    // B27: no `!` — s and (s+1)%n are bounded by kept.length (= n > 0 here).
+    const a = kept[s];
+    const b = kept[(s + 1) % n];
+    if (a === undefined || b === undefined) continue;
     const dx = b.x - a.x;
     const dz = b.z - a.z;
     const len = Math.hypot(dx, dz);
@@ -179,7 +181,13 @@ interface VehiclePart {
 function coloredBox(part: VehiclePart): THREE.BufferGeometry {
   const geo = new THREE.BoxGeometry(part.w, part.h, part.d);
   geo.translate(part.x, part.y, part.z);
-  const count = geo.attributes['position']!.count;
+  // B27: no `!` — a BoxGeometry always carries a position attribute;
+  // its absence is a loud build error, never silent.
+  const posAttr = geo.attributes['position'];
+  if (posAttr === undefined) {
+    throw new Error('transitProviders: BoxGeometry missing position attribute');
+  }
+  const count = posAttr.count;
   const colors = new Float32Array(count * 3);
   const c = new THREE.Color(part.color);
   for (let i = 0; i < count; i++) {
@@ -195,7 +203,9 @@ function buildVehicleGeometry(parts: VehiclePart[]): THREE.BufferGeometry {
   const merged = mergeGeometries(
     parts.map(coloredBox),
     false,
-  )!;
+  );
+  // B27: no `!` — a null merge is a loud build error, never silent.
+  if (merged === null) throw new Error('buildVehicleGeometry: mergeGeometries failed');
   return merged;
 }
 
@@ -316,12 +326,16 @@ function createProvider(
       for (let s = 0; s < n; s++) {
         // Dwell at the stop: parked, facing the next leg.
         if (t < spec.dwellTicks) {
-          const stop = route.stops[s]!;
-          const leg = route.legs[s]!;
+          // B27: no `!` — s is bounded by n = route.stops.length = route.legs.length.
+          const stop = route.stops[s];
+          const leg = route.legs[s];
+          if (stop === undefined || leg === undefined) continue;
           return { x: stop.x, y: yAt(stop.x, stop.z), z: stop.z, yaw: leg.yaw };
         }
         t -= spec.dwellTicks;
-        const leg = route.legs[s]!;
+        // B27: no `!` — same bound as above.
+        const leg = route.legs[s];
+        if (leg === undefined) continue;
         const legTicks = leg.len / spec.speed;
         if (t < legTicks && leg.len > 0) {
           const f = t / legTicks;
@@ -332,8 +346,11 @@ function createProvider(
         t -= legTicks;
       }
       // Numerical safety: park at the first stop.
-      const stop = route.stops[0]!;
-      const leg = route.legs[0]!;
+      // B27: no `!` — poseAt returns null up front when n === 0, so the
+      // first stop and leg always exist here.
+      const stop = route.stops[0];
+      const leg = route.legs[0];
+      if (stop === undefined || leg === undefined) return null;
       return { x: stop.x, y: yAt(stop.x, stop.z), z: stop.z, yaw: leg.yaw };
     },
     dispose() {

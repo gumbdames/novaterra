@@ -2018,9 +2018,11 @@ class GameController {
     if (clicked && clicked.owner !== HUMAN_PLAYER_ID) {
       // canTarget gate (same rule the AI follows): only order attackers
       // whose weapons can actually hit the target's domain.
-      const attackers = ownIds.filter((id) => {
-        const u = own.get(id)!;
-        return canTarget(UNIT_DEFS[u.kind as UnitKind], clicked as UnitRecord);
+      // B27: no `!` — ownIds was filtered by own.has(id) above.
+      const attackers = ownIds.flatMap((id) => {
+        const u = own.get(id);
+        if (u === undefined) return [];
+        return canTarget(UNIT_DEFS[u.kind as UnitKind], clicked as UnitRecord) ? [id] : [];
       });
       if (attackers.length === 0) {
         this.hud.toast(STRINGS.orders.cannotTarget);
@@ -2044,9 +2046,11 @@ class GameController {
     if (inBounds(cellX, cellZ)) {
       const target = buildingAtCell(world.city, cellIndex(cellX, cellZ));
       if (target && target.owner !== HUMAN_PLAYER_ID) {
-        const attackers = ownIds.filter((id) => {
-          const u = own.get(id)!;
-          return canTargetBuilding(UNIT_DEFS[u.kind as UnitKind]);
+        // B27: no `!` — ownIds was filtered by own.has(id) above.
+        const attackers = ownIds.flatMap((id) => {
+          const u = own.get(id);
+          if (u === undefined) return [];
+          return canTargetBuilding(UNIT_DEFS[u.kind as UnitKind]) ? [id] : [];
         });
         if (attackers.length === 0) {
           this.hud.toast(STRINGS.orders.cannotTarget);

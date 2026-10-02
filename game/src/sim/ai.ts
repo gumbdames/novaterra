@@ -338,9 +338,12 @@ function shuffled<T>(rng: RngBank, stream: string, items: T[]): T[] {
   const arr = [...items];
   for (let i = arr.length - 1; i > 0; i--) {
     const j = rng.intBelow(stream, i + 1);
-    const tmp = arr[i]!;
-    arr[i] = arr[j]!;
-    arr[j] = tmp;
+    // B27: no `!` — i, j < arr.length by construction.
+    const ai = arr[i];
+    const aj = arr[j];
+    if (ai === undefined || aj === undefined) continue;
+    arr[i] = aj;
+    arr[j] = ai;
   }
   return arr;
 }
@@ -1102,7 +1105,9 @@ function thinkSiege(world: World, queue: CommandQueue, ai: AIPlayerState): void 
   // the siege force (siegeGuardCount: never more than n-1).
   const guard = siegeGuardCount(fighters.length, difficulty);
   for (let i = 0; i < fighters.length; i++) {
-    const u = fighters[i]!;
+    // B27: no `!` — i < fighters.length by loop bound.
+    const u = fighters[i];
+    if (u === undefined) continue;
     if (i < guard) {
       // Home guard: on campaign start, recall stragglers toward the
       // base so the guard actually defends the base area. One order
@@ -2866,7 +2871,8 @@ const PROBE_COUNT = PROBE_RADII.length * PROBE_DIRS;
 
 /** Probe candidate #i around the base (deterministic, no RNG). */
 function probePoint(ai: AIPlayerState, i: number): { x: number; z: number } {
-  const r = PROBE_RADII[Math.floor(i / PROBE_DIRS)] ?? PROBE_RADII[PROBE_RADII.length - 1]!;
+  // B27: no `!` — the fallback is the last radius (always defined).
+  const r = PROBE_RADII[Math.floor(i / PROBE_DIRS)] ?? PROBE_RADII[PROBE_RADII.length - 1] ?? 220;
   const a = ((i % PROBE_DIRS) / PROBE_DIRS) * Math.PI * 2;
   return { x: ai.baseX + Math.round(Math.cos(a) * r), z: ai.baseZ + Math.round(Math.sin(a) * r) };
 }
@@ -3205,6 +3211,9 @@ export function thinkCarrierEscorts(world: World, queue: CommandQueue, ai: AIPla
   if (carriers.length === 0) return;
   const pool = ESCORT_KINDS.filter((k) => UNIT_DEFS[k as UnitKind]) as UnitKind[];
   if (pool.length === 0) return;
+  // B27: no `!` — pool is non-empty by the guard above.
+  const escortKind = pool[0];
+  if (escortKind === undefined) return;
   for (const c of carriers) {
     const screen = world.units.filter(
       (u) =>
@@ -3217,11 +3226,11 @@ export function thinkCarrierEscorts(world: World, queue: CommandQueue, ai: AIPla
     if (
       screen.length < CARRIER_ESCORT_COUNT &&
       n < AI_MAX_UNITS[ai.difficulty] &&
-      canTrain(world, ai.owner, pool[0]!)
+      canTrain(world, ai.owner, escortKind)
     ) {
-      const p = spawnPoint(ai, pool[0]!, n);
-      if (spawn(world, queue, ai, pool[0]!, p.x, p.z)) {
-        ai.builtCounts[pool[0]!] = (ai.builtCounts[pool[0]!] ?? 0) + 1;
+      const p = spawnPoint(ai, escortKind, n);
+      if (spawn(world, queue, ai, escortKind, p.x, p.z)) {
+        ai.builtCounts[escortKind] = (ai.builtCounts[escortKind] ?? 0) + 1;
       }
     }
     // Idle escorts station near the carrier.
@@ -3339,7 +3348,12 @@ function thinkCitizen(
   // (Personality may stagger new attack orders to every other think.)
   if (visible.length > 0 && attacksThisThink(world, ai)) {
     // Nearest to base (deterministic). The length check above guarantees [0] exists.
-    let nearest: UnitRecord = visible[0]!;
+    const firstVisible = visible[0];
+    if (firstVisible === undefined) {
+      // B27: no `!` — visible.length > 0 above guarantees [0] exists; unreachable.
+      throw new Error('ai: expected at least one visible enemy');
+    }
+    let nearest: UnitRecord = firstVisible;
     let best = Infinity;
     for (const e of visible) {
       const dx = e.x - ai.baseX;
@@ -3433,7 +3447,12 @@ function thinkCommander(
       clampWaypoint(ai.baseX, ai.baseZ - 120),
     ];
     // Modulo guarantees a valid index.
-    let wp = waypoints[ai.scoutIndex % waypoints.length]!;
+    const firstWp = waypoints[ai.scoutIndex % waypoints.length];
+    if (firstWp === undefined) {
+      // B27: no `!` — modulo guarantees a valid index; unreachable.
+      throw new Error('ai: scout waypoint index out of range');
+    }
+    let wp = firstWp;
     for (let tries = 0; tries < waypoints.length; tries++) {
       const crowded = visible.some((e) => {
         const dx = e.x - wp.x;
@@ -3442,7 +3461,12 @@ function thinkCommander(
       });
       if (!crowded) break;
       ai.scoutIndex++;
-      wp = waypoints[ai.scoutIndex % waypoints.length]!;
+      const nextWp = waypoints[ai.scoutIndex % waypoints.length];
+      if (nextWp === undefined) {
+        // B27: no `!` — modulo guarantees a valid index; unreachable.
+        throw new Error('ai: scout waypoint index out of range');
+      }
+      wp = nextWp;
     }
     for (const u of world.units) {
       if (u.owner !== ai.owner || u.hp <= 0) continue;
@@ -3513,7 +3537,12 @@ function thinkCommander(
     let fx: number;
     let fz: number;
     if (visible.length > 0) {
-      let nearest: UnitRecord = visible[0]!;
+      const firstVisible = visible[0];
+      if (firstVisible === undefined) {
+        // B27: no `!` — visible.length > 0 above guarantees [0] exists; unreachable.
+        throw new Error('ai: expected at least one visible enemy');
+      }
+      let nearest: UnitRecord = firstVisible;
       let best = Infinity;
       for (const e of visible) {
         const dx = e.x - ai.baseX;
@@ -3579,7 +3608,12 @@ function thinkCommander(
   //     missile boats stay in their pack (group order already issued).
   //     (Personality may stagger new attack orders to every other think.)
   if (visible.length > 0 && attacksThisThink(world, ai)) {
-    let nearest: UnitRecord = visible[0]!;
+    const firstVisible = visible[0];
+    if (firstVisible === undefined) {
+      // B27: no `!` — visible.length > 0 above guarantees [0] exists; unreachable.
+      throw new Error('ai: expected at least one visible enemy');
+    }
+    let nearest: UnitRecord = firstVisible;
     let best = Infinity;
     for (const e of visible) {
       const dx = e.x - ai.baseX;
@@ -4593,8 +4627,12 @@ function thinkPeacefulSeaTrade(
   );
   const route = (world.city.seaRoutes ?? []).find((x) => x.owner === ai.owner) ?? null;
   if (route === null && completed.length >= 2 && rich) {
-    const a = completed[0]!;
-    const c = completed[1]!;
+    const a = completed[0];
+    const c = completed[1];
+    if (a === undefined || c === undefined) {
+      // B27: no `!` — completed.length >= 2 above guarantees both exist; unreachable.
+      throw new Error('ai: expected two completed commercial ports');
+    }
     const l = thinkLedger(ai);
     // Ledger-reserve the 500 setup (the Phase 7 rule: a think's batch
     // can never go stale at apply) without dropping below the peaceful
@@ -4629,7 +4667,11 @@ function thinkPeacefulSeaTrade(
       // Freighters are built at the civilian shipyard, not the docks
       // (the no-blur rule) — the shipyard's water cell is the spawn
       // point.
-      const anchor = completedShipyards[0]!;
+      const anchor = completedShipyards[0];
+      if (anchor === undefined) {
+        // B27: no `!` — completedShipyards.length >= 1 above guarantees [0] exists; unreachable.
+        throw new Error('ai: expected a completed commercial harbor');
+      }
       const water = peacefulHarborWaterCell(terrain, anchor);
       if (water !== null) {
         while (want > 0) {
