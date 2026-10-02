@@ -276,11 +276,18 @@ the last — a rich, well-powered city advances fastest.
 
 Training is organized in four tabs. Every unit is strongest against
 something and weak against something else — scout first, then build
-the counter. Advanced units need a production building (barracks, war
+the counter. Units train through **production queues**: each military
+unit takes real time to train (5–20 seconds depending on tier — the
+card shows the train time). Click a military card to queue it at your
+least-loaded producer; select a production building (Barracks, War
+Factory, Airfield, Naval Shipyard, Naval Yard) to manage its queue —
+train more units there, pause the queue, cancel an entry for a full
+refund, and set a **rally point** that newly trained units move to.
+Advanced units need their production building (barracks, war
 factory, airfield, naval yard) before they can be trained.
 
 **Infantry**
-- **Engineer** — cheap basic infantry; trains with no production building required.
+- **Engineer** — cheap basic infantry; trains at the Barracks.
 - **Rifles** — cheap infantry, good against other infantry.
 - **Sniper Team** — long-range precision; deletes infantry and
   raiders, dies to anything that touches it (needs a barracks).

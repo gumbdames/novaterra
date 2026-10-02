@@ -594,6 +594,24 @@ body {
   margin-top: 0;
 }
 
+/* Fun-audit C1 (production queues, 2026-10-02): the per-entry
+   training progress bar in the building detail view. */
+.queue-bar {
+  flex: 1 1 60px;
+  min-width: 60px;
+  height: 8px;
+  border: 1px solid var(--panel-border);
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  align-self: center;
+}
+
+.queue-fill {
+  height: 100%;
+  background: rgba(87, 200, 255, 0.75);
+}
+
 .sel-action {
   appearance: none;
   margin-top: 8px;

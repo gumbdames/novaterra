@@ -81,7 +81,7 @@ import {
   type UtilityModel,
   type UtilitySideModel,
 } from './utilityNetworks';
-import { UNIT_DEFS, supplyLevel, supplyServicesOf, type UnitRecord } from './units';
+import { UNIT_DEFS, supplyLevel, supplyServicesOf, runTraining, type UnitRecord } from './units';
 import { runIntelAccrual, isSabotaged } from './intel';
 import { createSpatialHash, shInsert, shQueryRadius } from './spatial';
 import { buildingTaxMultiplier, getDesirabilityModel, type DesirabilityModel } from './desirability';
@@ -1645,6 +1645,10 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   // produces nothing — one consistent offline gate).
   runIntelAccrual(world, 1);
   runProduction(world, city);
+  // Fun-audit C1 (production queues, 2026-10-02): training queues
+  // advance here — training IS production (1 Hz, same as everything
+  // else in this tick).
+  runTraining(world, t);
   runHarvest(world, city);
   // Phase 4 transport (S7): civilian fare/freight earnings ride right
   // after harvest — same shape (living units × def rate), gated on the

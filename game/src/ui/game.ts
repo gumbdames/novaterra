@@ -41,7 +41,7 @@
 import * as THREE from 'three';
 import type { World } from '../sim/world';
 import type { UnitKind, UnitRecord } from '../sim/units';
-import { UNIT_DEFS } from '../sim/units';
+import { UNIT_DEFS, bestProductionBuilding, producingBuildingKind } from '../sim/units';
 import { canTarget, canTargetBuilding } from '../sim/combat';
 import {
   BUILDING_DEFS,
@@ -189,6 +189,11 @@ import {
   buildSupplyTogglesOrder,
   buildUnloadCargoOrder,
   buildUpgradeRoadOrder,
+  // Fun-audit C1 (production queues, 2026-10-02): the training orders.
+  buildTrainUnitOrder,
+  buildCancelTrainOrder,
+  buildSetTrainPausedOrder,
+  buildSetRallyPointOrder,
   // Grand-expansion Phase 5 (S5): the airline orders.
   buildCancelAirlineRouteOrder,
   // Civilian sea trade (Half A, 2026-10-01): the sea-route orders.
@@ -229,7 +234,7 @@ import {
   milestoneToastLine,
   savePeacefulBest,
 } from './peaceful';
-import { trainPlacementToast } from './palettes';
+import { trainPlacementToast, unitName, buildingName } from './palettes';
 import { AudioEngine } from '../audio/engine';
 import { AudioEventTracker, snapshotForAudio, type AudioWorldSnapshot } from '../audio/events';
 import { MoodTracker, enemyProximityFromWorld } from '../audio/music';
@@ -325,6 +330,7 @@ type PlacementMode =
   | { kind: 'train'; unitKind: UnitKind }
   | { kind: 'build'; tool: BuildTool }
   | { kind: 'storm' }
+  | { kind: 'rally'; buildingId: number }
   | null;
 
 /**
@@ -414,6 +420,8 @@ export interface GameFrameDeps {
   updatePlacementGhost(world: World): void;
   setSelectedEntities(unitIds: number[]): void;
   updateEntitySelectionRings(world: World): void;
+  /** Fun-audit C1 (2026-10-02): rally-point flag for the selected building. */
+  updateRallyFlag(world: World, selection: Selection): void;
   updateHud(
     world: World,
     selection: Selection,
@@ -458,6 +466,9 @@ export function runGameFrame(deps: GameFrameDeps, nowMs: number, frameMs: number
   deps.syncEntities(world);
   deps.setSelectedEntities(deps.selection.unitIds);
   deps.updateEntitySelectionRings(world);
+  // Fun-audit C1 (production queues, 2026-10-02): the rally flag
+  // follows the selected production building's rally point.
+  deps.updateRallyFlag(world, deps.selection);
   // Roadmap B11 (2026-10-02): the placement ghost follows the pointer
   // while a building tool is armed (paused or not — pure render data).
   deps.updatePlacementGhost(world);
@@ -1060,6 +1071,34 @@ class GameController {
         this.selection = clearSelection();
       },
       onTrainUnit: (kind) => {
+        const def = UNIT_DEFS[kind];
+        // Fun-audit C1 (production queues, 2026-10-02): military units
+        // train through production-building queues — the palette click
+        // enqueues at the owner's least-loaded producer (shortest
+        // queue, lowest id on ties) instead of arming the instant
+        // map-click spawn. Civilian units keep the instant placement
+        // path (ambient/decorative automation is untouched).
+        if (def.military === true) {
+          const b = bestProductionBuilding(this.session.world, HUMAN_PLAYER_ID, def);
+          if (b === undefined) {
+            // Unreachable through the palette (unitAvailability locks
+            // the button without a producer) — loud fallback only.
+            this.hud.toast(
+              fillLoc(STRINGS.palettes.requiresBuilding, {
+                name: buildingName(producingBuildingKind(def)),
+              }),
+            );
+            return;
+          }
+          this.issueOrder(buildTrainUnitOrder(kind, HUMAN_PLAYER_ID, b.id));
+          this.hud.toast(
+            fillLoc(STRINGS.trainQueue.queuedToast, {
+              name: unitName(kind),
+              building: buildingName(b.kind),
+            }),
+          );
+          return;
+        }
         this.placement = { kind: 'train', unitKind: kind };
         // Grand-expansion Phase 5 (S5): arming a palette tool disarms
         // the airline gesture (one armed gesture at a time).
@@ -1068,6 +1107,32 @@ class GameController {
         // tool — clear the armed-tool indicator.
         this.hud.buildToolArmed = null;
         this.hud.toast(trainPlacementToast(kind));
+      },
+      // Fun-audit C1: queue one unit at a specific production building
+      // (the building detail view's train buttons).
+      onTrainUnitAtBuilding: (kind, buildingId) => {
+        this.issueOrder(buildTrainUnitOrder(kind, HUMAN_PLAYER_ID, buildingId));
+        const b = this.session.world.city.buildings.find((x) => x.id === buildingId);
+        this.hud.toast(
+          fillLoc(STRINGS.trainQueue.queuedToast, {
+            name: unitName(kind),
+            building: b ? buildingName(b.kind) : '',
+          }),
+        );
+      },
+      onCancelTrain: (buildingId, index) => {
+        this.issueOrder(buildCancelTrainOrder(HUMAN_PLAYER_ID, buildingId, index));
+      },
+      onSetTrainPaused: (buildingId, paused) => {
+        this.issueOrder(buildSetTrainPausedOrder(HUMAN_PLAYER_ID, buildingId, paused));
+      },
+      // Fun-audit C1: arm the rally-point tool for a building — the
+      // next map click sets its rally point (placement.ts pattern).
+      onSetRallyTool: (buildingId) => {
+        this.placement = { kind: 'rally', buildingId };
+        this.disarmAirlineTool();
+        this.hud.buildToolArmed = null;
+        this.hud.toast(loc(STRINGS.trainQueue.rallyToast));
       },
       onBuildTool: (tool) => {
         this.placement = { kind: 'build', tool };
@@ -1428,6 +1493,25 @@ class GameController {
       setSelectedEntities: (unitIds) => this.entities.setSelected(unitIds),
       updateEntitySelectionRings: (world) =>
         this.entities.updateSelectionRings(EntityRenderer.unitMap(world)),
+      // Fun-audit C1 (production queues, 2026-10-02): the rally-point
+      // flag rides on the selected production building's rally point
+      // (hidden for every other selection).
+      updateRallyFlag: (world, selection) => {
+        const b =
+          selection.buildingId !== null
+            ? world.city.buildings.find((x) => x.id === selection.buildingId)
+            : undefined;
+        if (
+          b !== undefined &&
+          b.owner === HUMAN_PLAYER_ID &&
+          b.rallyX !== undefined &&
+          b.rallyZ !== undefined
+        ) {
+          this.entities.setRallyFlag(b.rallyX, b.rallyZ, true);
+        } else {
+          this.entities.setRallyFlag(0, 0, false);
+        }
+      },
       updateHud: (world, selection, advisorItems, paused, speed, terrain) => {
         this.hud.update(world, selection, advisorItems, paused, speed, terrain);
         // Fun-audit B4 (2026-10-02): the rival-watch strip lives only in
@@ -2542,6 +2626,16 @@ class GameController {
       this.placeResolution(resolveTrainClick(this.placement.unitKind, HUMAN_PLAYER_ID, point));
       return;
     }
+    // Fun-audit C1 (production queues, 2026-10-02): the rally-point
+    // tool — a map click sets the selected production building's
+    // rally point; right-click / Esc cancels (placeResolution).
+    if (this.placement?.kind === 'rally') {
+      this.issueOrder(
+        buildSetRallyPointOrder(HUMAN_PLAYER_ID, this.placement.buildingId, point.x, point.z),
+      );
+      this.cancelPlacement();
+      return;
+    }
     // Grand-expansion Phase 5 (S5): the airline two-click gesture is not
     // a palette placement mode — it consumes the click while armed.
     if (this.hud.airlineArmed) {
@@ -3357,6 +3451,16 @@ class GameController {
     // (Road drags are consumed earlier by the road-drag-paint path.)
     if (this.placement?.kind === 'train') {
       this.placeResolution(resolveTrainClick(this.placement.unitKind, HUMAN_PLAYER_ID, pb));
+      return;
+    }
+    // Fun-audit C1: a drag with the rally tool armed sets the rally at
+    // the release point (the armed tool owns the gesture — never a
+    // box-select).
+    if (this.placement?.kind === 'rally') {
+      this.issueOrder(
+        buildSetRallyPointOrder(HUMAN_PLAYER_ID, this.placement.buildingId, pb.x, pb.z),
+      );
+      this.cancelPlacement();
       return;
     }
     if (this.placement?.kind === 'build') {

@@ -232,6 +232,30 @@ export const STRINGS = {
     // inside a drydock's repair radius (sim/shipyardRepair.ts).
     underRepair: { en: 'Under repair' },
   },
+  /**
+   * Fun-audit C1 (production queues, 2026-10-02): the building
+   * detail view's training section — queue list, pause/resume,
+   * per-entry cancel (full refund), and the rally-point tool.
+   * English-only (2026-09-30 directive).
+   */
+  trainQueue: {
+    sectionTitle: { en: 'Training' },
+    queueTitle: { en: 'Queue' },
+    queueEmpty: { en: 'Queue empty — pick a unit to train' },
+    pauseVerb: { en: 'Pause queue' },
+    resumeVerb: { en: 'Resume queue' },
+    cancelVerb: { en: 'Cancel' },
+    cancelTitle: { en: 'Cancel training — full refund' },
+    queueFull: { en: 'Queue full' },
+    setRallyVerb: { en: 'Set rally point' },
+    setRallyTitle: { en: 'Choose where newly trained units gather' },
+    rallyToast: { en: 'Click the map to set the rally point. Right-click cancels.' },
+    rallySet: { en: 'Rally point set' },
+    rallyUnset: { en: 'No rally point — units spawn at the building' },
+    trainTime: { en: '{secs}s' },
+    queuedToast: { en: '{name} queued at {building}' },
+    progressTitle: { en: 'Training {name} — {pct}% ' },
+  },
   /** Veterancy display (grand-expansion Phase 1). English-only. */
   veterancy: {
     /** Rank names per vetLevel 0..3 — must match sim/veterancy.ts VET_RANK_NAMES. */

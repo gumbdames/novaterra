@@ -116,6 +116,61 @@ export function buildTrainOrder(
   };
 }
 
+/**
+ * Fun-audit C1 (production queues, 2026-10-02): queue one military
+ * unit of `kind` at production building `buildingId`. The sim
+ * validates the building (owned, completed, can produce the kind)
+ * and deducts costs at enqueue; `runTraining` completes it over
+ * `def.trainSeconds`.
+ */
+export function buildTrainUnitOrder(
+  kind: string,
+  owner: number,
+  buildingId: number,
+): OrderIntent {
+  return {
+    kind: 'trainUnit',
+    payload: { kind, owner, buildingId },
+  };
+}
+
+/** Fun-audit C1: cancel the queued unit at `index` (full refund). */
+export function buildCancelTrainOrder(
+  owner: number,
+  buildingId: number,
+  index: number,
+): OrderIntent {
+  return {
+    kind: 'cancelTrainUnit',
+    payload: { owner, buildingId, index },
+  };
+}
+
+/** Fun-audit C1: pause (true) or resume (false) a building's queue. */
+export function buildSetTrainPausedOrder(
+  owner: number,
+  buildingId: number,
+  paused: boolean,
+): OrderIntent {
+  return {
+    kind: 'setTrainPaused',
+    payload: { owner, buildingId, paused },
+  };
+}
+
+/** Fun-audit C1: set a production building's rally point. */
+export function buildSetRallyPointOrder(
+  owner: number,
+  buildingId: number,
+  x: number,
+  z: number,
+): OrderIntent {
+  return {
+    kind: 'setRallyPoint',
+    payload: { owner, buildingId, x, z },
+  };
+}
+
 /** Road tool: pave a list of city cell indices (drag path). */
 export function buildRoadOrder(
   owner: number,

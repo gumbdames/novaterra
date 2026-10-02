@@ -180,6 +180,19 @@ function makeDeps(world: World, entities: EntityRenderer): {
     setSelectedEntities: (ids) => entities.setSelected(ids),
     updateEntitySelectionRings: (w) =>
       entities.updateSelectionRings(EntityRenderer.unitMap(w)),
+    // Fun-audit C1 (production queues, 2026-10-02): the rally-point
+    // flag follows the selected building's rally point.
+    updateRallyFlag: (w, selection) => {
+      const b =
+        selection.buildingId !== null
+          ? w.city.buildings.find((x) => x.id === selection.buildingId)
+          : undefined;
+      if (b !== undefined && b.rallyX !== undefined && b.rallyZ !== undefined) {
+        entities.setRallyFlag(b.rallyX, b.rallyZ, true);
+      } else {
+        entities.setRallyFlag(0, 0, false);
+      }
+    },
     updateHud: () => {
       hooks.hudUpdates++;
     },

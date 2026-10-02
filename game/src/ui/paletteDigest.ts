@@ -54,7 +54,7 @@
 
 import type { World } from '../sim/world';
 import type { TerrainData } from '../sim/terrain';
-import { UNIT_DEFS, type UnitKind } from '../sim/units';
+import { UNIT_DEFS, producibleKinds, trainTicksFor, type UnitKind } from '../sim/units';
 import { BUILDING_DEFS, ZoneType, getPlayer, buildingOccupancy } from '../sim/city';
 import {
   buildingLandValue,
@@ -71,6 +71,7 @@ import {
   buildingAvailability,
   upgradeAvailability,
   playerHasCompletedLab,
+  trainAtBuildingAvailability,
   type MenuTabId,
 } from './palettes';
 import { UPGRADE_DEFS, repeatableUpgradeLevel } from '../sim/upgrades';
@@ -379,6 +380,26 @@ export function selectionDigest(
       parts.push(`sh:${calling.join(',')}:${freighter}${barge}`);
     } else {
       parts.push('sh:x');
+    }
+    // Fun-audit C1 (production queues, 2026-10-02): the building detail
+    // panel renders the training section (train buttons + the queue
+    // with progress % + pause/resume + rally tool) for owned,
+    // completed production buildings. tq: carries the queue entries
+    // (kind:ticksLeft — whole seconds, matching the rendered %),
+    // the paused flag, the rally point, and the per-kind train-button
+    // availability bits. 'tq:x' when the section does not render.
+    // Always emitted.
+    if (b.owner === HUMAN_PLAYER_ID && b.progress >= 1 && producibleKinds(b.kind).length > 0) {
+      const q = b.trainQueue ?? [];
+      const entries = q.map((e) => `${e.kind}:${e.ticksLeft}`).join('.');
+      const avail = producibleKinds(b.kind)
+        .map((k) => (trainAtBuildingAvailability(world, HUMAN_PLAYER_ID, b.id, k).ok ? 1 : 0))
+        .join('');
+      parts.push(
+        `tq:${entries}:${b.trainPaused === true ? 1 : 0}:${b.rallyX ?? ''},${b.rallyZ ?? ''}:${avail}`,
+      );
+    } else {
+      parts.push('tq:x');
     }
   } else {
     // No selection: the train/build palettes render the active tab's
@@ -760,6 +781,10 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'stat-row',
       'detail-actions',
       'sel-action',
+      // Fun-audit C1 (production queues, 2026-10-02): the training
+      // section's per-entry progress bar.
+      'queue-bar',
+      'queue-fill',
     ],
     // bu: power/water diagnosis line (Phase 2 utilities; the panel renders
     // it for every selected building via buildingUtilityLine).
@@ -775,7 +800,11 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // sh: the civilian sea-trade harbor section (Half A: calling route
     // ids + the two ship-training availability bits; 'sh:x' when the
     // section does not render).
-    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:', 'bv:', 'bo:', 'bh:', 'bw:', 'sh:'],
+    // tq: the production-queue training section (fun-audit C1,
+    // 2026-10-02): queue entries + paused flag + rally point +
+    // per-kind train-button availability; 'tq:x' when the section
+    // does not render.
+    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:', 'bv:', 'bo:', 'bh:', 'bw:', 'sh:', 'tq:'],
   },
   {
     id: 'train-palette',

@@ -246,7 +246,16 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   over the card grid; Airlines holds the airline panel. Military →
   Train shows unit-orders hints plus the TRAIN palette; Build shows the
   4 military build tabs as pills over the card grid; Superweapons shows
-  Aegis/Storm as cards. Management → Taxes / Economy / City focus /
+  Aegis/Storm as cards. Fun-audit C1 (production queues, 2026-10-02):
+  the TRAIN palette's military cards no longer arm map placement —
+  clicking one queues the unit at the owner's least-loaded producer
+  (shortest queue, lowest id on ties) through the real `trainUnit`
+  command (costs paid at enqueue, full refund on cancel); the selected
+  production building's detail panel shows the train buttons, the
+  visible pausable queue, and the rally-point tool (see 'hud.ts'
+  `trainQueueSectionEl`, `ui/AGENTS.md` "Adding a HUD panel" — the
+  `tq:` digest segment in paletteDigest.ts). Civilian cards keep the
+  instant map-click placement. Management → Taxes / Economy / City focus /
   Cabinet / Ordinances / Intelligence / Trade / Research each show one
   section; Economy lists the eight stockpiles with stocks + net flow
   rates (roadmap B10); Trade surfaces the trade-route commands (sim

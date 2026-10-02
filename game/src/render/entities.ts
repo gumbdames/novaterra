@@ -1253,6 +1253,12 @@ export class EntityRenderer {
   private roadDashMesh: THREE.Mesh | null = null;
   private roadDigest = -1;
   private readonly selectionRings = new Map<number, THREE.Mesh>();
+  // Fun-audit C1 (production queues, 2026-10-02): the rally-point
+  // flag — created lazily on first show and parked in fxGroup (never
+  // a permanent scene object, so the pinned scene-object counts in
+  // the renderer suites stay green). Gameplay information, so
+  // toneMapped:false like the selection rings (bright at night).
+  private rallyFlag: THREE.Group | null = null;
   private readonly ringGeo = new THREE.RingGeometry(2.2, 2.8, 24);
   private readonly ringMat = new THREE.MeshBasicMaterial({
     color: 0x57c8ff,
@@ -1566,8 +1572,7 @@ export class EntityRenderer {
   }
 
   /** Update which units show selection rings. */
-  setSelected(ids: Iterable<number>): void {
-    const wanted = new Set(ids);
+  setSelected(ids: Iterable<number>): void {    const wanted = new Set(ids);
     for (const [id, ring] of this.selectionRings) {
       if (!wanted.has(id)) {
         this.fxGroup.remove(ring);
@@ -1617,9 +1622,47 @@ export class EntityRenderer {
     }
   }
 
+  /**
+   * Fun-audit C1 (production queues, 2026-10-02): show the rally-point
+   * flag at (x, z), or hide it when visible is false. The controller
+   * drives this from the selected production building's rally point.
+   * The flag group is created lazily on first show (never a permanent
+   * scene object — the instancing suites pin exact scene-object
+   * counts).
+   */
+  setRallyFlag(x: number, z: number, visible: boolean): void {
+    if (visible && this.rallyFlag === null) {
+      const flag = new THREE.Group();
+      const pole = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.12, 0.12, 6, 6),
+        new THREE.MeshBasicMaterial({ color: 0xd8d8d8, toneMapped: false }),
+      );
+      pole.position.y = 3;
+      const pennant = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.2, 1.8),
+        new THREE.MeshBasicMaterial({
+          color: 0x57c8ff,
+          side: THREE.DoubleSide,
+          transparent: true,
+          opacity: 0.95,
+          toneMapped: false,
+        }),
+      );
+      pennant.position.set(1.7, 5, 0);
+      flag.add(pole, pennant);
+      flag.visible = false;
+      this.fxGroup.add(flag);
+      this.rallyFlag = flag;
+    }
+    if (this.rallyFlag === null) return;
+    this.rallyFlag.visible = visible;
+    if (visible) {
+      this.rallyFlag.position.set(x, 0, z);
+    }
+  }
+
   /** Move selection rings onto their units each frame. */
-  updateSelectionRings(units: Map<number, UnitRecord>): void {
-    for (const [id, ring] of this.selectionRings) {
+  updateSelectionRings(units: Map<number, UnitRecord>): void {    for (const [id, ring] of this.selectionRings) {
       const u = units.get(id);
       if (!u) continue;
       // Rings ride on the ground under the unit (terrain for land/air,
@@ -2024,6 +2067,18 @@ export class EntityRenderer {
     this.buildings.clear();
     this.selectionRings.clear();
     this.superweaponFx.clear();
+    // Fun-audit C1: release the rally flag's geometries/materials when
+    // it was ever created (lazily — usually null).
+    if (this.rallyFlag !== null) {
+      this.rallyFlag.traverse((o) => {
+        const mesh = o as THREE.Mesh;
+        if (mesh.isMesh === true) {
+          mesh.geometry.dispose();
+          (mesh.material as THREE.Material).dispose();
+        }
+      });
+      this.rallyFlag = null;
+    }
     this.instancer?.dispose();
     this.ringGeo.dispose();
     this.ringMat.dispose();

@@ -325,6 +325,14 @@ function copyBuilding(b: BuildingRecord, legacy = false): BuildingRecord {
     workers: b.workers ?? 0,
     variant: b.variant ?? 0,
     sizeTier: b.sizeTier ?? 1,
+    // Fun-audit C1 (production queues, 2026-10-02): training queue +
+    // rally state. Take is faithful (absent stays absent — the
+    // discovery precedent); restore deep-copies the entries. Legacy
+    // saves decode to no queue / unpaused / no rally (AD9, stays v9).
+    trainQueue: b.trainQueue?.map((e) => ({ kind: e.kind, ticksLeft: e.ticksLeft })),
+    trainPaused: b.trainPaused,
+    rallyX: b.rallyX,
+    rallyZ: b.rallyZ,
     // v8 (grand-expansion Phase 5/6, S4): hangar slots. Take path:
     // deep-copy what's there (absent stays absent). Restore path for
     // pre-v8 snapshots: decode to defaultHangarSlots(kind) — legacy

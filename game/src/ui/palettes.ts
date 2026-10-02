@@ -36,7 +36,14 @@
  */
 
 import type { World } from '../sim/world';
-import { UNIT_DEFS, type UnitKind } from '../sim/units';
+import {
+  UNIT_DEFS,
+  MAX_TRAIN_QUEUE,
+  canProduceAt,
+  hasProducibleBuilding,
+  producingBuildingKind,
+  type UnitKind,
+} from '../sim/units';
 import { BUILDING_DEFS, type BuildingKind, getPlayer } from '../sim/city';
 import { isUnitAvailableForAge } from '../sim/ages';
 import {
@@ -567,7 +574,20 @@ export function unitAvailability(
       reason: fillLoc(p.requiresAge, { age: loc(STRINGS.ageNames[def.minAge]) }),
     };
   }
-  if (def.requiredBuilding !== undefined && !hasCompletedBuilding(world, owner, def.requiredBuilding)) {
+  // Fun-audit C1 (production queues, 2026-10-02): military units train
+  // through production-building queues — the owner needs a completed
+  // building that can produce the kind (explicit requiredBuilding or
+  // the domain default: barracks / airfield / shipyard; countsAs
+  // honored, so a mixed airport trains airfield kinds). This
+  // subsumes the plain requiredBuilding check for military defs.
+  if (def.military === true) {
+    if (!hasProducibleBuilding(world, owner, def)) {
+      return {
+        ok: false,
+        reason: fillLoc(p.requiresBuilding, { name: buildingName(producingBuildingKind(def)) }),
+      };
+    }
+  } else if (def.requiredBuilding !== undefined && !hasCompletedBuilding(world, owner, def.requiredBuilding)) {
     return {
       ok: false,
       reason: fillLoc(p.requiresBuilding, { name: buildingName(def.requiredBuilding) }),
@@ -581,6 +601,41 @@ export function unitAvailability(
     if (player.manpower < def.manpowerCost) {
       return { ok: false, reason: loc(p.notEnoughManpower) };
     }
+  }
+  return { ok: true, reason: '' };
+}
+
+/**
+ * Fun-audit C1 (production queues, 2026-10-02): can this specific
+ * building train this kind right now? Mirrors the `trainUnit`
+ * validator's building-side checks (completed + can-produce + queue
+ * room) on top of the shared unitAvailability (peaceful / age /
+ * affordability / manpower). The building detail view's train buttons
+ * read this — never a dead button.
+ */
+export function trainAtBuildingAvailability(
+  world: World,
+  owner: number,
+  buildingId: number,
+  kind: UnitKind,
+): Availability {
+  const base = unitAvailability(world, owner, kind);
+  if (!base.ok) return base;
+  const p = STRINGS.palettes;
+  const b = world.city.buildings.find((x) => x.id === buildingId);
+  if (b === undefined || b.owner !== owner || b.progress < 1) {
+    return { ok: false, reason: base.reason };
+  }
+  // The building itself must produce this kind (mirrors the sim's
+  // `trainUnit` validator — e.g. rifles cannot train at an airfield).
+  if (!canProduceAt(b.kind, UNIT_DEFS[kind])) {
+    return {
+      ok: false,
+      reason: fillLoc(p.requiresBuilding, { name: buildingName(producingBuildingKind(UNIT_DEFS[kind])) }),
+    };
+  }
+  if ((b.trainQueue ?? []).length >= MAX_TRAIN_QUEUE) {
+    return { ok: false, reason: loc(STRINGS.trainQueue.queueFull) };
   }
   return { ok: true, reason: '' };
 }
@@ -793,6 +848,11 @@ export function upgradeDisplayName(world: World, owner: number, id: UpgradeId): 
 export function trainTooltip(world: World, owner: number, kind: UnitKind): string {
   const def = UNIT_DEFS[kind];
   const lines = [formatTrainCost(kind), `${loc(STRINGS.palettes.hpLabel)}: ${def.hp}`];
+  // Fun-audit C1 (production queues, 2026-10-02): military cards show
+  // the train time — the queue is the mechanic now.
+  if (def.military === true && def.trainSeconds !== undefined) {
+    lines.push(fillLoc(STRINGS.trainQueue.trainTime, { secs: def.trainSeconds }));
+  }
   const av = unitAvailability(world, owner, kind);
   if (!av.ok) lines.push(av.reason);
   return lines.filter((l) => l.length > 0).join('\n');

@@ -58,6 +58,7 @@
  */
 
 import type { TerrainData } from './terrain';
+import type { TrainQueueEntry } from './units';
 import { isWater } from './terrain';
 import type { World } from './world';
 import { rngBank } from './world';
@@ -2755,6 +2756,32 @@ export interface BuildingRecord {
    * and digest-covered (display-affecting, PLAN §11).
    */
   discovery?: AirportDiscoveryState[];
+  /**
+   * Fun-audit C1 (production queues, 2026-10-02): the training queue.
+   * Entries are `{kind, ticksLeft}` in enqueue order; `runTraining`
+   * (economy.ts, 1 Hz) advances the head by 30 ticks per economy tick
+   * and spawns the unit at the building's rally cell on completion.
+   * Optional so pre-C1 record literals keep compiling; every read
+   * uses `?? []` (AD9 — the veterancy `?? 0` precedent). Snapshotted
+   * (v9, additive — no version bump) and digest-covered
+   * (behavior-affecting, PLAN §11).
+   */
+  trainQueue?: TrainQueueEntry[];
+  /**
+   * Fun-audit C1 (2026-10-02): true while the owner has paused this
+   * building's training queue — `runTraining` skips paused buildings.
+   * Optional, `?? false` (AD9). Snapshotted (v9) and digest-covered.
+   */
+  trainPaused?: boolean;
+  /**
+   * Fun-audit C1 (2026-10-02): the rally point — world coordinates
+   * where this production building's freshly trained units spawn.
+   * Set by the `setRallyPoint` command; undefined = the building's
+   * own footprint center (AD9). Snapshotted (v9) and digest-covered
+   * (display-affecting via the rally flag + spawn-affecting, PLAN §11).
+   */
+  rallyX?: number;
+  rallyZ?: number;
 }
 
 /** One player's stockpiles and policy. */
@@ -3959,11 +3986,16 @@ export function hasProductionBuilding(world: World, owner: number, kind: Buildin
  * satisfies a production gate for `gateKind` via its def's `countsAs`
  * (a mixed airport counts as an airfield; commercialPort counts as
  * shipyard, navalBase as navalYard — see the S5 field doc on
- * `BuildingDef.countsAs`).
+ * `BuildingDef.countsAs`). Exported for the fun-audit C1 production
+ * queues (units.ts `canProduceAt`).
  */
-function countsAsProduction(buildingKind: BuildingKind, gateKind: BuildingKind): boolean {
+export function buildingCountsAs(buildingKind: BuildingKind, gateKind: BuildingKind): boolean {
   const def = BUILDING_DEFS[buildingKind];
   return def?.countsAs?.includes(gateKind) === true;
+}
+
+function countsAsProduction(buildingKind: BuildingKind, gateKind: BuildingKind): boolean {
+  return buildingCountsAs(buildingKind, gateKind);
 }
 
 function makeSpecs(t: TerrainData): Record<string, CommandSpec> {

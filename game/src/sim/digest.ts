@@ -172,7 +172,16 @@ export function canonicalizeWorld(world: World): string {
     // Legacy decode default: the airfield's 6 generic slots /
     // undefined — digests of legacy saves are stable because the
     // default is deterministic, not because the slots are absent.
-    out += `${(b.hangars ?? []).map((s) => `${s.cls}:${s.occupant}`).join('.')};`;
+    out += `${(b.hangars ?? []).map((s) => `${s.cls}:${s.occupant}`).join('.')},`;
+    // Fun-audit C1 (production queues, 2026-10-02): the training queue
+    // (kind + ticks left per entry), the paused flag, and the rally
+    // point — all behavior-affecting (queued units become real units;
+    // the rally picks their spawn cell) ⇒ digest-covered (PLAN §11).
+    // Legacy decode default is the empty string (no queue, unpaused,
+    // no rally).
+    out += `tq=${(b.trainQueue ?? []).map((e) => `${e.kind}:${e.ticksLeft}`).join('.')};`;
+    out += `tp=${b.trainPaused === true ? 1 : 0};`;
+    out += `rally=${b.rallyX ?? ''},${b.rallyZ ?? ''};`;
   }
   out += '|players:';
   for (const p of world.city.players) {

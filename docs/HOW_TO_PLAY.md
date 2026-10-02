@@ -113,8 +113,12 @@ manpower.
 Units need a production building: **Barracks** (infantry), **War
 Factory** (vehicles), **Airfield** (aircraft), **Naval Shipyard**
 (light/support ships), **Naval Yard** (heavy warships — coastal
-construction: at least one footprint cell must touch water). Pick a
-unit, then click open ground (or water for ships) to train it.
+construction: at least one footprint cell must touch water). Click a
+military card to queue the unit at your least-loaded producer — it
+trains over real seconds and walks out when done. Select the building
+to manage its queue (train, pause, cancel for a full refund) and set a
+rally point that new units move to. Civilian cards still place
+instantly: pick a unit, then click open ground (or water for ships).
 
 **Research:** build a **Research Lab** (Commerce tab), then select it
 — or open Management → **Research** — to open the research panel: 21

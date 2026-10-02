@@ -65,7 +65,7 @@ import {
   type BuildingRecord,
   type RoadClass,
 } from '../sim/city';
-import { UNIT_DEFS, type UnitKind } from '../sim/units';
+import { UNIT_DEFS, producibleKinds, trainTicksFor, type UnitKind } from '../sim/units';
 import { type BuildingKind } from '../sim/city';
 import type { TerrainData } from '../sim/terrain';
 import { getDesirabilityModel } from '../sim/desirability';
@@ -126,6 +126,7 @@ import {
   formatResearchCostFor,
   upgradeDisplayName,
   trainTooltip,
+  trainAtBuildingAvailability,
   buildTooltip,
   buildTabsForMenuTab,
   type TrainTabId,
@@ -278,6 +279,18 @@ export interface HUDActions {
   onDeselect(): void;
   /** Train panel: enter unit-placement mode for this kind. */
   onTrainUnit(kind: UnitKind): void;
+  /**
+   * Fun-audit C1 (production queues, 2026-10-02): queue one military
+   * unit at a specific production building. The sim validates and
+   * rejects loudly (never a dead button).
+   */
+  onTrainUnitAtBuilding(kind: UnitKind, buildingId: number): void;
+  /** Fun-audit C1: cancel one queued unit (full refund). */
+  onCancelTrain(buildingId: number, index: number): void;
+  /** Fun-audit C1: pause / resume a building's training queue. */
+  onSetTrainPaused(buildingId: number, paused: boolean): void;
+  /** Fun-audit C1: arm the rally-point tool for a building. */
+  onSetRallyTool(buildingId: number): void;
   /** Build palette: enter construction mode with this tool. */
   onBuildTool(tool: BuildTool): void;
   /** Cancel any placement/construction mode. */
@@ -2905,6 +2918,12 @@ export class HUD {
       // and the HUD already surfaces it in Civilian → Tools). Owned
       // buildings only.
       if (b.owner === HUMAN_PLAYER_ID) {
+        // Fun-audit C1 (production queues, 2026-10-02): the training
+        // section — train buttons, the visible queue (progress +
+        // per-entry cancel with full refund), pause/resume, and the
+        // rally-point tool. Owned production buildings only.
+        const tq = this.trainQueueSectionEl(world, b);
+        if (tq !== null) panel.append(tq);
         const dem = document.createElement('button');
         dem.className = 'sel-action';
         dem.textContent = loc(sel.demolishVerb);
@@ -2922,9 +2941,87 @@ export class HUD {
     this.refreshPortraits();
   }
 
+  /**
+   * Fun-audit C1 (production queues, 2026-10-02): the selected
+   * building's training section. Renders only for owned, completed
+   * buildings that can produce at least one military kind:
+   *  - train buttons (name + train time; locked ones name the blocker
+   *    via trainAtBuildingAvailability — never a dead button);
+   *  - the queue: each entry shows name + progress %, with a Cancel
+   *    button (full refund);
+   *  - pause / resume for the whole queue;
+   *  - the rally-point tool + the rally status line.
+   * Null for every other selection (the panel shows no train UI).
+   * Digest-covered by the `tq:` segment (AD11).
+   */
+  private trainQueueSectionEl(world: World, b: BuildingRecord): HTMLElement | null {
+    if (b.owner !== HUMAN_PLAYER_ID || b.progress < 1) return null;
+    const kinds = producibleKinds(b.kind);
+    if (kinds.length === 0) return null;
+    const tq = STRINGS.trainQueue;
+    const block = el('div', 'stat-block');
+    block.append(el('div', 'stat-row', loc(tq.sectionTitle)));
+    const trainRow = el('div', 'detail-actions');
+    for (const kind of kinds) {
+      const av = trainAtBuildingAvailability(world, HUMAN_PLAYER_ID, b.id, kind);
+      const def = UNIT_DEFS[kind];
+      const secs = def.trainSeconds ?? 8;
+      const tb = document.createElement('button');
+      tb.className = 'sel-action';
+      tb.textContent = `${unitName(kind)} · ${fillLoc(tq.trainTime, { secs })}`;
+      tb.title = trainTooltip(world, HUMAN_PLAYER_ID, kind);
+      tb.disabled = !av.ok;
+      tb.addEventListener('click', () => this.actions.onTrainUnitAtBuilding(kind, b.id));
+      trainRow.append(tb);
+    }
+    block.append(trainRow);
+    const q = b.trainQueue ?? [];
+    if (q.length === 0) {
+      block.append(el('div', 'stat-row', loc(tq.queueEmpty)));
+    }
+    q.forEach((entry, i) => {
+      const total = trainTicksFor(entry.kind);
+      const pct = Math.max(0, Math.min(100, Math.round((1 - entry.ticksLeft / total) * 100)));
+      const row = el('div', 'detail-actions');
+      row.append(el('span', 'stat-row', `${unitName(entry.kind)} · ${pct}%`));
+      const bar = el('div', 'queue-bar');
+      const fill = el('div', 'queue-fill');
+      fill.style.width = `${pct}%`;
+      bar.append(fill);
+      row.append(bar);
+      const cb = document.createElement('button');
+      cb.className = 'sel-action';
+      cb.textContent = loc(tq.cancelVerb);
+      cb.title = loc(tq.cancelTitle);
+      cb.addEventListener('click', () => this.actions.onCancelTrain(b.id, i));
+      row.append(cb);
+      block.append(row);
+    });
+    const ctrlRow = el('div', 'detail-actions');
+    const pb = document.createElement('button');
+    pb.className = 'sel-action';
+    pb.textContent = loc(b.trainPaused === true ? tq.resumeVerb : tq.pauseVerb);
+    pb.addEventListener('click', () => this.actions.onSetTrainPaused(b.id, !(b.trainPaused === true)));
+    ctrlRow.append(pb);
+    const rb = document.createElement('button');
+    rb.className = 'sel-action';
+    rb.textContent = loc(tq.setRallyVerb);
+    rb.title = loc(tq.setRallyTitle);
+    rb.addEventListener('click', () => this.actions.onSetRallyTool(b.id));
+    ctrlRow.append(rb);
+    block.append(ctrlRow);
+    block.append(
+      el(
+        'div',
+        'stat-row',
+        b.rallyX !== undefined && b.rallyZ !== undefined ? loc(tq.rallySet) : loc(tq.rallyUnset),
+      ),
+    );
+    return block;
+  }
+
   /** Tabbed train palette: 6 tabs for the 96 units (spec §8 + Phase 4 S7 transport). */
-  private appendTrainPanel(panel: HTMLElement, world: World): void {
-    const wrap = el('div', 'train-panel');
+  private appendTrainPanel(panel: HTMLElement, world: World): void {    const wrap = el('div', 'train-panel');
     wrap.append(el('div', 'hud-panel-title', loc(STRINGS.palettes.trainTitle)));
     wrap.append(this.buildTabBar(TRAIN_TABS, STRINGS.unitTabs, this.trainTab, (id) => {
       this.trainTab = id as TrainTabId;
