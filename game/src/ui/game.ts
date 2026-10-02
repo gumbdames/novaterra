@@ -948,6 +948,14 @@ class GameController {
   private wonderWarned: number[] = [];
   /** endsAtTick of the countdown we are narrating (for resolve-vs-cancel). */
   private wonderEndsAt: number | null = null;
+  /**
+   * Fun-audit B6 (2026-10-02): telegraph/launch beats already narrated,
+   * keyed `tele:<owner>:<nextPhase>:<telegraphTick>` /
+   * `launch:<owner>:<activePhase>:<activeUntilTick>`. The keys include
+   * the ticks so a ceasefire-delayed phase re-narrates with its new
+   * schedule instead of going silent.
+   */
+  private readonly offensiveNarrated = new Set<string>();
   // ---- Phase 2: campaign + Muse ----
   /** Mission run state (UI-owned). Null in skirmish. */
   private readonly missionRun: MissionRunState | null;
@@ -1791,6 +1799,11 @@ class GameController {
     // its transitions, ~1×/sec like the Muse poll.
     this.pollWonderCountdown(world);
 
+    // Fun-audit B6 (2026-10-02): narrate the AI's scheduled offensive
+    // phases — warning beats ~60 s ahead, launch beats on begin. The
+    // sim owns the schedule; this poll only narrates transitions.
+    this.pollOffensive(world);
+
     if (run === null || campaignOpts === undefined || this.missionEnded) return;
 
     // Objective tracker refresh ~1×/sec.
@@ -2169,6 +2182,63 @@ class GameController {
           );
         }
         this.hud.toast(fillLoc(STRINGS.toasts.wonderWarning, { time, leader: leaderName }));
+      }
+    }
+  }
+
+  /**
+   * Fun-audit B6 (2026-10-02): narrate the AI's scheduled offensives.
+   * The sim owns the schedule (`AIPlayerState.offensive`); this poll
+   * only narrates its transitions — a warning beat ~60 s before each
+   * phase (Muse line + toast + threat flash + ping at the muster
+   * point) and a launch beat when the phase begins. The muster point
+   * is the AI's physical forward base (C1) or its main base — both are
+   * real, scoutable positions, so the warning is a scout report, not
+   * mind-reading (muse/AGENTS.md fairness rule).
+   */
+  private pollOffensive(world: World): void {
+    const players = world.ai?.players ?? [];
+    for (const p of players) {
+      const o = p.offensive;
+      if (o === undefined) continue;
+      const muster = p.forwardBase ?? { x: p.baseX, z: p.baseZ };
+      // Warning beat: the telegraph flag fired for the upcoming phase.
+      const teleKey = `tele:${p.owner}:${o.nextPhase}:${o.telegraphTick}`;
+      if (o.telegraphed && !this.offensiveNarrated.has(teleKey)) {
+        this.offensiveNarrated.add(teleKey);
+        const phase = o.nextPhase === 1 ? 'probe' : o.nextPhase === 2 ? 'offensive' : 'allIn';
+        const t = STRINGS.toasts;
+        const toast =
+          phase === 'probe'
+            ? loc(t.offensiveProbeWarn)
+            : phase === 'offensive'
+              ? loc(t.offensiveWarn)
+              : loc(t.offensiveAllInWarn);
+        if (this.muse !== null) {
+          this.muse.notify(personaLine({ kind: 'offensiveWarning', phase }, world.tick));
+        }
+        this.hud.toast(toast);
+        this.museBox?.flashThreat();
+        this.eventPings?.ping('attack', muster.x, muster.z);
+      }
+      // Launch beat: the phase began its push.
+      const launchKey = `launch:${p.owner}:${o.activePhase}:${o.activeUntilTick}`;
+      if (o.activePhase >= 1 && o.activePhase <= 3 && !this.offensiveNarrated.has(launchKey)) {
+        this.offensiveNarrated.add(launchKey);
+        const phase = o.activePhase === 1 ? 'probe' : o.activePhase === 2 ? 'offensive' : 'allIn';
+        const t = STRINGS.toasts;
+        const toast =
+          phase === 'probe'
+            ? loc(t.offensiveProbeLaunched)
+            : phase === 'offensive'
+              ? loc(t.offensiveLaunched)
+              : loc(t.offensiveAllInLaunched);
+        if (this.muse !== null) {
+          this.muse.notify(personaLine({ kind: 'offensiveLaunched', phase }, world.tick));
+        }
+        this.hud.toast(toast);
+        this.museBox?.flashThreat();
+        this.eventPings?.ping('attack', muster.x, muster.z);
       }
     }
   }

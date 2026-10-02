@@ -319,6 +319,13 @@ export function canonicalizeWorld(world: World): string {
     // drives when a siege starts and the target id drives where the
     // force converges — both behavior-affecting ⇒ digest-covered.
     out += `sie=${p.siegeQuietThinks ?? 0},${p.siegeTargetBuildingId ?? 0},`;
+    // Fun-audit B6 (scheduled AI offensives): the war schedule drives
+    // when phases telegraph/launch and how much force commits —
+    // behavior-affecting ⇒ digest-covered (PLAN §11).
+    const off = p.offensive;
+    out += off
+      ? `off=${off.nextPhase},${off.launchTick},${off.telegraphTick},${off.telegraphed ? 1 : 0},${off.activePhase},${off.activeUntilTick},`
+      : 'off=-,';
     // Grand-expansion Phase 7 (AI intel play): the virtual intel queue —
     // construction slot, surge latch, and ordered-op counts all drive
     // future behavior ⇒ digest-covered (PLAN §11).

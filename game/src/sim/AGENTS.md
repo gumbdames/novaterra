@@ -374,6 +374,18 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   a destroyed building clears the order per tick). Siege state
   (`siegeQuietThinks`, `siegeTargetBuildingId`) is snapshotted and
   digest-covered.
+  Fun-audit B6 (2026-10-02): scheduled, escalating, telegraphed
+  offensives — the AI runs a war schedule independent of contact
+  (probes ~8 min, offensive ~15 min, all-in ~25 min; cadet: none,
+  citizen: probes only), each phase telegraphed ~60 s ahead via the
+  `telegraphed` flag on `AIPlayerState.offensive` (narrated UI-side:
+  Muse line + toast + threat flash + ping at the physical muster
+  point). A launched phase commits 30/55/80% of the siege-capable
+  force through the existing sight-gated siege targeting (the schedule
+  decides WHEN, never WHERE) and pushes immediately without waiting
+  for the quiet threshold; ceasefires delay phases (deadlines move
+  forward) but never cancel them. Schedule state is snapshotted (AD9)
+  and digest-covered (`off=`).
   Army caps: 6/14/26/34/48 (`AI_MAX_UNITS`, exported). Personality
   (`AIPersonality`, plain data): drawn once at `addAIPlayer` from the
   named `ai-<owner>` RNG stream (per-owner streams never shift each other;

@@ -42,6 +42,8 @@ export type PersonaEvent =
   | { kind: 'unitLost'; unit: string }
   | { kind: 'warCoreFallen' }
   | { kind: 'wonderCountdown'; phase: 'start' | 'warn' | 'cancelled'; detail: string }
+  | { kind: 'offensiveWarning'; phase: 'probe' | 'offensive' | 'allIn' }
+  | { kind: 'offensiveLaunched'; phase: 'probe' | 'offensive' | 'allIn' }
   | { kind: 'enemyDown' }
   | { kind: 'enemySpotted' }
   | { kind: 'combatStarted' }
@@ -104,6 +106,33 @@ const LINES: Record<string, string[]> = {
     'The countdown is broken! Somebody just kicked over the hourglass.',
     'No more countdown — the leader lost their grip. Back to the grind, President.',
     'The wonder clock stopped. Breathe. Then get back to work.',
+  ],
+  'offensiveWarning:probe': [
+    'Scouts report the rival is probing our border, President. A small force — they are testing our fences.',
+    'Movement on the border: a rival probe. Swat it, and they will think twice about the next one.',
+    'The rival is sniffing around our perimeter. Small force, but probes have a way of becoming offensives.',
+  ],
+  'offensiveWarning:offensive': [
+    'The rival is massing for a genuine offensive. I suggest we greet them with more than harsh language.',
+    'Scouts confirm it: a real attack is forming up. Reinforce the line, President.',
+    'Enemy columns are gathering. This is not a probe — brace for an offensive.',
+  ],
+  'offensiveWarning:allIn': [
+    'This is it, President — the rival is coming with everything they have. All hands to battle stations.',
+    'Total commitment inbound. They are betting the war on one push — let us make it a bad bet.',
+    'Every scout report says the same thing: all-in. Dig in and make them pay for every meter.',
+  ],
+  'offensiveLaunched:probe': [
+    'Rival probe inbound. Swat it and send them the bill.',
+    'The probe is moving. A sharp rebuke should discourage the next one.',
+  ],
+  'offensiveLaunched:offensive': [
+    'The rival offensive has begun. Hold the line, President.',
+    'Contact! Their offensive is underway — generals to their posts.',
+  ],
+  'offensiveLaunched:allIn': [
+    'They are all in. So are we. For the republic!',
+    'The all-out assault has begun. Everything we have built comes down to this.',
   ],
   enemyDown: [
     'Enemy unit destroyed. Their insurance premiums just went up.',
@@ -168,6 +197,10 @@ function eventKey(event: PersonaEvent): string {
       return `taunt:${event.context}`;
     case 'wonderCountdown':
       return `wonderCountdown:${event.phase}`;
+    case 'offensiveWarning':
+      return `offensiveWarning:${event.phase}`;
+    case 'offensiveLaunched':
+      return `offensiveLaunched:${event.phase}`;
     default:
       return event.kind;
   }

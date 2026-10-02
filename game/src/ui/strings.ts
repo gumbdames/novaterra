@@ -368,6 +368,17 @@ export const STRINGS = {
     wonderStartPopulation: { en: '{leader} city passes 8,000 housed — five minutes to stop the count.' },
     wonderWarning: { en: 'Countdown: {time} remaining — {leader} holds the lead.' },
     wonderCancelled: { en: 'The countdown is broken — {reason}.' },
+    /**
+     * Fun-audit B6 (2026-10-02): scheduled, escalating, telegraphed AI
+     * offensives. Warning beats fire ~60s before each phase; launch
+     * beats when the phase begins.
+     */
+    offensiveProbeWarn: { en: 'Rival probe detected — enemy forces are massing near their forward base.' },
+    offensiveWarn: { en: 'The rival is massing for an offensive. Expect an attack within the minute.' },
+    offensiveAllInWarn: { en: 'The rival is massing everything they have — an all-out assault is coming.' },
+    offensiveProbeLaunched: { en: 'Rival probe inbound — a small enemy force is on the move.' },
+    offensiveLaunched: { en: 'The rival offensive has begun!' },
+    offensiveAllInLaunched: { en: 'The rival is all-in — everything they have is coming at us!' },
   },
   /**
    * Fun-audit B1 (2026-10-02): the skirmish opening beat — one toast

@@ -55,9 +55,29 @@ describe('muse/persona', () => {
       // Reach each key through a representative event.
       const line = key.startsWith('taunt:')
         ? personaLine({ kind: 'taunt', context: key.slice(6) as 'losing' }, 1)
-        : personaLine({ kind: key as 'victory' }, 1);
+        : key.startsWith('offensiveWarning:')
+          ? personaLine({ kind: 'offensiveWarning', phase: key.slice(17) as 'probe' }, 1)
+          : key.startsWith('offensiveLaunched:')
+            ? personaLine({ kind: 'offensiveLaunched', phase: key.slice(18) as 'probe' }, 1)
+            : personaLine({ kind: key as 'victory' }, 1);
       expect(line.length, key).toBeGreaterThan(0);
     }
+  });
+
+  it('offensive phases are deterministic and distinct', () => {
+    const phases = ['probe', 'offensive', 'allIn'] as const;
+    const seen = new Set<string>();
+    for (const phase of phases) {
+      const a = personaLine({ kind: 'offensiveWarning', phase }, 777);
+      const b = personaLine({ kind: 'offensiveWarning', phase }, 777);
+      expect(a).toBe(b); // same tick ⇒ same line
+      seen.add(a);
+      const launched = personaLine({ kind: 'offensiveLaunched', phase }, 778);
+      expect(launched.length).toBeGreaterThan(0);
+      seen.add(launched);
+    }
+    // Six beats, six distinct lines (no accidental key collision).
+    expect(seen.size).toBe(6);
   });
 
   it('missionMessage and advice pass authored text through', () => {

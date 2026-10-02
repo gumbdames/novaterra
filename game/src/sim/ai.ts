@@ -484,6 +484,31 @@ export interface AIPlayerState {
     buildingId: number;
     destroyedTick: number;
   }>;
+  /**
+   * Fun-audit B6 (scheduled, escalating, telegraphed AI offensives,
+   * 2026-10-02): the AI's war schedule — border probes ~8 min, a genuine
+   * offensive ~15 min, an all-in ~25 min, each telegraphed ~60 s ahead
+   * (the UI narrates `telegraphed`; the force commits while
+   * `activePhase` runs). Diplomacy can delay a phase, never cancel it
+   * (thinkOffensive pushes deadlines forward while a ceasefire holds).
+   * Cadet never schedules (maxPhase 0); citizen probes only (maxPhase
+   * 1). Plain data — snapshotted + digested (AD9: missing → the
+   * schedule (re)initializes on the next think).
+   */
+  offensive?: {
+    /** Next phase to launch: 1 = probe, 2 = offensive, 3 = all-in, 4 = schedule exhausted. */
+    nextPhase: number;
+    /** Tick the next phase launches. */
+    launchTick: number;
+    /** Tick the telegraph for the next phase fires (launch − lead). */
+    telegraphTick: number;
+    /** Telegraph recorded — the UI narrates it, then the flag stays. */
+    telegraphed: boolean;
+    /** Currently executing phase (0 = none). */
+    activePhase: number;
+    /** Tick the active phase ends. */
+    activeUntilTick: number;
+  };
   /** Water scouting result: found by probe spawns, never by maphack. */
   navalStatus: AINavalStatus;
   /** Index into the deterministic naval probe ring. */
@@ -1007,6 +1032,59 @@ export const SIEGE_HOME_GUARD_FRACTION: Record<AIDifficulty, number> = {
   marshal: 0.2,
 };
 
+// ---------------------------------------------------------------------------
+// Fun-audit B6 (2026-10-02): scheduled, escalating, telegraphed AI
+// offensives.
+//
+// The AI runs a visible war schedule independent of contact — border
+// probes ~8 min, a genuine offensive ~15 min, an all-in ~25 min while
+// the game is still live. Each phase is telegraphed ~60 s ahead (the
+// `telegraphed` flag on `AIPlayerState.offensive`, narrated UI-side)
+// and then commits an escalating fraction of the siege-capable force
+// through the existing siege machinery (sight-gated targeting — the
+// schedule decides WHEN, never WHERE; fairness is structural).
+// Diplomacy can delay a phase, never cancel it: while a ceasefire
+// holds, thinkOffensive pushes every deadline forward instead of
+// launching. Ticks are 30 Hz simulation ticks — never wall clock.
+// ---------------------------------------------------------------------------
+
+/** Phase launch ticks: [probe, offensive, all-in] ≈ 8/15/25 min. */
+export const OFFENSIVE_PHASE_LAUNCH_TICKS: readonly [number, number, number] = [
+  8 * 60 * 30,
+  15 * 60 * 30,
+  25 * 60 * 30,
+];
+
+/** Telegraph lead time before each phase launch (60 s of warning). */
+export const OFFENSIVE_TELEGRAPH_LEAD_TICKS = 60 * 30;
+
+/** How long a launched phase keeps pushing (5 min). */
+export const OFFENSIVE_DURATION_TICKS = 5 * 60 * 30;
+
+/**
+ * Highest scheduled phase per difficulty. Cadet never attacks (0);
+ * citizen probes only (1); commander/general/marshal run the full
+ * schedule (3).
+ */
+export const OFFENSIVE_MAX_PHASE: Record<AIDifficulty, number> = {
+  cadet: 0,
+  citizen: 1,
+  commander: 3,
+  general: 3,
+  marshal: 3,
+};
+
+/**
+ * Fraction of the siege-capable force committed while a phase is
+ * active (escalates: probe 0.3 → offensive 0.55 → all-in 0.8). The
+ * remainder stays home as the guard.
+ */
+export const OFFENSIVE_COMMIT_FRACTION: Record<number, number> = {
+  1: 0.3,
+  2: 0.55,
+  3: 0.8,
+};
+
 /**
  * When a siege campaign starts, guard units farther than this (world
  * units) from the base are recalled once — the guard defends the base
@@ -1103,6 +1181,79 @@ export function siegeGuardCount(n: number, difficulty: AIDifficulty): number {
 }
 
 /**
+ * Fun-audit B6: fraction of the siege-capable force committed right
+ * now (0 when no offensive phase is active). Read by thinkSiege to
+ * override the normal home-guard fraction during a launched phase.
+ */
+export function offensiveCommitOf(world: World, ai: AIPlayerState): number {
+  const o = ai.offensive;
+  if (o === undefined) return 0;
+  if (o.activePhase < 1 || o.activePhase > 3) return 0;
+  if (world.tick >= o.activeUntilTick) return 0;
+  return OFFENSIVE_COMMIT_FRACTION[o.activePhase] ?? 0;
+}
+
+/**
+ * Fun-audit B6: advance the AI's war schedule. Initializes the
+ * schedule on the first think (AD9: a missing `offensive` field —
+ * e.g. pre-B6 snapshots — schedules from scratch), records the
+ * telegraph flag ~60 s before each phase (the UI narrates it), and
+ * launches each phase at its tick.
+ *
+ * Diplomacy delays, never cancels: while a ceasefire holds, every
+ * pending/active deadline moves forward one think and nothing
+ * launches. Deterministic: all deadlines derive from world.tick and
+ * the fixed schedule — no RNG.
+ */
+export function thinkOffensive(world: World, ai: AIPlayerState): void {
+  const maxPhase = OFFENSIVE_MAX_PHASE[ai.difficulty] ?? 0;
+  if (maxPhase === 0) return; // cadet: no war schedule, ever
+  let o = ai.offensive;
+  if (o === undefined) {
+    const first = OFFENSIVE_PHASE_LAUNCH_TICKS[0] ?? 8 * 60 * 30;
+    o = {
+      nextPhase: 1,
+      launchTick: first,
+      telegraphTick: first - OFFENSIVE_TELEGRAPH_LEAD_TICKS,
+      telegraphed: false,
+      activePhase: 0,
+      activeUntilTick: 0,
+    };
+    ai.offensive = o;
+  }
+  const thinkTicks = AI_THINK_TICKS[ai.difficulty] ?? 60;
+  if (ceasefireActive(world)) {
+    if (o.nextPhase <= maxPhase) {
+      o.launchTick += thinkTicks;
+      o.telegraphTick += thinkTicks;
+      o.telegraphed = false; // re-telegraph after the delay
+    }
+    if (o.activePhase !== 0) o.activeUntilTick += thinkTicks;
+    return;
+  }
+  if (o.activePhase !== 0 && world.tick >= o.activeUntilTick) o.activePhase = 0;
+  if (!o.telegraphed && o.nextPhase <= maxPhase && world.tick >= o.telegraphTick) {
+    o.telegraphed = true;
+  }
+  if (o.nextPhase <= maxPhase && world.tick >= o.launchTick) {
+    o.activePhase = o.nextPhase;
+    o.activeUntilTick = world.tick + OFFENSIVE_DURATION_TICKS;
+    o.nextPhase += 1;
+    if (o.nextPhase <= maxPhase) {
+      const scheduled = OFFENSIVE_PHASE_LAUNCH_TICKS[o.nextPhase - 1] ?? o.launchTick;
+      // A delayed phase never schedules its successor in the past —
+      // the telegraph always gets its full lead time.
+      o.launchTick = Math.max(scheduled, world.tick + OFFENSIVE_TELEGRAPH_LEAD_TICKS + 1);
+      o.telegraphTick = o.launchTick - OFFENSIVE_TELEGRAPH_LEAD_TICKS;
+      o.telegraphed = false;
+    } else {
+      o.nextPhase = 4; // schedule exhausted
+      o.telegraphed = false;
+    }
+  }
+}
+
+/**
  * The siege think: called when no enemy units are visible and the
  * quiet has persisted past the difficulty threshold (checked by the
  * caller). Splits the siege-capable force into a home guard (stays,
@@ -1112,8 +1263,12 @@ export function siegeGuardCount(n: number, difficulty: AIDifficulty): number {
 function thinkSiege(world: World, queue: CommandQueue, ai: AIPlayerState): void {
   const difficulty = ai.difficulty;
   if (difficulty === 'cadet') return;
+  // Fun-audit B6: a launched offensive phase pushes immediately — no
+  // waiting for the quiet to persist. The schedule decides WHEN; the
+  // sight-gated targeting below still decides WHERE.
+  const commit = offensiveCommitOf(world, ai);
   const quiet = ai.siegeQuietThinks ?? 0;
-  if (quiet < SIEGE_QUIET_THINKS[difficulty]) return;
+  if (commit === 0 && quiet < SIEGE_QUIET_THINKS[difficulty]) return;
 
   // Siege-capable combat units, id order (deterministic). Same gates
   // as the attack loops: armed, ground-targeting weapons (R2-A's
@@ -1151,8 +1306,14 @@ function thinkSiege(world: World, queue: CommandQueue, ai: AIPlayerState): void 
   ai.siegeTargetBuildingId = target.id;
 
   // Home guard: the first K units by id stay on defense; the rest form
-  // the siege force (siegeGuardCount: never more than n-1).
-  const guard = siegeGuardCount(fighters.length, difficulty);
+  // the siege force (siegeGuardCount: never more than n-1). Fun-audit
+  // B6: a launched offensive phase commits its escalating fraction
+  // instead (never more than n-1 either — the base is never stripped
+  // bare).
+  const guard =
+    commit > 0
+      ? Math.min(Math.ceil(fighters.length * (1 - commit)), Math.max(0, fighters.length - 1))
+      : siegeGuardCount(fighters.length, difficulty);
   for (let i = 0; i < fighters.length; i++) {
     // B27: no `!` — i < fighters.length by loop bound.
     const u = fighters[i];
@@ -3669,6 +3830,11 @@ function thinkCitizen(
   // no-op in 0.1 Alpha (see thinkCivilianTransport).
   thinkCivilianTransport(world, ai);
 
+  // Fun-audit B6 (scheduled, escalating, telegraphed offensives):
+  // advance the war schedule before the siege/attack sections read it.
+  // Citizen runs the probe phase only (OFFENSIVE_MAX_PHASE).
+  thinkOffensive(world, ai);
+
   // Siege state (final-review R2-B): no visible enemy units means the
   // army is destroyed or hiding — count the quiet thinks; visible
   // enemies reset the count and drop any siege target.
@@ -3928,6 +4094,12 @@ function thinkCommander(
       }
     }
   }
+
+  // --- Fun-audit B6 (scheduled, escalating, telegraphed offensives):
+  //     advance the war schedule before the siege/attack sections read
+  //     it. General and marshal inherit this via thinkGeneral /
+  //     thinkMarshal.
+  thinkOffensive(world, ai);
 
   // --- Siege state (final-review R2-B): like citizen — count the
   //     quiet thinks with no visible enemy units; visible enemies reset
@@ -5325,6 +5497,22 @@ export function encodeAIState(ai: AIState): unknown {
       // progress" — no version bump (AD9).
       siegeQuietThinks: p.siegeQuietThinks ?? 0,
       siegeTargetBuildingId: p.siegeTargetBuildingId ?? 0,
+      // Fun-audit B6 (scheduled AI offensives): the war schedule.
+      // Missing (pre-B6 snapshots) decodes to undefined — the schedule
+      // (re)initializes on the next think, no version bump (AD9). The
+      // object is never mutated in place after decode... it IS mutated
+      // by thinkOffensive, so copy it here like seenBuildingIds (the
+      // phase9 aliasing lesson).
+      offensive: p.offensive
+        ? {
+            nextPhase: p.offensive.nextPhase,
+            launchTick: p.offensive.launchTick,
+            telegraphTick: p.offensive.telegraphTick,
+            telegraphed: p.offensive.telegraphed,
+            activePhase: p.offensive.activePhase,
+            activeUntilTick: p.offensive.activeUntilTick,
+          }
+        : undefined,
       personality: encodePersonality(p.personality ?? NEUTRAL_PERSONALITY),
       builtCounts: Object.keys(p.builtCounts).sort().reduce<Record<string, number>>(
         (acc, k) => {
@@ -5375,6 +5563,17 @@ export function decodeAIState(data: unknown): AIState {
       // carry neither field (AD9).
       siegeQuietThinks?: number;
       siegeTargetBuildingId?: number;
+      // Fun-audit B6 (scheduled AI offensives): pre-B6 snapshots carry
+      // no schedule — decodes to undefined and the schedule
+      // (re)initializes on the next think (AD9).
+      offensive?: {
+        nextPhase?: number;
+        launchTick?: number;
+        telegraphTick?: number;
+        telegraphed?: boolean;
+        activePhase?: number;
+        activeUntilTick?: number;
+      };
       personality?: unknown;
       // Grand-expansion Phase 7 (AI intel play): pre-Phase-6 snapshots
       // have no intel block — it decodes to the default (AD9).
@@ -5432,6 +5631,21 @@ export function decodeAIState(data: unknown): AIState {
       // bump (AD9).
       siegeQuietThinks: p.siegeQuietThinks ?? 0,
       siegeTargetBuildingId: p.siegeTargetBuildingId ?? 0,
+      // Fun-audit B6 (scheduled AI offensives): missing (pre-B6
+      // snapshots) decodes to undefined — the schedule (re)initializes
+      // on the next think (AD9). Copy the object: thinkOffensive
+      // mutates it in place, and restoreSnapshot promises no shared
+      // references (the phase9 aliasing lesson).
+      offensive: p.offensive
+        ? {
+            nextPhase: p.offensive.nextPhase ?? 1,
+            launchTick: p.offensive.launchTick ?? 0,
+            telegraphTick: p.offensive.telegraphTick ?? 0,
+            telegraphed: p.offensive.telegraphed ?? false,
+            activePhase: p.offensive.activePhase ?? 0,
+            activeUntilTick: p.offensive.activeUntilTick ?? 0,
+          }
+        : undefined,
       personality: decodePersonality(p.personality),
     })),
   };
