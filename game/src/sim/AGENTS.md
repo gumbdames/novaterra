@@ -792,6 +792,33 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `drillInstructor` (player-owned civilian, scripted-only — never in
   the train palette). Snapshot + digest covered (AD9;
   `|luminaries=…|`).
+- `combine.ts` — the Vostok Combine (fun-audit Tier 4 / E3,
+  2026-10-02): the merchant-only freighter visit system. MERCHANT-ONLY
+  in 0.1 Alpha — no raid code, no raid stubs, no raid hooks (the
+  plan's dead end §6.3). `world.combine` = the visit state machine
+  (away → inbound → anchored → departing → away), snapshotted +
+  digested (AD9; `|combine=…|`). Schedule on the rng `combine`
+  stream: first visit tick+14,400 ± 3,600 (~8 min ± 2), then every
+  21,600–32,400 (12–18 min). The `combineFreighter` (sea,
+  NEUTRAL_OWNER, `artBase: 'cargoFreighter'`, neutral non-combatant)
+  spawns at the map edge over water, sails to a water anchorage near
+  the player's capital (no water ⇒ the visit is skipped and
+  rescheduled), anchors 3 min (5,400 ticks), then departs. While
+  anchored, the Trade panel sells (`combineBuy`): materials/fuel/
+  food/research at 2× market × (1 ± 0.15 seeded per-visit drift), ammo
+  flat 6 funds/u into depots' ammoStock (capped by
+  effectiveAmmoStorage); stock caps 300/200/200/50/150 per visit. NO
+  sell-back — the Combine only sells (anti-cheese: the 2× ask beats
+  the market's 1.2× buy price, pinned by test). `combineBuyInfluence`:
+  8 funds → +1 influence, cap 100/visit. The tell: while anchored, a
+  commander+ AI that is war-planning (offensive telegraphed or
+  active), ammo-starved (< 200 virtual), and funded buys 100 ammo —
+  the UI narrates it ("Kestrel logistics just bought Combine
+  shells."). `createCombineSystem(terrain)` (wired in ui/session.ts
+  after the luminary system) sails the freighter via `orderMoveTo`,
+  fires the 60-s warning flag, runs the tell, and departs it. A shared
+  `neutralNonCombatant` kind gate (units.ts) makes the freighter
+  untargetable and unattackable.
 - `veterancy.ts` — unit veterancy (grand-expansion Phase 1, pure: no
   imports from combat/city, so no cycles). `UnitRecord.xp` grows on
   kills (`xpForKillValue = trainFunds + trainMaterials`), `vetLevel`

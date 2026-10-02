@@ -626,6 +626,9 @@ describe('age-gated units', () => {
       // foundation so they can appear in any age.
       luminary: 'foundation',
       drillInstructor: 'foundation',
+      // Fun-audit Tier 4 (E3, 2026-10-02): the Combine freighter —
+      // foundation so it can visit in any age.
+      combineFreighter: 'foundation',
     };
     expect(Object.keys(UNIT_DEFS).sort()).toEqual(Object.keys(expected).sort());
     for (const [kind, age] of Object.entries(expected)) {

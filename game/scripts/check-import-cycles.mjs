@@ -90,8 +90,13 @@ for (const v of names) if (!idx.has(v)) visit(v);
 // (all function-body use). No TDZ hazard; `capitalCenter` was moved to
 // city.ts specifically so no luminaries→envoy edge pulls `envoy` into
 // the group (envoy stays a leaf).
+// 2026-10-02 (fun-audit E3): `combine` joins sim-core — the Combine
+// visit state lives on world (initCombine, called inside createWorld,
+// never at module level) while the system sails the freighter via
+// movement.orderMoveTo (function-body use). No TDZ hazard; the freighter
+// is spawned by the system, never at module level.
 const ALLOWLIST = new Set([
-  'ages,ai,city,combat,commands,delegation,desirability,diplomacy,fog,intel,luminaries,movement,pathfinding,rail,seaTrade,shipyardRepair,superweapons,units,upgrades,utilityNetworks,variants,veterancy,world',
+  'ages,ai,city,combat,combine,commands,delegation,desirability,diplomacy,fog,intel,luminaries,movement,pathfinding,rail,seaTrade,shipyardRepair,superweapons,units,upgrades,utilityNetworks,variants,veterancy,world',
 ]);
 
 const bad = sccs.filter((s) => !ALLOWLIST.has(s));

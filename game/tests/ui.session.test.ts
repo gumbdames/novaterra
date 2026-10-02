@@ -66,12 +66,12 @@ describe('session', () => {
     const session = createSession({ seed: 1234 });
     // pathfinding → movement → envoy → luminary → combat → superweapons →
     // economy → wonder-countdown → intel → mayors → AI → generals → fog:
-    // thirteen systems. (The intel system is the sim-core workstream's;
+    // fourteen systems. (The intel system is the sim-core workstream's;
     // the wonder-countdown system is fun-audit B2's; the fog system is
     // fun-audit C3's; the envoy system is fun-audit E1's; the luminary
-    // system is fun-audit E2's — pinned here so the order stays
-    // documented.)
-    expect(session.driver.systems).toHaveLength(13);
+    // system is fun-audit E2's; the combine system is fun-audit E3's —
+    // pinned here so the order stays documented.)
+    expect(session.driver.systems).toHaveLength(14);
   });
 
   it('routes player intents through the command queue', () => {

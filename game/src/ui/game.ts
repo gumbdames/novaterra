@@ -1005,6 +1005,13 @@ class GameController {
   private envoyKey: string | null = null;
   private envoyNarrated: Set<string> = new Set();
   /**
+   * Fun-audit Tier 4 (E3, 2026-10-02): which beats of the current
+   * Combine visit have been narrated. UI-owned, presentational — the
+   * sim owns the visit (world.combine).
+   */
+  private combineKey: string | null = null;
+  private combineNarrated: Set<string> = new Set();
+  /**
    * Fun-audit Tier 4 (E2, 2026-10-02): which beats of the current
    * luminary visit were already narrated ('arrived' / 'resolved' /
    * 'timedOut'). Keyed by pending identity; a new key resets it.
@@ -1382,6 +1389,17 @@ class GameController {
       onSeaTradePolicy: (policy) => this.issueSeaTradePolicy(policy),
       onAssignSeaRoute: (unitId, routeId) =>
         this.enqueue(buildAssignSeaRouteOrder(HUMAN_PLAYER_ID, unitId, routeId)),
+      // Fun-audit Tier 4 (E3, 2026-10-02): the Combine trade commands.
+      onCombineBuy: (resource, amount) =>
+        this.enqueue({
+          kind: 'combineBuy',
+          payload: { owner: HUMAN_PLAYER_ID, resource, amount },
+        }),
+      onCombineBuyInfluence: (amount) =>
+        this.enqueue({
+          kind: 'combineBuyInfluence',
+          payload: { owner: HUMAN_PLAYER_ID, amount },
+        }),
     });
     this.pauseMenu = new PauseMenu(container, {
       onStartSkirmish: () => undefined,
@@ -2006,6 +2024,11 @@ class GameController {
     // decision (world.luminaries.pending).
     this.pollLuminary(world);
 
+    // Fun-audit Tier 4 (E3, 2026-10-02): the Combine visit's beats —
+    // the 60-s warning, anchoring, the AI tell, departure. All
+    // UI-side; the sim owns the visit (world.combine).
+    this.pollCombine(world);
+
     // Fun-audit B8 (2026-10-02): rival age-ups are global events. The
     // detector is pure (ui/session.ts); this poll only narrates the
     // transition — toast + Muse line + threat nudge + ping at the
@@ -2539,6 +2562,58 @@ class GameController {
       this.luminaryCoverUpOutcome = outcome;
       if (outcome === 'buried') say('leakBuried', loc(s.toastLeakBuried));
       else say('leaked', loc(s.toastLeak));
+    }
+  }
+
+  /**
+   * Fun-audit Tier 4 (E3, 2026-10-02): the Combine visit's beats —
+   * the 60-s warning (Muse + toast + map ping), the anchoring, the
+   * AI tell ("Kestrel logistics just bought Combine shells"), and
+   * the departure. All UI-side; the sim owns the visit
+   * (world.combine). Merchant-only: no raid beats exist.
+   */
+  private pollCombine(world: World): void {
+    const c = world.combine;
+    if (!c || c.state === 'away') {
+      this.combineKey = null;
+      return;
+    }
+    const key = `${c.unitId}:${c.anchorX}:${c.anchorZ}`;
+    if (key !== this.combineKey) {
+      this.combineKey = key;
+      this.combineNarrated = new Set();
+    }
+    const s = STRINGS.combine;
+    const say = (
+      phase: 'inbound' | 'anchored' | 'aiBuy',
+      toast: string,
+    ): void => {
+      if (this.muse !== null) {
+        this.muse.notify(personaLine({ kind: 'combine', phase }, world.tick));
+      }
+      this.hud.toast(toast);
+    };
+    const unit = world.units.find((u) => u.id === c.unitId);
+    const px = unit?.x ?? c.anchorX;
+    const pz = unit?.z ?? c.anchorZ;
+    // The 60-s warning: the freighter is within 60 s of the anchorage.
+    if (c.state === 'inbound' && c.warned && !this.combineNarrated.has('inbound')) {
+      this.combineNarrated.add('inbound');
+      say('inbound', loc(s.toastInbound));
+      // A 'build'-style ping: neutral/informational, never the red
+      // attack marker — the freighter cannot be attacked.
+      this.eventPings?.ping('build', px, pz);
+    } else if (c.state === 'anchored' && !this.combineNarrated.has('anchored')) {
+      this.combineNarrated.add('anchored');
+      say('anchored', loc(s.toastAnchored));
+    } else if (c.state === 'departing' && !this.combineNarrated.has('departing')) {
+      this.combineNarrated.add('departing');
+      this.hud.toast(loc(s.toastDeparted));
+    }
+    // The tell: narrated once per visit, whenever the AI buys.
+    if (c.aiBuy && !this.combineNarrated.has('aiBuy')) {
+      this.combineNarrated.add('aiBuy');
+      say('aiBuy', loc(s.toastAiBuy));
     }
   }
 

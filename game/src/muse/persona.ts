@@ -61,6 +61,8 @@ export type PersonaEvent =
       phase: 'arrived' | 'resolved' | 'timedOut' | 'leakBuried' | 'leaked';
       cardId?: string;
     }
+  // Fun-audit Tier 4 (E3, 2026-10-02): the Combine visit's beats.
+  | { kind: 'combine'; phase: 'inbound' | 'anchored' | 'aiBuy' }
   | { kind: 'enemyDown' }
   | { kind: 'enemySpotted' }
   | { kind: 'combatStarted' }
@@ -194,6 +196,23 @@ const LINES: Record<string, string[]> = {
     'It got out. The treasury clerk talked, the press listened, and the presidency is two hundred influence poorer.',
     'Leaked, President. Somewhere a journalist is having the best day of their career.',
   ],
+  // Fun-audit Tier 4 (E3, 2026-10-02): the Vostok Combine. The joke is
+  // the prices, never the merchant — and the AI tell is the punchline.
+  'combine:inbound': [
+    'A Combine freighter is holding offshore, President. Premium prices, no questions — that is their motto, roughly translated.',
+    'The Vostok Combine sends its regards and its price list. Emergency stock, emergency rates.',
+    'Combine freighter inbound, President. Their shells cost double, but their discretion is free.',
+  ],
+  'combine:anchored': [
+    'The Combine freighter is anchored, President. Shop quickly — they sail in three minutes.',
+    'Anchored and open for business, President. Small quantities, large prices, zero politics.',
+    'The freighter is holding station. Buy what you need — they will not be haggled with.',
+  ],
+  'combine:aiBuy': [
+    'Kestrel logistics just bought Combine shells, President. Draw your own conclusions — I have drawn mine.',
+    'Interesting: the rival just topped up on Combine ammunition. One does not stockpile shells for a parade, President.',
+    'The Combine sold to the other side too, President. Somebody is planning something loud.',
+  ],
   'offensiveWarning:offensive': [
     'The rival is massing for a genuine offensive. I suggest we greet them with more than harsh language.',
     'Scouts confirm it: a real attack is forming up. Reinforce the line, President.',
@@ -292,6 +311,8 @@ function eventKey(event: PersonaEvent): string {
       return `envoy:${event.phase}`;
     case 'luminary':
       return `luminary:${event.phase}`;
+    case 'combine':
+      return `combine:${event.phase}`;
     default:
       return event.kind;
   }

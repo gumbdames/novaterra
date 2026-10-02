@@ -346,6 +346,12 @@ const BASE_UNIT_ICONS: Record<Exclude<UnitKind, VariantUnitKind>, string> = {
     '<circle cx="12" cy="7" r="3"/>' +
     '<path d="M6 20c0-4 2.5-6 6-6s6 2 6 6"/>' +
     '<path d="M8 13l4 3 4-3"/>',
+  // Fun-audit Tier 4 (E3, 2026-10-02): the Combine freighter — a cargo
+  // hull with containers (a merchant, never a warship).
+  combineFreighter:
+    '<path d="M3 15h18l-2 5H5z"/>' +
+    '<path d="M3 15V9h18v6"/>' +
+    '<path d="M7 9V5h10v4"/>',
 };
 
 // ---------------------------------------------------------------------------

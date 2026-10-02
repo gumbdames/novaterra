@@ -54,6 +54,8 @@ import { initDiplomacy } from './diplomacy';
 import type { CeremonyEvent } from './envoy';
 import type { LuminariesState } from './luminaries';
 import { initLuminaries } from './luminaries';
+import type { CombineState } from './combine';
+import { initCombine } from './combine';
 import type { WonderCountdown } from './wonderCountdown';
 import type { DoctrineId } from './doctrine';
 import type { FogState } from './fog';
@@ -205,6 +207,12 @@ export interface World {
    * Plain data: snapshotted + digested (AD9).
    */
   luminaries: LuminariesState;
+  /**
+   * Fun-audit Tier 4 (E3, 2026-10-02): the Vostok Combine — the
+   * merchant visit state machine. Plain data: snapshotted + digested
+   * (AD9). MERCHANT-ONLY: no raid state exists.
+   */
+  combine: CombineState;
 }
 
 /**
@@ -284,6 +292,9 @@ export function createWorld(seed: number): World {
     ceremonyEvents: [],
     // Fun-audit Tier 4 (E2, 2026-10-02): the luminary state starts fresh.
     luminaries: initLuminaries(),
+    // Fun-audit Tier 4 (E3, 2026-10-02): the Combine's first visit is
+    // scheduled from the seed (merchant-only; no raid state).
+    combine: initCombine(seed >>> 0),
   };
 }
 

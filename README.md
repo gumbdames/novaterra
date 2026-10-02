@@ -138,7 +138,7 @@ land, sea and air — or play a fully peaceful game with war disabled.
 
 - City building with visible zoning, terrain-following roads, and
   power/water utility networks you drag-paint across the map
-- 100 buildings and 102 units across land, sea, and air, with tech ages
+- 100 buildings and 103 units across land, sea, and air, with tech ages
 - Command menu (rebuilt 2026-10-01): a slim icon rail with three tabs
   — **Civilian** (Tools / Build / Airlines), **Military** (Train /
   Build / Superweapons), **Management** (Taxes / City focus / Cabinet /

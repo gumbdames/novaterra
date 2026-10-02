@@ -892,6 +892,32 @@ guest is a neutral non-combatant (the shared immunity gate) and
 departs after your answer. Luminaries are the story engine of the
 peaceful endless mode — no victory, but always a heartbeat.
 
+## The Vostok Combine
+
+War is expensive, and somewhere offshore there's a freighter full of
+shells that doesn't care about your politics. Every 12–18 minutes
+(first visit ~8 minutes in), a Combine freighter sails to a water
+anchorage near your capital and holds for 3 minutes — a 60-second
+warning and a map ping give you time to get ready.
+
+While anchored, the Trade panel (Management tab) sells emergency
+stock at emergency prices: materials, fuel, food, and research at
+**2× market rate** (±15% per-visit drift), and **ammo at 6 funds a
+shell** (fills your depots' ammo storage). Quantities are insultingly
+small (300 / 200 / 200 / 50 / 150 per visit) and prices are
+offensively high — the Combine is the emergency valve, not the
+economy. There is **no sell-back**; the Combine only sells.
+
+They also buy influence: **8 funds → +1 influence**, up to 100 per
+visit — a straight funds/influence sink.
+
+Watch the manifest: if the Kestrel is war-planning and low on ammo,
+their logistics buys Combine shells too — and Muse will tell you.
+("Kestrel logistics just bought Combine shells. Draw your own
+conclusions.") The Combine is merchant-only: the freighter is a
+neutral non-combatant under the shared immunity gate — it cannot be
+attacked, and there is no raid in 0.1 Alpha.
+
 ## Peaceful mode
 
 Prefer building to fighting? A **peaceful** skirmish disables war

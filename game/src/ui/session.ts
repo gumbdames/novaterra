@@ -71,6 +71,8 @@ import { registerDiplomacyCommands } from '../sim/diplomacy';
 import { registerEnvoyCommands, createEnvoySystem } from '../sim/envoy';
 // Fun-audit Tier 4 (E2, 2026-10-02): the luminary decision system.
 import { registerLuminaryCommands, createLuminarySystem } from '../sim/luminaries';
+// Fun-audit Tier 4 (E3, 2026-10-02): the Vostok Combine merchant system.
+import { registerCombineCommands, createCombineSystem } from '../sim/combine';
 import { registerLogisticsCommands } from '../sim/commands';
 import { registerAgeCommands, getProgramForAge, type Age, type NationalProgram } from '../sim/ages';
 import { registerCheatCommands } from '../sim/cheats';
@@ -623,6 +625,10 @@ export function createSession(options: SessionOptions): GameSession {
   registerEnvoyCommands(queue);
   // Fun-audit Tier 4 (E2, 2026-10-02): the luminary's resolve command.
   registerLuminaryCommands(queue);
+  // Fun-audit Tier 4 (E3, 2026-10-02): the Combine's trade commands
+  // (combineBuy / combineBuyInfluence). Merchant-only: no raid
+  // commands exist.
+  registerCombineCommands(queue);
   // Phase 3 logistics (workstream 3): resupply + supply toggles.
   registerLogisticsCommands(queue, terrain);
   registerAgeCommands(queue);
@@ -650,6 +656,11 @@ export function createSession(options: SessionOptions): GameSession {
       // Handles the 3-minute answer deadline, the Whistleblower
       // cover-up leak, and pruning expired production marks.
       createLuminarySystem(),
+      // Fun-audit Tier 4 (E3, 2026-10-02): the Combine visit state
+      // machine — after the luminary system (both are ceremony
+      // systems; disjoint state). Sails the freighter, anchors it,
+      // runs the AI tell, and departs it. Merchant-only.
+      createCombineSystem(terrain),
       createCombatSystem(terrain),
       createSuperweaponSystem(),
       createEconomySystem(terrain),

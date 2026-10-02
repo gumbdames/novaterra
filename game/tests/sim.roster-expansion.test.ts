@@ -274,8 +274,8 @@ function findCoastalFootprint(
 }
 
 describe('roster definitions (§2)', () => {
-  it('has exactly the 102 unit kinds (35 + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel + 28 Phase 8 tech-level variants + 1 Half-A sea-trade + 2 D1 doctrine signature units + 1 E1 envoy SUV + 2 E2 luminary kinds)', () => {
-    expect(UNIT_KINDS).toHaveLength(102);
+  it('has exactly the 103 unit kinds (35 + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel + 28 Phase 8 tech-level variants + 1 Half-A sea-trade + 2 D1 doctrine signature units + 1 E1 envoy SUV + 2 E2 luminary kinds + 1 E3 Combine freighter)', () => {
+    expect(UNIT_KINDS).toHaveLength(103);
     const expected = [
       'engineer', 'rifles', 'spectre', 'sniperTeam', 'combatMedic',
       'tank', 'apc', 'tankDestroyer', 'artillery', 'mlrs', 'aa',
@@ -319,6 +319,8 @@ describe('roster definitions (§2)', () => {
       // and the drill instructor (player-owned).
       'luminary',
       'drillInstructor',
+      // Fun-audit Tier 4 (E3, 2026-10-02): the Combine freighter.
+      'combineFreighter',
     ];
     expect([...UNIT_KINDS].sort()).toEqual([...expected].sort());
   });

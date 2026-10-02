@@ -194,6 +194,14 @@ export const UNIT_KINDS = [
   'luminary',
   'drillInstructor',
   // ------------------------------------------------------------------
+  // Fun-audit Tier 4 (E3, 2026-10-02): the Combine freighter — a
+  // scripted neutral non-combatant merchant (see `neutralNonCombatant`
+  // on UnitDef). Never trained or spawned via commands; the combine
+  // system (sim/combine.ts) sails it. MERCHANT-ONLY: no raid in
+  // 0.1 Alpha — no raid code, stubs, or hooks.
+  // ------------------------------------------------------------------
+  'combineFreighter',
+  // ------------------------------------------------------------------
   // Grand-expansion Phase 8 — tech-level variants (workstream D,
   // 2026-09-30). 28 kinds: Mk II / Mk III of the 14 workhorse kinds
   // (land: tank, artillery, aa, apc, hauler; air: fighter,
@@ -1425,6 +1433,20 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 20, minAge: 'foundation',
     manpowerCost: 0, trainFunds: 0, trainMaterials: 0,
     artBase: 'spy',
+  },
+  // ------------------------------------------------------------------
+  // Fun-audit Tier 4 (E3, 2026-10-02): the Vostok Combine freighter —
+  // a neutral merchant (see `neutralNonCombatant` on UnitDef). Sea
+  // domain, unarmed, sails the visit circuit (sim/combine.ts).
+  // MERCHANT-ONLY in 0.1 Alpha: no raid, no stubs, no hooks.
+  // ------------------------------------------------------------------
+  combineFreighter: {
+    kind: 'combineFreighter', name: 'Combine Freighter', domain: 'sea', hp: 500, speed: 8, armor: 'medium',
+    damage: 0, range: 0, minRange: 0, cooldownTicks: 30, targets: 'none',
+    vsLight: 1.0, vsMedium: 1.0, vsHeavy: 1.0, vsAir: 1.0, sight: 25, minAge: 'foundation',
+    manpowerCost: 0, trainFunds: 0, trainMaterials: 0,
+    neutralNonCombatant: true,
+    artBase: 'cargoFreighter',
   },
   // ------------------------------------------------------------------
   // Grand-expansion Phase 8 — tech-level variants (workstream D,

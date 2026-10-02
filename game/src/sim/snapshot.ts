@@ -59,6 +59,8 @@ import type { DiplomacyState } from './diplomacy';
 import { decodeDiplomacyState } from './diplomacy';
 import type { LuminariesState } from './luminaries';
 import { decodeLuminariesState, encodeLuminariesState } from './luminaries';
+import type { CombineState } from './combine';
+import { decodeCombineState, encodeCombineState } from './combine';
 import type { WonderCountdown, WonderRaceKind } from './wonderCountdown';
 import type { FogState } from './fog';
 import type { DoctrineId } from './doctrine';
@@ -219,6 +221,12 @@ export interface Snapshot {
    * neutral fresh state (no old save had any luminaries).
    */
   luminaries: LuminariesState;
+  /**
+   * Fun-audit Tier 4 (E3, 2026-10-02): the Combine state. Added without
+   * a version bump — legacy snapshots predate the field and decode to a
+   * neutral fresh state (no old save had a Combine visit).
+   */
+  combine: CombineState;
   /**
    * Fun-audit B2 (2026-10-02): the wonder countdown. Added without a
    * version bump — legacy snapshots predate the field and decode to
@@ -632,6 +640,9 @@ export function takeSnapshot(world: World): Snapshot {
     // Fun-audit Tier 4 (E2, 2026-10-02): faithful copy of the luminary
     // state (plain data, via the canonical encoder).
     luminaries: encodeLuminariesState(world.luminaries) as LuminariesState,
+    // Fun-audit Tier 4 (E3, 2026-10-02): faithful copy of the Combine
+    // state (plain data, via the canonical encoder).
+    combine: encodeCombineState(world.combine) as CombineState,
     // Fun-audit B2: faithful copy of the wonder countdown (plain data,
     // null when idle).
     wonderCountdown:
@@ -768,6 +779,11 @@ function restoreSnapshotInner(snap: Snapshot): World {
   // default, no version bump). decodeLuminariesState is defensive
   // against corrupt values too.
   world.luminaries = decodeLuminariesState(snap.luminaries);
+  // Fun-audit Tier 4 (E3, 2026-10-02): pre-Combine snapshots decode to
+  // a neutral fresh state — no old save had a Combine visit (AD9
+  // neutral default, no version bump). decodeCombineState is defensive
+  // against corrupt values too.
+  world.combine = decodeCombineState(snap.combine, world.seed);
   // Fun-audit B2: pre-countdown snapshots decode to null — no old save
   // had a countdown running (AD9 neutral default, no version bump).
   // Defensive against corrupt values: kind must be a race kind, leader

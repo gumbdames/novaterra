@@ -81,6 +81,13 @@ import type { Selection } from './selection';
 import type { AdvisorItem } from './advisor';
 import { STRINGS, loc, fillLoc, type LocalizedString } from './strings';
 import { vetXpLine } from './veterancy';
+// Fun-audit Tier 4 (E3, 2026-10-02): the Combine trade-panel section.
+import {
+  COMBINE_RESOURCES,
+  COMBINE_INFLUENCE_CAP,
+  combineBuyCost,
+  type CombineResource,
+} from '../sim/combine';
 // Naval-building model (2026-10-01): the drydock-repair read path for
 // the unit detail panel's "Under repair" badge (sim/shipyardRepair.ts
 // is a leaf — value-imports city/units/veterancy only — so the UI may
@@ -449,6 +456,16 @@ export interface HUDActions {
    * (routeId 0 = unassign).
    */
   onAssignSeaRoute(unitId: number, routeId: number): void;
+  /**
+   * Fun-audit Tier 4 (E3, 2026-10-02): buy `amount` of `resource`
+   * from the anchored Combine freighter (emits `combineBuy`).
+   */
+  onCombineBuy(resource: string, amount: number): void;
+  /**
+   * Fun-audit Tier 4 (E3, 2026-10-02): buy `amount` influence from the
+   * anchored Combine freighter (emits `combineBuyInfluence`).
+   */
+  onCombineBuyInfluence(amount: number): void;
   /** Roster expansion: research an upgrade (from the research panel). */
   onResearchUpgrade(upgradeId: UpgradeId): void;
 }
@@ -1455,6 +1472,9 @@ export class HUD {
         // sub-tab now holds only the dock-to-dock sea routes (Half A,
         // 2026-10-01; naval-building model, 2026-10-01).
         panel.append(this.seaTradeSectionEl(world));
+        // Fun-audit Tier 4 (E3, 2026-10-02): the Vostok Combine
+        // merchant — below the sea-trade routes, same sub-tab.
+        panel.append(this.combineSectionEl(world));
         break;
       case 'research':
         if (playerHasCompletedLab(world, HUMAN_PLAYER_ID)) {
@@ -1552,6 +1572,109 @@ export class HUD {
         ),
       );
     }
+    return sec;
+  }
+
+  /**
+   * Management → Trade: the Vostok Combine section (fun-audit Tier 4,
+   * E3, 2026-10-02) — the merchant freighter's stock and prices while
+   * anchored, with fixed-lot buy buttons. Named *El (not
+   * append/build/update-prefixed) per the ui/AGENTS.md AD11 rule — it
+   * is covered by the management-panel digest branch (the trade
+   * sub-tab), not a branch of its own. All DOM classes are the shared
+   * panel classes that branch already claims. Merchant-only: no raid
+   * UI exists.
+   */
+  private combineSectionEl(world: World): HTMLElement {
+    const m = STRINGS.combine;
+    const sec = this.makeSection(loc(m.sectionTitle));
+    const c = world.combine;
+    if (!c || c.state === 'away') {
+      sec.append(el('div', 'panel-status', loc(m.awayLine)));
+      return sec;
+    }
+    if (c.state === 'inbound') {
+      sec.append(el('div', 'panel-status', loc(m.inboundLine)));
+      return sec;
+    }
+    if (c.state === 'departing') {
+      sec.append(el('div', 'panel-status', loc(m.departingLine)));
+      return sec;
+    }
+    // Anchored: the stock board.
+    sec.append(el('div', 'panel-status', loc(m.anchoredLine)));
+    // Fixed lots per click: big enough to matter, small enough to
+    // stay an emergency valve.
+    const lots: Record<CombineResource, number> = {
+      materials: 50,
+      fuel: 50,
+      food: 50,
+      research: 10,
+      ammo: 25,
+    };
+    const resName: Record<CombineResource, string> = {
+      materials: loc(m.res_materials),
+      fuel: loc(m.res_fuel),
+      food: loc(m.res_food),
+      research: loc(m.res_research),
+      ammo: loc(m.res_ammo),
+    };
+    for (const r of COMBINE_RESOURCES) {
+      const lot = lots[r];
+      const inStock = c.stock[r] ?? 0;
+      const buy = Math.min(lot, inStock);
+      const cost = buy > 0 ? combineBuyCost(c, r, buy) : 0;
+      const row = el('div', 'panel-row');
+      row.append(
+        el(
+          'span',
+          'panel-label',
+          fillLoc(m.stockLine, { amount: String(inStock), resource: resName[r] }),
+        ),
+      );
+      row.append(
+        this.makePanelButton(
+          fillLoc(m.buyButton, {
+            amount: String(buy),
+            resource: resName[r],
+            cost: String(cost),
+          }),
+          fillLoc(m.stockLine, { amount: String(inStock), resource: resName[r] }),
+          () => this.actions.onCombineBuy(r, buy),
+          { disabled: buy <= 0 },
+        ),
+      );
+      sec.append(row);
+    }
+    // Influence: 8 funds each, cap 100 per visit.
+    const inflLeft = COMBINE_INFLUENCE_CAP - c.influenceSold;
+    const inflBuy = Math.min(10, inflLeft);
+    const inflRow = el('div', 'panel-row');
+    inflRow.append(
+      el(
+        'span',
+        'panel-label',
+        fillLoc(m.influenceLine, {
+          sold: String(c.influenceSold),
+          cap: String(COMBINE_INFLUENCE_CAP),
+        }),
+      ),
+    );
+    inflRow.append(
+      this.makePanelButton(
+        fillLoc(m.influenceButton, {
+          amount: String(inflBuy),
+          cost: String(inflBuy * 8),
+        }),
+        fillLoc(m.influenceLine, {
+          sold: String(c.influenceSold),
+          cap: String(COMBINE_INFLUENCE_CAP),
+        }),
+        () => this.actions.onCombineBuyInfluence(inflBuy),
+        { disabled: inflBuy <= 0 },
+      ),
+    );
+    sec.append(inflRow);
     return sec;
   }
 

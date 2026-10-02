@@ -139,6 +139,21 @@ function pendingEnvoyDigest(d: World['diplomacy'] | undefined): string {
       `coverUpOutcome=${l?.lastCoverUpOutcome ?? '-'},` +
       `instructors=${(l?.instructors ?? []).map((i) => `${i.unitId}:${i.owner}:${i.name}`).join('.') || '-'}|`;
   }
+  // Fun-audit Tier 4 (E3, 2026-10-02): the Combine state is
+  // behavior-affecting (visit schedule, stock, prices all change the
+  // sim) ⇒ digest-covered. `??` keeps hand-built fixture worlds
+  // (which predate the field) digestible.
+  {
+    const c = world.combine;
+    const stock = c?.stock;
+    out +=
+      `|combine=` +
+      `${c?.state ?? 'away'},${c?.unitId ?? 0},${c?.nextVisitTick ?? 0},` +
+      `${c?.anchoredUntilTick ?? 0},` +
+      `${stock ? `${stock.materials}:${stock.fuel}:${stock.food}:${stock.research}:${stock.ammo}` : '-'},` +
+      `${c?.priceDrift ?? 0},${c?.influenceSold ?? 0},` +
+      `${c?.aiBuy === true ? 1 : 0},${c?.warned === true ? 1 : 0}|`;
+  }
   // Fun-audit B2 (2026-10-02): the wonder countdown is
   // behavior-affecting (it decides race victories) ⇒ digest-covered.
   // `?? null` keeps hand-built fixture worlds (which predate the field)

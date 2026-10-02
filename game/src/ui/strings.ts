@@ -595,6 +595,9 @@ export const STRINGS = {
     // trained) — both visible and selectable on the map.
     luminary: { en: 'Luminary' },
     drillInstructor: { en: 'Drill Instructor' },
+    // Fun-audit Tier 4 (E3, 2026-10-02): the Combine freighter —
+    // visible and selectable on the map (a neutral merchant).
+    combineFreighter: { en: 'Combine Freighter' },
     hauler: { en: 'Hauler' },
     // Phase 3 SIM workstream (2026-09-30): provisional names for the two
     // new logistics trucks — the UI workstream owns final copy/palettes.
@@ -1507,6 +1510,45 @@ export const STRINGS = {
     toastTimedOut: { en: 'The luminary took your silence as an answer and departed.' },
     toastLeakBuried: { en: 'Counter-intel buried the story. No one will ever know.' },
     toastLeak: { en: 'The cover-up leaked — −200 influence.' },
+  },
+  /**
+   * Fun-audit Tier 4 (E3, 2026-10-02): the Vostok Combine merchant
+   * faction — the Trade-panel section, the visit toasts, and the Muse
+   * warning. Merchant-only (no raid strings exist). English-only via
+   * loc()/fillLoc().
+   */
+  combine: {
+    /** Trade panel: the Combine section title. */
+    sectionTitle: { en: 'Vostok Combine' },
+    /** Trade panel: flavor when no freighter is present. */
+    awayLine: { en: 'No Combine freighter on station. Their next visit is unscheduled — they come when they come.' },
+    /** Trade panel: flavor when the freighter is inbound. */
+    inboundLine: { en: 'A Combine freighter is inbound. Premium prices, no questions.' },
+    /** Trade panel: flavor when the freighter is anchored. */
+    anchoredLine: { en: 'The Combine freighter is anchored. Emergency prices — stock is limited.' },
+    /** Trade panel: flavor when the freighter is departing. */
+    departingLine: { en: 'The Combine freighter is departing. Missed it? They will be back.' },
+    /** Trade panel: buy-lot button label (amount + resource + cost). */
+    buyButton: { en: 'Buy {amount} {resource} — {cost} funds' },
+    /** Trade panel: stock line. */
+    stockLine: { en: 'Stock: {amount} {resource}' },
+    /** Trade panel: the influence purchase. */
+    influenceLine: { en: 'Influence: {sold}/{cap} sold this visit' },
+    influenceButton: { en: 'Buy {amount} influence — {cost} funds' },
+    /** Resource names. */
+    res_materials: { en: 'materials' },
+    res_fuel: { en: 'fuel' },
+    res_food: { en: 'food' },
+    res_research: { en: 'research' },
+    res_ammo: { en: 'ammo' },
+    /** Warning toast: the 60-s heads-up. */
+    toastInbound: { en: 'A Combine freighter is holding offshore. Premium prices, no questions.' },
+    /** Arrival toast. */
+    toastAnchored: { en: 'The Combine freighter is anchored — trade in the Management tab.' },
+    /** Departure toast. */
+    toastDeparted: { en: 'The Combine freighter has sailed.' },
+    /** The tell toast: the rival bought Combine ammo. */
+    toastAiBuy: { en: 'Kestrel logistics just bought Combine shells. Draw your own conclusions.' },
   },
   /**
    * Grand-expansion Phase 8 (peaceful mode, workstream B, 2026-09-30):

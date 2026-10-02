@@ -306,11 +306,11 @@ function findBigSeaLane(t: TerrainData): { a: { x: number; z: number }; b: { x: 
 }
 
 describe('naval roster', () => {
-  it('has 36 sea kinds: the 9 originals + ferry + the 15 new + 10 Phase 8 tech-level variants + Half A fuelBarge', () => {
+  it('has 37 sea kinds: the 9 originals + ferry + the 15 new + 10 Phase 8 tech-level variants + Half A fuelBarge + fun-audit E3 Combine freighter', () => {
     const sea = Object.keys(UNIT_DEFS).filter(
       (k) => UNIT_DEFS[k as UnitKind].domain === 'sea',
     );
-    expect(sea).toHaveLength(36);
+    expect(sea).toHaveLength(37);
     for (const kind of NAVAL_KINDS) {
       expect(UNIT_DEFS[kind as UnitKind].domain, kind).toBe('sea');
     }
