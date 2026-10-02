@@ -34,10 +34,13 @@ describe('licensed music tracks ship in public/audio', () => {
       const path = join(gameRoot, 'public', 'audio', track.name);
       const stat = statSync(path); // throws if the file is missing
       expect(stat.size).toBeGreaterThan(track.minBytes);
-      const buf = readFileSync(path).subarray(0, 4);
+      const head = readFileSync(path).subarray(0, 4);
+      const b0 = head[0] ?? 0;
+      const b1 = head[1] ?? 0;
+      const b2 = head[2] ?? 0;
       // ID3v2 header ("ID3") or an MPEG frame-sync byte pair (0xFF 0xE0..0xFF).
-      const isId3 = buf[0] === 0x49 && buf[1] === 0x44 && buf[2] === 0x33;
-      const isFrameSync = buf[0] === 0xff && (buf[1] & 0xe0) === 0xe0;
+      const isId3 = b0 === 0x49 && b1 === 0x44 && b2 === 0x33;
+      const isFrameSync = b0 === 0xff && (b1 & 0xe0) === 0xe0;
       expect(isId3 || isFrameSync).toBe(true);
     });
   }

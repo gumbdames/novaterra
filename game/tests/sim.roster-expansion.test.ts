@@ -1112,7 +1112,7 @@ describe('upgrade effects (§4)', () => {
   });
 });
 
-describe('snapshot v8 + canonical digest (§9)', () => {
+describe('snapshot v9 + canonical digest (§9)', () => {
   it('round-trips upgrades through a v8 snapshot', () => {
     const ctx = setupRich();
     const at = findLandNear(ctx.terrain, 0, 0);
@@ -1120,7 +1120,7 @@ describe('snapshot v8 + canonical digest (§9)', () => {
     ctx.world.upgrades[0] = ['apRounds', 'engineTuning'];
     ctx.world.upgrades[1] = ['droneOptics'];
     const snap = takeSnapshot(ctx.world);
-    expect(snap.version).toBe(8); // Phase 5 workstream B: hangar slots on buildings + hangarBuildingId/embarkedOn on units
+    expect(snap.version).toBe(9); // v9: B25 slim pathfinding (hangar slots from Phase 5 workstream B retained)
     const world2 = restoreSnapshot(snap);
     expect(world2.upgrades).toEqual({ 0: ['apRounds', 'engineTuning'], 1: ['droneOptics'] });
     expect(digestWorld(world2)).toBe(digestWorld(ctx.world));

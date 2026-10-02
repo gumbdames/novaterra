@@ -916,6 +916,39 @@ export function fieldReachable(field: FlowField, cell: number): boolean {
   return (field.dirs[cell] as number) !== FIELD_UNREACHABLE;
 }
 
+/**
+ * Rebuild flow-field direction grids after a v9+ snapshot restore
+ * (roadmap B25, 2026-10-02).
+ *
+ * v9 snapshots store only field identities ({id, destCell}) — the 65k
+ * direction arrays are derived data, dropped to keep saves small
+ * (they were ~80% of a typical save). This fills them back in with a
+ * synchronous full flood per field. It runs at LOAD time (never during
+ * play), so the hitch lands where a hitch is acceptable.
+ *
+ * Fidelity: the rebuild is a full flood (no early exit), while live
+ * builds truncate once every waiting unit's cell is reached. That is
+ * behavior-preserving: the only dirs consumer (movement.ts
+ * steeringTarget) is read by units descending toward the destination,
+ * and every cell on a descent path was reached in the original flood —
+ * truncated cells are exactly the ones no unit could ever query
+ * (finishFieldRequest fails units on unreachable cells outright).
+ * Rebuilt dist values on reached cells are canonical Dijkstra
+ * distances, identical to the originals. Roads laid after the field
+ * was built ARE picked up by the rebuild — fresher than the original,
+ * and deterministic given the snapshot.
+ *
+ * Fields that already have dirs are skipped, so calling this on a
+ * v8-restored (full-internals) world is a no-op.
+ */
+export function rebuildFlowFields(world: World, t: TerrainData): void {
+  for (const f of world.pathfinding.fields) {
+    if (f.dirs.length > 0) continue;
+    const rebuilt = computeFlowField(t, world.city, f.destCell);
+    f.dirs = rebuilt.dirs;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Time-sliced coordinator state (lives in the world; snapshotted).
 // ---------------------------------------------------------------------------

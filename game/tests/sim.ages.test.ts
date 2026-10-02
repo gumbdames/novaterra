@@ -169,8 +169,8 @@ describe('initial state', () => {
     expect(initAges()).toEqual({ age: 'foundation', program: null, programs: {} });
   });
 
-  it('snapshot version is 8 (Phase 5/6 S4: hangar slots + embark fields)', () => {
-    expect(SNAPSHOT_VERSION).toBe(8);
+  it('snapshot version is 9 (B25: slim pathfinding, rebuild on load)', () => {
+    expect(SNAPSHOT_VERSION).toBe(9);
   });
 });
 

@@ -82,8 +82,8 @@ function downgradeToV7(snap: unknown): Record<string, unknown> {
 }
 
 describe('v7 -> v8 migration: hangar + embark fields', () => {
-  it('SNAPSHOT_VERSION is 8 (Phase 5/6 S4 hangar data contract)', () => {
-    expect(SNAPSHOT_VERSION).toBe(8);
+  it('SNAPSHOT_VERSION is 9 (B25: slim pathfinding, field internals rebuilt on load)', () => {
+    expect(SNAPSHOT_VERSION).toBe(9);
   });
 
   it('the legacy airfield default is pinned: 6 generic slots', () => {

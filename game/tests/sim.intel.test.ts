@@ -702,10 +702,10 @@ describe('persistence', () => {
     return ctx.world;
   }
 
-  it('snapshot round-trip preserves all intel state (stays v8)', () => {
+  it('snapshot round-trip preserves all intel state (stays v9)', () => {
     const world = busyWorld(42);
     const snap = takeSnapshot(world);
-    expect(snap.version).toBe(8);
+    expect(snap.version).toBe(9);
     const restored = restoreSnapshot(snap);
     expect(digestWorld(restored)).toBe(digestWorld(world));
     const spy = restored.units.find((u) => (u.missionEndsAt ?? 0) > 0)!;

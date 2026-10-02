@@ -201,7 +201,8 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   lists — they decide the next pop), and `delegation.mayors[].buildPolicy`
   (sim write-only today, still snapshotted ⇒ digested) are all encoded;
   pinned by the sensitivity tests in `tests/sim.digest.test.ts`.
-- `snapshot.ts` — versioned snapshots (v8: hangar slots on buildings
+- `snapshot.ts` — versioned snapshots (v9: slim pathfinding — field
+  internals dropped, rebuilt on load; v8: hangar slots on buildings
   + `hangarBuildingId`/`embarkedOn` on units; v7: road classes as
   `RoadCell[]` (v6 `number[]` migrates to `paved`), the rail layer,
   ferry routes on units; v6/v7 still load, v5 with empty upgrades).
@@ -215,6 +216,16 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   Final-review R6 (2026-10-01): malformed-but-readable snapshots throw
   `CorruptSaveError` (not a raw TypeError) — the load-game UI catches it
   for the graceful "save is broken" path back to the menu.
+  Roadmap B25 (2026-10-02): v9 — the pathfinding section drops field
+  internals (`SnapshotPathfindingV9`: the mid-flood build slims to
+  {fieldId, destCell, unitIds} and re-queues at the front of fieldQueue
+  on restore; live fields slim to {id, destCell}). `rebuildFlowFields`
+  (pathfinding.ts) refills the direction grids at load — the session
+  (ui/session.ts) calls it right after restore, since it owns the
+  terrain; a restored world must not tick before that runs. v5–v8 still
+  load with full internals decoded verbatim. Digest note: a v9-restored
+  world digests its REBUILT fields, so the "restore preserves the digest
+  exactly" pin holds only for worlds with no live fields/builds.
 - `terrain.ts` — seeded mapgen (not snapshotted); `spatial.ts` — hash grid.
 - `units.ts` — `UnitRecord` store (stable ids, owner/kind/speed/state),
   `spawnUnit` command. Final-review R2 (2026-10-01):
@@ -682,6 +693,12 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   (`PATHS_PER_TICK=3` A*, `FIELD_POPS_PER_TICK=600`). Sea units use a
   separate water-only A* (`findSeaPath`) over sea components — no land
   fallback, cross-component water fails fast with 'no path'.
+  Roadmap B25 (2026-10-02): `rebuildFlowFields(world, terrain)` refills
+  flow-field direction grids after a v9+ snapshot restore (the snapshot
+  stores fields as {id, destCell} identities only) — synchronous full
+  flood per field, load-time only. Behavior-preserving: the only dirs
+  consumer (movement.ts) reads cells on the descent path, all reached
+  in the original truncated flood.
 - `movement.ts` — the pathfinding + movement systems (registered in that
   order), `moveUnit` / `moveGroup` / `stopUnit` commands, waypoint and
   field following, arrival slowdown, formation slots, spatial-hash

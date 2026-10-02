@@ -636,7 +636,7 @@ describe('snapshot/digest contract', () => {
     getDesirabilityModel(ctx.terrain, ctx.world, 0);
     const after = takeSnapshot(ctx.world);
     expect(before.version).toBe(SNAPSHOT_VERSION);
-    expect(after.version).toBe(8); // v8: Phase 5/6 S4 hangar data contract
+    expect(after.version).toBe(9); // v9: B25 slim pathfinding
     expect(JSON.stringify(after)).toBe(JSON.stringify(before));
   });
 

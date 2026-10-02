@@ -33,6 +33,7 @@ import {
   validateSaveVersion,
   type SaveFile,
 } from '../src/netSave/savefile';
+import { SNAPSHOT_VERSION } from '../src/sim/snapshot';
 
 const SAVED_AT = '2026-09-29T12:00:00.000Z';
 
@@ -108,8 +109,8 @@ describe('savefile', () => {
     expect(msg as string).not.toMatch(/mismatch/i);
   });
 
-  it('validateSaveVersion accepts v5/v6/v7/v8 (R1-C/M1: matches restoreSnapshot)', () => {
-    for (const version of [5, 6, 7, 8]) {
+  it('validateSaveVersion accepts v5/v6/v7/v8/v9 (R1-C/M1: matches restoreSnapshot)', () => {
+    for (const version of [5, 6, 7, 8, 9]) {
       const file = makeFile();
       (file.snapshot as { version: number }).version = version;
       expect(validateSaveVersion(file), `v${version} should load`).toBeNull();
@@ -118,7 +119,7 @@ describe('savefile', () => {
 
   it('validateSaveVersion rejects saves newer than this build', () => {
     const file = makeFile();
-    (file.snapshot as { version: number }).version = 9;
+    (file.snapshot as { version: number }).version = SNAPSHOT_VERSION + 1;
     expect(validateSaveVersion(file)).not.toBeNull();
   });
 

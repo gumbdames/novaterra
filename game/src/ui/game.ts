@@ -235,7 +235,13 @@ import { EndScreen } from './endscreen';
 import { SaveSlotsDialog } from './saveslots';
 import type { SaveFile, SaveSlotId } from '../netSave/savefile';
 import { AUTOSAVE_SLOT, createSaveFile } from '../netSave/savefile';
-import { createSaveStore, type SaveStore } from '../netSave/store';
+import {
+  createSaveStore,
+  type SaveStore,
+  SaveQuotaExceededError,
+  estimateSaveBytes,
+  formatBytes,
+} from '../netSave/store';
 import type { MissionDef, MissionPath } from '../campaign/missions';
 import {
   createMissionRun,
@@ -1819,16 +1825,19 @@ class GameController {
     const s = STRINGS.save;
     const name = slotId === AUTOSAVE_SLOT ? 'Autosave' : `Slot ${slotId.replace('slot-', '')}`;
     const file = createSaveFile(this.session, slotId, name, new Date().toISOString());
-    // Final-review R6 (2026-10-01) save-hitch guard: the snapshot carries
-    // full flow-field internals (65k dirs per live field + the 6×65k
-    // active-build arrays). Measured 2026-10-01: a 400-building /
-    // 300-unit world with 20 live fields + a mid-flood build serializes
-    // to ~4.2MB and blocks the UI thread ~57ms (takeSnapshot ~17ms +
-    // structured-clone ~40ms) every 5 game-minutes; typical worlds are
-    // ~300KB / ~35ms. A rebuild-on-load format would fix it properly
-    // but needs a snapshot version bump — until then, warn loudly when
-    // an autosave crosses into multi-megabyte territory so the hitch is
-    // diagnosable instead of mysterious.
+    // Roadmap B25 (2026-10-02) autosave hygiene: the snapshot used to
+    // carry full flow-field internals (65k dirs per live field + the
+    // 6×65k mid-flood arrays — ~1.5MB of a 1.88MB save, ~57ms of UI
+    // thread every 5 game-minutes). v9 drops them and rebuilds on load,
+    // so a save crossing back into multi-megabyte territory is a
+    // regression worth shouting about — log the size pre-write.
+    const bytes = estimateSaveBytes(file);
+    if (bytes > 2_000_000) {
+      console.warn(
+        `[novaterra] save is large: ${formatBytes(bytes)} — ` +
+          'expect a hitch on write and a slower load (field rebuild).',
+      );
+    }
     if (slotId === AUTOSAVE_SLOT) {
       const fieldCount = file.snapshot.pathfinding?.fields.length ?? 0;
       if (fieldCount > 10) {
@@ -1838,7 +1847,26 @@ class GameController {
         );
       }
     }
-    const ok = await this.saveStore.write(slotId, file);
+    let ok = false;
+    try {
+      ok = await this.saveStore.write(slotId, file);
+    } catch (err) {
+      // Roadmap B25: the explicit quota path — the save itself was
+      // fine, the browser just refused to store it. Name the size so
+      // the player can free space instead of wondering what broke.
+      // saveGame never throws (maybeAutosave is fire-and-forget).
+      if (err instanceof SaveQuotaExceededError) {
+        console.error(
+          `[novaterra] save quota exceeded writing ${name} (${formatBytes(err.bytes)}) — ` +
+            'free browser storage space or delete old saves.',
+        );
+        this.hud.toast(s.saveQuotaExceeded.replace('{size}', formatBytes(err.bytes)));
+      } else {
+        console.error('[novaterra] save failed:', err);
+        this.hud.toast(s.saveFailed);
+      }
+      return false;
+    }
     if (ok) {
       if (slotId !== AUTOSAVE_SLOT) this.hud.toast(s.gameSaved);
     } else {

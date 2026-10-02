@@ -327,6 +327,12 @@ export const STRINGS = {
     cancel: 'Cancel',
     gameSaved: 'Game saved.',
     saveFailed: 'Could not save. Storage unavailable.',
+    // Roadmap B25 (2026-10-02): the explicit quota path — the save was
+    // fine, the browser just refused to store it (private mode / full
+    // disk). Names the size so the player can free space or trim the
+    // world instead of wondering what broke.
+    saveQuotaExceeded:
+      'Could not save: browser storage is full ({size}). Free space or delete old saves, then try again.',
     loadFailed: 'Could not load that save.',
     corruptSave: 'That save file is broken and could not be loaded.',
     noSaves: 'No saved games yet.',

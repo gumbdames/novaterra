@@ -73,6 +73,7 @@ import { registerAgeCommands } from '../sim/ages';
 import { registerCheatCommands } from '../sim/cheats';
 import { addAIPlayer, AI_MAX_UNITS, createAISystem, type AIDifficulty } from '../sim/ai';
 import { restoreSnapshot, type Snapshot } from '../sim/snapshot';
+import { rebuildFlowFields } from '../sim/pathfinding';
 import {
   registerDelegationCommands,
   createMayorSystem,
@@ -483,6 +484,11 @@ export function createSession(options: SessionOptions): GameSession {
   // Restored games resume the exact saved world; fresh games start empty.
   const world = options.snapshot ? restoreSnapshot(options.snapshot) : createWorld(seed);
   if (options.snapshot) {
+    // Roadmap B25 (2026-10-02): v9+ snapshots store flow fields as
+    // identities only (direction grids are derived data, dropped to keep
+    // saves small) — rebuild them now that the terrain exists. The world
+    // must not tick before this runs (movement reads field.dirs).
+    rebuildFlowFields(world, terrain);
     // R1-C (M2) — command queue is session-owned, never snapshotted:
     // the queue is DELIBERATELY dropped on save/load. Pending commands
     // (player/AI orders due on a later tick, plus self-scheduled

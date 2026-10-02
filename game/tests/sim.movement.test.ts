@@ -64,6 +64,7 @@ import {
   worldToCell,
   FIELD_POPS_PER_TICK,
   PATHS_PER_TICK,
+  rebuildFlowFields,
 } from '../src/sim/pathfinding';
 import {
   createPathfindingSystem,
@@ -738,12 +739,26 @@ describe('snapshots of movement', () => {
     expect(ctxA.world.pathfinding.activeBuild).not.toBeNull();
     const snap = JSON.parse(JSON.stringify(takeSnapshot(ctxA.world))) as never;
     const worldB = restoreSnapshot(snap);
-    expect(worldB.pathfinding.activeBuild).not.toBeNull();
+    // B25 (v9): the mid-flood build is slimmed to its identity and
+    // re-queued at the FRONT of fieldQueue on restore (its units are
+    // already stamped with the field id and keep waiting) — activeBuild
+    // is null until the coordinator picks it up, and live fields carry
+    // empty dirs until the session rebuilds them.
+    expect(worldB.pathfinding.activeBuild).toBeNull();
+    expect(worldB.pathfinding.fieldQueue.length).toBeGreaterThan(0);
+    rebuildFlowFields(worldB, t);
     const driverB = freshDriver(t);
-    stepWorld(ctxA.driver, ctxA.world, 1200);
+    // B25 (v9): the restored world re-does the flood from scratch while
+    // the original resumes mid-flood — the v9 contract is deterministic
+    // restore (two restores continue identically), not bit-identical
+    // fields. Both must still deliver every unit to its destination.
+    const worldC = restoreSnapshot(JSON.parse(JSON.stringify(snap)));
+    rebuildFlowFields(worldC, t);
+    const driverC = freshDriver(t);
     stepWorld(driverB, worldB, 1200);
-    expect(digestWorld(ctxA.world)).toBe(digestWorld(worldB));
-    for (const id of ids) expect(findUnit(ctxA.world, id)?.state).toBe('idle');
+    stepWorld(driverC, worldC, 1200);
+    expect(digestWorld(worldC)).toBe(digestWorld(worldB));
+    for (const id of ids) expect(findUnit(worldB, id)?.state).toBe('idle');
   });
 });
 

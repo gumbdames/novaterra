@@ -577,7 +577,7 @@ describe('Phase 3 logistics core — cargo holds in save/load', () => {
   });
 
   it('decodes a snapshot without cargo fields as empty holds (AD9 neutral decode)', () => {
-    expect(SNAPSHOT_VERSION).toBe(8); // Phase 5/6 S4 bumped v7 -> v8 (hangars + embark fields)
+    expect(SNAPSHOT_VERSION).toBe(9); // B25 bumped v8 -> v9 (slim pathfinding)
     const ctx = setup();
     const p = findLandNear(ctx.terrain, -60, -60);
     const truck = spawnUnit(ctx.world, 'supplyTruck', 0, p.x, p.z);

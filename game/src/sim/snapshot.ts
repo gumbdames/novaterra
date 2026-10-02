@@ -108,11 +108,64 @@ import { decodeDiplomacyState } from './diplomacy';
  * Roadmap B3 (2026-10-02): `diplomacy` is PURELY ADDITIVE on top of
  * v8 — plain data, no version bump. Older saves decode to a neutral
  * fresh state via decodeDiplomacyState: no old save had diplomacy.
+ * Roadmap B25 (2026-10-02): v9 — the pathfinding section drops field
+ * internals. `activeBuild` (6×65k mid-flood arrays, ~1.5MB of a typical
+ * 1.88MB save) is stored as a slim {fieldId, destCell, unitIds} pending
+ * build and re-queued at the FRONT of fieldQueue on restore (its units
+ * are already stamped with the field id and keep waiting); each live
+ * field's 65k `dirs` array is stored as {id, destCell} and rebuilt on
+ * load by `rebuildFlowFields` (pathfinding.ts — a synchronous full
+ * flood per field, at LOAD time where a hitch is acceptable). v5–v8
+ * snapshots still load: their full internals decode verbatim (the old
+ * shape is preserved, not migrated). Deterministic: the rebuild is a
+ * pure function of (terrain, roads, destCell); see rebuildFlowFields
+ * for the fidelity argument (no live unit can query a truncated cell).
+ * Digest note: a v9-restored world digests its REBUILT fields, so
+ * digestWorld(restored) can differ from digestWorld(world-at-save)
+ * when flow fields were live — the old "restore preserves the digest
+ * exactly" pin now holds only for worlds with no live fields/builds
+ * (the common case, and every existing fixture). Save/load stays
+ * deterministic: two restores of one snapshot digest identically.
  */
-export const SNAPSHOT_VERSION = 8;
+export const SNAPSHOT_VERSION = 9;
 
 /** Oldest snapshot version that still loads (v5: paved roads, empty rails; v7: hangars/embark defaults). */
 export const OLDEST_SUPPORTED_SNAPSHOT_VERSION = 5;
+
+/**
+ * Roadmap B25 (2026-10-02): the v9 pathfinding snapshot shape. Field
+ * internals are DERIVED data — the 65k direction arrays and the mid-flood
+ * build arrays are dropped here and rebuilt on load (see
+ * `rebuildFlowFields` in pathfinding.ts). v8 and earlier snapshots keep
+ * the full `PathfindingState` shape and decode verbatim.
+ */
+export interface SnapshotPathfindingV9 {
+  queue: PathRequest[];
+  fieldQueue: FieldRequest[];
+  /**
+   * The in-progress field build at save time, slimmed to its identity:
+   * restored to the FRONT of fieldQueue (its units are already stamped
+   * with the field id and keep waiting while it rebuilds).
+   */
+  pendingBuild: { fieldId: number; destCell: number; unitIds: number[] } | null;
+  /**
+   * Live fields as identities only — `rebuildFlowFields(world, terrain)`
+   * (called by the session after restore) fills in the direction grids.
+   */
+  fields: Array<{ id: number; destCell: number }>;
+  nextFieldId: number;
+}
+
+/** Type guard: v9+ snapshots carry the slim pathfinding shape. */
+export function isSnapshotPathfindingV9(
+  pf: PathfindingState | SnapshotPathfindingV9,
+): pf is SnapshotPathfindingV9 {
+  if (typeof pf !== 'object' || pf === null || !('pendingBuild' in pf)) return false;
+  const fields = (pf as SnapshotPathfindingV9).fields;
+  if (!Array.isArray(fields)) return false;
+  const first: unknown = fields[0];
+  return first === undefined || !('dirs' in (first as Record<string, unknown>));
+}
 
 /** Plain-data snapshot of the world at a tick boundary. */
 export interface Snapshot {
@@ -125,7 +178,12 @@ export interface Snapshot {
   rng: RngState;
   city: CityState;
   units: UnitRecord[];
-  pathfinding: PathfindingState;
+  /**
+   * Pathfinding coordinator state. v9+: the slim `SnapshotPathfindingV9`
+   * (field internals dropped, rebuilt on load — roadmap B25). v8 and
+   * earlier: the full `PathfindingState`, decoded verbatim.
+   */
+  pathfinding: PathfindingState | SnapshotPathfindingV9;
   ai: AIState;
   ages: Record<string, unknown>;
   delegation: DelegationState;
@@ -477,6 +535,27 @@ function copyPathfinding(pf: PathfindingState): PathfindingState {
   };
 }
 
+/**
+ * Roadmap B25 (2026-10-02): the v9 pathfinding snapshot — field
+ * internals are derived data and stay out of the save. The in-progress
+ * build slimms to its identity (re-queued at the front on restore);
+ * live fields slim to {id, destCell} (direction grids rebuilt on load
+ * by `rebuildFlowFields`). This is what takes a typical save from
+ * ~1.88MB to a few hundred KB and kills the ~57ms autosave hitch.
+ */
+function copyPathfindingV9(pf: PathfindingState): SnapshotPathfindingV9 {
+  const build = pf.activeBuild;
+  return {
+    queue: pf.queue.map(copyPathRequest),
+    fieldQueue: pf.fieldQueue.map(copyFieldRequest),
+    pendingBuild: build
+      ? { fieldId: build.fieldId, destCell: build.destCell, unitIds: [...build.unitIds] }
+      : null,
+    fields: pf.fields.map((f) => ({ id: f.id, destCell: f.destCell })),
+    nextFieldId: pf.nextFieldId,
+  };
+}
+
 /** Deep-copy the world's sim state into a versioned, JSON-safe snapshot. */
 export function takeSnapshot(world: World): Snapshot {
   return {
@@ -489,7 +568,10 @@ export function takeSnapshot(world: World): Snapshot {
     rng: copyRng(world.rng),
     city: copyCity(world.city),
     units: world.units.map(copyUnit),
-    pathfinding: copyPathfinding(world.pathfinding),
+    // Roadmap B25 (2026-10-02): v9 drops flow-field internals from the
+    // snapshot — rebuilt on load (see copyPathfindingV9 +
+    // rebuildFlowFields). v8 and earlier keep the full shape.
+    pathfinding: copyPathfindingV9(world.pathfinding),
     ai: encodeAIState(world.ai) as AIState,
     ages: encodeAgeState(world.ages) as Record<string, unknown>,
     delegation: encodeDelegationState(world.delegation) as DelegationState,
@@ -510,7 +592,7 @@ export function takeSnapshot(world: World): Snapshot {
 
 /**
  * Rebuild a world from a snapshot. The result shares no references with the
- * snapshot. Throws SnapshotVersionError on version mismatch. v5/v6/v7
+ * snapshot. Throws SnapshotVersionError on version mismatch. v5/v6/v7/v8
  * snapshots still load: per the spec, old saves default upgrades to {},
  * v6 roads migrate to paved RoadCells (migrateRoadsV6ToV7), rails
  * default to [], ferry routes default to undefined, and v8's hangar
@@ -525,7 +607,7 @@ export function restoreSnapshot(snap: Snapshot): World {
   if (snap === null || typeof snap !== 'object') {
     throw new SnapshotVersionError(SNAPSHOT_VERSION, snap);
   }
-  if (snap.version !== SNAPSHOT_VERSION && snap.version !== 7 && snap.version !== 6 && snap.version !== 5) {
+  if (snap.version !== SNAPSHOT_VERSION && snap.version !== 8 && snap.version !== 7 && snap.version !== 6 && snap.version !== 5) {
     throw new SnapshotVersionError(SNAPSHOT_VERSION, snap.version);
   }
   // Final-review R6 (2026-10-01): a malformed-but-readable snapshot
@@ -553,7 +635,45 @@ function restoreSnapshotInner(snap: Snapshot): World {
   world.units = (snap.units ?? []).map(copyUnit);
   // Defensive: a hand-built v3 snapshot might omit pathfinding state —
   // init instead of crashing on undefined.
-  world.pathfinding = snap.pathfinding ? copyPathfinding(snap.pathfinding) : initPathfinding();
+  //
+  // Roadmap B25 (2026-10-02): v9 snapshots carry the slim pathfinding
+  // shape (SnapshotPathfindingV9) — the in-progress build is re-queued
+  // at the FRONT of fieldQueue (its units are already stamped with its
+  // field id and keep waiting while it rebuilds over the next ticks),
+  // and live fields restore as identities with EMPTY direction grids.
+  // The session calls `rebuildFlowFields(world, terrain)` right after
+  // restore (it owns the terrain) — a restored world must not tick
+  // until that runs. v8 and earlier snapshots keep the full internals
+  // and decode verbatim via copyPathfinding.
+  if (!snap.pathfinding) {
+    world.pathfinding = initPathfinding();
+  } else if (snap.version >= 9 && isSnapshotPathfindingV9(snap.pathfinding)) {
+    const v9 = snap.pathfinding;
+    world.pathfinding = {
+      queue: v9.queue.map(copyPathRequest),
+      fieldQueue: [
+        ...(v9.pendingBuild
+          ? [
+              {
+                fieldId: v9.pendingBuild.fieldId,
+                destCell: v9.pendingBuild.destCell,
+                unitIds: [...v9.pendingBuild.unitIds],
+              },
+            ]
+          : []),
+        ...v9.fieldQueue.map(copyFieldRequest),
+      ],
+      activeBuild: null,
+      fields: v9.fields.map((f) => ({ id: f.id, destCell: f.destCell, dirs: [] as number[] })),
+      nextFieldId: v9.nextFieldId,
+    };
+  } else if (snap.version >= 9) {
+    // Corrupt v9 pathfinding shape — init instead of crashing (the
+    // hand-built snapshot precedent).
+    world.pathfinding = initPathfinding();
+  } else {
+    world.pathfinding = copyPathfinding(snap.pathfinding as PathfindingState);
+  }
   // Defensive: older snapshots lack AI state — init instead of crashing.
   world.ai = snap.ai ? decodeAIState(snap.ai) : initAI();
   // Defensive: older snapshots lack age state — init instead of crashing.

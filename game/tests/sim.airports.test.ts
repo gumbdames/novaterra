@@ -337,7 +337,7 @@ describe('taxRates 4-tuple', () => {
   });
 
   it('legacy 3-element taxRates decode element 3 to DEFAULT_TAX_RATE (no version bump)', () => {
-    expect(SNAPSHOT_VERSION).toBe(8);
+    expect(SNAPSHOT_VERSION).toBe(9);
     const ctx = setup();
     const snap = takeSnapshot(ctx.world);
     // Simulate an older save: 3-element rates, older version.

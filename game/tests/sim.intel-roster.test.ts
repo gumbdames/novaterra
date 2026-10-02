@@ -575,7 +575,7 @@ describe('intel upgrade math', () => {
 // ---------------------------------------------------------------------------
 
 describe('intel persistence (§3.8/S6)', () => {
-  it('round-trips intel assets and sabotagedUntil through v8 snapshots', () => {
+  it('round-trips intel assets and sabotagedUntil through v9 snapshots', () => {
     const ctx = setupIntel();
     runIntelAccrual(ctx.world, 100);
     const hq = ctx.world.city.buildings.find((b) => b.kind === 'intelHQ')!;
@@ -588,8 +588,8 @@ describe('intel persistence (§3.8/S6)', () => {
     expect(isSabotaged(freshHq, fresh.tick)).toBe(
       isSabotaged(hq, ctx.world.tick),
     );
-    // The snapshot format is unchanged (v8 — the meltdown ?? 0 precedent).
-    expect(snap.version).toBe(8);
+    // The snapshot format is v9 (B25 slim pathfinding — the meltdown ?? 0 precedent).
+    expect(snap.version).toBe(9);
   });
 
   it('accrual changes the digest (intel assets are behavior-affecting)', () => {

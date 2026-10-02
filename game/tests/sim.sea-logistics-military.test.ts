@@ -674,7 +674,7 @@ describe('the civilian/military cargo split (naval-building model, 2026-10-01)',
 
 describe('snapshot / digest', () => {
   it('round-trips cargoMaterials and materialsStock', () => {
-    expect(SNAPSHOT_VERSION).toBe(8); // AD9 — no version bump for the new fields
+    expect(SNAPSHOT_VERSION).toBe(9); // B25 bumped v8 -> v9 (slim pathfinding)
     const ctx = setup();
     const { base, x, z } = makeNavalBase(ctx, 0, 50, 20);
     base.materialsStock = 77;

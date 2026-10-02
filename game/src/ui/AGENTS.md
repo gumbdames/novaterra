@@ -9,7 +9,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   driver, systems in fixed order, starting forces, AI rival). The one
   place the full game is wired; headless-safe (no DOM/three.js).
   `createSession({ snapshot })` restores a saved game: no re-seeded
-  starting forces, no duplicate AI player. `createSession({ mapPreset })`
+  starting forces, no duplicate AI player. Roadmap B25 (2026-10-02):
+  right after restore it calls `rebuildFlowFields(world, terrain)` — v9+
+  snapshots store flow fields as {id, destCell} identities and the
+  session owns the terrain the rebuild needs; the world must not tick
+  before this runs. `createSession({ mapPreset })`
   selects a MAP_PRESETS entry by name (default 'Meridian Plains'; unknown
   names fall back). Starting forces find land per-unit (not just at the
   base center) so high-water maps never reject spawns. `session.cheated`
@@ -172,6 +176,13 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   with 20 live fields (typical: ~300KB / ~35ms). Autosave warns loudly
   past 10 live fields; a rebuild-on-load format would need a snapshot
   version bump.
+  Roadmap B25 (2026-10-02): the rebuild-on-load format landed (snapshot
+  v9 — field internals dropped, `rebuildFlowFields` at load). `saveGame`
+  now logs the serialized byte size pre-write and warns past 2MB, and
+  the store's write path throws `SaveQuotaExceededError` on quota
+  exhaustion — the controller catches it specifically and toasts the
+  "storage is full" message naming the size, instead of the generic
+  "storage unavailable".
   Roadmap B11 (2026-10-02): (a) the `buildComplete` SFX finally plays —
   the audio differ (`audio/events.ts`) watches `prev.progress < 1 →
   now.progress >= 1` transitions on standing buildings and the game loop

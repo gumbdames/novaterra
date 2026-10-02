@@ -53,6 +53,7 @@ import {
 } from '../src/sim/combat';
 import { digestWorld } from '../src/sim/digest';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
+import { rebuildFlowFields } from '../src/sim/pathfinding';
 import { registerAgeCommands, CONNECTIVITY_COST , getAgeState } from '../src/sim/ages';
 import { getPlayer } from '../src/sim/city';
 import {
@@ -457,12 +458,23 @@ describe('combat resolution', () => {
     enqueue(ctx, [{ kind: 'attackUnit', payload: { unitId: t1, targetId: e1, owner: 0 } }]);
     runTicks(ctx, 30);
     const snap = takeSnapshot(ctx.world);
-    const d1 = digestWorld(ctx.world);
+    const before = findUnit(ctx.world, t1)!;
     const world2 = restoreSnapshot(snap);
-    expect(digestWorld(world2)).toBe(d1);
-    // And it keeps simulating identically afterwards.
-    runTicks(ctx, 30);
-    const d2 = digestWorld(ctx.world);
+    rebuildFlowFields(world2, ctx.terrain); // B25: v9 restores field identities; the session rebuilds dirs on load
+    // Combat state round-trips exactly.
+    const after = findUnit(world2, t1)!;
+    expect(after.hp).toBe(before.hp);
+    expect(after.cooldownLeft).toBe(before.cooldownLeft);
+    expect(after.targetId).toBe(before.targetId);
+    // B25 (v9): live flow fields are rebuilt (full flood), not restored
+    // bit-identical (the original was truncated mid-build), so the
+    // immediate digest differs when fields are live. The v9 contract is
+    // deterministic restore: two restores of one snapshot digest
+    // identically, and the restored world keeps simulating deterministically.
+    const world3 = restoreSnapshot(JSON.parse(JSON.stringify(snap)));
+    rebuildFlowFields(world3, ctx.terrain);
+    expect(digestWorld(world3)).toBe(digestWorld(world2));
+    // And it keeps simulating deterministically afterwards.
     const ctx2q = createCommandQueue();
     const driver2 = createTickDriver({
       queue: ctx2q,
@@ -473,7 +485,17 @@ describe('combat resolution', () => {
       ],
     });
     for (let i = 0; i < 30; i++) driver2.step(world2, TICK_MS);
-    expect(digestWorld(world2)).toBe(d2);
+    const ctx3q = createCommandQueue();
+    const driver3 = createTickDriver({
+      queue: ctx3q,
+      systems: [
+        createPathfindingSystem(ctx.terrain),
+        createMovementSystem(ctx.terrain),
+        createCombatSystem(),
+      ],
+    });
+    for (let i = 0; i < 30; i++) driver3.step(world3, TICK_MS);
+    expect(digestWorld(world3)).toBe(digestWorld(world2));
   });
 });
 

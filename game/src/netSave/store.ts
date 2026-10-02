@@ -43,6 +43,51 @@ const STORE_NAME = 'saves';
 
 export type SaveBackend = 'indexeddb' | 'memory';
 
+/**
+ * Roadmap B25 (2026-10-02): the write path distinguishes "storage is
+ * full" from other failures. Quota errors surface as this thrown error
+ * (carrying the attempted byte size for diagnosis); every other failure
+ * still resolves false per the interface contract.
+ */
+export class SaveQuotaExceededError extends Error {
+  readonly bytes: number;
+  constructor(bytes: number) {
+    super(`save quota exceeded (${bytes} bytes)`);
+    this.name = 'SaveQuotaExceededError';
+    this.bytes = bytes;
+  }
+}
+
+/** True for DOMException QuotaExceededError (name-based: Safari uses variants). */
+export function isQuotaError(err: unknown): boolean {
+  return (
+    typeof err === 'object' &&
+    err !== null &&
+    'name' in err &&
+    String((err as { name: unknown }).name).toLowerCase().includes('quota')
+  );
+}
+
+/**
+ * Rough serialized byte size of a save file, for the pre-write size log
+ * and quota-exceeded diagnosis (roadmap B25). -1 when unmeasurable.
+ */
+export function estimateSaveBytes(file: unknown): number {
+  try {
+    return JSON.stringify(file).length;
+  } catch {
+    return -1;
+  }
+}
+
+/** Human-readable byte size ("2.4 MB", "380 KB") for save-size messaging. */
+export function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return 'unknown size';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export interface SaveStore {
   /** Which backend is in use. */
   readonly backend: SaveBackend;
@@ -50,7 +95,11 @@ export interface SaveStore {
   list(): Promise<SaveMetadata[]>;
   /** Full file for a slot, or null when empty/unreadable. Never throws. */
   read(slotId: SaveSlotId): Promise<SaveFile | null>;
-  /** Persist a file to a slot. Returns false on failure. Never throws. */
+  /**
+   * Persist a file to a slot. Returns false on failure. Throws
+   * SaveQuotaExceededError when the browser refuses the write for lack
+   * of space — the one failure the UI handles specifically.
+   */
   write(slotId: SaveSlotId, file: SaveFile): Promise<boolean>;
   /** Clear a slot. Returns false on failure. Never throws. */
   remove(slotId: SaveSlotId): Promise<boolean>;
@@ -157,7 +206,13 @@ function createIndexedDbStore(db: IDBDatabase): SaveStore {
         if (file.metadata.slotId !== slotId) return false;
         await tx(db, 'readwrite', (s) => s.put(file));
         return true;
-      } catch {
+      } catch (err) {
+        // Roadmap B25: quota exhaustion is the one write failure the UI
+        // handles specifically (it names the size and suggests freeing
+        // space) — surface it instead of folding it into `false`.
+        if (isQuotaError(err)) {
+          throw new SaveQuotaExceededError(estimateSaveBytes(file));
+        }
         return false;
       }
     },

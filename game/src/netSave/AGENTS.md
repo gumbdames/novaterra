@@ -17,8 +17,14 @@ Save / load / resume (Phase 1, step 11). See docs/ARCHITECTURE.md §4.
   per slot, single transaction per op); in-memory Map fallback when
   IndexedDB is missing or throws (private mode, Node/vitest). The memory
   backend deep-copies on write (mirrors structured-clone). A slotId /
-  metadata.slotId mismatch is rejected (`false`). **Never throws** —
-  every op degrades to null/empty/false; the UI toasts failures instead.
+  metadata.slotId mismatch is rejected (`false`). **Never throws, with
+  one deliberate exception** — roadmap B25 (2026-10-02): `write` throws
+  `SaveQuotaExceededError` (carrying the attempted byte size) when the
+  browser refuses the write for lack of space; every other failure still
+  resolves false. `isQuotaError` (name-based, Safari-safe),
+  `estimateSaveBytes` (the pre-write size log), and `formatBytes` live
+  here too. The UI toasts quota failures specifically instead of the
+  generic "storage unavailable".
 
 Slots: `autosave` + `slot-1..3` (`SAVE_SLOTS`, `AUTOSAVE_SLOT`).
 
