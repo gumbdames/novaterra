@@ -115,6 +115,10 @@ describe('train tabs', () => {
       'aa',
       'aaMk2',
       'aaMk3',
+      // Fun-audit D1 (2026-10-02): doctrine signature units ride with
+      // their base kinds (the buttons grey out for the wrong doctrine).
+      'aegisBattery',
+      'tempestCannon',
       'hq',
       // Phase 3 (logistics, UI workstream 2026-09-30): the supply trucks
       // ride with the land vehicles — no production gate, like the hauler.

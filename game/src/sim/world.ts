@@ -52,6 +52,7 @@ import { initDelegation } from './delegation';
 import type { DiplomacyState } from './diplomacy';
 import { initDiplomacy } from './diplomacy';
 import type { WonderCountdown } from './wonderCountdown';
+import type { DoctrineId } from './doctrine';
 import type { FogState } from './fog';
 import { createFogState } from './fog';
 import type { SuperweaponState } from './superweapons';
@@ -162,6 +163,14 @@ export interface World {
    */
   wonderCountdown: WonderCountdown | null;
   /**
+   * Fun-audit D1 (2026-10-02): doctrine asymmetry — per-owner doctrine
+   * ('republic' | 'kestrel'). Set at tick 0 from session setup, never
+   * toggled mid-game. Snapshotted (AD9: missing decodes to {}) and
+   * digest-covered (doctrine changes damage, sight, HP, and costs).
+   * Unset owners play 'republic' (the narrative default).
+   */
+  doctrines: Record<number, DoctrineId>;
+  /**
    * Fun-audit C3 (2026-10-02): player fog of war — per-owner explored
    * cell grids (see sim/fog.ts). Snapshotted (save/load keeps the
    * shroud; legacy snapshots decode to fresh unexplored, no version
@@ -243,6 +252,9 @@ export function createWorld(seed: number): World {
     diplomacy: initDiplomacy(),
     // Fun-audit B2: no countdown on a fresh world; restoreSnapshot for saves.
     wonderCountdown: null,
+    // Fun-audit D1: doctrines are set by session setup (player pick +
+    // seeded AI); unset owners default to 'republic'.
+    doctrines: {},
     // Fun-audit C3: fog starts unexplored; the fog system's priming
     // pass explores the starting base on the first tick.
     fog: createFogState(),

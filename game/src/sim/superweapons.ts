@@ -61,6 +61,7 @@ import type { SimSystem } from './tick';
 import { BUILDING_DEFS, getPlayer, buildingCenterWorld, cellCenterWorld } from './city';
 import { killUnit, damageBuilding, flushDeadTargetRefs } from './combat';
 import { getAgeState } from './ages';
+import { getDoctrine } from './doctrine';
 
 /** Aegis shield duration: 60 seconds at 30 Hz. */
 export const AEGIS_DURATION_TICKS = 1800;
@@ -76,6 +77,14 @@ export const STORM_DAMAGE = 200;
 export const STORM_RADIUS = 10;
 /** Deterministic scatter of each strike around the target point. */
 export const STORM_SCATTER = 3;
+/**
+ * Fun-audit D1 (2026-10-02): Aegis Battery interception radius — a
+ * living Republic Aegis Battery within this many world units of a
+ * storm-strike impact point intercepts the strike for its owner's
+ * assets (the Republic's theater missile defense, per the design
+ * doc's C11). Position-derived, no new state.
+ */
+export const AEGIS_INTERCEPT_RADIUS = 80;
 /** Ticks a storm flash stays visible to the renderer. */
 export const STORM_FX_TICKS = 45;
 
@@ -447,11 +456,28 @@ export function createSuperweaponSystem(): SimSystem {
       for (const strike of due) {
         const sx = strike.x + (bank.next('superweapon') * 2 - 1) * STORM_SCATTER;
         const sz = strike.z + (bank.next('superweapon') * 2 - 1) * STORM_SCATTER;
+        // Fun-audit D1: the Aegis Battery interception check is
+        // per-victim-owner (a 2-player strike has one victim). The
+        // coverage scan is O(units) per strike — strikes are rare.
+        const interceptedFor = new Set<number>();
+        const isIntercepted = (owner: number): boolean => {
+          if (interceptedFor.has(owner)) return true;
+          if (getDoctrine(world, owner) !== 'republic') return false;
+          for (const u of world.units) {
+            if (u.owner !== owner || u.hp <= 0 || u.kind !== 'aegisBattery') continue;
+            if (dist2(u.x - sx, u.z - sz) <= AEGIS_INTERCEPT_RADIUS * AEGIS_INTERCEPT_RADIUS) {
+              interceptedFor.add(owner);
+              return true;
+            }
+          }
+          return false;
+        };
         // Copy: killUnit splices world.units during iteration.
         for (const unit of [...world.units]) {
           if (unit.owner === strike.owner || unit.hp <= 0) continue;
           if (dist2(unit.x - sx, unit.z - sz) > STORM_RADIUS * STORM_RADIUS) continue;
           if (isAegisActive(world, unit.owner)) continue; // shield holds
+          if (isIntercepted(unit.owner)) continue; // Aegis Battery holds
           unit.hp -= STORM_DAMAGE;
           if (unit.hp <= 0) killUnit(world, unit);
         }
@@ -465,6 +491,7 @@ export function createSuperweaponSystem(): SimSystem {
         for (const b of [...world.city.buildings]) {
           if (b.owner === strike.owner) continue;
           if (isAegisActive(world, b.owner)) continue; // shield holds
+          if (isIntercepted(b.owner)) continue; // Aegis Battery holds
           const c = buildingCenterWorld(b);
           if (dist2(c.x - sx, c.z - sz) > STORM_RADIUS * STORM_RADIUS) continue;
           damageBuilding(world, b, STORM_DAMAGE);

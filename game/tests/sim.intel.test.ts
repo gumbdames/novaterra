@@ -72,6 +72,7 @@ import {
   sabotageSpotChance,
   stealSuccessChance,
 } from '../src/sim/intel';
+import { setDoctrine } from '../src/sim/doctrine';
 import { spawnUnit, type UnitRecord } from '../src/sim/units';
 import { acquireTarget, registerCombatCommands } from '../src/sim/combat';
 import { getVisibleEnemies } from '../src/sim/ai';
@@ -662,6 +663,7 @@ describe('stealth hooks', () => {
 
   it('effectiveSight gains the intel bonus (satelliteUplink + signalsIntel)', () => {
     const ctx = setup();
+    setDoctrine(ctx.world, 0, 'kestrel'); // base sight (Republic multiplies by 1.2)
     const def = UNIT_DEFS['rifles' as keyof typeof UNIT_DEFS];
     const base = effectiveSight(ctx.world, 0, def);
     expect(intelSightBonus(ctx.world, 0)).toBe(0);

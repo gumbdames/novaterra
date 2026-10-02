@@ -124,6 +124,7 @@ import {
 import { createSession, getSkirmishOutcome, humanBaseWorld, isHumanWarCoreFallen, rivalAgeUpOf, HUMAN_PLAYER_ID, AI_PLAYER_ID, type GameSession } from './session';
 import { formatDuration, endGameStatsOf } from './endStats';
 import type { SkirmishVictoryKind } from '../sim/world';
+import type { DoctrineId } from '../sim/doctrine';
 import {
   applyCameraState,
   addShakeTrauma,
@@ -324,6 +325,13 @@ export interface GameOptions {
    * (endless) and campaign missions. Defaults to 'conquest'.
    */
   victoryKind?: SkirmishVictoryKind;
+  /**
+   * Fun-audit D1 (2026-10-02): the player's doctrine, forwarded to
+   * `SessionOptions.doctrine`. Ignored for campaign missions and
+   * restored saves (the snapshot carries its doctrines). Defaults to
+   * 'republic'.
+   */
+  doctrine?: DoctrineId;
 }
 
 /** Placement modes entered from the HUD train/build panels. */
@@ -547,6 +555,9 @@ export async function startGame(
     // Roadmap B2 (2026-10-02): the setup's victory picker. Restored
     // saves carry the snapshot's own kind.
     victoryKind: opts.victoryKind,
+    // Fun-audit D1 (2026-10-02): the setup's doctrine picker. Restored
+    // saves carry the snapshot's own doctrines.
+    doctrine: opts.doctrine,
   });
   // A loaded game resumes exactly where it was saved — including its
   // cheated marker, which is honest metadata, not sim state.

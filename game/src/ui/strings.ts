@@ -140,6 +140,11 @@ export const STRINGS = {
     victoryConquest: 'Conquest',
     victoryConquestBlurb: 'Destroy all rival units and buildings.',
     victoryEconomic: 'Economic',
+    /**
+     * Fun-audit D1 (2026-10-02): the skirmish doctrine picker.
+     * Plain strings like the rest of this section.
+     */
+    chooseDoctrine: 'Choose your doctrine',
     victoryEconomicBlurb: 'First to a 100,000-fund treasury.',
     victoryPopulation: 'Population',
     victoryPopulationBlurb: 'First to house 10,000 residents.',
@@ -579,6 +584,9 @@ export const STRINGS = {
     tank: { en: 'Main Battle Tank' },
     artillery: { en: 'Artillery' },
     aa: { en: 'Mobile AA' },
+    // Fun-audit D1 (2026-10-02): doctrine signature unit names.
+    aegisBattery: { en: 'Aegis Battery' },
+    tempestCannon: { en: 'Tempest Cannon' },
     hauler: { en: 'Hauler' },
     // Phase 3 SIM workstream (2026-09-30): provisional names for the two
     // new logistics trucks — the UI workstream owns final copy/palettes.
@@ -1130,6 +1138,10 @@ export const STRINGS = {
     // the lockout reason for military defs in peaceful worlds — mirrors
     // the sim's command-layer rejection (never a dead button).
     peacefulLocked: { en: 'Not available in peaceful mode' },
+    // Fun-audit D1 (2026-10-02): the lockout reason for
+    // doctrine-exclusive units — mirrors the sim's command-layer
+    // rejection (never a dead button).
+    requiresDoctrine: { en: 'Requires the {doctrine} doctrine' },
   },
   /** Workstream Y (2026-09-30): the three main menu tabs. English-only. */
   menuTabs: {

@@ -59,6 +59,7 @@ import type { DiplomacyState } from './diplomacy';
 import { decodeDiplomacyState } from './diplomacy';
 import type { WonderCountdown, WonderRaceKind } from './wonderCountdown';
 import type { FogState } from './fog';
+import type { DoctrineId } from './doctrine';
 import { createFogState, FOG_GRID } from './fog';
 
 /**
@@ -222,6 +223,13 @@ export interface Snapshot {
    * decode to fresh unexplored (no old save had any fog).
    */
   fog: { cell: number; explored: Record<string, number[]> };
+  /**
+   * Fun-audit D1 (2026-10-02): per-owner doctrines (owner -> doctrine
+   * id). Added without a version bump — legacy snapshots predate the
+   * field and decode to {} (no old save had doctrines; unset owners
+   * play 'republic').
+   */
+  doctrines: Record<string, unknown>;
   /**
    * Roadmap B9 (2026-10-02): per-player repeatable-upgrade levels
    * (owner -> upgrade id -> level). Added without a version bump —
@@ -621,6 +629,8 @@ export function takeSnapshot(world: World): Snapshot {
         : { ...world.wonderCountdown },
     // Fun-audit C3: faithful copy of the explored grids (plain data).
     fog: encodeFogState(world.fog),
+    // Fun-audit D1: faithful copy of the per-owner doctrines.
+    doctrines: { ...world.doctrines },
   };
 }
 
@@ -750,6 +760,10 @@ function restoreSnapshotInner(snap: Snapshot): World {
   // Fun-audit C3: pre-fog snapshots decode to fresh unexplored — no
   // old save had any fog (AD9 neutral default, no version bump).
   world.fog = decodeFogState(snap.fog);
+  // Fun-audit D1: pre-doctrine snapshots decode to {} — no old save
+  // had doctrines; unset owners play 'republic' (AD9 neutral default,
+  // no version bump). Defensive: only the two known ids survive.
+  world.doctrines = decodeDoctrines(snap.doctrines);
   return world;
 }
 
@@ -819,4 +833,20 @@ function decodeFogState(data: unknown): FogState {
     if (ok) fresh.explored[owner] = clean;
   }
   return fresh;
+}
+
+/**
+ * Fun-audit D1 (2026-10-02): defensive decode of the per-owner
+ * doctrines. Anything malformed (or absent) decodes to {} — unset
+ * owners play 'republic' via getDoctrine, the AD9 neutral default.
+ */
+function decodeDoctrines(data: unknown): Record<number, DoctrineId> {
+  const out: Record<number, DoctrineId> = {};
+  if (data === null || data === undefined || typeof data !== 'object') return out;
+  for (const [ownerKey, id] of Object.entries(data as Record<string, unknown>)) {
+    const owner = Number(ownerKey);
+    if (!Number.isInteger(owner)) continue;
+    if (id === 'republic' || id === 'kestrel') out[owner] = id;
+  }
+  return out;
 }

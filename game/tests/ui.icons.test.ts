@@ -65,8 +65,8 @@ function expectValidIcon(markup: string): void {
 }
 
 describe('unit icons', () => {
-  it('covers all 97 unit kinds (35 classic + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel + 28 Phase 8 tech-level variants + 1 Half-A sea-trade)', () => {
-    expect(UNIT_KINDS).toHaveLength(97);
+  it('covers all 99 unit kinds (35 classic + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel + 28 Phase 8 tech-level variants + 1 Half-A sea-trade + 2 D1 doctrine signature units)', () => {
+    expect(UNIT_KINDS).toHaveLength(99); // D1 adds the 2 doctrine signature units
     for (const kind of UNIT_KINDS) {
       expectValidIcon(unitIcon(kind as UnitKind));
     }

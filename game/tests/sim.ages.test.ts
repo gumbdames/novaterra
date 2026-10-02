@@ -66,6 +66,7 @@ import {
   initAges,
 } from '../src/sim/ages';
 import { getVisibleEnemies } from '../src/sim/ai';
+import { setDoctrine } from '../src/sim/doctrine';
 import { digestWorld } from '../src/sim/digest';
 import { takeSnapshot, restoreSnapshot, SNAPSHOT_VERSION } from '../src/sim/snapshot';
 import {
@@ -371,6 +372,9 @@ describe('National Program effects', () => {
   it('Fiber Grid gives a 25% tax income multiplier', () => {
     expect(FIBER_GRID_TAX_MULTIPLIER).toBe(1.25);
     const ctx = setup();
+    // Fun-audit D1: the Kestrel doctrine leaves Fiber Grid at its base
+    // value (the Republic variant taxes 1.35x).
+    setDoctrine(ctx.world, 0, 'kestrel');
     expect(getTaxMultiplier(ctx.world, 0)).toBe(1.0);
     fundPlayer(ctx);
     enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'fiberGrid' } }]);
@@ -389,6 +393,9 @@ describe('National Program effects', () => {
   it('Signals Grid gives +8 sight bonus', () => {
     expect(SIGNALS_GRID_SIGHT_BONUS).toBe(8);
     const ctx = setup();
+    // Fun-audit D1: the Kestrel doctrine leaves Signals Grid at its base
+    // value (the Republic variant sees +12).
+    setDoctrine(ctx.world, 0, 'kestrel');
     expect(getSightBonus(ctx.world, 0)).toBe(0);
     fundPlayer(ctx);
     enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'signalsGrid' } }]);
@@ -406,6 +413,8 @@ describe('National Program effects', () => {
 
   it('Signals Grid extends visibility range in practice', () => {
     const ctx = setup();
+    // Fun-audit D1: Kestrel doctrine for the base +8 bonus.
+    setDoctrine(ctx.world, 1, 'kestrel');
     const base = findLandNear(ctx.terrain, -100, -100);
     // Spawn an observer (owner 1) and an enemy just beyond base sight.
     const observerPos = findLandNear(ctx.terrain, base.x, base.z);
@@ -434,6 +443,8 @@ describe('National Program effects', () => {
 
   it('a rival advancing does not sharpen your own sight (no free-rider)', () => {
     const ctx = setup();
+    setDoctrine(ctx.world, 0, 'kestrel');
+    setDoctrine(ctx.world, 1, 'kestrel');
     const base = findLandNear(ctx.terrain, -100, -100);
     const observerPos = findLandNear(ctx.terrain, base.x, base.z);
     const obsId = ctx.world.nextId;
@@ -459,6 +470,7 @@ describe('National Program effects', () => {
 describe('per-side ages (roadmap A1, 2026-10-01)', () => {
   it('free-rider killed: the AI advances while the player stays in Foundation', () => {
     const ctx = setup();
+    setDoctrine(ctx.world, 1, 'kestrel');
     // The AI (owner 1) advances to Connectivity with Fiber Grid.
     fundPlayer(ctx, 1);
     enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 1, program: 'fiberGrid' } }]);
@@ -473,6 +485,8 @@ describe('per-side ages (roadmap A1, 2026-10-01)', () => {
 
   it('vice versa: the player advances while the AI stays in Foundation', () => {
     const ctx = setup();
+    // Fun-audit D1: Kestrel doctrine for the base +8 Signals Grid bonus.
+    setDoctrine(ctx.world, 0, 'kestrel');
     fundPlayer(ctx, 0);
     enqueue(ctx, [{ kind: 'advanceAge', payload: { owner: 0, program: 'signalsGrid' } }]);
     runTicks(ctx, 1);
@@ -601,6 +615,8 @@ describe('age-gated units', () => {
       frigateMk2: 'information', frigateMk3: 'ascendance',
       submarineMk2: 'information', submarineMk3: 'ascendance',
       transportShipMk2: 'information', transportShipMk3: 'ascendance',
+      // Fun-audit D1 (2026-10-02): doctrine signature units (information age).
+      aegisBattery: 'information', tempestCannon: 'information',
     };
     expect(Object.keys(UNIT_DEFS).sort()).toEqual(Object.keys(expected).sort());
     for (const [kind, age] of Object.entries(expected)) {

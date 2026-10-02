@@ -64,8 +64,8 @@ function readManifest(): Record<string, unknown> {
 describe('portrait atlas: committed artifacts', () => {
   it('manifest covers every unit + building kind', () => {
     const kinds = allPortraitKinds();
-    // Civilian sea trade (Half A, 2026-10-01): 97 units + 100 buildings.
-    expect(kinds.length).toBe(197); // 97 units + 100 buildings
+    // Fun-audit D1 (2026-10-02): 99 units + 100 buildings.
+    expect(kinds.length).toBe(199); // 99 units + 100 buildings
     const manifest = readManifest();
     const sprites = manifest['sprites'] as Record<string, { x: number; y: number; w: number; h: number }>;
     expect(Object.keys(sprites).sort()).toEqual([...kinds].sort());

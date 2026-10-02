@@ -370,6 +370,15 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   is SNAPSHOT, never digest — display memory, like `economyFlows`.
   Lazy `getFogState` for hand-built worlds; pre-fog snapshots decode
   to fresh unexplored (no version bump).
+- `doctrine.ts` — (fun-audit D1, 2026-10-02) Republic / Kestrel doctrine
+  asymmetry. `DoctrineId` ('republic' | 'kestrel'), `DOCTRINES` (stat
+  overlays + signature units + blurbs), `getDoctrine`/`setDoctrine`
+  (per-owner, default 'republic'), the Kestrel armor/AA kind sets, the
+  Republic engineer discount (`doctrineTrainCostMult`), and the
+  doctrine-gated National Program variant functions
+  (`doctrineSightBonus`, `doctrineTaxMultiplier`, … — consumed by
+  ages.ts). A pure leaf: type-only imports from world/units, no RNG,
+  no DOM. `world.doctrines` is AD9 snapshotted + digested.
 - `ai.ts` — Classic AI, five difficulties (cadet/citizen/commander/general/
   marshal). Seeded per-match personalities (same seed ⇒ identical play;
   different seeds ⇒ different playstyles at the same tier), fair (only

@@ -156,13 +156,15 @@ function advanceToConnectivity(ctx: Ctx, owner = 0): void {
 }
 
 describe('roster', () => {
-  it('has exactly the 97 kinds (31 land + 30 air + 36 sea: Phase 4 added 4 land + 1 sea transports, Phase 6 adds 15 sea, the aircraft workstream adds 16 air, the intel roster workstream adds 2 land, the Phase 8 tech-level workstream adds 28 Mk II/III variants, Half A adds the civilian fuel barge)', () => {
+  it('has exactly the 99 kinds (33 land + 30 air + 36 sea: Phase 4 added 4 land + 1 sea transports, Phase 6 adds 15 sea, the aircraft workstream adds 16 air, the intel roster workstream adds 2 land, the Phase 8 tech-level workstream adds 28 Mk II/III variants, Half A adds the civilian fuel barge, fun-audit D1 adds the 2 doctrine signature units)', () => {
     const kinds = Object.keys(UNIT_DEFS).sort();
     expect(kinds).toEqual(
       [
         'artillery', 'drone', 'engineer', 'fighter', 'hauler',
         'aa', 'hq', 'rifles', 'spectre', 'tank', 'transport',
         'patrolBoat', 'destroyer', 'transportShip',
+        // Fun-audit D1 (2026-10-02): doctrine signature units.
+        'aegisBattery', 'tempestCannon',
         // Roster expansion (docs/research/roster-expansion.md §2).
         'sniperTeam', 'combatMedic', 'apc', 'tankDestroyer', 'mlrs',
         'fighterBomber', 'attackHeli', 'awacs',
@@ -203,7 +205,7 @@ describe('roster', () => {
     const land = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'land');
     const air = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'air');
     const sea = kinds.filter((k) => UNIT_DEFS[k as UnitKind].domain === 'sea');
-    expect(land).toHaveLength(31);
+    expect(land).toHaveLength(33);
     expect(air).toHaveLength(30);
     expect(sea).toHaveLength(36); // Half A adds the fuelBarge
   });

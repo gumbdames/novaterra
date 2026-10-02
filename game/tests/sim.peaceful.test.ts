@@ -182,6 +182,7 @@ const MILITARY_UNITS = new Set([
   'aa',
   'aaMk2',
   'aaMk3',
+  'aegisBattery',
   'ammoShip',
   'apc',
   'apcMk2',
@@ -248,6 +249,7 @@ const MILITARY_UNITS = new Set([
   'tankDestroyer',
   'tankMk2',
   'tankMk3',
+  'tempestCannon',
   'tanker',
   'trainer',
 ]);
@@ -438,11 +440,11 @@ describe('peaceful command lockout', () => {
 // ---------------------------------------------------------------------------
 
 describe('military def classification (roster pinning)', () => {
-  it('classifies every one of the 97 unit defs', () => {
+  it('classifies every one of the 99 unit defs', () => {
     const kinds = Object.keys(UNIT_DEFS);
-    expect(kinds).toHaveLength(97);
+    expect(kinds).toHaveLength(99);
     const military = kinds.filter((k) => UNIT_DEFS[k as keyof typeof UNIT_DEFS].military === true);
-    expect(military).toHaveLength(71);
+    expect(military).toHaveLength(73);
     expect(new Set(military)).toEqual(MILITARY_UNITS);
     // The complement is civilian: the flag is absent or explicitly false.
     for (const k of kinds) {

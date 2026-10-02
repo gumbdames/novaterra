@@ -37,6 +37,7 @@ import type { AIDifficulty } from '../sim/ai';
 import { MAP_PRESETS } from '../sim/terrain';
 import type { SkirmishVictoryKind } from '../sim/world';
 import { SKIRMISH_VICTORY_KINDS } from '../sim/world';
+import { DOCTRINES, DOCTRINE_IDS, type DoctrineId } from '../sim/doctrine';
 import { STRINGS, loc } from './strings';
 import { difficultyIcon, mapIcon, menuIcon } from './icons';
 import {
@@ -109,7 +110,7 @@ export interface MenuActions {
    * (roadmap B2, 2026-10-02) picks the victory condition for war
    * skirmishes; it is ignored when `peaceful` is true.
    */
-  onStartSkirmish(difficulty: AIDifficulty, mapPreset: string, peaceful: boolean, victoryKind: SkirmishVictoryKind): void;
+  onStartSkirmish(difficulty: AIDifficulty, mapPreset: string, peaceful: boolean, victoryKind: SkirmishVictoryKind, doctrine: DoctrineId): void;
   /** Resume the paused game. */
   onResume(): void;
   /** Leave the game and return to the main menu. */
@@ -317,6 +318,33 @@ export class MainMenu {
     victorySection.append(el('div', 'settings-note', s.victoryNote));
     buttons.append(victorySection);
 
+    // Fun-audit D1 (2026-10-02): the doctrine picker. A row of
+    // selectable buttons like the victory row; the selected doctrine
+    // is highlighted and its blurb shows below. Reuses the map row's
+    // classes (no new CSS).
+    buttons.append(el('div', 'difficulty-title', s.chooseDoctrine));
+    let selectedDoctrine: DoctrineId = 'republic';
+    const doctrineButtons: HTMLButtonElement[] = [];
+    const doctrineRow = el('div', 'map-row');
+    for (const id of DOCTRINE_IDS) {
+      const b = menuButton(DOCTRINES[id].name, () => {
+        selectedDoctrine = id;
+        for (const db of doctrineButtons) {
+          db.classList.toggle('selected', db.dataset['doctrine'] === selectedDoctrine);
+        }
+        doctrineNote.textContent = DOCTRINES[id].blurb;
+      }, false);
+      b.dataset['doctrine'] = id;
+      b.title = DOCTRINES[id].blurb;
+      b.classList.add('map-btn');
+      if (id === selectedDoctrine) b.classList.add('selected');
+      doctrineButtons.push(b);
+      doctrineRow.append(b);
+    }
+    buttons.append(doctrineRow);
+    const doctrineNote = el('div', 'settings-note', DOCTRINES[selectedDoctrine].blurb);
+    buttons.append(doctrineNote);
+
     buttons.append(el('div', 'difficulty-title', s.chooseDifficulty));
     const options: Array<[AIDifficulty, string]> = [
       ['cadet', s.difficultyCadet],
@@ -327,7 +355,7 @@ export class MainMenu {
     ];
     for (const [difficulty, label] of options) {
       buttons.append(
-        menuButton(label, () => this.actions.onStartSkirmish(difficulty, selectedMap, peacefulMode, selectedVictory), false, difficultyIcon(difficulty)),
+        menuButton(label, () => this.actions.onStartSkirmish(difficulty, selectedMap, peacefulMode, selectedVictory, selectedDoctrine), false, difficultyIcon(difficulty)),
       );
     }
     buttons.append(menuButton(s.back, () => this.show(), false, menuIcon('back')));

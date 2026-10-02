@@ -146,18 +146,19 @@ describe('B26 draw-call ceiling (max diversity)', () => {
     const draws = instancer.drawCallCount();
 
     // Roadmap B26 decision (2026-10-02): the max-diversity structural
-    // ceiling is 695 draws — well above the 200 per-frame budget. The
+    // ceiling is 701 draws — well above the 200 per-frame budget. The
     // feasible material merge (ModelBuilder now merges parts by material
     // signature, not instance identity — identical pixels, fewer pools)
     // cut the ceiling from 796 to 695, but the remaining pools are
     // art-directed distinct materials per model (GLB assets arrive
     // pre-merged per material; procedural buildings average ~5
-    // materials each). Closing the gap to 200 would need cross-kind
-    // pool sharing — a render-architecture rewrite, out of scope for
-    // this item. The 200 budget remains the per-frame gate for REAL
-    // scenes (pinned in tests/perf.budgets.test.ts); this test pins the
-    // structural ceiling so roster/material growth stays deliberate.
+    // materials each). Fun-audit D1 (2026-10-02) adds 6 draws for the
+    // 2 doctrine signature units. Closing the gap to 200 would need
+    // cross-kind pool sharing — a render-architecture rewrite, out of
+    // scope for this item. The 200 budget remains the per-frame gate for
+    // REAL scenes (pinned in tests/perf.budgets.test.ts); this test pins
+    // the structural ceiling so roster/material growth stays deliberate.
     expect(pooledKinds).toBeGreaterThan(190);
-    expect(draws).toBe(695);
+    expect(draws).toBe(701);
   });
 });

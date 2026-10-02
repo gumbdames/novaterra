@@ -118,7 +118,9 @@ export function variantBaseOf(kind: UnitKind): UnitKind {
  * base kind's MODEL_SOURCES entry — zero new MODEL_PATHS keys.
  */
 export function variantArtBase(kind: UnitKind): UnitKind {
-  return variantBaseOf(kind);
+  // Fun-audit D1: doctrine signature units reuse art via `artBase`
+  // (not variantOf) — they are not Mk variants.
+  return UNIT_DEFS[kind]?.artBase ?? variantBaseOf(kind);
 }
 
 /**

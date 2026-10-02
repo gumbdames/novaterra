@@ -48,6 +48,7 @@ import { AudioEngine } from './audio/engine';
 import { startGame } from './ui/game';
 import type { AIDifficulty } from './sim/ai';
 import type { SkirmishVictoryKind } from './sim/world';
+import type { DoctrineId } from './sim/doctrine';
 import { createSaveStore } from './netSave/store';
 import { validateSaveVersion, saveMapPreset } from './netSave/savefile';
 import { CorruptSaveError } from './sim/snapshot';
@@ -260,7 +261,7 @@ export async function boot(): Promise<void> {
   window.addEventListener('keydown', unlockMenuOnce);
 
   const menu = new MainMenu(app, {
-    onStartSkirmish: (difficulty: AIDifficulty, mapPreset: string, peaceful: boolean, victoryKind: SkirmishVictoryKind) => {
+    onStartSkirmish: (difficulty: AIDifficulty, mapPreset: string, peaceful: boolean, victoryKind: SkirmishVictoryKind, doctrine: DoctrineId) => {
       menu.hide();
       renderer.setAnimationLoop(null);
       canvas.style.display = 'none';
@@ -280,6 +281,8 @@ export async function boot(): Promise<void> {
         peaceful,
         // Roadmap B2 (2026-10-02): the setup's victory picker.
         victoryKind,
+        // Fun-audit D1 (2026-10-02): the setup's doctrine picker.
+        doctrine,
         quality: loadSettings().quality,
         onExitToMenu: () => {
           canvas.style.display = '';

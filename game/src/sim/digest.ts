@@ -109,6 +109,17 @@ export function canonicalizeWorld(world: World): string {
     const w = world.wonderCountdown ?? null;
     out += `|wonder=${w === null ? '-' : `${w.kind},${w.leader},${w.endsAtTick}`}|`;
   }
+  // Fun-audit D1 (2026-10-02): doctrines are behavior-affecting
+  // (damage, sight, HP, costs) ⇒ digest-covered (PLAN §11).
+  // `?? {}` keeps hand-built fixture worlds (which predate the field)
+  // digesting identically.
+  {
+    const doctrines = world.doctrines ?? {};
+    const owners = Object.keys(doctrines)
+      .map(Number)
+      .sort((a, b) => a - b);
+    out += `|doctrines=${owners.map((o) => `${o}:${doctrines[o]}`).join(',')}|`;
+  }
   for (const e of world.entities) {
     out += `${e.id},${e.kind},${canonicalNumber(e.x)},${canonicalNumber(e.z)};`;
   }

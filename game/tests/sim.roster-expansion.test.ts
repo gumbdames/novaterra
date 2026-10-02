@@ -62,6 +62,7 @@ import {
   effectiveWaterDemand,
   effectiveHealPerSec,
 } from '../src/sim/upgrades';
+import { setDoctrine } from '../src/sim/doctrine';
 import { runEconomyTick } from '../src/sim/economy';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
 import { digestWorld, canonicalizeWorld } from '../src/sim/digest';
@@ -273,8 +274,8 @@ function findCoastalFootprint(
 }
 
 describe('roster definitions (§2)', () => {
-  it('has exactly the 97 unit kinds (35 + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel + 28 Phase 8 tech-level variants + 1 Half-A sea-trade)', () => {
-    expect(UNIT_KINDS).toHaveLength(97);
+  it('has exactly the 99 unit kinds (35 + 16 Phase 5 aircraft + 15 Phase 6 naval + 2 intel + 28 Phase 8 tech-level variants + 1 Half-A sea-trade + 2 D1 doctrine signature units)', () => {
+    expect(UNIT_KINDS).toHaveLength(99);
     const expected = [
       'engineer', 'rifles', 'spectre', 'sniperTeam', 'combatMedic',
       'tank', 'apc', 'tankDestroyer', 'artillery', 'mlrs', 'aa',
@@ -310,6 +311,8 @@ describe('roster definitions (§2)', () => {
       'destroyerMk2', 'destroyerMk3', 'frigateMk2', 'frigateMk3',
       'submarineMk2', 'submarineMk3', 'missileBoatMk2', 'missileBoatMk3',
       'transportShipMk2', 'transportShipMk3',
+      // Fun-audit D1 (2026-10-02): the 2 doctrine signature units.
+      'aegisBattery', 'tempestCannon',
     ];
     expect([...UNIT_KINDS].sort()).toEqual([...expected].sort());
   });
@@ -949,6 +952,7 @@ describe('upgrade effects (§4)', () => {
 
   it('Advanced Avionics: +25% fighter sight, +20% vsAir, awacs +15 sight', () => {
     const ctx = setupRich();
+    setDoctrine(ctx.world, 0, 'kestrel'); // base sight (Republic multiplies by 1.2)
     getAgeState(ctx.world, 0).age = 'information';
     const at = findLandNear(ctx.terrain, 0, 0);
     const fighter = spawnNow(ctx, 'fighter', 0, at.x, at.z);
@@ -966,6 +970,7 @@ describe('upgrade effects (§4)', () => {
 
   it('Sonar Suite: frigate +30% vsMedium, sea units +8 sight', () => {
     const ctx = setupRich();
+    setDoctrine(ctx.world, 0, 'kestrel'); // base sight (Republic multiplies by 1.2)
     // Per-side ages (roadmap A1, 2026-10-01): the enemy submarine spawns
     // for owner 1, so both sides need Industry staged.
     getAgeState(ctx.world, 0).age = 'industry';
@@ -1000,6 +1005,7 @@ describe('upgrade effects (§4)', () => {
 
   it('Drone Optics: drone 26→41 and spectre 24→34 sight', () => {
     const ctx = setupRich();
+    setDoctrine(ctx.world, 0, 'kestrel'); // base sight (Republic multiplies by 1.2)
     const at = findLandNear(ctx.terrain, 0, 0);
     const drone = spawnNow(ctx, 'drone', 0, at.x, at.z);
     const spectre = spawnNow(ctx, 'spectre', 0, at.x + 5, at.z);

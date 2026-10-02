@@ -85,6 +85,7 @@ import {
   type UnitKind,
   type UnitDef,
 } from './units';
+import { getDoctrine, isKestrelArmorKind, isKestrelAaKind, DOCTRINES } from './doctrine';
 import {
   hasUpgrade,
   effectiveRange,
@@ -288,6 +289,13 @@ export function damageMultiplier(
   // penalties). Exempt kinds sit at level 1 ⇒ exactly ×1.0, so legacy
   // behavior is unchanged for them.
   mult *= supplyDamageFactor(def, attacker);
+  // Fun-audit D1: Kestrel doctrine overlays — heavier guns on the
+  // armor/artillery family, but weaker air defense on the AA family.
+  const doctrine = getDoctrine(world, attacker.owner);
+  if (doctrine === 'kestrel') {
+    if (isKestrelArmorKind(attacker.kind)) mult *= DOCTRINES.kestrel.armorDamageMult;
+    if (target.domain === 'air' && isKestrelAaKind(attacker.kind)) mult *= DOCTRINES.kestrel.aaVsAirMult;
+  }
   return mult;
 }
 

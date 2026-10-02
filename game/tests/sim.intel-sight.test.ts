@@ -56,6 +56,7 @@ import {
   isReconUnit,
   runAirportDiscovery,
 } from '../src/sim/intel';
+import { setDoctrine } from '../src/sim/doctrine';
 import { spawnUnit, UNIT_DEFS, type UnitKind } from '../src/sim/units';
 import { acquireTarget } from '../src/sim/combat';
 import { getVisibleEnemies } from '../src/sim/ai';
@@ -166,6 +167,7 @@ describe('buildingSightCoverage', () => {
 
   it('satelliteUplink contributes through the effectiveSight hook (no geometric term)', () => {
     const world = setup();
+    setDoctrine(world, 0, 'kestrel'); // base sight (Republic multiplies by 1.2)
     const def = UNIT_DEFS['rifles' as UnitKind];
     const base = effectiveSight(world, 0, def);
     place(world, 'satelliteUplink', 0, 10, 10);
@@ -178,6 +180,7 @@ describe('buildingSightCoverage', () => {
 
   it('recon units see through their high platform sight on the unit path', () => {
     const world = setup();
+    setDoctrine(world, 0, 'kestrel'); // base sight 44 (Republic would see 52.8)
     expect(UNIT_DEFS.reconTeam.sight).toBe(44);
     // isReconUnit is a pure kind predicate — plain records keep the
     // geometry clean (no extra observers on the map).

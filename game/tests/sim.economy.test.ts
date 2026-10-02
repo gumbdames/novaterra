@@ -17,6 +17,7 @@
 import { describe, expect, it } from 'vitest';
 import { createWorld, type World } from '../src/sim/world';
 import { getAgeState } from '../src/sim/ages';
+import { setDoctrine } from '../src/sim/doctrine';
 import { createCommandQueue, registerCoreCommands, type CommandQueue, type NewCommand } from '../src/sim/commands';
 import { createTickDriver, TICK_MS, type TickDriver } from '../src/sim/tick';
 import { generateTerrain, MERIDIAN_PLAINS, type TerrainData } from '../src/sim/terrain';
@@ -248,9 +249,11 @@ describe('taxes', () => {
     // The zero-rate world isolates the tax term from every other flow.
     const zero = houseWorld(21, 0.0);
     const fiber = houseWorld(21, 0.5);
+    setDoctrine(fiber.world, 0, 'kestrel'); // base 1.25x (Republic variant is 1.35x)
     getAgeState(fiber.world, 0).age = 'connectivity';
     getAgeState(fiber.world, 0).program = 'fiberGrid';
     const both = houseWorld(21, 0.5);
+    setDoctrine(both.world, 0, 'kestrel'); // base values
     getAgeState(both.world, 0).age = 'ascendance';
     getAgeState(both.world, 0).program = 'prosperityProgram';
     getAgeState(both.world, 0).programs = { connectivity: 'fiberGrid' };

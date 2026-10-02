@@ -46,6 +46,7 @@ import {
 } from '../sim/units';
 import { BUILDING_DEFS, type BuildingKind, getPlayer } from '../sim/city';
 import { isUnitAvailableForAge } from '../sim/ages';
+import { getDoctrine, DOCTRINES } from '../sim/doctrine';
 import {
   UPGRADE_DEFS,
   hasUpgrade,
@@ -104,7 +105,7 @@ export const TRAIN_TABS: readonly TrainTab[] = [
     // the start, like the hauler precedent in infantry).
     // Grand-expansion Phase 8 (tech levels): Mk II/III variants sit
     // next to their base kinds; `unitAvailability` hides locked ones.
-    kinds: ['tank', 'tankMk2', 'tankMk3', 'apc', 'apcMk2', 'apcMk3', 'tankDestroyer', 'artillery', 'artilleryMk2', 'artilleryMk3', 'mlrs', 'aa', 'aaMk2', 'aaMk3', 'hq', 'supplyTruck', 'fuelTruck'],
+    kinds: ['tank', 'tankMk2', 'tankMk3', 'apc', 'apcMk2', 'apcMk3', 'tankDestroyer', 'artillery', 'artilleryMk2', 'artilleryMk3', 'mlrs', 'aa', 'aaMk2', 'aaMk3', 'aegisBattery', 'tempestCannon', 'hq', 'supplyTruck', 'fuelTruck'],
   },
   {
     id: 'air',
@@ -588,6 +589,15 @@ export function unitAvailability(
   // disabled with the reason, so players learn to use a minelayer.
   if (def.deployableOnly === true) {
     return { ok: false, reason: loc(p.deployedByMinelayer) };
+  }
+  // Fun-audit D1 (2026-10-02): doctrine-exclusive signature units —
+  // the button greys out with the reason (the sim rejects loudly at
+  // the command layer; the UI mirrors it so the button never lies).
+  if (def.doctrine !== undefined && getDoctrine(world, owner) !== def.doctrine) {
+    return {
+      ok: false,
+      reason: fillLoc(p.requiresDoctrine, { doctrine: DOCTRINES[def.doctrine].name }),
+    };
   }
   if (!isUnitAvailableForAge(world, owner, def.minAge)) { // per-side ages: the viewer's own age
     return {

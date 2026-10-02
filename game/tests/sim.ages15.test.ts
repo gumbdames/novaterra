@@ -30,6 +30,7 @@ import { describe, expect, it } from 'vitest';
 import { createWorld } from '../src/sim/world';
 import { createCommandQueue, registerCoreCommands } from '../src/sim/commands';
 import { registerAgeCommands, AGE_PROGRESSION, getAgeState, getFactoryOutputMult, getUpkeepMult, getUtilityDemandMult, getInfluenceMult, getSpectreDamageMult, getManpowerCostMult, getMilitaryDamageMult, getGoodsOutputMult, getTaxMultiplierFull, isUnitAvailableForAge, AGE_ORDER } from '../src/sim/ages';
+import { setDoctrine } from '../src/sim/doctrine';
 import { getPlayer } from '../src/sim/city';
 
 function setup() {
@@ -130,6 +131,7 @@ describe('phase 1.5 ages 3-5', () => {
 
   it('Green Tech reduces utility demand and boosts influence', () => {
     const { world, queue } = setup();
+    setDoctrine(world, 0, 'kestrel'); // base values (Republic variant sips less)
     fundPlayer(world, 10000, 5000, 500);
     advance(world, queue, 'signalsGrid');
     fundPlayer(world, 10000, 5000, 500);
@@ -140,6 +142,7 @@ describe('phase 1.5 ages 3-5', () => {
 
   it('Global Media doubles influence (stacks with Green Tech)', () => {
     const { world, queue } = setup();
+    setDoctrine(world, 0, 'kestrel'); // base values (Republic variant carries further)
     fundPlayer(world, 10000, 5000, 500);
     advance(world, queue, 'fiberGrid');
     fundPlayer(world, 10000, 5000, 500);
@@ -177,6 +180,7 @@ describe('phase 1.5 ages 3-5', () => {
 
   it('Prosperity Program boosts taxes and goods', () => {
     const { world, queue } = setup();
+    setDoctrine(world, 0, 'kestrel'); // base values
     fundPlayer(world, 10000, 5000, 500);
     advance(world, queue, 'fiberGrid'); // 1.25x tax
     fundPlayer(world, 10000, 5000, 500);

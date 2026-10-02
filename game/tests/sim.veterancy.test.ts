@@ -78,6 +78,7 @@ import {
   vetAdjustedMaxHp,
   VET_OVERFLOW_RADIUS,
 } from '../src/sim/veterancy';
+import { setDoctrine } from '../src/sim/doctrine';
 import { effectiveMaxHp } from '../src/sim/upgrades';
 import { digestWorld, canonicalizeWorld } from '../src/sim/digest';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
@@ -589,6 +590,7 @@ describe('veterancy snapshots and digests', () => {
 describe('veterancy sight bonus (AI perception)', () => {
   it('vetSightMult multiplies the unit sight, not the Signals Grid bonus', () => {
     const ctx = setup();
+    setDoctrine(ctx.world, 0, 'kestrel'); // base sight 22 (Republic would see 26.4)
     // Scout at (0,0) with sight 22 (rifles). Enemy at 23: invisible at L0.
     directSpawn(ctx.world, 'rifles', 0, 0, 0);
     directSpawn(ctx.world, 'rifles', 1, 23, 0);

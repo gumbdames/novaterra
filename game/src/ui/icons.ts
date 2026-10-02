@@ -106,6 +106,16 @@ const BASE_UNIT_ICONS: Record<Exclude<UnitKind, VariantUnitKind>, string> = {
     '<circle cx="5.5" cy="20" r="1.5"/><circle cx="10" cy="20" r="1.5"/>',
   aa:
     '<path d="M12 21v-7"/><path d="M12 14 6 5"/><path d="M12 14l6-9"/><path d="M8 21h8"/>',
+  // Fun-audit D1 (2026-10-02): doctrine signature units reuse their
+  // base glyph + a single chevron (the Mk II variant precedent) — the
+  // Aegis Battery is the Republic's shield, the Tempest Cannon the
+  // Kestrel's long gun.
+  aegisBattery:
+    '<path d="M12 21v-7"/><path d="M12 14 6 5"/><path d="M12 14l6-9"/><path d="M8 21h8"/>' +
+    '<path d="M14.5 5l5.5 5.5-5.5 5.5"/>',
+  tempestCannon:
+    '<circle cx="9" cy="15" r="4"/><path d="M11.8 12.2 20 4.5"/><path d="M9 15 5 21"/><path d="M3 21h9"/>' +
+    '<path d="M14.5 5l5.5 5.5-5.5 5.5"/>',
   hauler:
     '<rect x="2" y="10" width="11" height="7" rx="1"/><path d="M13 12h3.5L20 15.5V17h-7"/>' +
     '<circle cx="6.5" cy="19" r="1.8"/><circle cx="16" cy="19" r="1.8"/>',

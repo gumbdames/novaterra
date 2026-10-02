@@ -53,6 +53,17 @@
 import type { World } from './world';
 import type { Command, CommandQueue } from './commands';
 import { getPlayer } from './city';
+import {
+  doctrineSightBonus,
+  doctrineTaxMultiplier,
+  doctrineFactoryOutput,
+  doctrineUpkeepMultiplier,
+  doctrineUtilityDemand,
+  doctrineSpectreDamage,
+  doctrineInfluenceMult,
+  doctrineArsenalDamage,
+  doctrineManpowerCost,
+} from './doctrine';
 
 /** Development stages of the player's nation (fixed 2026 setting). */
 export type Age = 'foundation' | 'connectivity' | 'industry' | 'information' | 'ascendance';
@@ -124,7 +135,8 @@ export const SIGNALS_GRID_SIGHT_BONUS = 8;
  */
 export function getTaxMultiplier(world: World, owner: number): number {
   if (getProgramForAge(world, owner, 'connectivity') === 'fiberGrid') {
-    return FIBER_GRID_TAX_MULTIPLIER;
+    // Fun-audit D1: the Republic variant of Fiber Grid taxes better.
+    return doctrineTaxMultiplier(world, owner, FIBER_GRID_TAX_MULTIPLIER);
   }
   return 1.0;
 }
@@ -135,7 +147,8 @@ export function getTaxMultiplier(world: World, owner: number): number {
  */
 export function getSightBonus(world: World, owner: number): number {
   if (getProgramForAge(world, owner, 'connectivity') === 'signalsGrid') {
-    return SIGNALS_GRID_SIGHT_BONUS;
+    // Fun-audit D1: the Republic variant of Signals Grid sees further.
+    return doctrineSightBonus(world, owner, SIGNALS_GRID_SIGHT_BONUS);
   }
   return 0;
 }
@@ -192,7 +205,8 @@ export const PROSPERITY_GOODS_MULT = 1.5;
  */
 export function getFactoryOutputMult(world: World, owner: number): number {
   if (getProgramForAge(world, owner, 'industry') === 'heavyIndustry') {
-    return HEAVY_INDUSTRY_OUTPUT_MULT;
+    // Fun-audit D1: the Kestrel variant of Heavy Industry outputs more.
+    return doctrineFactoryOutput(world, owner, HEAVY_INDUSTRY_OUTPUT_MULT);
   }
   return 1.0;
 }
@@ -202,7 +216,8 @@ export function getFactoryOutputMult(world: World, owner: number): number {
  */
 export function getUpkeepMult(world: World, owner: number): number {
   if (getProgramForAge(world, owner, 'industry') === 'heavyIndustry') {
-    return HEAVY_INDUSTRY_UPKEEP_MULT;
+    // Fun-audit D1: ...at the cost of hungrier upkeep.
+    return doctrineUpkeepMultiplier(world, owner, HEAVY_INDUSTRY_UPKEEP_MULT);
   }
   return 1.0;
 }
@@ -212,7 +227,8 @@ export function getUpkeepMult(world: World, owner: number): number {
  */
 export function getUtilityDemandMult(world: World, owner: number): number {
   if (getProgramForAge(world, owner, 'industry') === 'greenTech') {
-    return GREEN_TECH_UTILITY_MULT;
+    // Fun-audit D1: the Republic variant of Green Tech sips less.
+    return doctrineUtilityDemand(world, owner, GREEN_TECH_UTILITY_MULT);
   }
   return 1.0;
 }
@@ -228,7 +244,8 @@ export function getInfluenceMult(world: World, owner: number): number {
   if (getProgramForAge(world, owner, 'information') === 'globalMedia') {
     mult *= GLOBAL_MEDIA_INFLUENCE_MULT;
   }
-  return mult;
+  // Fun-audit D1: the Republic variant carries Global Media further.
+  return doctrineInfluenceMult(world, owner, mult);
 }
 
 /**
@@ -236,7 +253,8 @@ export function getInfluenceMult(world: World, owner: number): number {
  */
 export function getSpectreDamageMult(world: World, owner: number): number {
   if (getProgramForAge(world, owner, 'information') === 'cyberCommand') {
-    return CYBER_COMMAND_SPECTRE_MULT;
+    // Fun-audit D1: the Kestrel variant of Cyber Command hits harder.
+    return doctrineSpectreDamage(world, owner, CYBER_COMMAND_SPECTRE_MULT);
   }
   return 1.0;
 }
@@ -246,7 +264,8 @@ export function getSpectreDamageMult(world: World, owner: number): number {
  */
 export function getManpowerCostMult(world: World, owner: number): number {
   if (getProgramForAge(world, owner, 'ascendance') === 'arsenalProgram') {
-    return ARSENAL_MANPOWER_MULT;
+    // Fun-audit D1: the Kestrel variant deepens the manpower discount.
+    return doctrineManpowerCost(world, owner, ARSENAL_MANPOWER_MULT);
   }
   return 1.0;
 }
@@ -256,7 +275,9 @@ export function getManpowerCostMult(world: World, owner: number): number {
  */
 export function getMilitaryDamageMult(world: World, owner: number): number {
   if (getProgramForAge(world, owner, 'ascendance') === 'arsenalProgram') {
-    return ARSENAL_DAMAGE_MULT;
+    // Fun-audit D1: the Kestrel variant of the Arsenal Program's damage
+    // edge grows.
+    return doctrineArsenalDamage(world, owner, ARSENAL_DAMAGE_MULT);
   }
   return 1.0;
 }

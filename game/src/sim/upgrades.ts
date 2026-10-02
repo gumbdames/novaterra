@@ -63,6 +63,7 @@ import {
 } from './city';
 import type { CommandQueue } from './commands';
 import type { UnitDef } from './units';
+import { getDoctrine, isKestrelArmorKind, DOCTRINES } from './doctrine';
 
 /** The 22 upgrade ids (roster expansion's 12 + Phase 2's utility ladder 6 + Phase 3's advancedLogistics + the grand-expansion intel roster's 2 + roadmap B9's repeatable advancedResearch). */
 export const UPGRADE_IDS = [
@@ -615,6 +616,10 @@ export function effectiveMaxHp(world: World, owner: number, def: UnitDef): numbe
   if (hasUpgrade(world, owner, 'fieldMedicine') && FIELD_MEDICINE_HP_KINDS.includes(def.kind)) {
     hp += FIELD_MEDICINE_HP_BONUS;
   }
+  // Fun-audit D1: Kestrel armor/artillery runs heavier hulls.
+  if (isKestrelArmorKind(def.kind) && getDoctrine(world, owner) === 'kestrel') {
+    hp *= DOCTRINES.kestrel.armorHpMult;
+  }
   return hp;
 }
 
@@ -644,6 +649,9 @@ export function effectiveSight(world: World, owner: number, def: UnitDef): numbe
   // sight — completed satelliteUplinks plus the signalsIntel upgrade.
   // (The intel panel and AI both read through this hook.)
   sight += intelSightBonus(world, owner);
+  // Fun-audit D1: Republic sensors see further (the tech-forward
+  // doctrine — applied last so upgrades and doctrine compose).
+  sight *= DOCTRINES[getDoctrine(world, owner)].sightMult;
   return sight;
 }
 

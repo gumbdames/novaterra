@@ -270,8 +270,14 @@ describe('variant roster shape', () => {
     for (const k of Object.keys(UNIT_DEFS) as UnitKind[]) {
       expect(isVariant(k)).toBe(getVariantKinds().includes(k as VariantUnitKind));
       expect(variantTierOf(k)).toBe(isVariant(k) ? UNIT_DEFS[k].variantTier : 1);
-      // Art sharing: a variant renders with its base kind's art.
-      expect(variantArtBase(k)).toBe(isVariant(k) ? variantBaseOf(k) : k);
+      // Art sharing: a variant renders with its base kind's art; a
+      // doctrine signature unit (artBase, not a variant) renders with
+      // its artBase kind's art; everything else renders as itself.
+      // (Fun-audit D1: artBase is art reuse without variant semantics.)
+      const artBase = UNIT_DEFS[k].artBase;
+      expect(variantArtBase(k)).toBe(
+        isVariant(k) ? variantBaseOf(k) : artBase !== undefined ? artBase : k,
+      );
     }
     // Unknown kinds pass through unchanged (the render fallback's contract).
     expect(variantBaseOf('definitely-not-a-kind' as UnitKind)).toBe('definitely-not-a-kind');

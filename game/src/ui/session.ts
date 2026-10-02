@@ -79,6 +79,7 @@ import {
   createWonderCountdownSystem,
 } from '../sim/wonderCountdown';
 import { restoreSnapshot, type Snapshot } from '../sim/snapshot';
+import { setDoctrine, isDoctrineId, type DoctrineId } from '../sim/doctrine';
 import { createFogSystem } from '../sim/fog';
 import { rebuildFlowFields } from '../sim/pathfinding';
 import {
@@ -157,6 +158,15 @@ export interface SessionOptions {
    * conquest rather than crashing.
    */
   victoryKind?: SkirmishVictoryKind;
+  /**
+   * Fun-audit D1 (2026-10-02): the player's doctrine for this session
+   * ('republic' | 'kestrel'), picked on the menu. Set on
+   * `world.doctrines[HUMAN_PLAYER_ID]` at tick 0 (never toggled
+   * mid-game); the AI rival's doctrine is seeded (50/50). Defaults to
+   * 'republic'; unknown values resolve to 'republic'. Ignored when
+   * restoring from a snapshot (the snapshot carries the doctrines).
+   */
+  doctrine?: DoctrineId;
 }
 
 /** Everything a running game needs. Plain data + live driver/queue. */
@@ -581,6 +591,17 @@ export function createSession(options: SessionOptions): GameSession {
     world.victoryKind = isSkirmishVictoryKind(options.victoryKind)
       ? options.victoryKind
       : 'conquest';
+    // Fun-audit D1 (2026-10-02): doctrines are set at tick 0 and never
+    // toggled mid-game. The player picks theirs on the menu (defaults
+    // to 'republic'); the AI rival's doctrine is seeded 50/50 from the
+    // session seed — same seed ⇒ same doctrines, always. Restored
+    // sessions carry whatever the snapshot saved.
+    const playerDoctrine: DoctrineId = isDoctrineId(options.doctrine)
+      ? options.doctrine
+      : 'republic';
+    setDoctrine(world, HUMAN_PLAYER_ID, playerDoctrine);
+    const aiDoctrine: DoctrineId = ((seed >>> 7) & 1) === 0 ? 'republic' : 'kestrel';
+    setDoctrine(world, AI_PLAYER_ID, aiDoctrine);
   }
   const queue = createCommandQueue();
   registerCoreCommands(queue);

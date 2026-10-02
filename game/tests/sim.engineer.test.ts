@@ -46,6 +46,7 @@ import {
   ENGINEER_REPAIR_HP_PER_SEC,
   runEconomyTick,
 } from '../src/sim/economy';
+import { setDoctrine } from '../src/sim/doctrine';
 import type { UnitRecord } from '../src/sim/units';
 import { generateTerrain, MERIDIAN_PLAINS, type TerrainData } from '../src/sim/terrain';
 import { HUMAN_PLAYER_ID, AI_PLAYER_ID } from '../src/ui/session';
@@ -110,6 +111,8 @@ describe('engineer construction aura', () => {
   it('doubles construction speed with an engineer on site', () => {
     const plain = makeWorld();
     const boosted = makeWorld();
+    // Fun-audit D1: Kestrel engineers give the base 2x aura (Republic gives 3x).
+    setDoctrine(boosted, HUMAN_PLAYER_ID, 'kestrel');
     const bPlain = addConstructingBuilding(plain);
     const bBoosted = addConstructingBuilding(boosted);
     addEngineer(boosted, bBoosted, HUMAN_PLAYER_ID);
@@ -167,6 +170,8 @@ describe('engineer repair aura', () => {
 
   it('repairs a damaged completed building with an engineer nearby', () => {
     const world = makeWorld();
+    // Fun-audit D1: Kestrel engineers repair at the base 1 hp/s (Republic repairs 2 hp/s).
+    setDoctrine(world, HUMAN_PLAYER_ID, 'kestrel');
     const b = addDamagedBuilding(world);
     const hpBefore = b.hp ?? 0;
     addEngineer(world, b, HUMAN_PLAYER_ID);

@@ -52,6 +52,7 @@ import { rngBank } from './world';
 import type { SimSystem } from './tick';
 import type { CommandQueue, CommandSpec } from './commands';
 import { getFactoryOutputMult, getInfluenceMult, getGoodsOutputMult, getTaxMultiplierFull } from './ages';
+import { DOCTRINES, getDoctrine } from './doctrine';
 import {
   hasUpgrade,
   effectivePowerSupply,
@@ -1552,8 +1553,12 @@ function runConstruction(world: World): void {
       const def = BUILDING_DEFS[b.kind];
       // An engineer on site doubles the build speed (the plan's
       // construction-verb option, "a-lite": automatic like the depot
-      // supply auras — no new orders, no UI gestures).
-      const speed = hasEngineers && engineerNear(b) ? ENGINEER_CONSTRUCTION_MULT : 1;
+      // supply auras — no new orders, no UI gestures). Fun-audit D1:
+      // Republic engineers work the site harder (×3) — the doctrine's
+      // economic tempo edge.
+      const doctrine = getDoctrine(world, b.owner);
+      const speed =
+        hasEngineers && engineerNear(b) ? DOCTRINES[doctrine].engineerConstructMult : 1;
       b.progress = Math.min(1, b.progress + (speed / def.buildSeconds));
       // Final-review R3 L7: a completion crossing can change the intel
       // building-sight sum (satelliteUplink) — invalidate its cache.
@@ -1565,10 +1570,13 @@ function runConstruction(world: World): void {
       (b.hp ?? BUILDING_DEFS[b.kind].hp) < (b.maxHp ?? BUILDING_DEFS[b.kind].hp)
     ) {
       // The repair aura: damaged completed buildings slowly regain HP
-      // while an engineer works nearby.
+      // while an engineer works nearby. Fun-audit D1: Republic
+      // engineers repair twice as fast.
       if (engineerNear(b)) {
         const maxHp = b.maxHp ?? BUILDING_DEFS[b.kind].hp;
-        b.hp = Math.min(maxHp, (b.hp ?? BUILDING_DEFS[b.kind].hp) + ENGINEER_REPAIR_HP_PER_SEC);
+        const repairRate =
+          ENGINEER_REPAIR_HP_PER_SEC * DOCTRINES[getDoctrine(world, b.owner)].engineerRepairMult;
+        b.hp = Math.min(maxHp, (b.hp ?? BUILDING_DEFS[b.kind].hp) + repairRate);
       }
     }
   }

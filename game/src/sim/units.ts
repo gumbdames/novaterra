@@ -42,6 +42,8 @@
  */
 
 import type { World } from './world';
+import type { DoctrineId } from './doctrine';
+import { DOCTRINES, getDoctrine, doctrineTrainCostMult } from './doctrine';
 import type { TerrainData } from './terrain';
 import { isWater } from './terrain';
 import { getPlayer, MAP_HALF_SIZE, BUILDING_DEFS, hasProductionBuilding, cellCenterWorld, defaultHangarSlots, findBuildingHangarSlot, buildingCountsAs, buildingCenterWorld, CELL_WORLD_SIZE } from './city';
@@ -79,6 +81,11 @@ export const UNIT_KINDS = [
   'tank',
   'artillery',
   'aa',
+  // Fun-audit D1 (2026-10-02): doctrine signature units — 'aegisBattery'
+  // trains only for the Republic, 'tempestCannon' only for the Kestrel
+  // Directorate (see `doctrine` on UnitDef + the trainUnit gate).
+  'aegisBattery',
+  'tempestCannon',
   'hauler',
   'supplyTruck',
   'fuelTruck',
@@ -501,6 +508,25 @@ export interface UnitDef {
   variantOf?: UnitKind;
   /** Tech tier of a variant: 2 = Mk II, 3 = Mk III. */
   variantTier?: number;
+  /**
+   * Fun-audit D1 (2026-10-02): art reuse WITHOUT variant semantics —
+   * the kind renders with another kind's model (§AD12) but is not a
+   * Mk tech-level variant (no tier, no tradeoff rules, invisible to
+   * getVariantKinds/isVariant). Doctrine signature units use this:
+   * the Aegis Battery reuses the 'aa' model, the Tempest Cannon the
+   * 'artillery' model.
+   */
+  artBase?: UnitKind;
+  /**
+   * Fun-audit D1 (2026-10-02): doctrine exclusivity — the kind trains
+   * only for owners playing this doctrine ('aegisBattery' → republic,
+   * 'tempestCannon' → kestrel). Enforced by the `trainUnit` validator
+   * (and mirrored in the UI palette availability); unset = everyone.
+   * Art resolves through `artBase` (§AD12), so no new model keys are
+   * needed — the Aegis Battery reuses the 'aa' art, the Tempest Cannon
+   * the 'artillery' art.
+   */
+  doctrine?: DoctrineId;
 }
 
 /** Mobile HQ command aura: radius and friendly damage bonus. */
@@ -587,6 +613,36 @@ export const UNIT_DEFS: Record<UnitKind, UnitDef> = {  engineer: {
     trainSeconds: 10, requiredBuilding: 'warFactory',
     fuelCapacity: 50, fuelPerSecond: 0.15, fuelType: 'fossil', // ~333 s
     military: true,
+  },
+  // ------------------------------------------------------------------
+  // Fun-audit D1 (2026-10-02): doctrine signature units — the asymmetric
+  // mechanics that make each doctrine play differently, not stat tweaks.
+  // ------------------------------------------------------------------
+  aegisBattery: {
+    kind: 'aegisBattery', name: 'Aegis Battery', domain: 'land', hp: 320, speed: 7, armor: 'medium',
+    damage: 65, range: 36, minRange: 0, cooldownTicks: 35, targets: 'air',
+    vsLight: 0.4, vsMedium: 0.4, vsHeavy: 0.4, vsAir: 3.0, sight: 40, minAge: 'information',
+    manpowerCost: 6, trainFunds: 900, trainMaterials: 220,
+    trainSeconds: 20, requiredBuilding: 'warFactory',
+    fuelCapacity: 60, fuelPerSecond: 0.12, fuelType: 'fossil',
+    military: true, artBase: 'aa', doctrine: 'republic',
+    // The mechanic: a living Aegis Battery intercepts Storm Engine
+    // strikes inside AEGIS_INTERCEPT_RADIUS (see sim/superweapons.ts) —
+    // the Republic's theater missile defense, per the design doc's C11.
+    // Art reuses the 'aa' model via artBase (§AD12).
+  },
+  tempestCannon: {
+    kind: 'tempestCannon', name: 'Tempest Cannon', domain: 'land', hp: 160, speed: 5, armor: 'medium',
+    damage: 140, range: 70, minRange: 22, cooldownTicks: 130, targets: 'ground',
+    vsLight: 1.0, vsMedium: 1.5, vsHeavy: 1.8, vsAir: 1.0, sight: 28, minAge: 'information',
+    manpowerCost: 6, trainFunds: 950, trainMaterials: 240,
+    trainSeconds: 20, requiredBuilding: 'warFactory',
+    fuelCapacity: 40, fuelPerSecond: 0.10, fuelType: 'fossil',
+    military: true, artBase: 'artillery', doctrine: 'kestrel',
+    // The mechanic: range 70 outranges every retaliation in the game —
+    // the Kestrel siege gun. The 22-unit dead zone keeps it honest
+    // (it needs an escort screen, like real long-range artillery).
+    // Art reuses the 'artillery' model via artBase (§AD12).
   },
   hauler: {
     kind: 'hauler', name: 'Hauler', domain: 'land', hp: 160, speed: 9, armor: 'medium',
@@ -2342,6 +2398,11 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
       if (world.peaceful === true && def.military === true) {
         return `spawnUnit: ${def.name} is a military unit and cannot be trained in peaceful mode`;
       }
+      // Fun-audit D1: doctrine-exclusive signature units (mirrors the
+      // trainUnit gate — spawnUnit is the AI/campaign path).
+      if (def.doctrine !== undefined && getDoctrine(world, owner) !== def.doctrine) {
+        return `spawnUnit: ${def.name} is exclusive to the ${DOCTRINES[def.doctrine].name} doctrine`;
+      }
       // Age gating: units require the owner's minimum age (or later) —
       // per-side ages (2026-10-01, roadmap A1).
       if (!isUnitAvailableForAge(world, owner, def.minAge)) {
@@ -2355,17 +2416,17 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
         }
       }
       // Training costs (spec: the training-cost gap fix): funds + materials,
-      // validated at enqueue AND at apply.
+      // validated at enqueue AND at apply. Fun-audit D1: the Republic
+      // engineer discount applies through doctrineTrainCostMult.
       if (def.trainFunds > 0 || def.trainMaterials > 0) {
         const player = getPlayer(world.city, owner as number);
-        if (
-          !player ||
-          player.funds < def.trainFunds ||
-          player.materials < def.trainMaterials
-        ) {
+        const costMult = doctrineTrainCostMult(world, owner as number, kind as string);
+        const costFunds = Math.round(def.trainFunds * costMult);
+        const costMaterials = Math.round(def.trainMaterials * costMult);
+        if (!player || player.funds < costFunds || player.materials < costMaterials) {
           return (
             `spawnUnit: cannot afford training cost for ${kind} ` +
-            `(need ${def.trainFunds} funds + ${def.trainMaterials} materials)`
+            `(need ${costFunds} funds + ${costMaterials} materials)`
           );
         }
       }
@@ -2392,11 +2453,16 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
         player.manpower -= def.manpowerCost;
       }
       if ((def.trainFunds > 0 || def.trainMaterials > 0) && player) {
-        if (player.funds < def.trainFunds || player.materials < def.trainMaterials) {
+        // Fun-audit D1: mirror the validate-time Republic engineer
+        // discount — validate ≡ apply (AD6).
+        const costMult = doctrineTrainCostMult(world, cmd.payload['owner'] as number, cmd.payload['kind'] as string);
+        const costFunds = Math.round(def.trainFunds * costMult);
+        const costMaterials = Math.round(def.trainMaterials * costMult);
+        if (player.funds < costFunds || player.materials < costMaterials) {
           throw new Error(`spawnUnit: cannot afford training cost at apply time`);
         }
-        player.funds -= def.trainFunds;
-        player.materials -= def.trainMaterials;
+        player.funds -= costFunds;
+        player.materials -= costMaterials;
       }
       const unit = spawnUnit(
         world,
@@ -2748,6 +2814,12 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
       // spawnUnit validator so the two paths never disagree.
       if (world.peaceful === true) {
         return `trainUnit: ${def.name} is a military unit and cannot be trained in peaceful mode`;
+      }
+      // Fun-audit D1: doctrine-exclusive signature units — the Aegis
+      // Battery trains only for the Republic, the Tempest Cannon only
+      // for the Kestrel Directorate.
+      if (def.doctrine !== undefined && getDoctrine(world, owner) !== def.doctrine) {
+        return `trainUnit: ${def.name} is exclusive to the ${DOCTRINES[def.doctrine].name} doctrine`;
       }
       if (!isUnitAvailableForAge(world, owner, def.minAge)) {
         return `trainUnit: ${kind} requires the ${def.minAge} age`;
