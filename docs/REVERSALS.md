@@ -1,7 +1,7 @@
 # Reversals — novaterra
 
 Design decisions that were reversed, ripped out, or deliberately not taken.
-Kept so nobody re-litigates them. Last updated: 2026-10-01.
+Kept so nobody re-litigates them. Last updated: 2026-10-02.
 
 ## 1. Muse Commander / Anthropic API-key flow — ripped out (2026-09-29)
 
@@ -79,3 +79,48 @@ a goal.
 - **Non-English shipped UI** — refused by standing user directive
   (ARCHITECTURE.md D9). Localization indirection stays for a future that
   may never come.
+
+## 7. Fun-audit wave judgment calls (2026-10-02)
+
+Decisions taken during the user-approved fun-audit build ("build it all",
+`docs/research/fun-audit-2026-10-02.md`) that went softer, narrower, or
+against the plan's letter. Each was deliberate; don't silently "fix" them.
+
+- **End screens: realistic terrestrial, not sci-fi** (`f0a3076`). The first
+  illustrated end-screen set was sci-fi; the user rejected it outright —
+  "These images are too sci-fi. Make them more realistic and terrestrial."
+  Six realistic terrestrial illustrations ship (four victory, two defeat).
+  Don't commission another sci-fi set without fresh user direction.
+- **Engineer: aura, not construction-gating** (`d4e4d4b`). The plan offered
+  "meaningful construction/repair behavior"; the softened option shipped: a
+  living same-owner engineer within 12 cells doubles build speed and repairs
+  damaged buildings at 1 hp/s — automatic, no new orders or UI. Full
+  engineer-gating of construction was deliberately NOT built: it would have
+  broken AI physical building and every construction test. Recorded in
+  `game/src/sim/AGENTS.md`.
+- **Land trade deleted, not made physical** (`d4e4d4b`). The plan's option
+  (b). Routes were player→player with no building endpoints; making them
+  physical edged into the "no full traffic simulation" dead end
+  (`establishTradeRoute`/`cancelTradeRoute`/`runTradeRoutes` and the
+  `TradeRoute` state are gone; the 3/s income went with them — the fixed-rate
+  market already serves that niche).
+- **Civilian transports consolidated, not expanded** (`d4e4d4b`). The four
+  mechanically duplicate civilian transports (`jumboAirliner`,
+  `regionalJet`, `passengerHeli`, `seaplane`) were delisted from the train
+  palette — kept as defs for save compatibility and AI/demo spawns. Trainable:
+  one Cargo Plane, one Airliner, one Freighter.
+- **Fog of war: real fog, fallback NOT used** (`7ae88f7`). The plan carried a
+  documented fallback in case genuine player fog was unsuitable for the
+  engine; the honest technical attempt succeeded, so the fallback was never
+  needed. Shroud / dimmed / clear, on the AI's own sight model.
+- **B7 acceptance passed on C1 as-shipped; base-zone-supremacy fallback not
+  needed** (`5c70a02`). The AI is physically beatable by razing its forward
+  base; the plan's fallback never fired. Don't re-add a supremacy shortcut.
+- **Day/night: visual only, zero gameplay effects** (`42327ff`). Nights are
+  readable by design; the trailer is pinned to golden hour. Future art must
+  be checked at four times of day. No gameplay penalties or weather were
+  added — that was the verdict, not an omission.
+- **Vostok Combine: merchant-only, no raid — no stubs, no hooks**
+  (`930b49d`). Raids are out of scope for 0.1 Alpha entirely; there is no
+  raid code, no stubs, and no hooks for one. Don't wire a raid in through
+  the Combine's visit state machine without a fresh user-approved plan.

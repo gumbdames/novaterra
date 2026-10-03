@@ -92,7 +92,8 @@ Consequences for the sim/render contract:
 
 **Decision (recording early):** adopt the accumulator pattern verbatim,
 `STEP = 1/30` or `1/60` (tbd by profiling in Phase 1 — many RTS sims run at
-10–30 Hz and interpolate; AoE2 ran ~10 ticks/s logic). Input commands are
+10–30 Hz and interpolate; AoE2 ran ~10 ticks/s logic). (Resolved: `STEP = 1/60`,
+adopted for the shipped sim — see the const at the top of this note.) Input commands are
 tick-aligned. Tab-hide → auto-pause.
 
 ---

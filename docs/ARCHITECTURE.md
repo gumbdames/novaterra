@@ -18,7 +18,7 @@ power/water utility networks, run a multi-resource economy, research through
 technology ages, and command armies on land, sea, and air — or play a fully
 peaceful no-military mode that never ends.
 
-**Shipped roster (verified in code): 97 units / 100 buildings / 21 upgrades.**
+**Shipped roster (verified in code): 103 units / 100 buildings / 21 upgrades.**
 Units: 31 land, 30 air, 35 sea (including 28 Mk II/III tech variants across
 14 lines). Buildings span housing, civic, commerce, industry, utilities
 (13 power/water plants), logistics (fuel/ammo chain), transport stops,

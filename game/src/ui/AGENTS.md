@@ -471,7 +471,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   enqueue + apply, rejections toast loudly.
 - `palettes.ts` — headless-safe palette data + availability logic for
   the tabbed TRAIN/BUILD palettes and the research panel: `TRAIN_TABS`
-  (6 tabs, 97 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck;
+  (6 tabs, 103 units — Phase 3 workstream 3 added the supplyTruck/fuelTruck;
   Phase 5 workstream B added the 16-aircraft air tab; the intel roster
   workstream (§3.8/S6, 2026-09-30) added the intel tab: spy + reconTeam;
   Phase 8 workstream D added the 28 Mk II/III tech variants next to their
@@ -650,7 +650,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `icons.ts` — **hand-drawn inline SVG icon set (pure, tested,
   `tests/ui.icons.test.ts`).** Every button shows icon AND text (user
   directive 2026-09-30) — icons are `aria-hidden`, never icon-only.
-  `unitIcon` / `buildingIcon` cover all 97 units + 100 buildings
+  `unitIcon` / `buildingIcon` cover all 103 units + 100 buildings
   (`Record<UnitKind, string>` so a missing glyph is a compile error);
   `toolIcon` for the build tools row (incl. the Phase 2 powerLine /
   waterPipe tools); `viewIcon` for the top-bar view toggles (Phase 4
@@ -664,7 +664,7 @@ command structs to sim/commands.ts — it never mutates sim state directly.
 - `entityPortraits.ts` — **entity portraits from the sprite atlas
   (consumer side, 2026-10-01).** The consumer contract for the atlas
   pipeline (Worker A owns `game/public/img/entity-atlas.png` +
-  `entity-atlas.json`, 197 sprites for all 97 units + 100 buildings):
+  `entity-atlas.json`, 203 sprites for all 103 units + 100 buildings):
   `hasPortrait(kind)` / `portraitStyle(kind, boxPx)` /
   `applyPortraits(scope, makeOverlay)` / `ensurePortraitsLoaded()` /
   `portraitsReady()`. Headless-safe (no DOM at module scope); the

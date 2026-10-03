@@ -92,6 +92,18 @@ reaches, which gets underground pipes for free).
   Advanced Nuclear (research) cuts the risk 4x.
 - **Mind the sky.** Solar farms only produce by day (4-minute day);
   wind farms rise and fall with the wind.
+- **Respect line capacity.** Each power-line cell carries a fixed
+  amount of power — a network's deliverable supply caps at its
+  power-line cells × capacity. Over-cap demand reads as "shortage",
+  never "disconnected": build more lines or more plants. Road-only
+  networks are unmetered; early grids never hit the cap.
+- **Bonus for road frontage.** A producer whose footprint touches a
+  road cell gets ×1.25 output. This is a bonus only — roads stay
+  purely optional, never a requirement.
+- **Site the supply chain.** Some buildings boost each other when
+  their footprints touch: refinery next to the well, factory next
+  to the quarry, recycling center next to a factory — each gives
+  ×1.25 to the receiver.
 
 If demand exceeds supply, the nearest buildings get served first. A
 building without power produces at 25%; without water, another 25%.
@@ -373,6 +385,26 @@ A fossil-fuel aircraft that runs its tank dry is **stranded**: it cannot
 move, so it cannot reach a depot. Selecting it offers **Emergency
 refuel** — an airdropped fuel bladder costing 150 funds that restores
 30% of its tank, enough to fly to a depot and resupply normally.
+
+## Doctrines: Republic vs Kestrel
+
+The two sides play differently — one shared roster, two asymmetric
+doctrines (your doctrine is chosen on the skirmish setup screen; the
+AI rival's is seeded 50/50, so you won't know which you're facing
+until you scout).
+
+- **Republic** — balanced, defensive, tech-forward. Better sensors
+  (+sight on all units), stronger and cheaper engineers (faster
+  construction and repair), and the signature **Aegis Battery**: a
+  theater missile-defense battery that intercepts incoming Storm
+  Engine strikes.
+- **Kestrel Directorate** — aggressive armor and artillery. Tougher,
+  harder-hitting tanks and artillery (including the signature
+  **Tempest Cannon**, a very-long-range gun that outranges
+  everything), but weaker air defense — their AA hits aircraft softer.
+
+The doctrine overlays sit on top of the base stats through the same
+seams the AI reads, so the rival genuinely plays its doctrine.
 
 ## Keyboard shortcuts
 
@@ -753,6 +785,19 @@ and your analysts flag it — "suspicious military activity." You get
 60 seconds of warning while they confirm the site; when they do, the
 airport reads as mixed-use on your map and may be treated as a
 military target. No ambushes: the warning always comes first.
+
+**Fog of war.** The map is not yours by default: unexplored ground is
+black shroud, ground you have visited but cannot currently see is
+dimmed, and only the ground your units and buildings can see right
+now is fully clear. Visibility uses the same sight model the AI
+itself plays under — your render, minimap, entity hiding, and threat
+meter all agree with what the AI can perceive, and nothing is
+omniscient. Your explored memory persists across save and load.
+This is why the intel roster matters now: the **Recon Team** (44
+sight), **Recon UAV** / **Recon Plane**, Listening Posts, Signals
+Stations, the **Radar Station** (90-unit sweep), and the Satellite
+Uplink (+12 sight for all units) are how you peel the shroud back —
+and how you stay ahead of an enemy doing the same to you.
 
 ## Maps
 

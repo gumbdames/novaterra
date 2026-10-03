@@ -48,11 +48,11 @@ land, sea and air — or play a fully peaceful game with war disabled.
   Subsidy, Business Incentives, Nightlife Ordinance, Education Grants —
   each with real upkeep, funded after buildings from the treasury. The
   Mk II/III tech-level pass is in too: 28 variant defs across 14 unit
-  lines (96 units total), gated by age + production building through the
+  lines, gated by age + production building through the
   existing spawn validator — the AI picks the tier that fits the situation
   (each variant trades something away: firepower for speed, range for
   armor, etc.), and variants share their base kind's 3D art
-  (zero new model downloads). The peaceful AI rival is in too: it
+  (zero new model downloads). The roster is 103 units total. The peaceful AI rival is in too: it
   builds a civilian city (districts → utilities → factories → housing →
   civic), issues zero military orders, and never forms them — the
   `canTrain` gate and the peaceful dispatch (`thinkPeaceful`) keep the
@@ -131,6 +131,40 @@ land, sea and air — or play a fully peaceful game with war disabled.
   Cartographer. Each card is a presidential call with costs on both
   sides (3 minutes to decide; silence applies the default) — the
   story engine of the peaceful endless mode.
+  Fun-audit Tier 4 / E3 (2026-10-02) is in too: the **Vostok
+  Combine** — a merchant-only neutral freighter that visits every
+  12–18 minutes and anchors off your capital for 3 minutes, selling
+  emergency materials, fuel, food, research (at 2× market), ammo
+  into depot storage, and influence (8 funds / +1, capped) — no
+  sell-back, and no raid in 0.1 Alpha. Watch the manifest: if a
+  commander+ AI is war-planning and ammo-starved while the freighter
+  is anchored, it buys shells too, and the game tells you.
+  Fun-audit Phases 1–2 and the determinism hardening (2026-10-02)
+  are in too: correct age toasts, named Muse announcements for
+  units/buildings/research, a war-core warning before defeat, an
+  opening camera sweep with an objective, a rival victory-progress
+  strip, off-screen event pings; the 5-minute wonder countdown
+  (Monument or 80% of the economic/population targets — the leader
+  must defend it); endgame statistics on the end screen and in the
+  campaign debrief; the sim now runs on `sim/deterministic.ts`
+  (no `Math.hypot`/sin/cos/log in sim code, lint-guarded).
+  Fun-audit Phase 4 Tiers 1–3 (2026-10-02) are in too: scheduled
+  escalating telegraphed AI offensives (probe ~8 min, offensive
+  ~15 min, all-in ~25 min, with 1-minute warnings; ceasefires delay
+  waves, never cancel them), rival age-ups as announced global events
+  with a vulnerability window, real production queues (per-unit train
+  times of 5–20 seconds, pause, cancel with full refund, rally
+  flags), the engineer's construction/repair aura, influence-cost
+  diplomacy (tribute 20, ceasefire 40 — paid win or lose), genuine
+  player fog of war (shroud / dimmed / clear, using the AI's own
+  sight model), onboarding that teaches the game's verbs and the
+  economy's mental model, Republic/Kestrel doctrine asymmetry
+  (Republic: better sensors, stronger engineers, Aegis Battery
+  missile shield; Kestrel: tougher armor/artillery, the
+  very-long-range Tempest Cannon, weaker AA), and quantitative
+  utility networks (power-line capacity, ×1.25 road-frontage
+  throughput bonus, data-driven adjacency synergies — roads stay
+  purely optional).
   See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 
@@ -148,7 +182,7 @@ land, sea and air — or play a fully peaceful game with war disabled.
   Trade
 - Entity portraits (2026-10-01): the command-menu cards (train / build /
   superweapon) and the selection detail "dossier photo" show the real
-  model portrait from a generated sprite atlas (197 sprites), with the
+  model portrait from a generated sprite atlas (203 sprites), with the
   hand-drawn icon glyph as the fallback — lazy-loaded, zero boot cost
 - City ordinances (Phase 8): five city-wide policies on the Management
   tab — Green Initiative, Transit Subsidy, Business Incentives,

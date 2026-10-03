@@ -348,7 +348,7 @@ Press **\`** (backtick) to open the cheat console. Commands:
 
 - `prosperity now` — grants funds, materials, food, fuel, and goods.
 - `fast build` — finishes all your buildings under construction.
-- `reveal` — no fog of war in 0.1 Alpha; nothing to reveal.
+- `reveal` — lifts the fog of war (the player has genuine fog of war in 0.1 Alpha).
 - `win` / `lose` — show the victory / defeat screen (for testing).
 - `help` — lists the commands.
 

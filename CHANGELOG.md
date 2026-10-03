@@ -3,7 +3,72 @@
 All notable changes to the 0.1 Alpha. Commit hashes are the local `main`
 history (`gumbdames/novaterra`).
 
-## [Unreleased] — Phase 3 roadmap B23–B29 (2026-10-02)
+## 2026-10-02 — Fun audit (C6/C7/C1 + Phases 1–2, determinism, Phase 4 Tiers 1–4)
+
+User-approved plan ("build it all", `docs/research/fun-audit-2026-10-02.md`):
+the game should be fun, exciting, and interesting to play.
+
+- **C6** (`f0a3076`): illustrated victory/defeat end screens — six realistic
+  terrestrial illustrations (one per victory kind + annihilation /
+  lost-the-race), lazy-loaded, cinematic camera drift, camera restored on
+  dismiss.
+- **Fun-audit Phase 1** (`dfe0b29`): Tier 0 (A1–A5) + B1/B4/B5 — correct age
+  toasts, named Muse announcements for units/buildings/research, a war-core
+  warning before defeat, an opening camera sweep with an objective, a rival
+  victory-progress strip, off-screen event pings.
+- **C7** (`42327ff`, B27 fix `97f9453`): visual day/night cycle driven by the
+  sim tick (pause/save-safe) — interpolated sky/light/fog/exposure/water,
+  glass glow, one-draw-call stars; visual only, zero gameplay effects.
+- **C1** (`6249810`): AI physical forward bases — commander gets a fuel depot,
+  general + ordnance depot, marshal + radar; virtual fuel/ammo stocks accrue
+  only while the matching depot stands complete and operational, and a
+  destroyed depot zeroes its reserve. Exposed and fixed a pre-existing
+  snapshot bug (`seenBuildingIds` captured by reference in `encodeAIState`).
+- **Fun-audit Phase 2** (`1e3304c` B2+B3, `5c70a02` B7): 5-minute wonder
+  countdown (Monument completion / 80% of economic-population targets — the
+  leader must defend, escalating warnings), endgame statistics on the end
+  screen and in the campaign debrief. B7 acceptance passed: the AI is
+  physically beatable by razing its forward base (no fallback needed).
+- **Determinism hardening** (`86080cc`): new `sim/deterministic.ts`; all 34
+  `Math.hypot` sites and the sin/cos/log uses replaced with deterministic
+  equivalents; the B27 lint guard bans transcendentals in `src/sim/` (verified
+  against a planted violation); no digest pins changed.
+- **Phase 4 Tier 1** (`4e8a8ef` B6, `87dd909` B8): scheduled escalating
+  telegraphed AI offensives (probe ~8 min, offensive ~15 min, all-in ~25 min;
+  1-minute warnings via Muse/HUD/threat flash/pings at real muster points;
+  ceasefires delay waves, never cancel them) + rival age-ups as announced
+  global events with a vulnerability-window message.
+- **Phase 4 Tier 2** (`7201c8f` queues, `d4e4d4b` triage): real production
+  queues — per-unit train times (5–20s), visible queue with progress bars,
+  pause, cancel with full refund, rally flags; `spawnUnit` kept for
+  AI/campaign/demo. Dead-system triage: engineer construction/repair aura
+  (2× build speed + 1 hp/s repair within 12 cells, automatic), influence-cost
+  diplomacy (tribute 20, ceasefire 40 — paid whether the AI accepts or not),
+  land trade deleted (routes had no physical endpoints), civilian transports
+  consolidated (one trainable Cargo Plane/Airliner/Freighter; the rest delisted
+  but kept for save compatibility).
+- **Phase 4 Tier 3** (`7ae88f7` fog, `07fc8df` onboarding, `e1c1c2a` doctrines,
+  `c44bbcf` networks): genuine player fog of war (shroud / dimmed / clear,
+  using the AI's own sight model — no fallback needed); onboarding that
+  teaches the game's verbs and the economy's mental model; Republic/Kestrel
+  doctrine asymmetry (Republic: better sensors, stronger engineers, the
+  Aegis Battery missile shield; Kestrel: tougher armor/artillery, the
+  very-long-range Tempest Cannon, weaker AA); quantitative utility networks —
+  power-line capacity, ×1.25 road-frontage throughput bonus, data-driven
+  adjacency synergies — while roads stay purely optional.
+- **Phase 4 Tier 4** (`1b79789` E1, `1ad4153` E2, `930b49d` E3): the Envoy at
+  the Gates (a neutral SUV drives to your gates when the AI answers a
+  ceasefire — 60-second answer window, dove release over the capital); six
+  Luminary cards (Defector, War Hero, Whistleblower, Tycoon, Logistics
+  Prodigy, Cartographer — once per age, a 3-minute audience with costs on
+  both sides); the Vostok Combine merchant-only freighter (visits every
+  12–18 min, anchors 3 min, emergency stock at 2× market, no sell-back, no
+  raid in 0.1 Alpha). All three share the single `neutralNonCombatant` gate.
+
+Final: 3075/3075 tests (199 files), tsc/build/check:cycles clean, hosted CI
+green on every commit, deployed to gh-pages.
+
+## 2026-10-02 — Phase 3 roadmap B23–B29
 
 - **B23** (`a3cbd0f`): soak tests split into their own CI job
   (30-min timeout, verbose reporter, per-file timing budgets) — targets

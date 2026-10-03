@@ -129,7 +129,7 @@ pass, the build is green, and all previous steps' smoke tests still pass
 - ✅ Classic AI levels 4–5: General and Marshal (commit e6868bc)
 - Full suite: 364/364 tests green, typecheck clean, production build succeeds.
 
-### Phase 2 — Campaign + Muse (in progress, 2026-09-29)
+### Phase 2 — Campaign + Muse ✅ COMPLETE (2026-09-29)
 
 8-mission campaign "The First Term" (briefings, objectives, scripted events,
 peaceful path in every mission, two endings) + offline deterministic Muse
@@ -171,7 +171,7 @@ HOW_TO_PLAY.md).
 The big long-playable game (user brief 2026-09-30): utilities, transport,
 airports-as-zones with civilian airlines, veterancy, expanded navy/air,
 fuel/ammo logistics chains, intel/spies, civilian deep-dive, peaceful
-no-military mode. Roster: 97 units / 100 buildings / 21 upgrades.
+no-military mode. Roster: 103 units / 100 buildings / 21 upgrades.
 
 - ✅ Naval-model military half (commit a16200d, 2026-10-01): military
   naval-building model — **Naval Shipyard** (renamed from Shipyard;
