@@ -368,7 +368,7 @@ export class MainMenu {
     const doctrineNote = el('div', 'settings-note', DOCTRINES[selectedDoctrine].blurb);
     buttons.append(doctrineNote);
 
-    // Mode 1 (Classic AI) vs Mode 2 (Muse Persona) opponent selection
+    // Mode 1 (Classic AI) vs Mode 2 (Muse Engine) opponent selection
     buttons.append(el('div', 'difficulty-title', s.chooseOpponentMode));
     let selectedOpponentMode: OpponentMode = 'classic';
     const opponentModeButtons: HTMLButtonElement[] = [];

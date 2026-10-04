@@ -176,7 +176,8 @@ export interface SessionOptions {
   /**
    * Opponent mode (Prompt 1 requirement):
    *  - 'classic': Mode 1 — deterministic Classic AI.
-   *  - 'muse': Mode 2 — a local Muse-persona commander with dynamic
+   *  - 'muse': Mode 2 — the Muse Engine, a local heuristic commander
+   *    with a Muse persona (no neural network, no networking).
    *    counter-squad composition, psychological feints, and reactive commentary.
    */
   opponentMode?: OpponentMode;

@@ -21,7 +21,7 @@ history (`gumbdames/novaterra`).
   "high-resolution" claim for the 256×256 procedural thumbnails
   (maps 4–8).
 
-## 2026-10-04 — RTS controls, Mode 2 Muse Persona, art, audio + bug-fix pass
+## 2026-10-04 — RTS controls, Mode 2 Muse Engine, art, audio + bug-fix pass
 
 - **RTS controls** (`8322253`, `781773d`): multi-cell structure click
   selection, WASD camera, marquee box-select on left-drag (reverses the
@@ -30,7 +30,7 @@ history (`gumbdames/novaterra`).
   `Ctrl+A`, control groups (`Ctrl+1..9`, `1..9`, `Shift+1..9` union,
   double-tap camera focus), double-click type selection, attack-move
   (`T` / `Alt+A`), command theatres (sim support; no player UI yet).
-- **Mode 2: Muse Persona** (`c46a7ee`): local deterministic heuristic
+- **Mode 2: Muse Engine** (`c46a7ee`): local deterministic heuristic
   opponent with adaptive counter-doctrines and persona dialogue. Honest
   wording throughout — it is NOT a neural network and NOT the real Muse.
 - **Art** (`f5d5a3d`): menu hero, 8 mission briefings, 8 skirmish cards,

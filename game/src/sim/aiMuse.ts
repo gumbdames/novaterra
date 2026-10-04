@@ -15,7 +15,7 @@
  */
 
 /**
- * NOVATERRA — sim/aiMuse.ts — Mode 2: Muse Persona opponent.
+ * NOVATERRA — sim/aiMuse.ts — Mode 2: Muse Engine opponent.
  *
  * A LOCAL, deterministic, rules-based commander with a Muse persona —
  * no networking, no neural network, no external AI service. It profiles
@@ -27,7 +27,7 @@
  * level should have 2 modes where mode 1 is a regular game engine/AI and mode 2
  * is playing against you (Muse) - ie you control the game engine."
  *
- * Distinct Architecture of the Muse Persona (Mode 2):
+ * Distinct Architecture of the Muse Engine (Mode 2):
  *  1. Dynamic Opponent Profiling: Continuously profiles the player unit
  *     compositions it can see (sight-gated, like every other AI — no
  *     maphack), plus visible forward utility infrastructure.

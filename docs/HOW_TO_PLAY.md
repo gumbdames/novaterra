@@ -33,7 +33,7 @@ the debrief explains what happened.
 more water means more naval fighting) → pick your **Opponent Engine**:
 
 - **Mode 1: Classic AI** — Conventional procedural doctrine, economy, and army composition.
-- **Mode 2: Muse Persona** — Play against a Muse persona: a local heuristic
+- **Mode 2: Muse Engine** — Play against the Muse Engine: a local heuristic
   commander that profiles the forces it can see, adapts counter-doctrines,
   executes asymmetric infrastructure raids, and taunts you over tactical comms!
 

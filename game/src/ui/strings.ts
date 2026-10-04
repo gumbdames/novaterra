@@ -153,7 +153,7 @@ export const STRINGS = {
     chooseOpponentMode: 'Opponent Engine',
     opponentModeClassic: 'Mode 1: Classic AI',
     opponentModeClassicBlurb: 'Conventional procedural doctrine, economy, and army composition.',
-    opponentModeMuse: 'Mode 2: Muse Persona',
+    opponentModeMuse: 'Mode 2: Muse Engine',
     // 2026-10-04: honest wording — this is a local heuristic commander
     // with a Muse persona, not a neural network and not the real Muse.
     opponentModeMuseBlurb: 'Play against a Muse persona — a local heuristic commander that profiles the forces it can see and adapts its composition to counter them.',

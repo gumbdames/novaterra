@@ -15,7 +15,7 @@ land, sea and air — or play a fully peaceful game with war disabled.
   with theatre assignments — Northern, Southern, Naval, Central — supported
   in the sim; player UI for assigning theatres is not in 0.1 Alpha yet).
   Dual AI Modes
-  (Mode 1 Classic Engine vs Mode 2 Muse Persona with live tactical
+  (Mode 1 Classic Engine vs Mode 2 Muse Engine with live tactical
   taunts, commentary, and dialogue across all 5 difficulties). AAA visual polish
   (cinematic war room holographic menu hero backdrop, 8 mission briefing tactical
   reconnaissance maps, 8 skirmish preview cards (maps 1–3 high-resolution
