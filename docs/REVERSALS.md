@@ -86,6 +86,16 @@ Decisions taken during the user-approved fun-audit build ("build it all",
 `docs/research/fun-audit-2026-10-02.md`) that went softer, narrower, or
 against the plan's letter. Each was deliberate; don't silently "fix" them.
 
+- **Default drag: marquee box-select, not grab-pan** (2026-10-04,
+  `8322253`). The fun-audit recorded "no restored full box-select / no
+  gesture swap" as a dead end, and the standing instruction was not to
+  alter the default grab-pan. The shipped design reverses that: primary
+  (left) drag with no tool armed now creates a marquee selection box;
+  grab-pan remains on right-drag / middle-drag and WASD. Per the user's
+  2026-10-04 direction ("fix bugs only, leave design as-shipped") this
+  stays as-shipped — don't restore left-drag grab-pan without fresh
+  user direction.
+
 - **End screens: realistic terrestrial, not sci-fi** (`f0a3076`). The first
   illustrated end-screen set was sci-fi; the user rejected it outright —
   "These images are too sci-fi. Make them more realistic and terrestrial."

@@ -9,7 +9,8 @@ Save / load / resume (Phase 1, step 11). See docs/ARCHITECTURE.md §4.
   of the sim snapshot version (sim/snapshot.ts v6, accepting v5) — slot metadata can
   evolve without touching the sim. `SaveMetadata` is everything the load
   UI shows without reading the snapshot: slot id, name, savedAt (ISO),
-  tick, seed, AI difficulty, age, National Program, and the `cheated`
+  tick, seed, AI difficulty, opponent mode (Mode 1 classic vs Mode 2
+  Muse AI), age, National Program, and the `cheated`
   flag. `createSaveFile(session, slotId, name, savedAtIso)` deep-copies
   via `takeSnapshot` — the file never aliases live world state.
 - `store.ts` — `SaveStore` CRUD (`list`/`read`/`write`/`remove`) keyed by

@@ -176,7 +176,7 @@ export interface SessionOptions {
   /**
    * Opponent mode (Prompt 1 requirement):
    *  - 'classic': Mode 1 — deterministic Classic AI.
-   *  - 'muse': Mode 2 — adaptive Muse Engine director with dynamic
+   *  - 'muse': Mode 2 — a local Muse-persona commander with dynamic
    *    counter-squad composition, psychological feints, and reactive commentary.
    */
   opponentMode?: OpponentMode;
@@ -706,7 +706,7 @@ export function createSession(options: SessionOptions): GameSession {
       // Cadet (cap 4) gets 2 starters; citizen/commander get the full 6.
       const aiStarters = aiDifficulty === 'cadet' ? 2 : AI_MAX_UNITS[aiDifficulty];
       startingForces(queue, world, terrain, AI_PLAYER_ID, 'ai-setup', aiBase, aiStarters);
-      addAIPlayer(world, AI_PLAYER_ID, aiDifficulty, aiBase.x, aiBase.z);
+      addAIPlayer(world, AI_PLAYER_ID, aiDifficulty, aiBase.x, aiBase.z, options.opponentMode ?? 'classic');
     }
     // Scripted raids spawn for owner 1 through the command queue, which
     // validates manpower — fund the raiders even when no AI rival plays.

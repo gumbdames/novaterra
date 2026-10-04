@@ -473,6 +473,10 @@ async function showLoadGame(
         startGame(app, {
           seed: file.metadata.seed,
           aiDifficulty: file.metadata.aiDifficulty,
+          // Mode 2 (2026-10-04): the save's opponent mode is
+          // authoritative — without it a Mode 2 save would silently
+          // load as Classic AI. Pre-Mode-2 saves default to 'classic'.
+          opponentMode: file.metadata.opponentMode ?? 'classic',
           mapPreset: saveMapPreset(file, savedMission?.mapPreset),
           quality: loadSettings().quality,
           saveData: file,

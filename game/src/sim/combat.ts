@@ -1118,7 +1118,7 @@ export function createCombatSystem(t?: TerrainData): SimSystem {
             const bz = Math.min(Math.max(u.z + (dz / dd) * backOff, -m), m);
             const destDist2 = dist2(bx - u.destX, bz - u.destZ);
             if (u.state === 'idle' || destDist2 > 100) {
-              orderMoveTo(world, u, bx, bz);
+              orderMoveTo(world, u, bx, bz, u.attackMoving === true);
             }
           }
           // dist ~0: stacked on the target, no direction to back off; hold.
@@ -1134,7 +1134,7 @@ export function createCombatSystem(t?: TerrainData): SimSystem {
           const tz = stand ? stand.z : aimZ;
           const destDist2 = dist2(tx - u.destX, tz - u.destZ);
           if (u.state === 'idle' || destDist2 > 100) {
-            orderMoveTo(world, u, tx, tz);
+            orderMoveTo(world, u, tx, tz, u.attackMoving === true);
           }
         }
       }

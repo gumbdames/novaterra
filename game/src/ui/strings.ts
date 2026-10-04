@@ -153,9 +153,11 @@ export const STRINGS = {
     chooseOpponentMode: 'Opponent Engine',
     opponentModeClassic: 'Mode 1: Classic AI',
     opponentModeClassicBlurb: 'Conventional procedural doctrine, economy, and army composition.',
-    opponentModeMuse: 'Mode 2: Muse Engine',
-    opponentModeMuseBlurb: 'Play against Muse herself — an adaptive neural commander who analyzes your force composition and counters in real time.',
-    opponentModeNote: 'Mode 1 runs standard algorithmic AI. Mode 2 puts you up against Muse, who monitors your forces, taunts in combat, and deploys dynamic counter-doctrines.',
+    opponentModeMuse: 'Mode 2: Muse Persona',
+    // 2026-10-04: honest wording — this is a local heuristic commander
+    // with a Muse persona, not a neural network and not the real Muse.
+    opponentModeMuseBlurb: 'Play against a Muse persona — a local heuristic commander that profiles the forces it can see and adapts its composition to counter them.',
+    opponentModeNote: 'Mode 1 runs standard algorithmic AI. Mode 2 runs a local Muse-persona commander: it watches the forces it can see, taunts in combat, and deploys dynamic counter-doctrines.',
     start: 'Start game',
     back: 'Back',
     version: 'v0.1 Alpha',
@@ -365,9 +367,16 @@ export const STRINGS = {
     keys: [
       ['Left click', 'Select unit / building'],
       ['Shift + left click', 'Add / remove unit from selection'],
-      ['Left drag (no tool)', 'Pan the map'],
+      ['Left drag (no tool)', 'Box-select units'],
       ['Right click', 'Move / attack'],
-      ['S', 'Stop selected units'],
+      // 2026-10-04: S is camera-down now; Stop moved to H / Shift+S /
+      // Ctrl+S. A moved to X / Ctrl+A (select-all-military).
+      ['H (or Shift+S / Ctrl+S)', 'Stop selected units'],
+      ['X (or Ctrl+A)', 'Select all military units'],
+      ['T (or Alt+A)', 'Attack-move'],
+      ['Ctrl+1..9 / 1..9', 'Assign / recall control groups'],
+      ['Shift+1..9', 'Add group to selection'],
+      ['Double-click unit', 'Select all of that kind (visible, friendly)'],
       ['Space', 'Pause / resume'],
       ['Esc', 'Deselect / close'],
       ['W A S D / arrows', 'Move camera'],

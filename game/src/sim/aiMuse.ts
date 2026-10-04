@@ -15,16 +15,22 @@
  */
 
 /**
- * NOVATERRA — sim/aiMuse.ts — Mode 2: Muse Opponent Engine.
+ * NOVATERRA — sim/aiMuse.ts — Mode 2: Muse Persona opponent.
  *
- * Prompt 1 Requirement:
+ * A LOCAL, deterministic, rules-based commander with a Muse persona —
+ * no networking, no neural network, no external AI service. It profiles
+ * the forces it can see and picks counter-doctrines; the persona lines
+ * are canned dialogue, not a language model.
+ *
+ * Prompt 1 Requirement (original wording, kept for provenance):
  * "The game should be playable in 5 different difficulty levels. Each difficulty
  * level should have 2 modes where mode 1 is a regular game engine/AI and mode 2
  * is playing against you (Muse) - ie you control the game engine."
  *
- * Distinct Architecture of Muse Engine (Mode 2):
- *  1. Dynamic Opponent Profiling: Continuously monitors player unit compositions,
- *     radar visibility, and forward utility infrastructures.
+ * Distinct Architecture of the Muse Persona (Mode 2):
+ *  1. Dynamic Opponent Profiling: Continuously profiles the player unit
+ *     compositions it can see (sight-gated, like every other AI — no
+ *     maphack), plus visible forward utility infrastructure.
  *  2. Adaptive Counter-Composition: Adjusts production weights on the fly:
  *     - Anti-Armor focus if player relies heavily on tanks / APCs.
  *     - Air-Superiority & SAM focus if player relies on aircraft.
@@ -42,9 +48,9 @@ import type { World } from './world';
 import type { CommandQueue } from './commands';
 import type { TerrainData } from './terrain';
 import type { AIPlayerState } from './ai';
-import { canTrain, getVisibleEnemies } from './ai';
+import { canTrain, getVisibleEnemies, getVisibleEnemyBuildings } from './ai';
 import { UNIT_DEFS, type UnitKind } from './units';
-import { getPlayer } from './city';
+import { getPlayer, cellCenterWorld } from './city';
 import { getAgeState, AGE_PROGRESSION } from './ages';
 
 export interface PlayerForceProfile {
@@ -59,8 +65,11 @@ export interface PlayerForceProfile {
   primaryThreat: 'armor' | 'air' | 'infantry' | 'navy' | 'none';
 }
 
-/** Analyze known enemy forces (human player 0). */
-export function analyzePlayerForces(world: World, humanOwner: number): PlayerForceProfile {
+/** Analyze known enemy forces (human player). Fair-AI contract: only
+ *  counts what the AI owner can actually see — visible enemies via
+ *  getVisibleEnemies() and visible enemy buildings via
+ *  getVisibleEnemyBuildings(), never a raw whole-map scan. */
+export function analyzePlayerForces(world: World, aiOwner: number, humanOwner: number): PlayerForceProfile {
   const profile: PlayerForceProfile = {
     totalUnits: 0,
     armorCount: 0,
@@ -73,7 +82,7 @@ export function analyzePlayerForces(world: World, humanOwner: number): PlayerFor
     primaryThreat: 'none',
   };
 
-  for (const u of world.units) {
+  for (const u of getVisibleEnemies(world, aiOwner)) {
     if (u.owner !== humanOwner || u.hp <= 0) continue;
     profile.totalUnits++;
     const def = UNIT_DEFS[u.kind as UnitKind];
@@ -94,7 +103,7 @@ export function analyzePlayerForces(world: World, humanOwner: number): PlayerFor
     }
   }
 
-  for (const b of world.city.buildings) {
+  for (const b of getVisibleEnemyBuildings(world, aiOwner)) {
     if (b.owner !== humanOwner || (b.hp ?? 0) <= 0) continue;
     if (b.kind.includes('power') || b.kind.includes('solar') || b.kind.includes('wind') || b.kind.includes('reactor')) {
       profile.powerPlants++;
@@ -160,7 +169,7 @@ export function thinkMuse(
   _terrain?: TerrainData,
 ): void {
   const humanOwner = 0;
-  const profile = analyzePlayerForces(world, humanOwner);
+  const profile = analyzePlayerForces(world, ai.owner, humanOwner);
   const doctrine = determineMuseDoctrine(profile);
   const roster = DOCTRINE_ROSTERS[doctrine] ?? DOCTRINE_ROSTERS['adaptive-balanced'];
 
@@ -210,8 +219,9 @@ export function thinkMuse(
       }
     }
   } else if (doctrine === 'infrastructure-raid' && freeUnits.length >= 3) {
-    // Raid player's power/water facilities
-    const targetBuilding = world.city.buildings.find(
+    // Raid player's power/water facilities — fair-AI contract: only
+    // targets the AI can actually see (no whole-map scan).
+    const targetBuilding = getVisibleEnemyBuildings(world, ai.owner).find(
       (b) => b.owner === humanOwner && (b.hp ?? 0) > 0 && (b.kind.includes('power') || b.kind.includes('water')),
     );
     if (targetBuilding) {
@@ -260,7 +270,9 @@ export function thinkMuse(
 function findSpawnSpot(world: World, owner: number): { x: number; z: number } | null {
   const anchorBuilding = world.city.buildings.find((b) => b.owner === owner && (b.hp ?? 0) > 0);
   if (anchorBuilding) {
-    return { x: anchorBuilding.cx * 16 + 16, z: anchorBuilding.cz * 16 + 16 };
+    // Canonical cell→world mapping (city.ts): cellCenterWorld, not a
+    // hand-rolled scale (CELL_WORLD_SIZE = 2, map is 512 units wide).
+    return { x: cellCenterWorld(anchorBuilding.cx) + 2, z: cellCenterWorld(anchorBuilding.cz) + 2 };
   }
   const anchorUnit = world.units.find((u) => u.owner === owner && u.hp > 0);
   if (anchorUnit) {

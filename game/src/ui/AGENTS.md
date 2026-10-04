@@ -445,7 +445,8 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   controller (game.ts) feeds explosion events into the trauma once per
   tick and offsets the camera in its `renderFrame` closure.
   Roadmap B4 (2026-10-02): `militaryUnitIds(units, owner, isMilitary)` —
-  the pure core of the select-all-military hotkey (A), returning the ids
+  the pure core of the select-all-military hotkey (X / Ctrl+A — plain A
+  was remapped 2026-10-04), returning the ids
   of every living unit of `owner` whose kind is military, in input order.
   The game controller (game.ts) feeds it the world's units + UNIT_DEFS,
   replaces the selection, and toasts `STRINGS.selection.noMilitaryUnits`
@@ -754,7 +755,8 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   buildings when both are under the cursor. Never order an impossible attack.
 - Rejected commands toast loudly (`CommandRejectedError`); nothing fails
   silently.
-- `S` is Stop, never camera-back. Camera back is ArrowDown.
+- `H` (or Shift+S / Ctrl+S) is Stop, never camera-back — plain `S`
+  stays camera-down (remapped 2026-10-04; `S` was Stop before).
 - Starting forces live in `session.ts`, not in the controller.
 
 ## Adding a HUD panel (AD11 UI digest contract)

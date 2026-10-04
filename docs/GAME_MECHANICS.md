@@ -409,8 +409,18 @@ seams the AI reads, so the rival genuinely plays its doctrine.
 ## Keyboard shortcuts
 
 - **Space** — pause / resume.
-- **S** — stop the selected units.
-- **A** — select every military unit you own, wherever they are.
+- **H** (or **Shift+S** / **Ctrl+S**) — stop the selected units
+  (plain `S` is camera-down; remapped 2026-10-04).
+- **X** (or **Ctrl+A**) — select every military unit you own, wherever
+  they are (remapped 2026-10-04; plain `A` before).
+- **T** (or **Alt+A**) — attack-move with the selected units.
+- **Ctrl+1..9** — assign a control group; **1..9** — recall it;
+  **Shift+1..9** — add the group to the current selection; double-tap
+  **1..9** — center the camera on the group.
+- **WASD** / arrows — move the camera; **Q/E** — rotate.
+- Left-drag — marquee box-select (2026-10-04); right-drag / middle-drag
+  — grab-pan.
+- Double-click a unit — select every visible friendly unit of that kind.
 - **G** — toggle the terrain grid.
 - **Esc** — close menus, cancel placement, clear the selection.
 - **\`** — the cheat console (sandbox games).

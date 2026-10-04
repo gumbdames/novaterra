@@ -423,6 +423,12 @@ export interface AIPlayerState {
   owner: number;
   /** Difficulty level. */
   difficulty: AIDifficulty;
+  /**
+   * Opponent mode (Mode 1 classic AI vs Mode 2 Muse AI, 2026-10-04):
+   * behavior-affecting (selects the think function) ⇒ snapshotted +
+   * digested like difficulty (AD9).
+   */
+  opponentMode: OpponentMode;
   /** Where new units are spawned. */
   baseX: number;
   baseZ: number;
@@ -607,6 +613,7 @@ export function addAIPlayer(
   difficulty: AIDifficulty,
   baseX: number,
   baseZ: number,
+  opponentMode: OpponentMode = 'classic',
 ): void {
   // The personality is drawn from the sim RNG here at registration
   // (setup time, never mid-tick): same seed ⇒ same personality, and the
@@ -615,6 +622,7 @@ export function addAIPlayer(
   world.ai.players.push({
     owner,
     difficulty,
+    opponentMode,
     baseX,
     baseZ,
     nextThinkTick: world.tick + AI_THINK_TICKS[difficulty],
@@ -5483,6 +5491,10 @@ export function encodeAIState(ai: AIState): unknown {
     players: ai.players.map((p) => ({
       owner: p.owner,
       difficulty: p.difficulty,
+      // Mode 2 (2026-10-04): behavior-affecting ⇒ snapshotted.
+      // Missing (pre-Mode-2 snapshots) decodes to 'classic' — no
+      // version bump (AD9).
+      opponentMode: p.opponentMode ?? 'classic',
       baseX: p.baseX,
       baseZ: p.baseZ,
       nextThinkTick: p.nextThinkTick,
@@ -5564,6 +5576,9 @@ export function decodeAIState(data: unknown): AIState {
     players: {
       owner: number;
       difficulty: AIDifficulty;
+      // Mode 2 (2026-10-04): pre-Mode-2 snapshots carry no mode —
+      // decodes to 'classic' (AD9).
+      opponentMode?: OpponentMode;
       baseX: number;
       baseZ: number;
       nextThinkTick: number;
@@ -5620,6 +5635,9 @@ export function decodeAIState(data: unknown): AIState {
     players: (d.players ?? []).map((p) => ({
       owner: p.owner,
       difficulty: p.difficulty,
+      // Mode 2 (2026-10-04): missing decodes to 'classic' — no version
+      // bump (AD9).
+      opponentMode: p.opponentMode ?? 'classic',
       baseX: p.baseX,
       baseZ: p.baseZ,
       nextThinkTick: p.nextThinkTick,

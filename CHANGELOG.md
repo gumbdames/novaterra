@@ -3,6 +3,29 @@
 All notable changes to the 0.1 Alpha. Commit hashes are the local `main`
 history (`gumbdames/novaterra`).
 
+## 2026-10-04 — RTS controls, Mode 2 Muse Persona, art, audio + bug-fix pass
+
+- **RTS controls** (`8322253`, `781773d`): multi-cell structure click
+  selection, WASD camera, marquee box-select on left-drag (reverses the
+  fun-audit "no gesture swap" dead end — recorded in `docs/REVERSALS.md`
+  §7), Stop on `H` / `Shift+S` / `Ctrl+S`, select-all-military on `X` /
+  `Ctrl+A`, control groups (`Ctrl+1..9`, `1..9`, `Shift+1..9` union,
+  double-tap camera focus), double-click type selection, attack-move
+  (`T` / `Alt+A`), command theatres (sim support; no player UI yet).
+- **Mode 2: Muse Persona** (`c46a7ee`): local deterministic heuristic
+  opponent with adaptive counter-doctrines and persona dialogue. Honest
+  wording throughout — it is NOT a neural network and NOT the real Muse.
+- **Art** (`f5d5a3d`): menu hero, 8 mission briefings, 8 skirmish cards,
+  Muse portrait — all wired and lazy-loaded.
+- **Audio** (`a0c6415`): layered weapon concussion, tactical radio chatter.
+- **Bug-fix pass** (2026-10-04): attack-move keeps its destination
+  through chase/back-off; Mode 2 saves load as Mode 2 (`opponentMode`
+  in save metadata + `AIPlayerState`, snapshotted + digested, AD9);
+  Mode 2 AI sight-gated (fair-AI contract, no maphack); digest gaps
+  closed (theatres, attack-move state); `Shift+1..9` works via `e.code`;
+  `Ctrl+S` no longer opens the browser Save dialog; right-click during
+  a marquee cancels it; docs corrected (bindings, five ages, key list).
+
 ## 2026-10-02 — Fun audit (C6/C7/C1 + Phases 1–2, determinism, Phase 4 Tiers 1–4)
 
 User-approved plan ("build it all", `docs/research/fun-audit-2026-10-02.md`):

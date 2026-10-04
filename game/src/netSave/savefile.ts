@@ -55,7 +55,7 @@
 import type { GameSession } from '../ui/session';
 import { takeSnapshot, SNAPSHOT_VERSION, OLDEST_SUPPORTED_SNAPSHOT_VERSION, type Snapshot } from '../sim/snapshot';
 import { getAgeState } from '../sim/ages';
-import type { AIDifficulty } from '../sim/ai';
+import type { AIDifficulty, OpponentMode } from '../sim/ai';
 
 /** SaveFile envelope version. Bump on a BREAKING SaveMetadata shape change. */
 export const SAVEFILE_VERSION = 1;
@@ -85,6 +85,13 @@ export interface SaveMetadata {
   seed: number;
   /** Classic AI rival difficulty. */
   aiDifficulty: AIDifficulty;
+  /**
+   * Opponent mode (Mode 1 classic AI vs Mode 2 Muse AI, 2026-10-04).
+   * Optional: saves written before Mode 2 lack it — loaders default to
+   * 'classic'. Without this, loading a Mode 2 save would silently start
+   * a Classic AI opponent.
+   */
+  opponentMode?: OpponentMode;
   /** Current age + National Program (null program in Foundation). */
   age: string;
   program: string | null;
@@ -141,6 +148,9 @@ export function createSaveFile(
       mapPreset: session.mapPreset,
       campaignMissionId: session.campaignMissionId,
       cheated: session.cheated,
+      // Mode 2 (2026-10-04): the opponent mode rides in metadata so
+      // the load path rebuilds the right AI think function.
+      opponentMode: session.opponentMode,
     },
     snapshot: takeSnapshot(world),
   };

@@ -48,8 +48,11 @@ describe('aiMuse — Mode 2: Playing Against Muse', () => {
       makeUnit(3, 'fighter', 0),
       makeUnit(4, 'rifles', 0),
     );
+    // AI (owner 1) scout co-located so the human forces are visible —
+    // analyzePlayerForces only counts what the AI owner can see.
+    world.units.push(makeUnit(5, 'reconTeam', 1));
 
-    const analysis = analyzePlayerForces(world, 0);
+    const analysis = analyzePlayerForces(world, 1, 0);
     expect(analysis.totalUnits).toBe(4);
     expect(analysis.armorCount).toBe(2);
     expect(analysis.airCount).toBe(1);
@@ -66,8 +69,9 @@ describe('aiMuse — Mode 2: Playing Against Muse', () => {
       makeUnit(1, 'tank', 0),
       makeUnit(2, 'tank', 0),
       makeUnit(3, 'tank', 0),
+      makeUnit(9, 'reconTeam', 1),
     );
-    let analysis = analyzePlayerForces(world, 0);
+    let analysis = analyzePlayerForces(world, 1, 0);
     expect(determineMuseDoctrine(analysis)).toBe('anti-armor');
 
     // Heavy air threat -> air-superiority doctrine
@@ -75,16 +79,18 @@ describe('aiMuse — Mode 2: Playing Against Muse', () => {
       makeUnit(1, 'fighter', 0),
       makeUnit(2, 'bomber', 0),
       makeUnit(3, 'fighter', 0),
+      makeUnit(9, 'reconTeam', 1),
     ];
-    analysis = analyzePlayerForces(world, 0);
+    analysis = analyzePlayerForces(world, 1, 0);
     expect(determineMuseDoctrine(analysis)).toBe('air-superiority');
 
     // Heavy naval threat -> naval-strike doctrine
     world.units = [
       makeUnit(1, 'destroyer', 0),
       makeUnit(2, 'submarine', 0),
+      makeUnit(9, 'reconTeam', 1),
     ];
-    analysis = analyzePlayerForces(world, 0);
+    analysis = analyzePlayerForces(world, 1, 0);
     expect(determineMuseDoctrine(analysis)).toBe('naval-strike');
   });
 

@@ -20,7 +20,7 @@ victory condition — just you, your cities, and the map.
 
 > The world behind this menu is alive: a scripted demo city builds
 > itself there using the same rules you play by — zones, roads, power
-> and water, an army, the four ages, and a storm strike at the end.
+> and water, an army, the five ages, and a storm strike at the end.
 > It replays the same movie every time, and starting any game discards
 > it completely.
 
@@ -33,7 +33,9 @@ the debrief explains what happened.
 more water means more naval fighting) → pick your **Opponent Engine**:
 
 - **Mode 1: Classic AI** — Conventional procedural doctrine, economy, and army composition.
-- **Mode 2: Muse Engine** — Play directly against Muse herself: an adaptive opponent commander who analyzes your force composition in real time, adapts counter-doctrines, executes asymmetric infrastructure raids, and taunts you over tactical comms!
+- **Mode 2: Muse Persona** — Play against a Muse persona: a local heuristic
+  commander that profiles the forces it can see, adapts counter-doctrines,
+  executes asymmetric infrastructure raids, and taunts you over tactical comms!
 
 Then pick your **difficulty**:
 
@@ -178,20 +180,19 @@ Your city and military rely on three main economic resources:
 
 ### Advancing through the ages
 
-Novaterra features four technology ages:
+Novaterra features five technology ages:
 
-1. **Foundation Age:** Basic civil infrastructure (wind, water towers, light
-   roads), infantry, and basic light armor.
-2. **Expansion Age:** Heavy industry, coal/gas power plants, water treatment,
-   main battle tanks, attack helicopters, and regional airfields.
-3. **Modern Age (2026):** Nuclear power, advanced missile plants, jet fighters,
-   missile cruisers, aircraft carriers, and satellite communications.
-4. **Future Age:** Fusion energy, orbital defense, laser air defense, stealth
-   bombers, and superweapons (weather storm generators, orbital kinetic strikes).
+1. **Foundation:** basic civil infrastructure, infantry, and light armor.
+2. **Connectivity:** regional links, signals grid, improved logistics.
+3. **Industry:** heavy industry, main battle tanks, attack helicopters.
+4. **Information:** advanced sensors, jet fighters, missile cruisers,
+   satellite communications.
+5. **Ascendance:** the highest tier — advanced units, superweapons, and
+   doctrine upgrades.
 
 To advance to the next age, meet the population, funds, and research
-requirements displayed in the **Management → Ages** panel, then click **Advance Age**.
-Advancing unlocks higher-tier buildings, advanced units, and doctrine upgrades.
+requirements shown on the **age button in the top bar**, then pick a
+National Program to advance.
 
 ## Fuel and ammo (logistics)
 

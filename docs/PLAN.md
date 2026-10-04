@@ -188,8 +188,8 @@ no-military mode. Roster: 103 units / 100 buildings / 21 upgrades.
 - ✅ **Phase 1 — Critical Bugfixes, Input Repairs & Doc Hygiene (COMPLETE 2026-10-04)**:
   - Multi-cell building selection hit-test bug resolved (`game/src/ui/game.ts:2991` now uses `buildingAtCell` and `cellIndex` over full footprint; all 9 cells of a 3×3 hospital or 4×4 power plant are selectable).
   - Camera WASD navigation restored: dedicated backward panning on `S`, left panning on `A`, Army Selection remapped to `Ctrl+A` / `X`, Unit Stop on `H` / `Shift+S` / `Ctrl+S`.
-  - Marquee unit box-selection restored: primary button left-drag creates translucent selection rectangle and selects all units inside (`pressDragKind` returns `'select'`). Right-drag grab-pans the map; Shift+Middle-drag also grab-pans.
-  - Performance budget calibrated to 8ms on 200-unit test (`perf.budgets.test.ts`) preventing ARM64 CI flakes while preserving the 33.3ms budget guarantee.
+  - Marquee unit box-selection restored: primary button left-drag creates translucent selection rectangle and selects all units inside (`pressDragKind` returns `'select'`). Right-drag grab-pans the map; Shift+Middle-drag also grab-pans. NOTE (2026-10-04): this reverses the fun-audit "no restored full box-select / no gesture swap" dead end — the shipped design is marquee-on-left-drag by default; see `docs/REVERSALS.md` §7.
+  - Performance budget calibrated to 16ms on 200-unit test (`perf.budgets.test.ts`) preventing ARM64 CI flakes while preserving the 33.3ms budget guarantee.
   - Documentation updated: filled empty `## Money and ages` in `docs/HOW_TO_PLAY.md`, synced unit counts to 103 across `MODDING.md`, `ARCHITECTURE.md`, `I18N.md`, and `package.json`.
 - ✅ **Phase 2 — Mode 2: Playing Against Muse AI (COMPLETE 2026-10-04)**:
   - Implemented the Muse AI strategic engine in `game/src/sim/aiMuse.ts` featuring dynamic doctrine analysis, force composition counters, and persona dialogue lines.
@@ -212,10 +212,30 @@ no-military mode. Roster: 103 units / 100 buildings / 21 upgrades.
 - ✅ **Phase 6 — Code Architecture & Modular Invariants (COMPLETE 2026-10-04)**:
   - Clean TypeScript invariants: zero `any`, zero `!`, strict null checks, zero unapproved import cycles.
   - Bit-identical snapshot serialization for all new unit order states.
-- ✅ **Phase 7 — Verification & Release Deployment (COMPLETE 2026-10-04)**:
-  - Full test suite verified green (>3,080 unit & headless sim tests).
+- ✅ **Phase 7 — Verification & Release Deployment (COMPLETE 2026-10-04)**:  - Full test suite verified green (>3,080 unit & headless sim tests).
   - Production build green with zero warnings.
   - Deployed to GitHub Pages (`gh-pages`).
+- ✅ **Phase 8 — Bug-Fix Pass on the 2026-10-04 Work (COMPLETE 2026-10-04)**:
+  - Attack-move no longer loses its destination when units chase or back
+    off (`combat.ts` threads `preserveAttackMove` through the chase and
+    back-off re-issues).
+  - Mode 2 saves load as Mode 2: `opponentMode` is saved in the save
+    metadata, carried on `AIPlayerState` (snapshotted), and covered by
+    the digest (AD9-additive, `?? 'classic'` — no version bump).
+  - Mode 2 AI honors the fair-AI contract: force profiling and
+    infrastructure-raid targeting only see what the AI can see
+    (`getVisibleEnemies` / `getVisibleEnemyBuildings`); spawn math uses
+    the canonical `cellCenterWorld`.
+  - Digest gaps closed: general theatres and per-unit attack-move state
+    are digest-covered (AD9).
+  - Input: `Shift+1..9` control-group union works (uses `e.code`);
+    `Ctrl+S` no longer opens the browser Save dialog; right-click during
+    an in-flight marquee cancels it instead of issuing a stray order.
+  - Honest Mode 2 wording: "neural commander" removed everywhere — it is
+    a local heuristic commander with a Muse persona, not a neural network.
+  - Docs corrected: key bindings, five ages, settings key list, theatre
+    claim qualified (sim support only, no player UI yet), `REVERSALS.md`
+    §7 records the marquee-as-default decision.
 
 ## Decisions (resolved with user 2026-09-28)
 

@@ -21,10 +21,13 @@
  *  - Own one skirmish session: renderer, daylight scene (terrain + water +
  *    lights), camera controller, entity renderer, HUD, pause menu, advisor
  *    refresh, and the fixed-timestep loop (`driver.step` + render).
- *  - Input: left-click select, left-drag grab-pan (no tool armed),
- *    right-click context orders (move / attack), S stop, Space pause,
- *    Esc deselect/cancel, WASD+arrows / edge pan, wheel zoom,
- *    Q/E rotate, middle-drag orbit (yaw + pitch).
+ *  - Input: left-click select, left-drag marquee box-select (no tool
+ *    armed), right-click context orders (move / attack), H (or
+ *    Shift+S / Ctrl+S) stop, X (or Ctrl+A) select-all-military, T (or
+ *    Alt+A) attack-move, Ctrl+1..9 / 1..9 control groups, Space pause,
+ *    Esc deselect/cancel, WASD+arrows / edge pan, right-drag (or
+ *    middle-drag) grab-pan, wheel zoom, Q/E rotate, middle-drag orbit
+ *    (yaw + pitch).
  *  - Placement modes: train-unit (click map), road (drag cells), zone
  *    (drag rect), building (click cell), demolish (click cell).
  *  - Every player intent becomes a sim command via ui/orders.ts builders
@@ -3677,6 +3680,14 @@ class GameController {
         if (!hadPan) {
           if (this.placement) {
             this.cancelPlacement();
+          } else if (this.dragStart !== null) {
+            // Right-click during an in-flight left-drag marquee cancels
+            // the marquee (RTS convention) instead of issuing a stray
+            // context order to the current selection (2026-10-04).
+            this.dragStart = null;
+            this.leftDragKind = null;
+            this.dragRect?.remove();
+            this.dragRect = null;
           } else {
             const ndc = this.toNDC(e);
             const p = this.groundPoint(ndc.x, ndc.y);
@@ -3824,6 +3835,8 @@ class GameController {
       }
       // Unit Stop: H, or Shift+S / Ctrl+S (leaves plain S for camera downward panning).
       if ((k === 'h' || (k === 's' && (e.ctrlKey || e.shiftKey))) && !e.repeat) {
+        // Ctrl+S must not open the browser's Save Page dialog (2026-10-04).
+        if (e.ctrlKey || e.metaKey) e.preventDefault();
         this.issueStop();
         return;
       }
@@ -3841,9 +3854,13 @@ class GameController {
         this.selectAllMilitary();
         return;
       }
-      // Control Groups: 1..9 (Ctrl+1..9 assigns group, 1..9 recalls, double-tap 1..9 centers camera)
-      if (k >= '1' && k <= '9' && !isTypingTarget(e.target) && !e.repeat) {
-        const groupNum = parseInt(k, 10);
+      // Control Groups: 1..9 (Ctrl+1..9 assigns group, 1..9 recalls, Shift+1..9 union, double-tap 1..9 centers camera)
+      // Shifted number keys produce '!', '@', ... via e.key — use e.code
+      // (Digit1..Digit9) so Shift+1..9 reaches the union branch (2026-10-04).
+      const digitMatch = /^Digit([1-9])$/.exec(e.code);
+      const groupKey = digitMatch?.[1] ?? (k >= '1' && k <= '9' ? k : null);
+      if (groupKey !== null && !isTypingTarget(e.target) && !e.repeat) {
+        const groupNum = parseInt(groupKey, 10);
         if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
           if (this.selection.unitIds.length > 0) {

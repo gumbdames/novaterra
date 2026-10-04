@@ -318,6 +318,12 @@ function pendingEnvoyDigest(d: World['diplomacy'] | undefined): string {
     // (0 = unassigned, leg absent = no route). Behavior-affecting ⇒
     // digest-covered.
     out += `${u.seaRouteId ?? 0},${u.seaRouteLeg ?? '-'},`;
+    // Attack-move state (2026-10-04): the attack-move destination and
+    // flag steer chase/re-acquisition after a kill ⇒ digest-covered
+    // (PLAN §11). Absent = no attack-move (AD9).
+    out += `${u.attackMoving === true ? 1 : 0},`;
+    out += `${u.attackMoveDestX === undefined ? '-' : canonicalNumber(u.attackMoveDestX)},`;
+    out += `${u.attackMoveDestZ === undefined ? '-' : canonicalNumber(u.attackMoveDestZ)},`;
     // Phase 4 (S7): the ferry's shipping lane (endpoints via
     // canonicalNumber, leg as a/b; absent = no route). Behavior-
     // affecting ⇒ digest-covered.
@@ -366,7 +372,10 @@ function pendingEnvoyDigest(d: World['diplomacy'] | undefined): string {
   // AI: players in registration order; builtCounts keys sorted.
   out += `|ai=${world.ai.players.length}|`;
   for (const p of world.ai.players) {
-    out += `a${p.owner},${p.difficulty},${canonicalNumber(p.baseX)},${canonicalNumber(p.baseZ)},`;
+    // Mode 2 (2026-10-04): opponentMode is behavior-affecting (selects
+    // the think function) ⇒ digest-covered. `?? 'classic'` keeps
+    // pre-Mode-2 fixture worlds digesting identically (AD9).
+    out += `a${p.owner},${p.difficulty},${p.opponentMode ?? 'classic'},${canonicalNumber(p.baseX)},${canonicalNumber(p.baseZ)},`;
     out += `${p.nextThinkTick},`;
     out += p.forwardBase ? `${canonicalNumber(p.forwardBase.x)},${canonicalNumber(p.forwardBase.z)},` : '-,';
     out += `${p.scoutIndex},${p.superweapons.aegisReadyTick},${p.superweapons.stormReadyTick},`;
@@ -449,7 +458,10 @@ function pendingEnvoyDigest(d: World['diplomacy'] | undefined): string {
     out += `m${m.owner}:${m.policy}:${m.buildPolicy};`;
   }
   for (const g of world.delegation.generals) {
-    out += `g${g.owner}:${g.stance}:${g.unitIds.join('.')};`;
+    // Theatre (2026-10-04): behavior-affecting (stance application
+    // filters by theatre) ⇒ digest-covered. Absent = the whole map
+    // ('-' keeps pre-theatre worlds digesting identically, AD9).
+    out += `g${g.owner}:${g.stance}:${g.theatre ?? '-'}:${g.unitIds.join('.')};`;
   }
   out += '|';
   // Superweapons: slots per player, pending strikes, live fx.

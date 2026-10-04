@@ -11,9 +11,11 @@ land, sea and air — or play a fully peaceful game with war disabled.
 - **Play:** https://gumbdames.github.io/novaterra/ (deploys from `main`)
 - **Status:** Final comprehensive review and release polish complete. Full RTS
   command suite (Control Groups 1–9 with double-tap camera focus, double-click
-  type selection on screen, Attack-Move advance mode, and Theatre Commands for
-  Generals in Cabinet: Northern, Southern, Naval, Central Command). Dual AI Modes
-  (Mode 1 Classic Engine vs Mode 2 Muse Strategic Persona Engine with live tactical
+  type selection on screen, Attack-Move advance mode, and Generals in Cabinet
+  with theatre assignments — Northern, Southern, Naval, Central — supported
+  in the sim; player UI for assigning theatres is not in 0.1 Alpha yet).
+  Dual AI Modes
+  (Mode 1 Classic Engine vs Mode 2 Muse Persona with live tactical
   taunts, commentary, and dialogue across all 5 difficulties). AAA visual polish
   (cinematic war room holographic menu hero backdrop, 8 mission briefing tactical
   reconnaissance maps, 8 skirmish topographic radar preview cards, glowing Muse AI
