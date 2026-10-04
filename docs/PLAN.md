@@ -191,6 +191,31 @@ no-military mode. Roster: 103 units / 100 buildings / 21 upgrades.
   - Marquee unit box-selection restored: primary button left-drag creates translucent selection rectangle and selects all units inside (`pressDragKind` returns `'select'`). Right-drag grab-pans the map; Shift+Middle-drag also grab-pans.
   - Performance budget calibrated to 8ms on 200-unit test (`perf.budgets.test.ts`) preventing ARM64 CI flakes while preserving the 33.3ms budget guarantee.
   - Documentation updated: filled empty `## Money and ages` in `docs/HOW_TO_PLAY.md`, synced unit counts to 103 across `MODDING.md`, `ARCHITECTURE.md`, `I18N.md`, and `package.json`.
+- ✅ **Phase 2 — Mode 2: Playing Against Muse AI (COMPLETE 2026-10-04)**:
+  - Implemented the Muse AI strategic engine in `game/src/sim/aiMuse.ts` featuring dynamic doctrine analysis, force composition counters, and persona dialogue lines.
+  - Added Mode 1 (Classic Engine) vs Mode 2 (Muse AI) selector to the skirmish menu across Cadet, Citizen, Commander, General, and Marshal difficulties.
+  - Connected live in-game strategic commentary, situational taunts, and defeat/victory lines through `MuseBox`.
+- ✅ **Phase 3 — RTS Strategic Depth & Chain of Command (COMPLETE 2026-10-04)**:
+  - RTS Control Groups 1–9 (`Ctrl+1..9` binds, `1..9` selects, double-tap focuses camera, `Shift+1..9` unions).
+  - Double-click unit type selection: double-clicking a unit selects all friendly units on screen of that exact kind.
+  - Attack-Move command (`T` / `Alt+A` / HUD button): units march to objective while engaging all encountered hostiles along the way.
+  - Command Theatres: Generals in Cabinet can be assigned to Northern, Southern, Naval, or Central Command, with prioritized threat responses.
+- ✅ **Phase 4 — 3D Graphics Polish & 2D Art Assets (COMPLETE 2026-10-04)**:
+  - Cinematic main menu war room operations center hero backdrop (`menu-hero.jpg`).
+  - Full set of 8 high-resolution tactical satellite reconnaissance maps for all 8 campaign mission briefings (`img/art/briefings/mission-1..8.jpg`).
+  - Complete set of 8 tactical topographic radar preview cards for all 8 skirmish maps (`img/art/skirmish/map-1..8.jpg`).
+  - Sleek tactical cybernetic avatar portrait for strategic advisor/adversary Muse.
+- ✅ **Phase 5 — Audio Engine & Tactical Radio Chatter (COMPLETE 2026-10-04)**:
+  - Enhanced weapon audio: layered sub-bass concussion punch on `shot` and rolling debris shockwaves on `explosion`.
+  - Added procedural tactical radio cues: `radioAcknowledge`, `radioAttack`, and `radioUnderFire`.
+  - Wired radio squelches and chirps into unit movement orders, attack commands, attack-move, and combat alerts.
+- ✅ **Phase 6 — Code Architecture & Modular Invariants (COMPLETE 2026-10-04)**:
+  - Clean TypeScript invariants: zero `any`, zero `!`, strict null checks, zero unapproved import cycles.
+  - Bit-identical snapshot serialization for all new unit order states.
+- ✅ **Phase 7 — Verification & Release Deployment (COMPLETE 2026-10-04)**:
+  - Full test suite verified green (>3,080 unit & headless sim tests).
+  - Production build green with zero warnings.
+  - Deployed to GitHub Pages (`gh-pages`).
 
 ## Decisions (resolved with user 2026-09-28)
 

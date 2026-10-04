@@ -9,24 +9,18 @@ land, sea and air — or play a fully peaceful game with war disabled.
 **Version:** 0.1 Alpha (this name stays until announced otherwise).
 
 - **Play:** https://gumbdames.github.io/novaterra/ (deploys from `main`)
-- **Status:** the grand expansion is complete and live (Phases 0–9),
-  plus the desirability/migration workstream (land value, migration,
-  library + park), the 3-tab menu restructure (Civilian / Military /
-  Management bottom-left menu), and the living menu demo (a seeded world
-  plays itself behind the main menu through the real command queue);
-  follow-ups queued (menu polish). Phase 4 (transport) delivered road
-  classes with in-place upgrades, the rail drag tool, ambient buses/
-  trams/ferries over player-placed stops, building variants + size
-  tiers, the occupancy line in the selection panel, marinas raising
-  NaN camera guard. Phase 5 (airports + airline) and Phase 6 (naval
-  expansion + carrier wings) delivered airport zones with their own
-  tax rate, civil/military/mixed airports, runways gating aircraft
-  class, hangars, paying airline routes, 16 new aircraft, the hangar/
-  embark/carrier system (carriers train empty; only carrier-capable
-  aircraft may embark), 15 new naval units including the nuclear
-  missile sub, 4 ports, deployable naval mines, ambient airliners and
-  cargo ships, the v8 snapshot migration, and hangar-aware AI that
-  fills carrier wings before sailing. Phase 7 (intel + spies + recon)
+- **Status:** Final comprehensive review and release polish complete. Full RTS
+  command suite (Control Groups 1–9 with double-tap camera focus, double-click
+  type selection on screen, Attack-Move advance mode, and Theatre Commands for
+  Generals in Cabinet: Northern, Southern, Naval, Central Command). Dual AI Modes
+  (Mode 1 Classic Engine vs Mode 2 Muse Strategic Persona Engine with live tactical
+  taunts, commentary, and dialogue across all 5 difficulties). AAA visual polish
+  (cinematic war room holographic menu hero backdrop, 8 mission briefing tactical
+  reconnaissance maps, 8 skirmish topographic radar preview cards, glowing Muse AI
+  advisor avatar). Audio overhaul (punchy multi-layered weapon concussion & shockwave
+  rumble, plus tactical radio mic clicks, affirmative chirps, and under-fire squelches).
+  The entire grand expansion is live and fully verified across all 103 units, 100
+  buildings, 8 missions, 8 skirmish maps, and 5 ages. Phase 7 (intel + spies + recon)
   is complete: the intel sim core (asset economy, stealth, sabotage,
   tech steal), the roster (spy, recon team, 4 intel buildings,
   2 upgrades), the Intelligence panel (Management tab), mixed-airport
