@@ -62,8 +62,9 @@ import {
   // queue runs, so the ghost color matches the real click verdict.
   validatePlacement,
 } from '../sim/city';
-import type { AIDifficulty } from '../sim/ai';
+import type { AIDifficulty, OpponentMode } from '../sim/ai';
 import { getVisibleEnemies, getVisibleEnemyBuildings } from '../sim/ai';
+import { getMuseOpponentDialogue } from '../sim/aiMuse';
 import { computeVisibleCells, FOG_UPDATE_EVERY_TICKS } from '../sim/fog';
 import { FogShroud } from '../render/fog';
 import { CommandRejectedError } from '../sim/commands';
@@ -336,6 +337,8 @@ export interface GameOptions {
    * 'republic'.
    */
   doctrine?: DoctrineId;
+  /** Mode 1 (classic AI) vs Mode 2 (playing against Muse). Defaults to 'classic'. */
+  opponentMode?: OpponentMode;
 }
 
 /** Placement modes entered from the HUD train/build panels. */
@@ -562,6 +565,7 @@ export async function startGame(
     // Fun-audit D1 (2026-10-02): the setup's doctrine picker. Restored
     // saves carry the snapshot's own doctrines.
     doctrine: opts.doctrine,
+    opponentMode: opts.opponentMode,
   });
   // A loaded game resumes exactly where it was saved — including its
   // cheated marker, which is honest metadata, not sim state.
@@ -1044,6 +1048,9 @@ class GameController {
   private readonly missionDebrief: MissionDebrief | null;
   private lastMissionPoll = 0;
   private lastMusePoll = 0;
+  /** Mode 2 (Muse Opponent): dialogue state tracking. */
+  private museOpponentIntroduced = false;
+  private museLastTauntTick = 0;
   /**
    * Fun-audit A1 (2026-10-02): the last age we toasted for. The old
    * code toasted "Age advanced: Connectivity." the moment the advance
@@ -1475,7 +1482,7 @@ class GameController {
               frequency: museFrequency,
               say: (text) => this.museBox?.say(text),
             });
-      this.museBox = this.muse !== null ? new MuseBox(container) : null;
+      this.museBox = (this.muse !== null || session.opponentMode === 'muse') ? new MuseBox(container) : null;
       this.museBox?.show();
       this.missionPanel = null;
       this.missionDebrief = null;
@@ -1986,8 +1993,19 @@ class GameController {
     const campaignOpts = this.opts.campaign;
     const run = this.missionRun;
 
-    // Muse persona (campaign and skirmish alike, unless silenced).
-    if (this.muse !== null && nowMs - this.lastMusePoll > 1000) {
+    // Mode 2: Muse Opponent dialogue (playing against Muse herself).
+    if (this.session.opponentMode === 'muse') {
+      if (!this.museOpponentIntroduced && world.tick >= 30) {
+        this.museOpponentIntroduced = true;
+        const line = getMuseOpponentDialogue(world, 'start');
+        this.museBox?.say(line);
+      } else if (world.tick - this.museLastTauntTick > 1800 && (world.combatEvents?.length ?? 0) > 0) {
+        this.museLastTauntTick = world.tick;
+        const line = getMuseOpponentDialogue(world, 'taunt');
+        this.museBox?.say(line);
+      }
+    } else if (this.muse !== null && nowMs - this.lastMusePoll > 1000) {
+      // Muse persona advisor (campaign and skirmish Mode 1 alike, unless silenced).
       this.lastMusePoll = nowMs;
       this.muse.update(
         world,
@@ -2696,6 +2714,10 @@ class GameController {
     if (outcome !== 'defeat') this.warCoreWarnTick = null;
     if (outcome === 'victory') {
       this.victoryShown = true;
+      if (this.session.opponentMode === 'muse') {
+        const line = getMuseOpponentDialogue(this.session.world, 'defeat');
+        this.museBox?.say(line);
+      }
       // Roadmap B2 (2026-10-02): the end screen names the victory that
       // was actually won — conquest keeps the classic default copy.
       // Exploration bet C6 (2026-10-02): each victory kind gets its
@@ -2738,6 +2760,10 @@ class GameController {
         if (this.session.world.tick - this.warCoreWarnTick < 90) return;
       }
       this.defeatShown = true;
+      if (this.session.opponentMode === 'muse') {
+        const line = getMuseOpponentDialogue(this.session.world, 'victory');
+        this.museBox?.say(line);
+      }
       const e = STRINGS.end;
       // Fun-audit B3 (2026-10-02): the session record rides along.
       const stats = endGameStatsOf(

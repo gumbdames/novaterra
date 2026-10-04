@@ -46,7 +46,7 @@ import { buildMenuScene } from './ui/menuScene';
 import { MainMenu, loadSettings, type QualityLevel } from './ui/menus';
 import { AudioEngine } from './audio/engine';
 import { startGame } from './ui/game';
-import type { AIDifficulty } from './sim/ai';
+import type { AIDifficulty, OpponentMode } from './sim/ai';
 import type { SkirmishVictoryKind } from './sim/world';
 import type { DoctrineId } from './sim/doctrine';
 import { createSaveStore } from './netSave/store';
@@ -261,7 +261,14 @@ export async function boot(): Promise<void> {
   window.addEventListener('keydown', unlockMenuOnce);
 
   const menu = new MainMenu(app, {
-    onStartSkirmish: (difficulty: AIDifficulty, mapPreset: string, peaceful: boolean, victoryKind: SkirmishVictoryKind, doctrine: DoctrineId) => {
+    onStartSkirmish: (
+      difficulty: AIDifficulty,
+      mapPreset: string,
+      peaceful: boolean,
+      victoryKind: SkirmishVictoryKind,
+      doctrine: DoctrineId,
+      opponentMode?: OpponentMode,
+    ) => {
       menu.hide();
       renderer.setAnimationLoop(null);
       canvas.style.display = 'none';
@@ -283,6 +290,7 @@ export async function boot(): Promise<void> {
         victoryKind,
         // Fun-audit D1 (2026-10-02): the setup's doctrine picker.
         doctrine,
+        opponentMode,
         quality: loadSettings().quality,
         onExitToMenu: () => {
           canvas.style.display = '';

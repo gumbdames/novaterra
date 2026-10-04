@@ -5317,7 +5317,21 @@ function thinkPeaceful(
  * military branches are never reached, so the AI cannot even attempt
  * a rejected military order (canTrain gates the defs too).
  */
-export function createAISystem(queue: CommandQueue, terrain?: TerrainData): SimSystem {
+export type OpponentMode = 'classic' | 'muse';
+
+export type MuseThinker = (
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  terrain?: TerrainData,
+) => void;
+
+export function createAISystem(
+  queue: CommandQueue,
+  terrain?: TerrainData,
+  opponentMode: OpponentMode = 'classic',
+  museThinker?: MuseThinker,
+): SimSystem {
   // The AI researches upgrades via `researchUpgrade`; make sure the kind
   // is registered even if session setup hasn't wired it (registering
   // twice throws, so tolerate the already-registered case — the UI may
@@ -5357,6 +5371,10 @@ export function createAISystem(queue: CommandQueue, terrain?: TerrainData): SimS
         // military thinks below run, so no military order can even be
         // formed (canTrain also gates military defs at the source).
         thinkPeaceful(world, queue, ai, terrain);
+        continue;
+      }
+      if (opponentMode === 'muse' && museThinker) {
+        museThinker(world, queue, ai, terrain);
         continue;
       }
       switch (ai.difficulty) {

@@ -33,7 +33,7 @@
  */
 
 import { GAME_TAGLINE, GAME_TITLE } from '../config';
-import type { AIDifficulty } from '../sim/ai';
+import type { AIDifficulty, OpponentMode } from '../sim/ai';
 import { MAP_PRESETS } from '../sim/terrain';
 import type { SkirmishVictoryKind } from '../sim/world';
 import { SKIRMISH_VICTORY_KINDS } from '../sim/world';
@@ -110,7 +110,14 @@ export interface MenuActions {
    * (roadmap B2, 2026-10-02) picks the victory condition for war
    * skirmishes; it is ignored when `peaceful` is true.
    */
-  onStartSkirmish(difficulty: AIDifficulty, mapPreset: string, peaceful: boolean, victoryKind: SkirmishVictoryKind, doctrine: DoctrineId): void;
+  onStartSkirmish(
+    difficulty: AIDifficulty,
+    mapPreset: string,
+    peaceful: boolean,
+    victoryKind: SkirmishVictoryKind,
+    doctrine: DoctrineId,
+    opponentMode?: OpponentMode,
+  ): void;
   /** Resume the paused game. */
   onResume(): void;
   /** Leave the game and return to the main menu. */
@@ -345,6 +352,34 @@ export class MainMenu {
     const doctrineNote = el('div', 'settings-note', DOCTRINES[selectedDoctrine].blurb);
     buttons.append(doctrineNote);
 
+    // Mode 1 (Classic AI) vs Mode 2 (Muse Engine) opponent selection
+    buttons.append(el('div', 'difficulty-title', s.chooseOpponentMode));
+    let selectedOpponentMode: OpponentMode = 'classic';
+    const opponentModeButtons: HTMLButtonElement[] = [];
+    const opponentModeRow = el('div', 'map-row');
+    const opponentModes: Array<{ mode: OpponentMode; label: string; blurb: string }> = [
+      { mode: 'classic', label: s.opponentModeClassic, blurb: s.opponentModeClassicBlurb },
+      { mode: 'muse', label: s.opponentModeMuse, blurb: s.opponentModeMuseBlurb },
+    ];
+    for (const opt of opponentModes) {
+      const b = menuButton(opt.label, () => {
+        selectedOpponentMode = opt.mode;
+        for (const omb of opponentModeButtons) {
+          omb.classList.toggle('selected', omb.dataset['mode'] === selectedOpponentMode);
+        }
+        opponentModeNote.textContent = opt.blurb;
+      }, false);
+      b.dataset['mode'] = opt.mode;
+      b.title = opt.blurb;
+      b.classList.add('map-btn');
+      if (opt.mode === selectedOpponentMode) b.classList.add('selected');
+      opponentModeButtons.push(b);
+      opponentModeRow.append(b);
+    }
+    buttons.append(opponentModeRow);
+    const opponentModeNote = el('div', 'settings-note', s.opponentModeClassicBlurb);
+    buttons.append(opponentModeNote);
+
     buttons.append(el('div', 'difficulty-title', s.chooseDifficulty));
     const options: Array<[AIDifficulty, string]> = [
       ['cadet', s.difficultyCadet],
@@ -355,7 +390,19 @@ export class MainMenu {
     ];
     for (const [difficulty, label] of options) {
       buttons.append(
-        menuButton(label, () => this.actions.onStartSkirmish(difficulty, selectedMap, peacefulMode, selectedVictory, selectedDoctrine), false, difficultyIcon(difficulty)),
+        menuButton(
+          label,
+          () => this.actions.onStartSkirmish(
+            difficulty,
+            selectedMap,
+            peacefulMode,
+            selectedVictory,
+            selectedDoctrine,
+            selectedOpponentMode,
+          ),
+          false,
+          difficultyIcon(difficulty),
+        ),
       );
     }
     buttons.append(menuButton(s.back, () => this.show(), false, menuIcon('back')));

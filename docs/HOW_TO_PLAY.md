@@ -30,7 +30,12 @@ The objective tracker (top-left) shows your progress. Win or lose,
 the debrief explains what happened.
 
 **Skirmish** → pick a **map** (8 to choose from, 5% to 60% water —
-more water means more naval fighting) → pick your **rival**:
+more water means more naval fighting) → pick your **Opponent Engine**:
+
+- **Mode 1: Classic AI** — Conventional procedural doctrine, economy, and army composition.
+- **Mode 2: Muse Engine** — Play directly against Muse herself: an adaptive opponent commander who analyzes your force composition in real time, adapts counter-doctrines, executes asymmetric infrastructure raids, and taunts you over tactical comms!
+
+Then pick your **difficulty**:
 
 - **Cadet** — easy, learns with you.
 - **Citizen** — a fair fight.

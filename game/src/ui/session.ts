@@ -76,7 +76,8 @@ import { registerCombineCommands, createCombineSystem } from '../sim/combine';
 import { registerLogisticsCommands } from '../sim/commands';
 import { registerAgeCommands, getProgramForAge, type Age, type NationalProgram } from '../sim/ages';
 import { registerCheatCommands } from '../sim/cheats';
-import { addAIPlayer, AI_MAX_UNITS, createAISystem, type AIDifficulty } from '../sim/ai';
+import { addAIPlayer, AI_MAX_UNITS, createAISystem, type AIDifficulty, type OpponentMode } from '../sim/ai';
+import { thinkMuse } from '../sim/aiMuse';
 import {
   ECONOMIC_VICTORY_FUNDS,
   POPULATION_VICTORY_POP,
@@ -172,6 +173,13 @@ export interface SessionOptions {
    * restoring from a snapshot (the snapshot carries the doctrines).
    */
   doctrine?: DoctrineId;
+  /**
+   * Opponent mode (Prompt 1 requirement):
+   *  - 'classic': Mode 1 — deterministic Classic AI.
+   *  - 'muse': Mode 2 — adaptive Muse Engine director with dynamic
+   *    counter-squad composition, psychological feints, and reactive commentary.
+   */
+  opponentMode?: OpponentMode;
 }
 
 /** Everything a running game needs. Plain data + live driver/queue. */
@@ -220,6 +228,8 @@ export interface GameSession {
    * read by the sim.
    */
   cheated: boolean;
+  /** Active opponent mode ('classic' or 'muse'). */
+  opponentMode: OpponentMode;
 }
 
 /** AI base corner; mirrored for the human. */
@@ -674,7 +684,7 @@ export function createSession(options: SessionOptions): GameSession {
       createMayorSystem(queue, terrain),
       // AI needs the queue to issue its orders through, and the terrain
       // so the peaceful-mode AI can site physical buildings.
-      createAISystem(queue, terrain),
+      createAISystem(queue, terrain, options.opponentMode ?? 'classic', thinkMuse),
       // Generals issue orders like the AI does, after it.
       createGeneralSystem(queue),
       // Fun-audit C3 (2026-10-02): fog of war — explored memory folds
@@ -796,5 +806,6 @@ export function createSession(options: SessionOptions): GameSession {
     },
     digest: () => String(digestWorld(world)),
     cheated: false,
+    opponentMode: options.opponentMode ?? 'classic',
   };
 }
