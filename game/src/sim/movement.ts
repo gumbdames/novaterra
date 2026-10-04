@@ -785,9 +785,9 @@ export function orderMoveTo(
   unit.buildingTargetId = 0;
   unit.chasing = false;
   if (!preserveAttackMove) {
-    unit.attackMoving = false;
-    unit.attackMoveDestX = undefined;
-    unit.attackMoveDestZ = undefined;
+    delete unit.attackMoving;
+    delete unit.attackMoveDestX;
+    delete unit.attackMoveDestZ;
   }
   unit.destX = x;
   unit.destZ = z;
@@ -1072,9 +1072,9 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
       unit.chasing = false;
       unit.state = 'idle';
       unit.failReason = null;
-      unit.attackMoving = false;
-      unit.attackMoveDestX = undefined;
-      unit.attackMoveDestZ = undefined;
+      delete unit.attackMoving;
+      delete unit.attackMoveDestX;
+      delete unit.attackMoveDestZ;
       return unit.id;
     },
   });
@@ -1116,9 +1116,9 @@ function executeMoveGroup(
       unit.attackMoveDestX = x;
       unit.attackMoveDestZ = z;
     } else {
-      unit.attackMoving = false;
-      unit.attackMoveDestX = undefined;
-      unit.attackMoveDestZ = undefined;
+      delete unit.attackMoving;
+      delete unit.attackMoveDestX;
+      delete unit.attackMoveDestZ;
     }
     if (unit.domain === 'air') {
       const arrived = dist2(x - unit.x, z - unit.z) < ARRIVAL_RADIUS * ARRIVAL_RADIUS;

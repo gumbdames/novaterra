@@ -1025,7 +1025,9 @@ export function createCombatSystem(t?: TerrainData): SimSystem {
             if (d > 4) {
               orderMoveTo(world, u, u.attackMoveDestX, u.attackMoveDestZ, true);
             } else {
-              u.attackMoving = false;
+              delete u.attackMoving;
+              delete u.attackMoveDestX;
+              delete u.attackMoveDestZ;
               u.state = 'idle';
               clearUnitOrder(u);
             }
@@ -1061,7 +1063,9 @@ export function createCombatSystem(t?: TerrainData): SimSystem {
           if (d > 4) {
             orderMoveTo(world, u, u.attackMoveDestX, u.attackMoveDestZ, true);
           } else {
-            u.attackMoving = false;
+            delete u.attackMoving;
+            delete u.attackMoveDestX;
+            delete u.attackMoveDestZ;
           }
         }
         continue;

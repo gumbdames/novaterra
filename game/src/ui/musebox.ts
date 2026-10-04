@@ -66,8 +66,17 @@ export class MuseBox {
   show(): void {
     this.hide();
     const box = el('div', 'muse-box');
-    const portrait = el('div', 'muse-portrait', '🕴️');
+    const portrait = el('div', 'muse-portrait');
     portrait.title = 'Muse — your chief of staff';
+    const avatarImg = document.createElement('img');
+    avatarImg.src = 'img/art/muse-portrait.jpg';
+    avatarImg.alt = 'Muse';
+    avatarImg.className = 'muse-avatar-img';
+    avatarImg.onerror = () => {
+      avatarImg.remove();
+      portrait.textContent = '🕴️';
+    };
+    portrait.append(avatarImg);
     box.append(portrait);
     const body = el('div', 'muse-body');
     const name = el('div', 'muse-name', 'MUSE');

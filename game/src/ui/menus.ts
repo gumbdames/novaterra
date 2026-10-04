@@ -200,7 +200,7 @@ export class MainMenu {
   show(): void {
     this.hide();
     const s = STRINGS.menu;
-    const menu = el('div', 'menu-overlay');
+    const menu = el('div', 'menu-overlay main-menu-hero');
     menu.id = 'menu';
     menu.append(el('h1', '', GAME_TITLE));
     menu.append(el('p', 'tagline', GAME_TAGLINE));
@@ -240,9 +240,23 @@ export class MainMenu {
     let selectedMap = firstPreset.name;
 
     buttons.append(el('div', 'difficulty-title', s.chooseMap));
+
+    // Dynamic map preview card
+    const previewContainer = el('div', 'map-preview-card');
+    const previewImg = document.createElement('img');
+    previewImg.className = 'map-preview-img';
+    previewImg.alt = 'Map preview';
+    previewImg.src = 'img/art/skirmish/map-1.jpg';
+    const previewCaption = el('div', 'map-preview-caption', `${firstPreset.name} — ${firstPreset.blurb}`);
+    previewContainer.append(previewImg, previewCaption);
+    buttons.append(previewContainer);
+
     const mapRow = el('div', 'map-row');
     const mapButtons: HTMLButtonElement[] = [];
-    for (const preset of MAP_PRESETS) {
+    for (let i = 0; i < MAP_PRESETS.length; i++) {
+      const preset = MAP_PRESETS[i];
+      if (!preset) continue;
+      const mapNum = i + 1;
       const b = menuButton(
         `${preset.name} — ${Math.round(preset.waterTargetFraction * 100)}% water`,
         () => {
@@ -250,6 +264,8 @@ export class MainMenu {
           for (const mb of mapButtons) {
             mb.classList.toggle('selected', mb.dataset['map'] === selectedMap);
           }
+          previewImg.src = `img/art/skirmish/map-${mapNum}.jpg`;
+          previewCaption.textContent = `${preset.name} — ${preset.blurb}`;
         },
         false,
         mapIcon(preset.waterTargetFraction),

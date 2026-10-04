@@ -150,6 +150,15 @@ export class MissionBriefing {
       overlay.append(el('p', 'briefing-text', para));
     }
 
+    const mapContainer = el('div', 'briefing-map-card');
+    const mapImg = document.createElement('img');
+    mapImg.src = `img/art/briefings/mission-${mission.order}.jpg`;
+    mapImg.alt = `${mission.name} tactical overview`;
+    mapImg.className = 'briefing-map-img';
+    mapImg.onerror = () => { mapContainer.style.display = 'none'; };
+    mapContainer.append(mapImg);
+    overlay.append(mapContainer);
+
     const paths = el('div', 'mission-paths');
     for (const path of mission.paths) {
       const card = el('div', `path-card${path.peaceful ? ' peaceful' : ''}`);

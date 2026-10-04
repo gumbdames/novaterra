@@ -538,6 +538,9 @@ function copyUnit(u: UnitRecord): UnitRecord {
     infiltrationProgress: u.infiltrationProgress ?? 0,
     embeddedIn: u.embeddedIn ?? 0,
     spottedUntil: u.spottedUntil ?? 0,
+    ...(u.attackMoving ? { attackMoving: true } : {}),
+    ...(u.attackMoveDestX !== undefined ? { attackMoveDestX: u.attackMoveDestX } : {}),
+    ...(u.attackMoveDestZ !== undefined ? { attackMoveDestZ: u.attackMoveDestZ } : {}),
   };
 }
 
