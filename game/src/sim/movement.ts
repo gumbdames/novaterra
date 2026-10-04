@@ -770,7 +770,13 @@ function retaskSingle(world: World, unit: UnitRecord, x: number, z: number): voi
  * Ground units go through A*; air units fly straight. Clears any combat
  * targeting (a move order supersedes an attack).
  */
-export function orderMoveTo(world: World, unit: UnitRecord, x: number, z: number): void {
+export function orderMoveTo(
+  world: World,
+  unit: UnitRecord,
+  x: number,
+  z: number,
+  preserveAttackMove = false,
+): void {
   dropUnitRequests(world, unit.id);
   clearUnitOrder(unit);
   unit.targetId = 0;
@@ -778,6 +784,11 @@ export function orderMoveTo(world: World, unit: UnitRecord, x: number, z: number
   // too (same contract as targetId above).
   unit.buildingTargetId = 0;
   unit.chasing = false;
+  if (!preserveAttackMove) {
+    unit.attackMoving = false;
+    unit.attackMoveDestX = undefined;
+    unit.attackMoveDestZ = undefined;
+  }
   unit.destX = x;
   unit.destZ = z;
   unit.arriveX = x;
@@ -1012,75 +1023,36 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
       const ids = cmd.payload['unitIds'] as number[];
       const x = cmd.payload['x'] as number;
       const z = cmd.payload['z'] as number;
-      const destCell = worldToCell(x, z);
-      // Ground units share one flow field; air units fly straight in
-      // formation (no pathfinding, no water checks); sea units get
-      // individual sea paths to water formation slots.
-      const groundWaiting: number[] = [];
-      const groundWaitingUnits: UnitRecord[] = [];
-      const airWaiting: UnitRecord[] = [];
-      const seaWaitingUnits: UnitRecord[] = [];
-      let atDestCount = 0;
-      let airAtDestCount = 0;
-      let seaAtDestCount = 0;
+      return executeMoveGroup(ids, x, z, world, t, false);
+    },
+  });
+
+  queue.register('attackMove', {
+    validate(cmd, world): string | null {
+      const ids = payloadUnitIds(cmd.payload);
+      if (ids === null) return 'attackMove: payload.unitIds must be a non-empty array of up to 500 positive integers';
+      const owner = cmd.payload['owner'];
+      if (typeof owner !== 'number' || !Number.isInteger(owner)) {
+        return 'attackMove: payload.owner must be an integer';
+      }
+      for (const id of ids) {
+        const unit = findUnit(world, id);
+        if (!unit) return `attackMove: no unit with id ${id}`;
+        if (unit.owner !== owner) return `attackMove: unit ${id} is not owned by player ${owner}`;
+        if (isSheltered(unit)) return `attackMove: unit ${id} is parked or embarked (launch it first)`;
+      }
       for (const id of ids) {
         const unit = findUnit(world, id) as UnitRecord;
-        dropUnitRequests(world, id);
-        clearUnitOrder(unit);
-        unit.targetId = 0;
-        unit.chasing = false;
-        unit.destX = x;
-        unit.destZ = z;
-        unit.arriveX = x; // refined to a formation slot below
-        unit.arriveZ = z;
-        unit.failReason = null;
-        if (unit.domain === 'air') {
-          const arrived = dist2(x - unit.x, z - unit.z) < ARRIVAL_RADIUS * ARRIVAL_RADIUS;
-          if (arrived) {
-            unit.state = 'idle'; // already there
-            airAtDestCount += 1;
-          } else {
-            unit.state = 'moving';
-            airWaiting.push(unit);
-          }
-        } else if (unit.domain === 'sea') {
-          const arrived = dist2(x - unit.x, z - unit.z) < ARRIVAL_RADIUS * ARRIVAL_RADIUS;
-          if (arrived) {
-            unit.state = 'idle'; // already there
-            seaAtDestCount += 1;
-          } else {
-            seaWaitingUnits.push(unit);
-          }
-        } else if (isRailBound(unit.kind)) {
-          // Phase 4 (S7): trains never join the flow field — route each
-          // one individually along the rails (loud failures per train).
-          orderTrainMoveTo(world, unit, x, z);
-        } else if (worldToCell(unit.x, unit.z) === destCell) {
-          unit.state = 'idle'; // already there
-          atDestCount += 1;
-        } else {
-          unit.state = 'awaitingPath';
-          groundWaiting.push(id);
-          groundWaitingUnits.push(unit);
-        }
+        const err = validateDestination(t, cmd.payload['x'], cmd.payload['z'], unit.domain);
+        if (err) return `attackMove: unit ${id} (${err})`;
       }
-      // Formation slots: deterministic ranks; units already at the
-      // destination occupy the first ranks so nobody stacks onto them.
-      // Id order keeps the assignment deterministic.
-      assignGroupSlots(world, t, groundWaitingUnits, atDestCount, x, z);
-      assignAirSlots(airWaiting, airAtDestCount, x, z);
-      // Sea units: water formation slots, then individual sea paths.
-      // (No flow fields for sea — the field system is land-only.)
-      assignSeaSlots(world, t, seaWaitingUnits, seaAtDestCount, x, z);
-      for (const unit of seaWaitingUnits) {
-        orderMoveTo(world, unit, unit.arriveX, unit.arriveZ);
-      }
-      if (groundWaiting.length === 0) return [];
-      const fieldId = requestField(world, groundWaiting, destCell);
-      for (const id of groundWaiting) {
-        (findUnit(world, id) as UnitRecord).fieldId = fieldId;
-      }
-      return fieldId;
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const ids = cmd.payload['unitIds'] as number[];
+      const x = cmd.payload['x'] as number;
+      const z = cmd.payload['z'] as number;
+      return executeMoveGroup(ids, x, z, world, t, true);
     },
   });
 
@@ -1100,7 +1072,99 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
       unit.chasing = false;
       unit.state = 'idle';
       unit.failReason = null;
+      unit.attackMoving = false;
+      unit.attackMoveDestX = undefined;
+      unit.attackMoveDestZ = undefined;
       return unit.id;
     },
   });
+}
+
+function executeMoveGroup(
+  ids: number[],
+  x: number,
+  z: number,
+  world: World,
+  t: TerrainData,
+  attackMove: boolean,
+): unknown {
+  const destCell = worldToCell(x, z);
+  // Ground units share one flow field; air units fly straight in
+  // formation (no pathfinding, no water checks); sea units get
+  // individual sea paths to water formation slots.
+  const groundWaiting: number[] = [];
+  const groundWaitingUnits: UnitRecord[] = [];
+  const airWaiting: UnitRecord[] = [];
+  const seaWaitingUnits: UnitRecord[] = [];
+  let atDestCount = 0;
+  let airAtDestCount = 0;
+  let seaAtDestCount = 0;
+  for (const id of ids) {
+    const unit = findUnit(world, id) as UnitRecord;
+    dropUnitRequests(world, id);
+    clearUnitOrder(unit);
+    unit.targetId = 0;
+    unit.buildingTargetId = 0;
+    unit.chasing = false;
+    unit.destX = x;
+    unit.destZ = z;
+    unit.arriveX = x; // refined to a formation slot below
+    unit.arriveZ = z;
+    unit.failReason = null;
+    if (attackMove) {
+      unit.attackMoving = true;
+      unit.attackMoveDestX = x;
+      unit.attackMoveDestZ = z;
+    } else {
+      unit.attackMoving = false;
+      unit.attackMoveDestX = undefined;
+      unit.attackMoveDestZ = undefined;
+    }
+    if (unit.domain === 'air') {
+      const arrived = dist2(x - unit.x, z - unit.z) < ARRIVAL_RADIUS * ARRIVAL_RADIUS;
+      if (arrived) {
+        unit.state = 'idle'; // already there
+        airAtDestCount += 1;
+      } else {
+        unit.state = 'moving';
+        airWaiting.push(unit);
+      }
+    } else if (unit.domain === 'sea') {
+      const arrived = dist2(x - unit.x, z - unit.z) < ARRIVAL_RADIUS * ARRIVAL_RADIUS;
+      if (arrived) {
+        unit.state = 'idle'; // already there
+        seaAtDestCount += 1;
+      } else {
+        seaWaitingUnits.push(unit);
+      }
+    } else if (isRailBound(unit.kind)) {
+      // Phase 4 (S7): trains never join the flow field — route each
+      // one individually along the rails (loud failures per train).
+      orderTrainMoveTo(world, unit, x, z);
+    } else if (worldToCell(unit.x, unit.z) === destCell) {
+      unit.state = 'idle'; // already there
+      atDestCount += 1;
+    } else {
+      unit.state = 'awaitingPath';
+      groundWaiting.push(id);
+      groundWaitingUnits.push(unit);
+    }
+  }
+  // Formation slots: deterministic ranks; units already at the
+  // destination occupy the first ranks so nobody stacks onto them.
+  // Id order keeps the assignment deterministic.
+  assignGroupSlots(world, t, groundWaitingUnits, atDestCount, x, z);
+  assignAirSlots(airWaiting, airAtDestCount, x, z);
+  // Sea units: water formation slots, then individual sea paths.
+  // (No flow fields for sea — the field system is land-only.)
+  assignSeaSlots(world, t, seaWaitingUnits, seaAtDestCount, x, z);
+  for (const unit of seaWaitingUnits) {
+    orderMoveTo(world, unit, unit.arriveX, unit.arriveZ, attackMove);
+  }
+  if (groundWaiting.length === 0) return [];
+  const fieldId = requestField(world, groundWaiting, destCell);
+  for (const id of groundWaiting) {
+    (findUnit(world, id) as UnitRecord).fieldId = fieldId;
+  }
+  return fieldId;
 }

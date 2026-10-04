@@ -285,6 +285,7 @@ export interface HUDActions {
   onSpeedChange(speed: number): void;
   onOpenMenu(): void;
   onStopSelection(): void;
+  onAttackMoveSelection?(): void;
   /**
    * Command-menu rebuild (2026-10-01): the detail view's Back button —
    * returns to the tab menu. Same as Esc / clicking empty ground
@@ -2920,11 +2921,17 @@ export class HUD {
         panel.append(more);
       }
       const stopRow = el('div', 'detail-actions');
+      const attackMoveBtn = document.createElement('button');
+      attackMoveBtn.className = 'sel-action';
+      attackMoveBtn.textContent = 'Attack-Move (T)';
+      attackMoveBtn.title = 'Advance toward destination and engage any enemies encountered';
+      attackMoveBtn.addEventListener('click', () => this.actions.onAttackMoveSelection?.());
+
       const stopBtn = document.createElement('button');
       stopBtn.className = 'sel-action';
-      stopBtn.textContent = sel.stop;
+      stopBtn.textContent = `${sel.stop} (H)`;
       stopBtn.addEventListener('click', () => this.actions.onStopSelection());
-      stopRow.append(stopBtn);
+      stopRow.append(attackMoveBtn, stopBtn);
       panel.append(stopRow);
       // Entity portraits (2026-10-01): the detail hero's atlas overlay.
       this.refreshPortraits();

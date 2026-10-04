@@ -105,12 +105,17 @@ export interface MayorAssignment {
   buildPolicy: MayorBuildPolicy;
 }
 
+/** Theatres of command (Prompt 1 chain of command). */
+export type TheatreCommand = 'northern' | 'southern' | 'naval' | 'central';
+export const THEATRE_COMMANDS: TheatreCommand[] = ['northern', 'southern', 'naval', 'central'];
+
 /** One general assignment: at most one per owner. */
 export interface GeneralAssignment {
   owner: number;
   /** Stable unit ids under this general's command (pruned when units die). */
   unitIds: number[];
   stance: GeneralStance;
+  theatre?: TheatreCommand;
 }
 
 /** Chain-of-command state. Plain data — snapshotted + digested. */
@@ -142,6 +147,7 @@ export function encodeDelegationState(d: DelegationState): unknown {
       owner: g.owner,
       unitIds: [...g.unitIds],
       stance: g.stance,
+      theatre: g.theatre,
     })),
   };
 }
@@ -156,6 +162,10 @@ function isMayorBuildPolicy(p: unknown): p is MayorBuildPolicy {
 
 function isGeneralStance(s: unknown): s is GeneralStance {
   return s === 'aggressive' || s === 'defensive' || s === 'hold';
+}
+
+export function isTheatreCommand(t: unknown): t is TheatreCommand {
+  return t === 'northern' || t === 'southern' || t === 'naval' || t === 'central';
 }
 
 /** Restore delegation state from a snapshot payload. */
@@ -175,7 +185,7 @@ export function decodeDelegationState(data: unknown): DelegationState {
   }
   const generals: GeneralAssignment[] = [];
   for (const g of d?.generals ?? []) {
-    const r = g as { owner: unknown; unitIds: unknown; stance: unknown };
+    const r = g as { owner: unknown; unitIds: unknown; stance: unknown; theatre?: unknown };
     if (
       typeof r.owner === 'number' && Number.isInteger(r.owner) &&
       Array.isArray(r.unitIds) && isGeneralStance(r.stance)
@@ -183,7 +193,12 @@ export function decodeDelegationState(data: unknown): DelegationState {
       const unitIds = (r.unitIds as unknown[]).filter(
         (id): id is number => typeof id === 'number' && Number.isInteger(id) && id > 0,
       );
-      generals.push({ owner: r.owner, unitIds, stance: r.stance });
+      generals.push({
+        owner: r.owner,
+        unitIds,
+        stance: r.stance,
+        theatre: isTheatreCommand(r.theatre) ? r.theatre : undefined,
+      });
     }
   }
   return { mayors, generals };
@@ -286,6 +301,10 @@ const assignGeneralSpec: CommandSpec = {
     if (!Array.isArray(raw) || raw.length === 0 || raw.length > 500) {
       return 'assignGeneral: unitIds must be a non-empty array of up to 500 unit ids';
     }
+    const theatre = cmd.payload['theatre'];
+    if (theatre !== undefined && !isTheatreCommand(theatre)) {
+      return `assignGeneral: theatre must be one of ${THEATRE_COMMANDS.join(', ')}`;
+    }
     for (const id of raw) {
       if (typeof id !== 'number' || !Number.isInteger(id) || id <= 0) {
         return 'assignGeneral: unitIds must be positive integers';
@@ -300,15 +319,17 @@ const assignGeneralSpec: CommandSpec = {
   apply(cmd, world): unknown {
     const owner = payloadInt(cmd.payload, 'owner') as number;
     const stance = payloadStr(cmd.payload, 'stance') as GeneralStance;
+    const theatre = isTheatreCommand(cmd.payload['theatre']) ? cmd.payload['theatre'] : undefined;
     const unitIds = (cmd.payload['unitIds'] as number[]).slice();
     const existing = getGeneral(world, owner);
     if (existing) {
       existing.unitIds = unitIds;
       existing.stance = stance;
-      return { owner, stance, units: unitIds.length, updated: true };
+      existing.theatre = theatre;
+      return { owner, stance, theatre, units: unitIds.length, updated: true };
     }
-    world.delegation.generals.push({ owner, unitIds, stance });
-    return { owner, stance, units: unitIds.length, updated: false };
+    world.delegation.generals.push({ owner, unitIds, stance, theatre });
+    return { owner, stance, theatre, units: unitIds.length, updated: false };
   },
 };
 
@@ -585,7 +606,17 @@ export function createGeneralSystem(queue: CommandQueue): SimSystem {
       const issuer = `general:${general.owner}`;
       const group = livingGroupUnits(world, general);
       if (group.length === 0) continue;
-      const visible = getVisibleEnemies(world, general.owner);
+      let visible = getVisibleEnemies(world, general.owner);
+      if (general.theatre === 'northern') {
+        const north = visible.filter((e) => e.z <= 0);
+        if (north.length > 0) visible = north;
+      } else if (general.theatre === 'southern') {
+        const south = visible.filter((e) => e.z >= 0);
+        if (south.length > 0) visible = south;
+      } else if (general.theatre === 'naval') {
+        const naval = visible.filter((e) => e.domain === 'sea');
+        if (naval.length > 0) visible = naval;
+      }
       if (general.stance === 'hold') {
         for (const unit of group) {
           if (unit.chasing || unit.state === 'moving' || unit.state === 'awaitingPath') {

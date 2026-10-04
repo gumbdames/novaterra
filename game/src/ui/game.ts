@@ -170,6 +170,7 @@ import {
   buildEmbarkOrder,
   buildBaseOrder,
   buildLaunchOrder,
+  buildAttackMoveOrder,
   // Grand-expansion Phase 7 (intel): the covert-op orders.
   buildInfiltrateOrder,
   buildSabotageOrder,
@@ -347,6 +348,7 @@ type PlacementMode =
   | { kind: 'build'; tool: BuildTool }
   | { kind: 'storm' }
   | { kind: 'rally'; buildingId: number }
+  | { kind: 'attackMove' }
   | null;
 
 /**
@@ -1051,6 +1053,13 @@ class GameController {
   /** Mode 2 (Muse Opponent): dialogue state tracking. */
   private museOpponentIntroduced = false;
   private museLastTauntTick = 0;
+  /** RTS Control Groups (Ctrl + 1..9). */
+  private readonly controlGroups = new Map<number, number[]>();
+  private lastGroupTapKey = 0;
+  private lastGroupTapTime = 0;
+  /** Double-click type selection tracking. */
+  private lastClickedUnitId: number | null = null;
+  private lastClickedUnitTime = 0;
   /**
    * Fun-audit A1 (2026-10-02): the last age we toasted for. The old
    * code toasted "Age advanced: Connectivity." the moment the advance
@@ -1143,6 +1152,14 @@ class GameController {
       },
       onOpenMenu: () => this.setPaused(true, true),
       onStopSelection: () => this.issueStop(),
+      onAttackMoveSelection: () => {
+        if (this.selection.unitIds.length > 0) {
+          this.placement = { kind: 'attackMove' };
+          this.hud.toast('Attack-Move armed: click destination or enemy.');
+        } else {
+          this.hud.toast(loc(STRINGS.toasts.selectUnitsFirst));
+        }
+      },
       // Command-menu rebuild (2026-10-01): the detail view's Back
       // button — same as Esc / clicking empty ground (verified by the
       // ui.menuTabs test: game.ts still owns the selection).
@@ -2996,9 +3013,24 @@ class GameController {
       this.fireStormAt(point.x, point.z);
       return;
     }
+    if (this.placement?.kind === 'attackMove') {
+      const clickedEnemy = nearestUnit(world.units, point.x, point.z, CLICK_TOLERANCE);
+      if (clickedEnemy && clickedEnemy.owner !== HUMAN_PLAYER_ID) {
+        for (const cmd of buildAttackOrders(this.selection.unitIds, HUMAN_PLAYER_ID, clickedEnemy.id)) {
+          this.enqueue(cmd);
+        }
+      } else if (this.selection.unitIds.length > 0) {
+        this.enqueue(buildAttackMoveOrder(HUMAN_PLAYER_ID, this.selection.unitIds, point.x, point.z));
+        this.hud.toast('Attack-move ordered.');
+        this.audio.playSfx('select');
+      }
+      this.cancelPlacement();
+      return;
+    }
 
     const clicked = nearestUnit(world.units, point.x, point.z, CLICK_TOLERANCE);
     if (!clicked) {
+      this.lastClickedUnitId = null;
       // Clicked open ground: maybe a building.
       const building = this.buildingAt(point.x, point.z);
       if (building && !shift) {
@@ -3009,6 +3041,44 @@ class GameController {
       }
       return;
     }
+
+    const now = performance.now();
+    const isDoubleClick =
+      clicked.owner === HUMAN_PLAYER_ID &&
+      this.lastClickedUnitId === clicked.id &&
+      now - this.lastClickedUnitTime < 350;
+
+    this.lastClickedUnitId = clicked.id;
+    this.lastClickedUnitTime = now;
+
+    if (isDoubleClick) {
+      const clickedUnit = world.units.find((u) => u.id === clicked.id);
+      if (clickedUnit) {
+        const matchingOnScreen: number[] = [];
+        const frustum = new THREE.Frustum();
+        const projScreenMatrix = new THREE.Matrix4();
+        projScreenMatrix.multiplyMatrices(this.camera.projectionMatrix, this.camera.matrixWorldInverse);
+        frustum.setFromProjectionMatrix(projScreenMatrix);
+
+        for (const u of world.units) {
+          if (u.owner === HUMAN_PLAYER_ID && u.hp > 0 && u.kind === clickedUnit.kind) {
+            const gy = groundYAt(this.session.terrain, this.session.terrain.waterLevel, u.domain, u.x, u.z);
+            if (frustum.containsPoint(new THREE.Vector3(u.x, gy, u.z))) {
+              matchingOnScreen.push(u.id);
+            }
+          }
+        }
+        if (matchingOnScreen.length > 0) {
+          this.selection = selectUnits(matchingOnScreen);
+          this.hud.toast(`Selected ${matchingOnScreen.length} ${clickedUnit.kind} units.`);
+        } else {
+          this.selection = selectUnits([clicked.id]);
+        }
+        this.audio.playSfx('select');
+        return;
+      }
+    }
+
     if (shift) {
       this.selection = toggleUnit(this.selection, clicked.id);
     } else {
@@ -3768,6 +3838,76 @@ class GameController {
       if (((k === 'a' && (e.ctrlKey || e.metaKey)) || k === 'x') && !e.repeat && !isTypingTarget(e.target)) {
         e.preventDefault();
         this.selectAllMilitary();
+        return;
+      }
+      // Control Groups: 1..9 (Ctrl+1..9 assigns group, 1..9 recalls, double-tap 1..9 centers camera)
+      if (k >= '1' && k <= '9' && !isTypingTarget(e.target) && !e.repeat) {
+        const groupNum = parseInt(k, 10);
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          if (this.selection.unitIds.length > 0) {
+            this.controlGroups.set(groupNum, [...this.selection.unitIds]);
+            this.hud.toast(`Group ${groupNum} assigned (${this.selection.unitIds.length} units).`);
+          } else {
+            this.controlGroups.delete(groupNum);
+            this.hud.toast(`Group ${groupNum} cleared.`);
+          }
+          return;
+        } else {
+          const saved = this.controlGroups.get(groupNum) ?? [];
+          const living = saved.filter((id) => {
+            const u = this.session.world.units.find((x) => x.id === id);
+            return u && u.owner === HUMAN_PLAYER_ID && u.hp > 0;
+          });
+          if (living.length > 0) {
+            e.preventDefault();
+            const now = performance.now();
+            const isDoubleTap = this.lastGroupTapKey === groupNum && now - this.lastGroupTapTime < 350;
+            this.lastGroupTapKey = groupNum;
+            this.lastGroupTapTime = now;
+
+            if (e.shiftKey) {
+              const combined = Array.from(new Set([...this.selection.unitIds, ...living]));
+              this.selection = selectUnits(combined);
+            } else {
+              this.selection = selectUnits(living);
+            }
+            this.audio.playSfx('select');
+
+            if (isDoubleTap) {
+              let sumX = 0;
+              let sumZ = 0;
+              for (const id of living) {
+                const u = this.session.world.units.find((x) => x.id === id);
+                if (u) {
+                  sumX += u.x;
+                  sumZ += u.z;
+                }
+              }
+              this.cameraState = {
+                ...this.cameraState,
+                targetX: sumX / living.length,
+                targetZ: sumZ / living.length,
+              };
+              this.applyCameraStateGuarded();
+            }
+            return;
+          } else if (saved.length > 0) {
+            this.controlGroups.delete(groupNum);
+            this.hud.toast(`Group ${groupNum} lost.`);
+          }
+        }
+      }
+
+      // Attack-Move arm hotkey: T or Alt+A
+      if ((k === 't' || (k === 'a' && e.altKey)) && !e.repeat && !isTypingTarget(e.target)) {
+        e.preventDefault();
+        if (this.selection.unitIds.length > 0) {
+          this.placement = { kind: 'attackMove' };
+          this.hud.toast('Attack-Move armed: click destination or enemy.');
+        } else {
+          this.hud.toast(loc(STRINGS.toasts.selectUnitsFirst));
+        }
         return;
       }
       this.keys.add(k);

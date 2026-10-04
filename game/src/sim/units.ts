@@ -1926,6 +1926,10 @@ export interface UnitRecord {  /** Stable id from `world.nextId`. Never reused. 
    * bump) and digest-covered.
    */
   buildingTargetId?: number;
+  /** True when unit is in an active attack-move state. */
+  attackMoving?: boolean;
+  attackMoveDestX?: number;
+  attackMoveDestZ?: number;
   /** Order lifecycle state. */
   state: UnitState;
   /** Why the last order failed; null unless state === 'failed'. */

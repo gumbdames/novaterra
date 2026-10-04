@@ -436,22 +436,31 @@ with sub-tabs along the top:
   month); **City focus**: set the **city focus** (specialization);
   **Cabinet**: appoint/dismiss your **Mayor** (tax policy +
   housing/industry/balanced auto-construction) and **General**
-  (select units first, then pick a stance); **Ordinances**: city-wide
+  (select units first, then pick a stance and assign a command theatre: Northern, Southern, Naval, or Central); **Ordinances**: city-wide
   policy toggles; **Intelligence**: assets, spies and covert
   operations; **Trade**: your civilian **sea trade** routes
   (dock-to-dock, with cargo policies); **Research**: research upgrades once you own a
   completed lab.
 
-## Keyboard shortcuts
+## Keyboard shortcuts & RTS controls
 
 - **Space** — pause / resume.
-- **Esc** — cancel placement / close panels.
+- **Esc** — cancel placement / close panels / clear selection.
 - **\`** (backtick) — cheat console.
-- **Arrow keys / WASD** — pan the camera.
-- **Mouse wheel** — zoom.
-- **Left-click** — select units / place buildings.
+- **Arrow keys / WASD** — pan the camera smoothly across the battlefield.
+- **Mouse wheel** — zoom in / out.
+- **Left-click** — select units / place buildings / set targets.
+- **Left-drag** — marquee box-selection to select multiple units.
+- **Double-click unit** — select all friendly units of the same kind currently in view.
 - **Right-click** — move (open ground), attack (enemy unit), or siege
   (enemy building — tanks and artillery shell it until it falls).
+- **T / Alt + A** — arm **Attack-Move** mode: click the terrain to command selected units to march toward the objective while halting to fire upon any hostiles encountered along the advance path.
+- **Ctrl + 1..9** — assign current unit selection to Control Group 1–9.
+- **1..9** — recall Control Group 1–9. Double-tap to focus and center the camera on the squad.
+- **Shift + 1..9** — add Control Group 1–9 to current active selection.
+- **H / Shift+S / Ctrl+S** — halt / stop selected units immediately.
+- **Ctrl+A / X** — select all combat army units on the map.
+- **Shift + Click** — toggle individual unit in/out of current selection.
 
 ## Accessibility
 

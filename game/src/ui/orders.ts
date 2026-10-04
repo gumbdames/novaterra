@@ -68,6 +68,19 @@ export function buildMoveOrder(
   };
 }
 
+/** Attack-move: unit(s) advance toward (x, z) engaging any hostiles encountered. */
+export function buildAttackMoveOrder(
+  owner: number,
+  unitIds: number[],
+  x: number,
+  z: number,
+): OrderIntent {
+  return {
+    kind: 'attackMove',
+    payload: { owner, unitIds: [...unitIds], x, z },
+  };
+}
+
 /** Right-click on an enemy: one attackUnit per selected unit. */
 export function buildAttackOrders(
   unitIds: number[],
@@ -517,10 +530,11 @@ export function buildAssignGeneralOrder(
   owner: number,
   unitIds: number[],
   stance: string,
+  theatre?: string,
 ): OrderIntent {
   return {
     kind: 'assignGeneral',
-    payload: { owner, unitIds: [...unitIds], stance },
+    payload: { owner, unitIds: [...unitIds], stance, ...(theatre !== undefined ? { theatre } : {}) },
   };
 }
 

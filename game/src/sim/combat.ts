@@ -1020,7 +1020,16 @@ export function createCombatSystem(t?: TerrainData): SimSystem {
         } else {
           u.targetId = 0;
           u.chasing = false;
-          if (u.state === 'moving' && !canStillMove(u)) {
+          if (u.attackMoving && u.attackMoveDestX !== undefined && u.attackMoveDestZ !== undefined) {
+            const d = dist(u.x - u.attackMoveDestX, u.z - u.attackMoveDestZ);
+            if (d > 4) {
+              orderMoveTo(world, u, u.attackMoveDestX, u.attackMoveDestZ, true);
+            } else {
+              u.attackMoving = false;
+              u.state = 'idle';
+              clearUnitOrder(u);
+            }
+          } else if (u.state === 'moving' && !canStillMove(u)) {
             u.state = 'idle';
             clearUnitOrder(u);
           }
@@ -1041,9 +1050,22 @@ export function createCombatSystem(t?: TerrainData): SimSystem {
         if (acquired && !frozen) {
           u.targetId = acquired.id;
           target = acquired;
+          if (u.attackMoving) {
+            u.chasing = true;
+          }
         }
       }
-      if (!siege && !target) continue;
+      if (!siege && !target) {
+        if (u.attackMoving && u.state === 'idle' && u.attackMoveDestX !== undefined && u.attackMoveDestZ !== undefined) {
+          const d = dist(u.x - u.attackMoveDestX, u.z - u.attackMoveDestZ);
+          if (d > 4) {
+            orderMoveTo(world, u, u.attackMoveDestX, u.attackMoveDestZ, true);
+          } else {
+            u.attackMoving = false;
+          }
+        }
+        continue;
+      }
 
       // Aim point: the building's footprint center for siege targets,
       // the unit's position otherwise. The fire/chase logic below is
