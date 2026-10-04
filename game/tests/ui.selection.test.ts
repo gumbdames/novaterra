@@ -132,3 +132,39 @@ describe('pruneSelection', () => {
     expect(sel.unitIds).toEqual([1, 2]);
   });
 });
+
+describe('multi-cell building selection hit-testing', () => {
+  it('every cell inside a multi-cell building footprint resolves to the building id', async () => {
+    const { initCity, buildingAtCell, cellIndex, BUILDING_DEFS } = await import('../src/sim/city');
+    const city = initCity();
+    const def = BUILDING_DEFS.hospital; // 3x3 footprint
+    const hospital = {
+      id: 99,
+      kind: 'hospital',
+      cx: 10,
+      cz: 10,
+      footprintW: def.footprintW,
+      footprintH: def.footprintH,
+      owner: 0,
+      hp: 100,
+      maxHp: 100,
+      active: true,
+      builtAtTick: 0,
+    };
+    city.buildings.push(hospital as any);
+
+    // Verify all 9 tiles of the 3x3 footprint resolve to building id 99
+    for (let dz = 0; dz < def.footprintH; dz++) {
+      for (let dx = 0; dx < def.footprintW; dx++) {
+        const found = buildingAtCell(city, cellIndex(10 + dx, 10 + dz));
+        expect(found?.id).toBe(99);
+      }
+    }
+
+    // Verify adjacent outside cells do not resolve to the hospital
+    expect(buildingAtCell(city, cellIndex(9, 10))).toBeUndefined();
+    expect(buildingAtCell(city, cellIndex(13, 10))).toBeUndefined();
+    expect(buildingAtCell(city, cellIndex(10, 13))).toBeUndefined();
+  });
+});
+

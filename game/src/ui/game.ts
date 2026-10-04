@@ -913,6 +913,9 @@ class GameController {
    * is in flight.
    */
   private leftDragKind: PressDragKind | null = null;
+  /** Right-drag tracking: enables right-click drag-panning without losing right-click context orders. */
+  private rightDragStart: { x: number; y: number } | null = null;
+  private rightDragPanned = false;
   /** Last pointer position of the in-flight pan drag (for move deltas). */
   private panLast: { x: number; y: number } | null = null;
   /** Last pointer position of the in-flight middle-drag orbit. */
@@ -2989,14 +2992,10 @@ class GameController {
   }
 
   private buildingAt(x: number, z: number): { id: number } | null {
-    for (const b of this.session.world.city.buildings) {
-      const x0 = cellCenterWorld(b.cx) - CELL_WORLD_SIZE / 2;
-      const x1 = cellCenterWorld(b.cx) + CELL_WORLD_SIZE / 2;
-      const z0 = cellCenterWorld(b.cz) - CELL_WORLD_SIZE / 2;
-      const z1 = cellCenterWorld(b.cz) + CELL_WORLD_SIZE / 2;
-      if (x >= x0 && x <= x1 && z >= z0 && z <= z1) return { id: b.id };
-    }
-    return null;
+    const cell = this.worldToCell(x, z);
+    if (!cell) return null;
+    const b = buildingAtCell(this.session.world.city, cellIndex(cell.cx, cell.cz));
+    return b ? { id: b.id } : null;
   }
 
   // ---- build tools ----
@@ -3403,20 +3402,16 @@ class GameController {
                 roadClass: this.hud.selectedRoadClass,
               });
       } else if (e.button === 1) {
-        // Middle-drag orbits the camera (yaw + pitch); preventDefault here
-        // and on mousedown stops the browser's middle-click autoscroll.
+        // Middle-drag orbits the camera (yaw + pitch), or pans if Shift is held.
         e.preventDefault();
         this.orbitLast = { x: e.clientX, y: e.clientY };
       } else if (e.button === 2) {
-        // Right-click cancels placement, else issues a context order.
-        // Cancelling also aborts an in-flight placement gesture so a
-        // cancelled tool can never emit an order on pointerup.
+        // Right-click: start tracking potential right-drag (pan) or right-click (order).
         if (this.placement) {
           this.cancelPlacement();
         } else {
-          const ndc = this.toNDC(e);
-          const p = this.groundPoint(ndc.x, ndc.y);
-          if (p) this.issueContextOrder(p.x, p.z);
+          this.rightDragStart = { x: e.clientX, y: e.clientY };
+          this.rightDragPanned = false;
         }
       }
     });
@@ -3429,22 +3424,50 @@ class GameController {
       // Roadmap B11 (2026-10-02): the placement ghost follows the
       // pointer — track NDC for every move over the canvas.
       this.lastPointerNdc = this.toNDC(e);
-      // Middle-drag orbit: horizontal travel yaws, vertical travel pitches.
+      // Middle-drag orbit: horizontal travel yaws, vertical travel pitches (Shift pans).
       if (this.orbitLast && e.buttons & 4) {
         const dx = e.clientX - this.orbitLast.x;
         const dy = e.clientY - this.orbitLast.y;
         this.orbitLast = { x: e.clientX, y: e.clientY };
         if (dx !== 0 || dy !== 0) {
           this.cancelIntroZoom();
-          this.cameraState = orbitDrag(this.cameraState, dx, dy);
+          if (e.shiftKey) {
+            const wpp = worldPerPixelAtTarget(
+              this.cameraState.distance,
+              (GAME_FOV_DEG * Math.PI) / 180,
+              this.canvas.clientHeight || window.innerHeight,
+            );
+            this.cameraState = panDragTarget(this.cameraState, dx, dy, wpp);
+          } else {
+            this.cameraState = orbitDrag(this.cameraState, dx, dy);
+          }
           this.applyCameraStateGuarded();
+        }
+      }
+      // Right-drag: grab-pan the map.
+      if (this.rightDragStart && e.buttons & 2) {
+        const last = this.panLast ?? this.rightDragStart;
+        const dx = e.clientX - last.x;
+        const dy = e.clientY - last.y;
+        if (Math.hypot(e.clientX - this.rightDragStart.x, e.clientY - this.rightDragStart.y) > 6) {
+          this.rightDragPanned = true;
+          this.panLast = { x: e.clientX, y: e.clientY };
+          if (dx !== 0 || dy !== 0) {
+            const wpp = worldPerPixelAtTarget(
+              this.cameraState.distance,
+              (GAME_FOV_DEG * Math.PI) / 180,
+              this.canvas.clientHeight || window.innerHeight,
+            );
+            this.cancelIntroZoom();
+            this.cameraState = panDragTarget(this.cameraState, dx, dy, wpp);
+            this.applyCameraStateGuarded();
+          }
         }
       }
       if (this.dragStart && e.buttons & 1) {
         if (this.leftDragKind === 'pan') {
-          // No tool armed: grab-pan the map. Screen travel becomes
-          // world-space target travel (yaw-aware), scaled so the map
-          // follows the pointer 1:1 at the target plane.
+          // Fallback grab-pan the map. Screen travel becomes
+          // world-space target travel (yaw-aware).
           const last = this.panLast ?? this.dragStart;
           const dx = e.clientX - last.x;
           const dy = e.clientY - last.y;
@@ -3459,20 +3482,14 @@ class GameController {
             this.cameraState = panDragTarget(this.cameraState, dx, dy, wpp);
             this.applyCameraStateGuarded();
           }
-        } else if (this.leftDragKind === 'place') {
+        } else if (this.leftDragKind === 'place' || this.leftDragKind === 'select') {
           const dx = e.clientX - this.dragStart.x;
           const dy = e.clientY - this.dragStart.y;
-          // No selection rectangle while linear-network drag-painting: the
-          // gesture belongs to the network tool, not to box-select.
-          // Final-review R5 (2026-10-01): the rect is only created while
-          // a placement tool is armed — a mid-drag cancellation
-          // (right-click/Escape) must not leave a rect that box-selects
-          // on release with no tool armed.
+          // Marquee box-select (or zone/placement drag rectangle).
           if (
             Math.hypot(dx, dy) > 6 &&
             !this.dragRect &&
-            !this.networkDrag &&
-            this.placement !== null
+            !this.networkDrag
           ) {
             this.dragRect = document.createElement('div');
             this.dragRect.className = 'select-rect';
@@ -3540,6 +3557,8 @@ class GameController {
       this.leftDragKind = null;
       this.panLast = null;
       this.orbitLast = null;
+      this.rightDragStart = null;
+      this.rightDragPanned = false;
       this.networkDrag = null;
       if (this.dragRect) {
         this.dragRect.remove();
@@ -3550,6 +3569,23 @@ class GameController {
       // Middle-drag ends here: it never selects or places.
       if (e.button === 1) {
         this.orbitLast = null;
+        return;
+      }
+      // Right-drag or right-click ends here.
+      if (e.button === 2) {
+        const hadPan = this.rightDragPanned;
+        this.rightDragStart = null;
+        this.rightDragPanned = false;
+        this.panLast = null;
+        if (!hadPan) {
+          if (this.placement) {
+            this.cancelPlacement();
+          } else {
+            const ndc = this.toNDC(e);
+            const p = this.groundPoint(ndc.x, ndc.y);
+            if (p) this.issueContextOrder(p.x, p.z);
+          }
+        }
         return;
       }
       const start = this.dragStart;
@@ -3583,7 +3619,6 @@ class GameController {
       if (kind === 'pan') {
         // Grab-pan gesture: the drag already moved the map; a clean click
         // still selects (resolved against the current placement, if any).
-        // It never places, never box-selects.
         if (gesture === 'click') {
           const ndc = this.toNDC(e);
           this.handleLeftClick(ndc.x, ndc.y, e.shiftKey);
@@ -3650,15 +3685,11 @@ class GameController {
         return;
       }
       if (this.dragRect) {
-        // Box select (or zone drag) from the screen rect. The rect only
-        // exists while a rect-tool is armed (creation is gated on
-        // placement !== null below); a mid-drag cancellation removes it
-        // in cancelPlacement, so reaching here with no placement means
-        // the tool was consumed another way — swallow the rect.
+        // Box select (or zone drag) from the screen rect.
         const rect = this.dragRect.getBoundingClientRect();
         this.dragRect.remove();
         this.dragRect = null;
-        if (start && this.placement !== null) this.handleDragRect(rect, e.shiftKey);
+        if (start) this.handleDragRect(rect, e.shiftKey);
         return;
       }
       if (gesture === 'click') {
@@ -3694,7 +3725,8 @@ class GameController {
         else this.selection = clearSelection();
         return;
       }
-      if (k === 's' && !e.repeat) {
+      // Unit Stop: H, or Shift+S / Ctrl+S (leaves plain S for camera downward panning).
+      if ((k === 'h' || (k === 's' && (e.ctrlKey || e.shiftKey))) && !e.repeat) {
         this.issueStop();
         return;
       }
@@ -3704,11 +3736,10 @@ class GameController {
         this.setGrid(!this.gridVisible);
         return;
       }
-      // Roadmap B4 (2026-10-02): A selects every living military unit
-      // the player owns. Guarded against typing targets (the cheat
-      // console, menu text fields) — a typed 'a' must not reselect
-      // the army.
-      if (k === 'a' && !e.repeat && !isTypingTarget(e.target)) {
+      // Army selection: Ctrl+A or X selects every living military unit
+      // the player owns (leaves plain A for camera left panning).
+      // Guarded against typing targets (the cheat console, menu text fields).
+      if (((k === 'a' && (e.ctrlKey || e.metaKey)) || k === 'x') && !e.repeat && !isTypingTarget(e.target)) {
         e.preventDefault();
         this.selectAllMilitary();
         return;
@@ -3866,7 +3897,7 @@ class GameController {
     let fx = 0;
     let fz = 0;
     if (k.has('w') || k.has('arrowup')) { fx += forward.x; fz += forward.z; }
-    if (k.has('arrowdown')) { fx -= forward.x; fz -= forward.z; }
+    if (k.has('s') || k.has('arrowdown')) { fx -= forward.x; fz -= forward.z; }
     if (k.has('a') || k.has('arrowleft')) { fx -= right.x; fz -= right.z; }
     if (k.has('d') || k.has('arrowright')) { fx += right.x; fz += right.z; }
     // Edge pan: pointer near a screen edge pans that way. The vector is

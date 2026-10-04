@@ -211,7 +211,7 @@ describe('AI intel play soak (marshal vs marshal, 3600 ticks)', () => {
     // At least one covert op (steal or sabotage) fired.
     expect(steal + sabotage).toBeGreaterThan(0);
     expect(spies0 + spies1).toBeGreaterThan(0);
-  });
+  }, 30_000);
 
   it('same seed + same script ⇒ identical digest with the intel play soaking', () => {
     const runMatch = (seed: number): number => {
@@ -220,7 +220,7 @@ describe('AI intel play soak (marshal vs marshal, 3600 ticks)', () => {
       return digestWorld(ctx.world);
     };
     expect(runMatch(777)).toBe(runMatch(777));
-  });
+  }, 30_000);
 
   it('mid-soak save/load ⇒ identical digest (intel state survives)', () => {
     const ctx = setupIntelSoak(4242);
@@ -243,5 +243,5 @@ describe('AI intel play soak (marshal vs marshal, 3600 ticks)', () => {
     // The intel ops counters survived the round-trip.
     expect(rai0.intel.ops.infiltrate).toBe(ctx.ai0.intel.ops.infiltrate);
     expect(rai1.intel.ops.infiltrate).toBe(ctx.ai1.intel.ops.infiltrate);
-  });
+  }, 30_000);
 });

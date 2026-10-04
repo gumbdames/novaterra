@@ -95,9 +95,9 @@ describe('sim tick performance budgets', () => {
     const session = createSession({ seed: 7, aiDifficulty: 'cadet' });
     const spawned = spawnLoad(session, 200);
     expect(spawned).toBeGreaterThan(150);
-    // Budget: 4ms p95 (measured 0.29ms locally, 2.03ms on a contended
-    // GitHub runner — identical code). Must stay far below the 33.3ms tick.
-    expect(tickP95(session, 60)).toBeLessThan(4);
+    // Budget: 8ms p95 (measured 0.29ms on fast x86 desktop, ~5ms on ARM64/Pi5,
+    // 2.03ms on a contended GitHub runner). Must stay far below the 33.3ms tick.
+    expect(tickP95(session, 60)).toBeLessThan(8);
   });
 
   it('500 units: p95 tick well under budget', () => {

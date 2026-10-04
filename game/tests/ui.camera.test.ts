@@ -254,8 +254,8 @@ describe('middle-drag orbit (workstream V)', () => {
 });
 
 describe('press-time drag disambiguation (workstream V)', () => {
-  it('pans when no tool is armed, places when one is', () => {
-    expect(pressDragKind(0, false)).toBe('pan');
+  it('selects when no tool is armed, places when one is', () => {
+    expect(pressDragKind(0, false)).toBe('select');
     expect(pressDragKind(0, true)).toBe('place');
   });
 

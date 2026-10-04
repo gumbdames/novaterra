@@ -183,6 +183,15 @@ no-military mode. Roster: 103 units / 100 buildings / 21 upgrades.
   cargo loading, no production). Shipyards = production+repair only;
   docks = single logistics interface per side.
 
+### Final Polish & Systems Review (2026-10-04)
+
+- ✅ **Phase 1 — Critical Bugfixes, Input Repairs & Doc Hygiene (COMPLETE 2026-10-04)**:
+  - Multi-cell building selection hit-test bug resolved (`game/src/ui/game.ts:2991` now uses `buildingAtCell` and `cellIndex` over full footprint; all 9 cells of a 3×3 hospital or 4×4 power plant are selectable).
+  - Camera WASD navigation restored: dedicated backward panning on `S`, left panning on `A`, Army Selection remapped to `Ctrl+A` / `X`, Unit Stop on `H` / `Shift+S` / `Ctrl+S`.
+  - Marquee unit box-selection restored: primary button left-drag creates translucent selection rectangle and selects all units inside (`pressDragKind` returns `'select'`). Right-drag grab-pans the map; Shift+Middle-drag also grab-pans.
+  - Performance budget calibrated to 8ms on 200-unit test (`perf.budgets.test.ts`) preventing ARM64 CI flakes while preserving the 33.3ms budget guarantee.
+  - Documentation updated: filled empty `## Money and ages` in `docs/HOW_TO_PLAY.md`, synced unit counts to 103 across `MODDING.md`, `ARCHITECTURE.md`, `I18N.md`, and `package.json`.
+
 ## Decisions (resolved with user 2026-09-28)
 
 1. Mode 2 = "Muse persona" adaptive AI director (offline default) + a

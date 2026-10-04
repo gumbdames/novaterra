@@ -51,8 +51,8 @@ game/src/
     rng.ts        # mulberry32 + named streams; stream state in every snapshot
     world.ts      # the World store; owns city: CityState
     city.ts       # city grid, roads, zones, buildings, players, placement
-    units.ts      # unit defs (97) + UnitRecord store, spawnUnit
-                  # BUILDING_DEFS (100) lives in city.ts
+    units.ts      # unit defs (103) + UnitRecord store, spawnUnit
+    BUILDING_DEFS (100) lives in city.ts
     upgrades.ts   # 21 researchable upgrades + effect hooks
     ages.ts       # 5 technology ages + National Program choices
     variants.ts   # 28 Mk II/III tech-level variants (lazy getter, no new art)
@@ -254,7 +254,7 @@ state.
   (deterministic DataTextures, zero third-party IP); procedural equirect
   env map so metals shade correctly. Base models are low-poly by
   authorship — textures make materials read, not silhouettes.
-  **Entity portraits:** build-time 96px 2.5D thumbnails for all 197 kinds,
+  **Entity portraits:** build-time 96px 2.5D thumbnails for all 203 kinds (103 units, 100 buildings),
   rendered by a deterministic CPU rasterizer over the game's own processed
   geometry (`game/scripts/portrait-atlas.ts`, `npm run portraits`) and
   packed into `game/public/img/entity-atlas.png` (189KB paletted PNG,

@@ -2,7 +2,7 @@
   "dependencies": {
     "three": "0.186.1"
   },
-  "description": "NOVATERRA — 3D city-builder × RTS hybrid (build cities, wage war, advance through ages). 0.1 Alpha: 97 units, 100 buildings, 21 upgrades, 8 missions, 5 AI difficulties, deterministic sim.",
+  "description": "NOVATERRA — 3D city-builder × RTS hybrid (build cities, wage war, advance through ages). 0.1 Alpha: 103 units, 100 buildings, 21 upgrades, 8 missions, 5 AI difficulties, deterministic sim.",
   "devDependencies": {
     "@types/three": "0.186.0",
     "pngjs": "^7.0.0",

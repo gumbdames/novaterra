@@ -18,7 +18,7 @@ right tables. This guide walks through adding one unit end-to-end.
 
 | Table | File | What it holds |
 |---|---|---|
-| `UNIT_DEFS` | `game/src/sim/units.ts` | All 97 unit kinds: stats, costs, gating |
+| `UNIT_DEFS` | `game/src/sim/units.ts` | All 103 unit kinds: stats, costs, gating |
 | `BUILDING_DEFS` | `game/src/sim/city.ts` | All 100 building kinds: costs, footprint, effects |
 | `UPGRADE_DEFS` | `game/src/sim/upgrades.ts` | All 22 upgrades: costs, prerequisites |
 

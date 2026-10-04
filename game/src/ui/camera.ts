@@ -223,25 +223,25 @@ export function orbitDrag(state: CameraState, dxPx: number, dyPx: number): Camer
 }
 
 /** What a primary-button press on the canvas means. */
-export type PressDragKind = 'pan' | 'place' | 'ignore';
+export type PressDragKind = 'pan' | 'place' | 'select' | 'ignore';
 
 /**
  * Decide what a canvas press means, from the press-time inputs only:
  *  - 'ignore': not the primary button — the controller owns those
- *    presses (middle = orbit, right = cancel / context order).
+ *    presses (middle = orbit/pan, right = pan / cancel / context order).
  *  - 'place': a placement tool is armed — the drag belongs to the tool
  *    (road/line/pipe drag-paint, zone rectangle, train/build
  *    place-at-release).
- *  - 'pan': no tool armed — the drag grab-pans the map.
+ *  - 'select': no tool armed — the drag box-selects units in the drawn
+ *    marquee rectangle (RTS standard).
  *
  * The controller snapshots this at pointerdown and never re-evaluates
  * mid-gesture: arming or cancelling a tool while a drag is in flight
- * cannot flip the gesture's meaning (a pan never emits a placement, a
- * placement drag never pans).
+ * cannot flip the gesture's meaning.
  */
 export function pressDragKind(button: number, placementActive: boolean): PressDragKind {
   if (button !== 0) return 'ignore';
-  return placementActive ? 'place' : 'pan';
+  return placementActive ? 'place' : 'select';
 }
 
 /** Clamp target inside the map and pitch/distance into range. */
