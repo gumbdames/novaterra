@@ -48,6 +48,9 @@ const EXPECTED_IDS: SfxId[] = [
   'intelOp',
   'victory',
   'defeat',
+  'radioAcknowledge',
+  'radioAttack',
+  'radioUnderFire',
 ];
 
 const VALID_WAVES = new Set(['sine', 'square', 'sawtooth', 'triangle']);

@@ -46,7 +46,10 @@ export type SfxId =
   | 'defeat' // defeat stinger
   | 'ageFanfare' // age advancement
   | 'error' // invalid action / rejection
-  | 'advisorPing'; // advisor has a new top problem
+  | 'advisorPing' // advisor has a new top problem
+  | 'radioAcknowledge' // tactical radio mic click + confirm chirp
+  | 'radioAttack' // tactical target lock-on radio burst
+  | 'radioUnderFire'; // emergency comms taking fire squelch
 
 /** One synthesized layer inside a cue. */
 export interface SfxLayer {
@@ -137,8 +140,9 @@ export const SFX_CUES: Record<SfxId, SfxCue> = {
   shot: {
     id: 'shot',
     layers: [
-      { kind: 'noise', filter: 'highpass', freqStart: 1800, freqEnd: 1200, gain: 0.22, duration: 0.09, delay: 0 },
-      { kind: 'tone', wave: 'square', freqStart: 180, freqEnd: 90, gain: 0.12, duration: 0.06, delay: 0 },
+      { kind: 'noise', filter: 'highpass', freqStart: 2400, freqEnd: 1400, gain: 0.28, duration: 0.08, delay: 0 },
+      { kind: 'tone', wave: 'square', freqStart: 240, freqEnd: 70, gain: 0.18, duration: 0.08, delay: 0 },
+      { kind: 'tone', wave: 'sine', freqStart: 120, freqEnd: 45, gain: 0.25, duration: 0.12, delay: 0.01 },
     ],
   },
   foeDown: {
@@ -151,8 +155,10 @@ export const SFX_CUES: Record<SfxId, SfxCue> = {
   explosion: {
     id: 'explosion',
     layers: [
-      { kind: 'noise', filter: 'lowpass', freqStart: 2800, freqEnd: 90, gain: 0.5, duration: 0.7, delay: 0 },
-      { kind: 'tone', wave: 'sine', freqStart: 70, freqEnd: 38, gain: 0.45, duration: 0.6, delay: 0 },
+      { kind: 'noise', filter: 'bandpass', freqStart: 3200, freqEnd: 600, gain: 0.45, duration: 0.25, delay: 0 },
+      { kind: 'noise', filter: 'lowpass', freqStart: 1600, freqEnd: 60, gain: 0.55, duration: 0.85, delay: 0.04 },
+      { kind: 'tone', wave: 'sine', freqStart: 85, freqEnd: 28, gain: 0.6, duration: 0.75, delay: 0 },
+      { kind: 'tone', wave: 'sawtooth', freqStart: 180, freqEnd: 40, gain: 0.2, duration: 0.4, delay: 0.08 },
     ],
   },
   unitDown: {
@@ -218,6 +224,34 @@ export const SFX_CUES: Record<SfxId, SfxCue> = {
     id: 'advisorPing',
     layers: [
       { kind: 'tone', wave: 'sine', freqStart: 1244, freqEnd: 1174, gain: 0.2, duration: 0.22, delay: 0 },
+    ],
+  },
+  radioAcknowledge: {
+    id: 'radioAcknowledge',
+    layers: [
+      { kind: 'noise', filter: 'bandpass', freqStart: 2800, freqEnd: 2400, gain: 0.15, duration: 0.05, delay: 0 },
+      { kind: 'tone', wave: 'triangle', freqStart: 620, freqEnd: 620, gain: 0.22, duration: 0.07, delay: 0.04 },
+      { kind: 'tone', wave: 'triangle', freqStart: 830, freqEnd: 830, gain: 0.24, duration: 0.09, delay: 0.1 },
+      { kind: 'noise', filter: 'bandpass', freqStart: 3200, freqEnd: 2200, gain: 0.12, duration: 0.04, delay: 0.18 },
+    ],
+  },
+  radioAttack: {
+    id: 'radioAttack',
+    layers: [
+      { kind: 'noise', filter: 'bandpass', freqStart: 3400, freqEnd: 2800, gain: 0.18, duration: 0.05, delay: 0 },
+      { kind: 'tone', wave: 'square', freqStart: 580, freqEnd: 740, gain: 0.18, duration: 0.08, delay: 0.04 },
+      { kind: 'tone', wave: 'square', freqStart: 740, freqEnd: 980, gain: 0.2, duration: 0.1, delay: 0.11 },
+      { kind: 'noise', filter: 'bandpass', freqStart: 2600, freqEnd: 1800, gain: 0.12, duration: 0.04, delay: 0.2 },
+    ],
+  },
+  radioUnderFire: {
+    id: 'radioUnderFire',
+    layers: [
+      { kind: 'noise', filter: 'bandpass', freqStart: 4200, freqEnd: 2200, gain: 0.25, duration: 0.08, delay: 0 },
+      { kind: 'tone', wave: 'sawtooth', freqStart: 880, freqEnd: 660, gain: 0.22, duration: 0.09, delay: 0.06 },
+      { kind: 'tone', wave: 'sawtooth', freqStart: 880, freqEnd: 660, gain: 0.22, duration: 0.09, delay: 0.16 },
+      { kind: 'tone', wave: 'sawtooth', freqStart: 988, freqEnd: 740, gain: 0.24, duration: 0.12, delay: 0.26 },
+      { kind: 'noise', filter: 'lowpass', freqStart: 2000, freqEnd: 400, gain: 0.15, duration: 0.06, delay: 0.36 },
     ],
   },
 };

@@ -70,11 +70,13 @@ state. Pause = ctx.suspend(); settings persist to localStorage.
 - `sfx.ts` — procedural SFX synth: every cue is declarative data
   (`SFX_CUES: Record<SfxId, SfxCue>`, tone/noise layers), `playSfxCue`
   renders it. Zero download cost; the game is never silent on audio
-  failure (all playback is try/caught). 19 cues (0.1 Alpha, R5
-  2026-10-01): UI, orders, combat, economy/tech (`unitTrained`,
-  `researchComplete`), kill differentiation (`unitDown` loss vs
-  `foeDown` kill), `underAttack` (30s-throttled), `intelOp`,
-  `victory`/`defeat` stingers. Roster pinned by `tests/audio.sfx.test.ts`.
+  failure (all playback is try/caught). 22 cues (0.1 Alpha, R5
+  2026-10-01; tactical radio comms 2026-10-04): UI, orders (`moveOrder`,
+  `radioAcknowledge`, `radioAttack`), combat (`shot`, `explosion`),
+  economy/tech (`unitTrained`, `researchComplete`), kill differentiation
+  (`unitDown` loss vs `foeDown` kill), `underAttack` + `radioUnderFire`
+  (30s-throttled), `intelOp`, `victory`/`defeat` stingers. Roster pinned
+  by `tests/audio.sfx.test.ts`.
 
 ## Who owns engines
 

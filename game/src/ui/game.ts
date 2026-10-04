@@ -1914,6 +1914,7 @@ class GameController {
       if (events.damageEvents > 0 && nowMs - this.lastUnderAttackWarn > 30_000) {
         this.lastUnderAttackWarn = nowMs;
         this.audio.playSfx('underAttack');
+        this.audio.playSfx('radioUnderFire');
       }
       // Fun-audit B5 (2026-10-02): off-screen event pings — the visual
       // half of the audio events. Red at damage, green at friendly
@@ -2904,7 +2905,7 @@ class GameController {
       for (const cmd of buildAttackOrders(attackers, HUMAN_PLAYER_ID, clicked.id)) {
         this.enqueue(cmd);
       }
-      this.audio.playSfx('attackOrder');
+      this.audio.playSfx('radioAttack');
       return;
     }
     // Final-review R2 (2026-10-01): right-click on an enemy building
@@ -2932,12 +2933,12 @@ class GameController {
         for (const cmd of buildAttackBuildingOrders(attackers, HUMAN_PLAYER_ID, target.id)) {
           this.enqueue(cmd);
         }
-        this.audio.playSfx('attackOrder');
+        this.audio.playSfx('radioAttack');
         return;
       }
     }
     this.enqueue(buildMoveOrder(ownIds, HUMAN_PLAYER_ID, worldX, worldZ));
-    this.audio.playSfx('moveOrder');
+    this.audio.playSfx('radioAcknowledge');
   }
 
   // ---- selection ----
@@ -3022,7 +3023,7 @@ class GameController {
       } else if (this.selection.unitIds.length > 0) {
         this.enqueue(buildAttackMoveOrder(HUMAN_PLAYER_ID, this.selection.unitIds, point.x, point.z));
         this.hud.toast('Attack-move ordered.');
-        this.audio.playSfx('select');
+        this.audio.playSfx('radioAttack');
       }
       this.cancelPlacement();
       return;
