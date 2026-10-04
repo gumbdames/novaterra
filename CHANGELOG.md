@@ -3,6 +3,24 @@
 All notable changes to the 0.1 Alpha. Commit hashes are the local `main`
 history (`gumbdames/novaterra`).
 
+## 2026-10-04 — Art fixes (portrait, baked text, suffixes, provenance)
+
+- **Muse portrait**: replaced the sci-fi cybernetic android portrait with
+  a realistic terrestrial strategic-advisor portrait (per the
+  realistic/terrestrial art direction — no sci-fi).
+- **Baked-in text removed**: menu hero and all 8 mission briefing images
+  regenerated with no baked English text, dates, or HUD overlays
+  (localization-safe; the menu hero no longer carries a stale
+  `2026-10-14` date).
+- **Skirmish map suffixes**: maps 4–8 renamed `.jpg` → `.png` (they are
+  PNG data); the menu picks the extension per map; `render-maps.mjs`
+  writes `.png`.
+- **Provenance**: `THIRD_PARTY_NOTICES.md` now carries a per-file table
+  for all 18 art assets (dimensions, use site, honest provenance —
+  unrecorded generators are marked as such, not invented). Corrected the
+  "high-resolution" claim for the 256×256 procedural thumbnails
+  (maps 4–8).
+
 ## 2026-10-04 — RTS controls, Mode 2 Muse Persona, art, audio + bug-fix pass
 
 - **RTS controls** (`8322253`, `781773d`): multi-cell structure click
