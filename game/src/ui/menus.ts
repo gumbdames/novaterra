@@ -264,7 +264,7 @@ export class MainMenu {
           for (const mb of mapButtons) {
             mb.classList.toggle('selected', mb.dataset['map'] === selectedMap);
           }
-          previewImg.src = `img/art/skirmish/map-${mapNum}.jpg`;
+          previewImg.src = `img/art/skirmish/map-${mapNum}.${mapNum <= 3 ? 'jpg' : 'png'}`;
           previewCaption.textContent = `${preset.name} — ${preset.blurb}`;
         },
         false,

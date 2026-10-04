@@ -203,8 +203,11 @@ no-military mode. Roster: 103 units / 100 buildings / 21 upgrades.
 - ✅ **Phase 4 — 3D Graphics Polish & 2D Art Assets (COMPLETE 2026-10-04)**:
   - Cinematic main menu war room operations center hero backdrop (`menu-hero.jpg`).
   - Full set of 8 high-resolution tactical satellite reconnaissance maps for all 8 campaign mission briefings (`img/art/briefings/mission-1..8.jpg`).
-  - Complete set of 8 tactical topographic radar preview cards for all 8 skirmish maps (`img/art/skirmish/map-1..8.jpg`).
-  - Sleek tactical cybernetic avatar portrait for strategic advisor/adversary Muse.
+  - Skirmish map preview cards: maps 1–3 are 1376×768 generated art
+    (`img/art/skirmish/map-1..3.jpg`); maps 4–8 are 256×256 procedural
+    terrain thumbnails rendered by `game/scripts/render-maps.mjs`
+    (`img/art/skirmish/map-4..8.png`).
+  - Realistic terrestrial advisor portrait for the Muse persona (2026-10-04: replaced the sci-fi cybernetic portrait per the realistic/terrestrial art direction).
 - ✅ **Phase 5 — Audio Engine & Tactical Radio Chatter (COMPLETE 2026-10-04)**:
   - Enhanced weapon audio: layered sub-bass concussion punch on `shot` and rolling debris shockwaves on `explosion`.
   - Added procedural tactical radio cues: `radioAcknowledge`, `radioAttack`, and `radioUnderFire`.

@@ -261,3 +261,48 @@ text is baked into any image; all end-screen copy stays in code
 (`ui/strings.ts`, English and English only). The JPEGs are lazy-loaded
 (the browser fetches them only when an end screen shows), so they do
 not enter the boot payload.
+
+## Menu / briefing / skirmish art (shipped in game/public/img/art/)
+
+Status as of 2026-10-04. Paths relative to repo root.
+
+| File | Dimensions / format | Size | Used in | Provenance |
+|---|---|---|---|---|
+| `game/public/img/art/menu-hero.jpg` | 1920×1280 JPEG | 498 KB | Main menu hero backdrop (`game/src/style.css:1493`, via `.main-menu-hero`) | Project-generated 2026-10-04 via the project's media pipeline (text-free war-room backdrop, no baked date/text) — replaces the AI-generated version (generator unrecorded, contributed 2026-10-04 in `f5d5a3d`). |
+| `game/public/img/art/muse-portrait.jpg` | 1280×1920 JPEG | 303 KB | MuseBox advisor/adversary portrait (`game/src/ui/musebox.ts:72`) | Project-generated 2026-10-04 via the project's media pipeline (realistic terrestrial advisor portrait, no sci-fi) — replaces the AI-generated cybernetic portrait (generator unrecorded, contributed 2026-10-04 in `f5d5a3d`). |
+| `game/public/img/art/briefings/mission-1.jpg` | 1920×1280 JPEG | Campaign mission briefing images (`game/src/ui/campaignUi.ts:155`) | Project-generated 2026-10-04 via the project's media pipeline (text-free recon photo) — replaces the AI-generated version (generator unrecorded, contributed 2026-10-04 in `f5d5a3d`). |
+| `game/public/img/art/briefings/mission-2.jpg` | 1920×1280 JPEG | Campaign mission briefing images (`game/src/ui/campaignUi.ts:155`) | Project-generated 2026-10-04 via the project's media pipeline (text-free recon photo) — replaces the AI-generated version (generator unrecorded, contributed 2026-10-04 in `f5d5a3d`). |
+| `game/public/img/art/briefings/mission-3.jpg` | 1920×1280 JPEG | Campaign mission briefing images (`game/src/ui/campaignUi.ts:155`) | Project-generated 2026-10-04 via the project's media pipeline (text-free recon photo) — replaces the AI-generated version (generator unrecorded, contributed 2026-10-04 in `f5d5a3d`). |
+| `game/public/img/art/briefings/mission-4.jpg` | 1920×1280 JPEG | Campaign mission briefing images (`game/src/ui/campaignUi.ts:155`) | Project-generated 2026-10-04 via the project's media pipeline (text-free recon photo) — replaces the AI-generated version (generator unrecorded, contributed 2026-10-04 in `f5d5a3d`). |
+| `game/public/img/art/briefings/mission-5.jpg` | 1920×1280 JPEG | Campaign mission briefing images (`game/src/ui/campaignUi.ts:155`) | Project-generated 2026-10-04 via the project's media pipeline (text-free recon photo) — replaces the AI-generated version (generator unrecorded, contributed 2026-10-04 in `f5d5a3d`). |
+| `game/public/img/art/briefings/mission-6.jpg` | 1920×1280 JPEG | Campaign mission briefing images (`game/src/ui/campaignUi.ts:155`) | Project-generated 2026-10-04 via the project's media pipeline (text-free recon photo) — replaces the AI-generated version (generator unrecorded, contributed 2026-10-04 in `f5d5a3d`). |
+| `game/public/img/art/briefings/mission-7.jpg` | 1920×1280 JPEG | Campaign mission briefing images (`game/src/ui/campaignUi.ts:155`) | Project-generated 2026-10-04 via the project's media pipeline (text-free recon photo) — replaces the AI-generated version (generator unrecorded, contributed 2026-10-04 in `f5d5a3d`). |
+| `game/public/img/art/briefings/mission-8.jpg` | 1920×1280 JPEG | Campaign mission briefing images (`game/src/ui/campaignUi.ts:155`) | Project-generated 2026-10-04 via the project's media pipeline (text-free recon photo) — replaces the AI-generated version (generator unrecorded, contributed 2026-10-04 in `f5d5a3d`). |
+| `game/public/img/art/skirmish/map-1.jpg` | 1376×768 JPEG | 955 KB | Skirmish map preview cards (`game/src/ui/menus.ts:249,267`) | AI-generated; generator, date, and terms UNRECORDED — contributed 2026-10-04 (`f5d5a3d`). Confirmation required; treat as unlicensed until confirmed. |
+| `game/public/img/art/skirmish/map-2.jpg` | 1376×768 JPEG | 1.02 MB | Same as above | Same as above. |
+| `game/public/img/art/skirmish/map-3.jpg` | 1376×768 JPEG | 1.00 MB | Same as above | Same as above. |
+| `game/public/img/art/skirmish/map-4.png` | 256×256 PNG | 30 KB | Skirmish map preview cards (`game/src/ui/menus.ts:267`) | Project-generated: deterministic procedural terrain thumbnails rendered by `game/scripts/render-maps.mjs` (`encodePng`, seeded per map preset). Covered by the repo's own AGPL-3.0-only license. |
+| `game/public/img/art/skirmish/map-5.png` | 256×256 PNG | 30 KB | Same as above | Same as above. |
+| `game/public/img/art/skirmish/map-6.png` | 256×256 PNG | 29 KB | Same as above | Same as above. |
+| `game/public/img/art/skirmish/map-7.png` | 256×256 PNG | 31 KB | Same as above | Same as above. |
+| `game/public/img/art/skirmish/map-8.png` | 256×256 PNG | 30 KB | Same as above | Same as above. |
+
+### Notes (menu / briefing / skirmish art)
+
+- The 13 JPEG files above are visually AI-generated-looking, but no
+  generator name, generation date, or license terms were recorded when
+  they were contributed. No generator name or license is invented here on
+  purpose — do not guess. The contributor of commit `f5d5a3d`
+  (2026-10-04) must supply: (1) the generator/tool used, (2) the terms
+  under which generated images may be used in an open-source project,
+  and (3) confirmation that those terms were followed. Until then these
+  files are a licensing risk and should not ship in a release claiming
+  clean third-party provenance.
+- `muse-portrait.jpg` additionally conflicts with the project's
+  realistic/terrestrial (non-sci-fi) art direction and is being replaced
+  2026-10-04 per user directive.
+- The `.png` extension on maps 4–8 is correct (they are PNG data);
+  `menus.ts` already selects `jpg` for maps 1–3 and `png` for maps 4–8.
+- Maps 1–3 are 1376×768 generated art; maps 4–8 are 256×256 procedural
+  terrain thumbnails — not all eight are "high-resolution satellite
+  maps" (see the corrected wording in `README.md` and `docs/PLAN.md`).

@@ -19,7 +19,7 @@ const SIZE = 256;
 
 for (let idx = 0; idx < MAP_PRESETS.length; idx++) {
   const mapIndex = idx + 1;
-  const targetFile = path.join(outDir, `map-${mapIndex}.jpg`);
+  const targetFile = path.join(outDir, `map-${mapIndex}.png`);
   
   // If map 1, 2, 3 already exist from the image-generator, we don't need to overwrite them,
   // but if we want to ensure maps 4..8 exist, let's generate them!

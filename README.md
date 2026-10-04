@@ -18,8 +18,9 @@ land, sea and air — or play a fully peaceful game with war disabled.
   (Mode 1 Classic Engine vs Mode 2 Muse Persona with live tactical
   taunts, commentary, and dialogue across all 5 difficulties). AAA visual polish
   (cinematic war room holographic menu hero backdrop, 8 mission briefing tactical
-  reconnaissance maps, 8 skirmish topographic radar preview cards, glowing Muse AI
-  advisor avatar). Audio overhaul (punchy multi-layered weapon concussion & shockwave
+  reconnaissance maps, 8 skirmish preview cards (maps 1–3 high-resolution
+  art, maps 4–8 procedural terrain thumbnails), realistic Muse
+  advisor portrait). Audio overhaul (punchy multi-layered weapon concussion & shockwave
   rumble, plus tactical radio mic clicks, affirmative chirps, and under-fire squelches).
   The entire grand expansion is live and fully verified across all 103 units, 100
   buildings, 8 missions, 8 skirmish maps, and 5 ages. Phase 7 (intel + spies + recon)
