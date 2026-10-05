@@ -110,6 +110,14 @@ export interface CommandQueue {
    * the applied commands with their results.
    */
   applyDue(world: World, atTick: number): AppliedCommand[];
+  /**
+   * Drain the results `applyDue` has recorded since the last drain
+   * (2026-10-05, Fix 2): the UI consumes applied-command results here
+   * (e.g. the demolish toast) without the tick driver having to return
+   * them. UI-side only — never read by the sim, never snapshotted,
+   * never digested, no determinism footprint.
+   */
+  drainResults(): AppliedCommand[];
   /** Number of commands still queued. */
   pendingCount(): number;
   /** Drop everything queued (used by tests, not by the game). */
@@ -127,6 +135,9 @@ export function createCommandQueue(): CommandQueue {
   const specs = new Map<string, CommandSpec>();
   const pending: Command[] = [];
   let insertionCounter = 0;
+  // Fix 2 (2026-10-05): applied-command results recorded for the UI
+  // drain (`drainResults`) — queue bookkeeping, never sim state.
+  const recordedResults: AppliedCommand[] = [];
 
   function reject(reason: string): never {
     throw new CommandRejectedError(reason);
@@ -185,7 +196,16 @@ export function createCommandQueue(): CommandQueue {
         }
         applied.push({ command: cmd, result: spec.apply(cmd, world) });
       }
+      // Fix 2 (2026-10-05): record results for the UI drain. This is
+      // queue bookkeeping, not sim state — never snapshotted/digested.
+      for (const a of applied) recordedResults.push(a);
       return applied;
+    },
+
+    drainResults(): AppliedCommand[] {
+      const out = recordedResults.slice();
+      recordedResults.length = 0;
+      return out;
     },
 
     pendingCount(): number {

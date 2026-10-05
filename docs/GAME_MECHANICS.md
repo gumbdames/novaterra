@@ -14,9 +14,14 @@
   them. Power plants and water pumps fit anywhere.
 - **Buildings** take time to construct and cost upkeep every second.
   Demolishing is free but you get nothing back — plan before you place.
-  Build feedback: while a building tool is armed, the armed card stays
+  The Demolish tool disarms after each successful demolition (one click,
+  one demolition), and a persistent toast confirms what you removed
+  (it stays on screen instead of flashing past). Build feedback:
+  while a building tool is armed, the armed card stays
   highlighted and a ghost of the footprint follows your cursor — green
-  where the building is legal, red where it isn't — and a chime plays
+  where the building is legal, red where it isn't (a unit standing on
+  the footprint blocks placement — buildings can never land on units)
+  — and a chime plays
   when construction finishes. Rising buildings stand inside an orange
   scaffold frame with dust hanging in the air until they complete.
 - **Production buildings** unlock your military: the **Barracks**
@@ -140,6 +145,14 @@ A healthy city grows on its own: new buildings appear in zoned areas
 every few seconds, as long as people are fed and you can afford them.
 If food runs out, growth stops until farms catch up. Desirable blocks
 fill in fastest — see Land value and desirability.
+
+Houses only rise when they're needed. Newcomers immigrate to your
+residential zones (faster when the area is desirable, never during a
+food shortage); arrivals move into free homes first, and the rest wait
+as unhoused demand. Residential construction needs all three: unhoused
+people waiting, the block served by your power AND water networks, and
+spare utility headroom. Commercial and industrial zones grow the old
+way. Roads are optional — a served block grows with zero roads.
 
 ## Land value and desirability
 
@@ -458,7 +471,9 @@ bunkers 800–1000.
   (veterancy) and well-supplied crews still hit harder; starving ones
   hit softer.
 - **A destroyed building is gone completely** — its output, its parked
-  aircraft, its stocked supplies, all of it. (Your own buildings can
+  aircraft, its stocked supplies, all of it. When the enemy destroys one
+  of your buildings you get a persistent toast naming it, so a lost Water Pump
+  never goes unnoticed in the noise of battle. (Your own buildings can
   be demolished for free with the Demolish tool, but you get nothing
   back — plan before you place.)
 - **Defense:** the **Aegis shield** blocks all damage to your buildings
@@ -806,7 +821,12 @@ military target. No ambushes: the warning always comes first.
 **Fog of war.** The map is not yours by default: unexplored ground is
 black shroud, ground you have visited but cannot currently see is
 dimmed, and only the ground your units and buildings can see right
-now is fully clear. Visibility uses the same sight model the AI
+now is fully clear. Every completed, operational, unsabotaged building
+is a pair of eyes — its vision radius depends on the kind: houses see
+about 8 cells out, factories about 12, most buildings 14, towers and
+sensor posts 20 or more (cells are 2 world units each). A building
+that is still under construction, shut down, or sabotaged sees
+nothing. Visibility uses the same sight model the AI
 itself plays under — your render, minimap, entity hiding, and threat
 meter all agree with what the AI can perceive, and nothing is
 omniscient. Your explored memory persists across save and load.
@@ -841,7 +861,9 @@ In skirmish you face the **Classic AI** at one of five levels:
   your artillery, frigates vs your submarines), a forward base, age
   advancement, and the
   intel game: listening posts, an intel HQ, and a spy that infiltrates
-  your best buildings to steal tech or sabotage production.
+  your best buildings to steal tech or sabotage production. When rich,
+  it builds real nuclear plants (up to two) through the same
+  construction rules you follow — and upgrades them.
 - **General** — combined arms. Everything the Commander does, faster and
   bigger, plus a working navy (fishing boats, patrol boats) on maps with
   usable water, and two spies working your territory.

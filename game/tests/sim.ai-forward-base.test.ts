@@ -112,8 +112,12 @@ function setupForwardBase(
   const queue = createCommandQueue();
   registerCityCommands(queue, terrain);
   const army = opts.army ?? FORWARD_DEPOT_MIN_ARMY;
+  // 2026-10-05 (Fix 4): park the army 30 cells east of the anchor —
+  // well outside the 10-cell depot site search. The gate under test is
+  // the army COUNT, not its position, and buildings can no longer land
+  // on units, so the army must not stand on the depot site.
   for (let i = 0; i < army; i++) {
-    spawnUnit(world, 'rifles', 0, spawn.x + i * 2, spawn.z);
+    spawnUnit(world, 'rifles', 0, spawn.x + 60 + i * 2, spawn.z);
   }
   if (opts.funds !== undefined) {
     getPlayer(world.city, 0)!.funds = opts.funds;
@@ -470,8 +474,11 @@ describe('thinkLogistics — the forward base is wired into the think', () => {
     getAgeState(world, 0).age = 'industry';
     const spawn = terrain.spawns[0] ?? { x: 0, z: 0 };
     ai.forwardBase = { x: spawn.x, z: spawn.z };
+    // 2026-10-05 (Fix 4): park the army 30 cells east of the anchor —
+    // the gate under test is the army COUNT, and buildings can no
+    // longer land on units.
     for (let i = 0; i < FORWARD_DEPOT_MIN_ARMY; i++) {
-      spawnUnit(world, 'rifles', 0, spawn.x + i * 2, spawn.z);
+      spawnUnit(world, 'rifles', 0, spawn.x + 60 + i * 2, spawn.z);
     }
     // Drive the AI system until the marshal's first think fires
     // (cadence 30) and the placeBuilding orders apply.

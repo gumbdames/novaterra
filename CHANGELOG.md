@@ -3,6 +3,33 @@
 All notable changes to the 0.1 Alpha. Commit hashes are the local `main`
 history (`gumbdames/novaterra`).
 
+## 2026-10-05 — Playtest bug fixes (fog sight, loss toasts, housing demand, AI nuclear plants)
+
+- **Per-building sight**: every building now grants fog-of-war vision —
+  `BuildingDef.sight` (cells, default 14; houses 8, industrial 12,
+  towers/sensor 20), gated on completed + operational + unsabotaged.
+  Your buildings keep their ground revealed; `perceptionHash` hardened
+  with FNV-1a so the explored-memory layer can't go stale.
+- **Building-loss toasts**: a persistent toast names any of your
+  buildings destroyed by the enemy ("Water Pump destroyed") or
+  demolished ("Demolished X (no refund)"); the demolish tool now
+  disarms after one click.
+- **Demand-driven housing**: houses auto-develop only when people are
+  waiting for homes (`unhousedPopulation`, fed by desirability-scaled
+  immigration) AND the plot is served by your power and water networks
+  AND you have headroom. Population is no longer conjured by new
+  houses; peaceful AI housing follows the same rule. Zero-road growth
+  still works.
+- **Buildings can't land on units**: placements on unit-occupied
+  footprints are rejected loudly — your starting engineers are never
+  swallowed by a house again.
+- **Sabotage blinds satelliteUplink**: the +12 unit sight bonus now
+  drops while sabotaged, as the intel contract always promised.
+- **AI builds real nuclear plants**: commander+ AI constructs physical
+  nuclear plants when rich through the real build command (same costs
+  as you), then upgrades their reactors — the fair-AI contract, live.
+- **Reactor panel** refreshes correctly after upgrades (digest-covered).
+
 ## 2026-10-05 — Building upgrades: nuclear reactor upgrades
 
 - **Nuclear reactor upgrades**: nuclear plants are built with 1 reactor

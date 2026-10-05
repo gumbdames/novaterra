@@ -226,6 +226,8 @@ import {
   // Civilian sea trade (Half A, 2026-10-01): the sea-route two-click
   // gesture.
   resolveSeaTradeClick,
+  // 2026-10-05 (Fix 2): single-use tool disarm after a successful order.
+  isSingleUseOrderKind,
   type PlacementResolution,
   type AirlineClickResolution,
   type SeaTradeClickResolution,
@@ -370,6 +372,13 @@ function isTypingTarget(target: EventTarget | null): boolean {
 
 const ADVISOR_REFRESH_MS = 2000;
 /**
+ * 2026-10-05 (Fix 2): how long a player demolition suppresses the
+ * "X destroyed" combat-loss toast for the same building id. Far beyond
+ * the 500 ms audio poll cadence, so the demolition's destroyed event
+ * always lands inside the window.
+ */
+const DEMOLISH_SUPPRESS_MS = 10_000;
+/**
  * Fun-audit B2 (2026-10-02): wonder-countdown warning marks, in ticks
  * of remaining time (4:00 / 3:00 / 2:00 / 1:00 / 0:30 / 0:10 at
  * 30 Hz). Presentational only — the sim owns the clock.
@@ -461,6 +470,12 @@ export interface GameFrameDeps {
     terrain: TerrainData,
   ): void;
   pollAudioEvents(world: World, nowMs: number): void;
+  /**
+   * 2026-10-05 (Fix 2): drain applied demolish results into toasts.
+   * Runs after the tick step, before pollAudioEvents (the demolition
+   * suppression must be registered first).
+   */
+  pollDemolishResults(nowMs: number): void;
   pollCampaign(world: World, nowMs: number): void;
   /** Keep the audio listener on the camera target (positional SFX). */
   updateAudioListener(): void;
@@ -482,6 +497,10 @@ export function runGameFrame(deps: GameFrameDeps, nowMs: number, frameMs: number
   const world = deps.session.world;
   if (!deps.paused) {
     deps.session.driver.step(world, frameMs * deps.speed);
+    // 2026-10-05 (Fix 2): surface applied demolish results before the
+    // audio poll runs — the demolition suppression must be registered
+    // before pollAudioEvents can see the destroyed building.
+    deps.pollDemolishResults(nowMs);
     deps.maybeAutosave();
     deps.maybeShowConquestOutcome();
   }
@@ -942,6 +961,13 @@ class GameController {
   private eventPings: EventPings | null = null;
   private moodTracker = new MoodTracker();
   private lastUnderAttackWarn = 0;
+  /**
+   * 2026-10-05 (Fix 2): building ids the player demolished, mapped to
+   * the wall-clock ms of the demolish toast — lets pollAudioEvents
+   * tell a deliberate demolition (its own "Demolished X" toast) apart
+   * from a combat loss ("X destroyed"). Pruned in pollDemolishResults.
+   */
+  private readonly demolishedAt = new Map<number, number>();
   private prevAdvisorTop: string | null = null;
   private dragRect: HTMLElement | null = null;
   /** Last known pointer position in client px (for edge pan). */
@@ -1706,6 +1732,8 @@ class GameController {
         }, this.fogCells);
       },
       pollAudioEvents: (world, nowMs) => this.pollAudioEvents(world, nowMs),
+      // 2026-10-05 (Fix 2): the demolish-result toast drain.
+      pollDemolishResults: (nowMs) => this.pollDemolishResults(nowMs),
       pollCampaign: (world, nowMs) => this.pollCampaign(world, nowMs),
       updateAudioListener: () =>
         this.audio.updateListener(this.cameraState.targetX, this.cameraState.targetZ),
@@ -1880,6 +1908,40 @@ class GameController {
    * (hysteresis — no rapid peace/war flip-flop; damage events count so
    * being bombed with no live targets still reads as war).
    */
+  /**
+   * 2026-10-05 (Fix 2): surface applied demolish results as toasts.
+   * Drains the command queue's recorded results (`drainResults` in
+   * sim/commands.ts — UI-side consumption, never sim state) once per
+   * frame and toasts "Demolished X (no refund)" for every applied
+   * player demolition (the sim's demolish apply returns
+   * `{ removed: 'building', id, kind }`). The demolished ids are
+   * remembered for DEMOLISH_SUPPRESS_MS so pollAudioEvents doesn't
+   * also toast them as combat losses. Runs right after the tick step,
+   * before pollAudioEvents — the suppression is always registered
+   * before the audio poll can see the destroyed building.
+   */
+  private pollDemolishResults(nowMs: number): void {
+    for (const [id, at] of this.demolishedAt) {
+      if (nowMs - at > DEMOLISH_SUPPRESS_MS) this.demolishedAt.delete(id);
+    }
+    for (const applied of this.session.queue.drainResults()) {
+      if (applied.command.kind !== 'demolish') continue;
+      const r = applied.result as { removed?: string; id?: number; kind?: string } | null | undefined;
+      if (r?.removed !== 'building' || r.kind === undefined) continue;
+      if (r.id !== undefined && r.id > 0) this.demolishedAt.set(r.id, nowMs);
+      // 2026-10-05 (Fix 2): persistent, not transient — a demolition
+      // is irreversible, so the confirmation stays on screen.
+      this.hud.persistentToast(fillLoc(STRINGS.toasts.demolishedBuilding, { name: buildingName(r.kind) }));
+    }
+  }
+
+  /** True when this building id was demolished by the player recently. */
+  private wasRecentlyDemolished(id: number | undefined, nowMs: number): boolean {
+    if (id === undefined) return false;
+    const at = this.demolishedAt.get(id);
+    return at !== undefined && nowMs - at <= DEMOLISH_SUPPRESS_MS;
+  }
+
   private pollAudioEvents(world: World, nowMs: number): void {
     // Adaptive music + event cues.
     if (nowMs - this.lastMusicUpdate > 500) {
@@ -1896,6 +1958,16 @@ class GameController {
       }
       for (const d of cap(events.destroyed)) {
         this.audio.playSfx('explosion', { x: d.x, z: d.z });
+        // 2026-10-05 (Fix 2): name the lost friendly building — AI
+        // sieges and storm strikes now get a persistent toast, not just
+        // a bang. The player's own demolitions are excluded: they
+        // already got their "Demolished X (no refund)" toast from
+        // pollDemolishResults (tracked via demolishedAt).
+        if (d.friendly && d.kind !== undefined && !this.wasRecentlyDemolished(d.id, nowMs)) {
+          this.hud.persistentToast(
+            fillLoc(STRINGS.toasts.buildingDestroyed, { name: buildingName(d.kind) }),
+          );
+        }
       }
       // Economy / tech cues (one per poll at most).
       if (events.trained > 0) this.audio.playSfx('unitTrained');
@@ -2826,13 +2898,20 @@ class GameController {
   // ---- orders ----
 
   /** Enqueue player commands; rejections toast loudly, never silent. */
-  private enqueue(intent: OrderIntent): void {
+  /**
+   * Enqueue a player order. Returns true when the command was accepted
+   * (2026-10-05, Fix 2: the caller needs to know for single-use tools
+   * like demolish); rejections toast loudly and return false.
+   */
+  private enqueue(intent: OrderIntent): boolean {
     try {
       this.session.enqueuePlayerIntent(intent);
+      return true;
     } catch (e) {
       const reason = e instanceof CommandRejectedError ? e.reason : String(e);
       this.hud.toast(reason);
       this.audio.playSfx('error');
+      return false;
     }
   }
 
@@ -3347,15 +3426,22 @@ class GameController {
     );
     // Validity mirrors the click path: the same pure validatePlacement
     // the command queue runs, so the ghost's color always matches the
-    // real click verdict (green = the click will work).
+    // real click verdict (green = the click will work). Units are
+    // passed for the same reason — a unit on the footprint rejects at
+    // the command, so the ghost must show red there too.
     const legal =
-      validatePlacement(this.session.terrain, world.city, {
-        kind,
-        owner: HUMAN_PLAYER_ID,
-        cx: cell.cx,
-        cz: cell.cz,
-        facing: 0,
-      }) === null;
+      validatePlacement(
+        this.session.terrain,
+        world.city,
+        {
+          kind,
+          owner: HUMAN_PLAYER_ID,
+          cx: cell.cx,
+          cz: cell.cz,
+          facing: 0,
+        },
+        world.units,
+      ) === null;
     // The anchor is the footprint's min-corner cell — the same anchor
     // the click path passes to the sim, so the ghost shows exactly
     // where the building will land.
@@ -3413,8 +3499,15 @@ class GameController {
    */
   private placeResolution(resolution: PlacementResolution): void {
     if (resolution.kind === 'order') {
-      this.enqueue(resolution.intent);
+      const accepted = this.enqueue(resolution.intent);
       this.audio.playSfx('place');
+      // 2026-10-05 (Fix 2): single-use tools disarm after one
+      // successful click — a demolish order that enqueued cleanly
+      // disarms the tool instead of staying armed until cancelled.
+      if (accepted && isSingleUseOrderKind(resolution.intent.kind)) {
+        this.placement = null;
+        this.hud.buildToolArmed = null;
+      }
     } else {
       this.hud.toast(resolution.message);
       this.audio.playSfx('error');

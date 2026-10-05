@@ -195,7 +195,7 @@ function pendingEnvoyDigest(d: World['diplomacy'] | undefined): string {
   out += `powerLines=${(world.city.powerLines ?? []).join(',')};`;
   out += `pipes=${(world.city.pipes ?? []).join(',')};`;
   out += `utilityEpoch=${world.city.utilityEpoch ?? 0};`;
-  out += `zones=${world.city.zones.map((z) => `${z.cell}:${z.zone}`).join(',')};`;
+  out += `zones=${world.city.zones.map((z) => `${z.cell}:${z.zone}${z.by === undefined ? '' : `:${z.by}`}`).join(',')};`;
   out += `nextBldg=${world.city.nextBuildingId}|`;
   for (const b of world.city.buildings) {
     out += `b${b.id},${b.kind},${b.owner},${b.cx},${b.cz},${b.facing},`;
@@ -272,8 +272,16 @@ function pendingEnvoyDigest(d: World['diplomacy'] | undefined): string {
     // string).
     const policies = p.policies ?? {};
     out += `|pol${p.id}=${POLICY_IDS.filter((pid) => policies[pid] === true).join(',')};`;
+    // Fix 3 (demand-gated housing, 2026-10-05): the unhoused headcount
+    // and the fractional immigration carry — both behavior-affecting
+    // (they gate residential growth and decide future arrival ticks)
+    // ⇒ digest-covered (PLAN §11). Legacy saves decode both to 0.
+    out += `|unh${p.id}=${p.unhousedPopulation ?? 0},${canonicalNumber(p.immigrationCarry ?? 0)};`;
   }
   out += `|shortage=${world.city.foodShortage ? 1 : 0}`;
+  // Demo suppression (2026-10-05): behavior-affecting ⇒ digest-covered.
+  // Never set in real games (demo sessions only).
+  out += `|suppGrowth=${world.city.suppressOrganicGrowth === true ? 1 : 0}`;
   // Fun-audit C2c (land-trade deletion, 2026-10-02): trade routes are
   // gone — the |trade=| segment is removed (no routes ⇒ no behavior).
   // Grand-expansion Phase 5 (S5, 2026-09-30): airline routes — route

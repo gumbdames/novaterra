@@ -88,7 +88,7 @@ import { getLuminaryUpkeepMult } from './luminaries';
 import { runIntelAccrual, isSabotaged } from './intel';
 import { createSpatialHash, shInsert, shQueryRadius } from './spatial';
 import { dist2 } from './deterministic';
-import { buildingTaxMultiplier, getDesirabilityModel, type DesirabilityModel } from './desirability';
+import { buildingTaxMultiplier, getDesirabilityModel, cellDesirability, migrationPullFor, type DesirabilityModel } from './desirability';
 import {
   BUILDING_DEFS,
   POLICIES,
@@ -305,6 +305,13 @@ const RESOURCE_KEYS: ResourceKey[] = ['funds', 'materials', 'fuel', 'food', 'res
 interface UtilityAllocation {
   powerHeadroom: number[];
   waterHeadroom: number[];
+  /**
+   * Fix 3 (demand-gated housing, 2026-10-05): the derived network
+   * model built this tick, threaded through `runGrowth` to
+   * `tryAutoDevelop` for the residential served-region gate.
+   * `getUtilityModel` is key-cached, so carrying it is ~free.
+   */
+  model: UtilityModel;
 }
 
 /**
@@ -634,7 +641,7 @@ function allocateUtilities(world: World, city: CityState): UtilityAllocation {
       b.waterDiag = 'disconnected';
     }
   }
-  return { powerHeadroom, waterHeadroom };
+  return { powerHeadroom, waterHeadroom, model };
 }
 
 /** Level multiplier: level 1 → 1.0, 2 → 1.25, 3 → 1.5. */
@@ -1165,7 +1172,9 @@ function serveDepotUnit(world: World, d: BuildingRecord, u: UnitRecord, isReserv
   }
 }
 
-/** Population eats; shortage stalls growth (flag read by runGrowth). */
+/** Population eats; shortage stalls growth (flag read by runGrowth).
+ * Fix 3 (2026-10-05): the unhoused eat too — `player.population` is
+ * housed + unhoused, so one headcount covers both. */
 /**
  * Sea-logistics Half B (2026-10-01): mobile supply stations. Each
  * living supply ship (def `tankerRefuelRadius` > 0 — the air `tanker`,
@@ -1604,30 +1613,113 @@ function runLevels(world: World): void {  const bank = rngBank(world);
 }
 
 /**
- * Phase 4 occupancy (2026-09-30): per-building headcounts. Runs right
- * after construction (so newly-completed buildings move in this tick)
- * and BEFORE recountPopulation — population is the sum of residents,
- * not a second loop over defs.
+ * Immigration (Fix 3, 2026-10-05): the demand engine behind
+ * demand-gated housing. Each economy tick (1 sim-second), every owner
+ * with painted residential zones attracts arrivals:
  *
- * - `residents` = def.population when completed (progress >= 1), else 0.
- *   Housing keeps everyone: residents never leave a completed home.
- * - `workers`: each player's population is their workforce. It fills
- *   jobs in building-id order (deterministic — city.buildings is
+ *   arrivals = IMMIGRATION_PER_SEC_AT_PULL_1 × migrationPullFor(avgDesirability) × foodSurplusFactor
+ *
+ * `migrationPullFor` (desirability.ts) peaks ×1.594 at d=0.72 and is
+ * ×1.15 under the Transit Subsidy; `foodSurplusFactor` is 0 during a
+ * city-wide food shortage (growth is already blocked then — staying
+ * consistent) and 1 otherwise. Arrivals join `player.population` (the
+ * total wanting housing); `recomputeOccupancy` fills free residential
+ * capacity first and the spillover becomes `unhousedPopulation`.
+ *
+ * The rate is far below one person per tick, so the fractional
+ * remainder accumulates in `player.immigrationCarry` (AD9, ?? 0) until
+ * it makes a whole arrival — integer-simple, fully deterministic.
+ *
+ * Owners with NO residential zones (the classic military AI paints
+ * none) get no immigration: their population stays 0 exactly as
+ * before, their food stock is untouched, and they can never trip the
+ * city-wide foodShortage that would stall everyone else's growth.
+ * Zones are attributed per painter (`zone.by`, set by paintZone) —
+ * without it, one owner's zoning would immigrate every rival's city.
+ * The peaceful AI paints residential districts, so it immigrates.
+ */
+export const IMMIGRATION_PER_SEC_AT_PULL_1 = 1 / 30;
+
+function runImmigration(world: World, t: TerrainData): void {
+  const city = world.city;
+  const foodSurplusFactor = city.foodShortage ? 0 : 1;
+  for (const player of city.players) {
+    // Fast path: no painted residential cells → no immigration (and no
+    // desirability model build).
+    let zoneCells = 0;
+    for (const z of city.zones) {
+      if (z.zone === ZoneType.RESIDENTIAL && z.by === player.id) zoneCells++;
+    }
+    if (zoneCells === 0) continue;
+    const desirModel = getDesirabilityModel(t, world, player.id);
+    let desirSum = 0;
+    for (const z of city.zones) {
+      if (z.zone !== ZoneType.RESIDENTIAL || z.by !== player.id) continue;
+      desirSum += cellDesirability(desirModel, z.cell);
+    }
+    const avgD01 = desirSum / zoneCells / 100;
+    const arrivals =
+      IMMIGRATION_PER_SEC_AT_PULL_1 *
+      migrationPullFor(world, player.id, avgD01) *
+      foodSurplusFactor;
+    const carry = (player.immigrationCarry ?? 0) + arrivals;
+    const whole = Math.floor(carry);
+    player.immigrationCarry = carry - whole;
+    // Total wanting housing (housed + unhoused) — recomputeOccupancy
+    // distributes it across capacity below; never negative.
+    player.population = Math.max(0, player.population + whole);
+  }
+}
+
+/**
+ * Phase 4 occupancy (2026-09-30), demand-gated housing (Fix 3,
+ * 2026-10-05): per-building headcounts. Runs right after construction
+ * (so newly-completed buildings house this tick) and BEFORE
+ * recountPopulation.
+ *
+ * - `residents`: the owner's HOUSED pool — `player.population` (total
+ *   wanting housing: housed + unhoused, immigration already added this
+ *   tick) distributed across completed residential buildings in id
+ *   order, each filled up to def.population. housedTarget =
+ *   min(totalWanting, totalCapacity); the spillover is
+ *   `player.unhousedPopulation = totalWanting - housedActual`.
+ *   Arrivals therefore fill free capacity first; only the overflow is
+ *   unhoused. Demolishing a house never kills anyone — its residents
+ *   join the unhoused and keep eating.
+ * - `workers`: each player's HOUSED residents are the workforce. It
+ *   fills jobs in building-id order (deterministic — city.buildings is
  *   id-ordered) across the owner's completed, operational buildings
- *   with `jobs > 0`, capped per building. Leftover population is the
- *   non-working population (children, retirees) — it still counts in
- *   `player.population` and still pays taxes.
+ *   with `jobs > 0`, capped per building. Leftover residents are the
+ *   non-working population (children, retirees) — still counted,
+ *   still taxed.
  *
- * Invariants: sum(residents of owner's buildings) == player.population;
- * sum(workers) <= player.population; workers(b) <= jobs(def).
+ * Invariants: sum(residents of owner's buildings) + unhousedPopulation
+ *   == player.population; sum(workers) <= housed residents;
+ *   workers(b) <= jobs(def).
  * No per-individual simulation — the selection panel only needs
  * headcounts, so headcounts are what we store.
  */
 function recomputeOccupancy(city: CityState): void {
   for (const b of city.buildings) {
-    const def = BUILDING_DEFS[b.kind];
-    b.residents = b.progress >= 1 ? def.population : 0;
+    b.residents = 0;
     b.workers = 0;
+  }
+  // House the pool: total wanting housing per player, id-order fill.
+  for (const player of city.players) {
+    let remaining = Math.max(0, player.population);
+    if (remaining > 0) {
+      for (const b of city.buildings) {
+        if (remaining <= 0) break;
+        if (b.owner !== player.id || b.progress < 1) continue;
+        const cap = BUILDING_DEFS[b.kind].population ?? 0;
+        if (cap <= 0) continue;
+        const housed = Math.min(cap, remaining);
+        b.residents = housed;
+        remaining -= housed;
+      }
+    }
+    // The spillover: everyone the capacity couldn't hold.
+    player.unhousedPopulation = remaining;
   }
   // Workforce pool per player = THIS tick's resident sum (fresh — the
   // pre-recount player.population lags one tick on the first tick, when
@@ -1654,9 +1746,11 @@ function recomputeOccupancy(city: CityState): void {
 }
 
 /**
- * Recount population from completed residential buildings. Sums the
- * per-building `residents` filled by recomputeOccupancy (run first) —
- * one source of truth for who lives where.
+ * Recount population from the housed headcounts. Sums the per-building
+ * `residents` filled by recomputeOccupancy (run first) — one source of
+ * truth for who lives where — then adds the unhoused headcount: the
+ * unhoused still eat and still want homes, so `player.population` =
+ * housed + unhoused (Fix 3, 2026-10-05).
  */
 function recountPopulation(city: CityState): void {
   for (const player of city.players) player.population = 0;
@@ -1665,6 +1759,9 @@ function recountPopulation(city: CityState): void {
     if (r <= 0) continue;
     const player = getPlayer(city, b.owner);
     if (player) player.population += r;
+  }
+  for (const player of city.players) {
+    player.population += player.unhousedPopulation ?? 0;
   }
   // Fun-audit B3 (2026-10-02): lifetime peak, for the end-of-game stats.
   for (const player of city.players) {
@@ -1840,13 +1937,19 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   const before = new Map<number, Record<FlowResource, number>>();
   for (const p of city.players) before.set(p.id, readStocks(p));
   runConstruction(world);
-  const { powerHeadroom, waterHeadroom } = allocateUtilities(world, city);
+  const { powerHeadroom, waterHeadroom, model } = allocateUtilities(world, city);
+  // Fix 3 (demand-gated housing, 2026-10-05): immigration runs BEFORE
+  // occupancy, so this tick's arrivals join the housed pool below.
+  runImmigration(world, t);
   // Phase 4 occupancy (2026-09-30): after construction AND the utility
   // allocation, so workers see this tick's operational flags (no
   // one-tick lag); before the population recount (which sums residents)
   // and manpower (which scales with population).
   recomputeOccupancy(city);
   recountPopulation(city);
+  // Fix 3 knock-on (2026-10-05): manpower stays on TOTAL population
+  // (housed + unhoused) — the unhoused are able-bodied residents, and
+  // keeping the old base avoids behavior change beyond housing.
   generateManpower(city);
   // Grand-expansion Phase 6 (S6 intel): asset accrual rides the economy
   // tick (1 Hz ⇒ dt = 1 sim-second). Placement is deliberate: after
@@ -1884,7 +1987,7 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   // arrival by the movement-tick sea-trade loop, not here.
   runSeaRouteCleanup(world, city);
   runLevels(world);
-  runGrowth(t, world, powerHeadroom, waterHeadroom);
+  runGrowth(t, world, powerHeadroom, waterHeadroom, model);
   // Roadmap B10: fold this tick's stockpile deltas into the smoothed
   // flow rates (1 economy tick = 1 sim-second, so the delta IS the
   // per-second flow). Purely derived display data: never snapshotted,

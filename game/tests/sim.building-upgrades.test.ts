@@ -42,6 +42,7 @@ import {
   NUCLEAR_UPGRADE_COST_FUNDS,
   NUCLEAR_UPGRADE_COST_MATERIALS,
   NUCLEAR_UPGRADE_SECONDS,
+  cellIsWater,
   getPlayer,
   placeBuilding,
   reactorPowerBonus,
@@ -52,7 +53,8 @@ import type { BuildingKind, BuildingRecord, Placement, PlayerState } from '../sr
 import { runEconomyTick } from '../src/sim/economy';
 import { takeSnapshot, restoreSnapshot } from '../src/sim/snapshot';
 import { digestWorld } from '../src/sim/digest';
-import { addAIPlayer, thinkNuclearUpgrades } from '../src/sim/ai';
+import { addAIPlayer, thinkNuclearUpgrades, thinkNuclearConstruction } from '../src/sim/ai';
+import { getAgeState } from '../src/sim/ages';
 import { generateTerrain, MERIDIAN_PLAINS } from '../src/sim/terrain';
 import type { TerrainData } from '../src/sim/terrain';
 import { grantAllTrainingResources } from './sim.roster-fixtures';
@@ -373,5 +375,102 @@ describe('fair-AI reactor upgrades', () => {
     // No eligible plant: nothing was enqueued (no new upgrade started).
     expect(maxed.upgradeProgress).toBeUndefined();
     expect(busy.upgradeProgress).toBeCloseTo(0.3, 6);
+  });
+});
+
+describe('Bug B: the AI builds REAL nuclear plants (commander+)', () => {
+  /** A commander AI at Industry age with a land base. */
+  function nuclearCtx(seed: number, difficulty: 'commander' | 'cadet' = 'commander'): Ctx {
+    const ctx = setup(seed);
+    // Land base (the AI's site search needs valid terrain).
+    const terrain = ctx.terrain;
+    let bx = 0;
+    let bz = 0;
+    outer: for (let cz = 0; cz < 256; cz += 4) {
+      for (let cx = 0; cx < 256; cx += 4) {
+        if (!cellIsWater(terrain, cx, cz)) {
+          bx = cx;
+          bz = cz;
+          break outer;
+        }
+      }
+    }
+    addAIPlayer(ctx.world, 1, difficulty, bx * 2 - 256, bz * 2 - 256);
+    getAgeState(ctx.world, 1).age = 'industry';
+    richen(ctx.world, 1);
+    return ctx;
+  }
+
+  it('a rich commander AI builds a nuclear plant via the real command', () => {
+    const ctx = nuclearCtx(600);
+    const p = playerOf(ctx.world, 1);
+    const fundsBefore = p.funds;
+    const matsBefore = p.materials;
+    thinkNuclearConstruction(ctx.world, ctx.queue, aiOf(ctx.world), ctx.terrain);
+    ctx.queue.applyDue(ctx.world, ctx.world.tick);
+    const plants = ctx.world.city.buildings.filter(
+      (b) => b.owner === 1 && b.kind === 'nuclearPlant',
+    );
+    expect(plants).toHaveLength(1);
+    // The real command deducted the real costs.
+    expect(p.funds).toBe(fundsBefore - BUILDING_DEFS.nuclearPlant.costFunds);
+    expect(p.materials).toBe(matsBefore - BUILDING_DEFS.nuclearPlant.costMaterials);
+  });
+
+  it('the AI-plant completes and the AI upgrades it (reactors 1→2)', () => {
+    const ctx = nuclearCtx(601);
+    thinkNuclearConstruction(ctx.world, ctx.queue, aiOf(ctx.world), ctx.terrain);
+    ctx.queue.applyDue(ctx.world, ctx.world.tick);
+    const plant = ctx.world.city.buildings.find(
+      (b) => b.owner === 1 && b.kind === 'nuclearPlant',
+    );
+    if (!plant) throw new Error('AI did not build a plant');
+    // Simulate construction completing.
+    plant.progress = 1;
+    plant.operational = true;
+    expect(plant.reactors ?? 1).toBe(1);
+    // The upgrade rule fires on the AI's own plant.
+    thinkNuclearUpgrades(ctx.world, ctx.queue, aiOf(ctx.world));
+    ctx.queue.applyDue(ctx.world, ctx.world.tick);
+    expect(plant.upgradeProgress).toBeDefined();
+    // Simulate the 40s upgrade completing (one tick from 0.99).
+    plant.upgradeProgress = 0.99;
+    runEconomyTick(ctx.world, ctx.terrain);
+    expect(plant.reactors).toBe(2);
+  });
+
+  it('the AI never exceeds the cap of 2 plants', () => {
+    const ctx = nuclearCtx(602);
+    completed(ctx.world, 'nuclearPlant', 1, 10, 10);
+    completed(ctx.world, 'nuclearPlant', 1, 20, 20);
+    thinkNuclearConstruction(ctx.world, ctx.queue, aiOf(ctx.world), ctx.terrain);
+    ctx.queue.applyDue(ctx.world, ctx.world.tick);
+    const plants = ctx.world.city.buildings.filter(
+      (b) => b.owner === 1 && b.kind === 'nuclearPlant',
+    );
+    expect(plants).toHaveLength(2);
+  });
+
+  it('a cadet never builds a nuclear plant', () => {
+    const ctx = nuclearCtx(603, 'cadet');
+    thinkNuclearConstruction(ctx.world, ctx.queue, aiOf(ctx.world), ctx.terrain);
+    ctx.queue.applyDue(ctx.world, ctx.world.tick);
+    const plants = ctx.world.city.buildings.filter(
+      (b) => b.owner === 1 && b.kind === 'nuclearPlant',
+    );
+    expect(plants).toHaveLength(0);
+  });
+
+  it('a poor commander does not build (wealth gate)', () => {
+    const ctx = nuclearCtx(604);
+    const p = playerOf(ctx.world, 1);
+    p.funds = 1000;
+    p.materials = 1000;
+    thinkNuclearConstruction(ctx.world, ctx.queue, aiOf(ctx.world), ctx.terrain);
+    ctx.queue.applyDue(ctx.world, ctx.world.tick);
+    const plants = ctx.world.city.buildings.filter(
+      (b) => b.owner === 1 && b.kind === 'nuclearPlant',
+    );
+    expect(plants).toHaveLength(0);
   });
 });

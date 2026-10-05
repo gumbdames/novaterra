@@ -505,9 +505,21 @@ function mayorBuildStep(
         tried += 1;
         const cx = Math.round(base.x + startDx + dx);
         const cz = Math.round(base.z + startDz + dz);
-        const err = validatePlacement(terrain, world.city, {
-          kind, owner: mayor.owner, cx, cz, facing: 0,
-        });
+        const err = validatePlacement(
+          terrain,
+          world.city,
+          {
+            kind,
+            owner: mayor.owner,
+            cx,
+            cz,
+            facing: 0,
+          },
+          // 2026-10-05 (Fix 4): the spiral must agree with the
+          // placeBuilding command's unit check — otherwise it burns a
+          // try on a site the command rejects at enqueue.
+          world.units,
+        );
         if (err === null) {
           tryOrder(queue, world, issuer, {
             kind: 'placeBuilding',

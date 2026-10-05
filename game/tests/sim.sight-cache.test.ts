@@ -38,10 +38,16 @@ import { createWorld } from '../src/sim/world';
 import type { World } from '../src/sim/world';
 import {
   bumpSightBonusCache,
+  buildingCenterWorld,
   demolishBuilding,
   placeBuilding,
+  type BuildingRecord,
 } from '../src/sim/city';
-import { intelSightBonus, SIGNALS_INTEL_SIGHT_BONUS } from '../src/sim/upgrades';
+import { effectiveSight, intelSightBonus, SIGNALS_INTEL_SIGHT_BONUS } from '../src/sim/upgrades';
+import { UNIT_DEFS, spawnUnit, type UnitKind } from '../src/sim/units';
+import { setDoctrine } from '../src/sim/doctrine';
+import { addIntelAsset, isSabotaged, registerIntelCommands } from '../src/sim/intel';
+import { createCommandQueue } from '../src/sim/commands';
 import { completeBuilding } from './sim.roster-fixtures';
 import { runEconomyTick } from '../src/sim/economy';
 import { generateTerrain, MERIDIAN_PLAINS, type TerrainData } from '../src/sim/terrain';
@@ -125,6 +131,84 @@ describe('intelSightBonus cache (R3 L7)', () => {
     world.upgrades[0] = ['signalsIntel'];
     expect(intelSightBonus(world, 0)).toBe(UPLINK_BONUS + SIGNALS_INTEL_SIGHT_BONUS);
     // The upgrade term is per-owner.
+    expect(intelSightBonus(world, 1)).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Bug A (2026-10-05): sabotaged buildings grant no sight bonus
+// ---------------------------------------------------------------------------
+
+describe('intelSightBonus sabotage (Bug A)', () => {
+  function uplinkWorld(seed: number): { world: World; b: BuildingRecord } {
+    const world = createWorld(seed);
+    completeBuilding(world, 'satelliteUplink', 0, 10, 10);
+    const b = world.city.buildings[world.city.buildings.length - 1];
+    if (!b) throw new Error('completeBuilding placed no building');
+    return { world, b };
+  }
+
+  it('a sabotaged satelliteUplink contributes no bonus', () => {
+    const { world, b } = uplinkWorld(11);
+    expect(intelSightBonus(world, 0)).toBe(UPLINK_BONUS); // populate the cache
+    b.sabotagedUntil = world.tick + 1000;
+    bumpSightBonusCache(world.city); // the sabotage apply does this
+    expect(intelSightBonus(world, 0)).toBe(0);
+  });
+
+  it('effectiveSight drops by the uplink bonus while sabotaged', () => {
+    const { world, b } = uplinkWorld(12);
+    setDoctrine(world, 0, 'kestrel'); // base sight (Republic multiplies by 1.2)
+    const def = UNIT_DEFS['rifles' as UnitKind];
+    const base = effectiveSight(world, 0, def);
+    b.sabotagedUntil = world.tick + 1000;
+    bumpSightBonusCache(world.city);
+    expect(effectiveSight(world, 0, def)).toBe(base - UPLINK_BONUS);
+  });
+
+  it('same-tick sabotage after a cache hit needs the apply bump', () => {
+    const { world, b } = uplinkWorld(13);
+    expect(intelSightBonus(world, 0)).toBe(UPLINK_BONUS); // populate at this tick
+    // Sabotage within the SAME tick: without the bump the cache stays
+    // stale (this pins why the sabotage apply bumps explicitly)…
+    b.sabotagedUntil = world.tick + 1000;
+    expect(intelSightBonus(world, 0)).toBe(UPLINK_BONUS);
+    // …and with the bump it is fresh immediately, no tick wait.
+    bumpSightBonusCache(world.city);
+    expect(intelSightBonus(world, 0)).toBe(0);
+  });
+
+  it('the bonus returns when the sabotage expires — tick-validated, no bump needed', () => {
+    const { world, b } = uplinkWorld(14);
+    b.sabotagedUntil = world.tick + 10;
+    bumpSightBonusCache(world.city);
+    expect(intelSightBonus(world, 0)).toBe(0);
+    // Expiry is silent (no bump fires). The next tick recomputes
+    // anyway — the entry is tick-validated.
+    world.tick += 11;
+    expect(intelSightBonus(world, 0)).toBe(UPLINK_BONUS);
+  });
+
+  it('end to end: the real sabotage apply drops the bonus the same tick', () => {
+    const world = createWorld(15);
+    completeBuilding(world, 'satelliteUplink', 1, 20, 20);
+    const target = world.city.buildings[world.city.buildings.length - 1];
+    if (!target) throw new Error('completeBuilding placed no building');
+    expect(intelSightBonus(world, 1)).toBe(UPLINK_BONUS); // populate the cache
+    const queue = createCommandQueue();
+    registerIntelCommands(queue);
+    // A spy of owner 0 standing on the uplink, with assets to burn.
+    const c = buildingCenterWorld(target);
+    const spy = spawnUnit(world, 'spy', 0, c.x, c.z);
+    addIntelAsset(world, 0, 'operational', 100);
+    queue.enqueue(world, {
+      issuer: 'player',
+      kind: 'sabotage',
+      payload: { unitId: spy.id, buildingId: target.id, owner: 0 },
+    });
+    queue.applyDue(world, world.tick);
+    expect(isSabotaged(target, world.tick)).toBe(true);
+    // The apply bumped the cache: no stale +12, same tick.
     expect(intelSightBonus(world, 1)).toBe(0);
   });
 });

@@ -152,4 +152,35 @@ describe('sim/commands', () => {
     registerCoreCommands(queue);
     expect(() => registerCoreCommands(queue)).toThrow();
   });
+
+  it('drainResults returns applied results and clears the buffer (Fix 2)', () => {
+    const w = createWorld(7);
+    const queue = createCommandQueue();
+    registerCoreCommands(queue);
+    expect(queue.drainResults()).toEqual([]);
+    queue.enqueue(w, { kind: 'spawn', tick: 0, issuer: 'player', payload: { kind: 'x', x: 0, z: 0 } });
+    const applied = queue.applyDue(w, 0);
+    expect(applied).toHaveLength(1);
+    const drained = queue.drainResults();
+    expect(drained).toHaveLength(1);
+    expect(drained[0]?.command.kind).toBe('spawn');
+    expect(drained[0]?.result).toBe(applied[0]?.result);
+    // Drained: the buffer is empty until the next apply.
+    expect(queue.drainResults()).toEqual([]);
+  });
+
+  it('drainResults is UI-side only: the sim never reads it', () => {
+    const w = createWorld(8);
+    const queue = createCommandQueue();
+    registerCoreCommands(queue);
+    queue.enqueue(w, { kind: 'spawn', tick: 0, issuer: 'player', payload: { kind: 'x', x: 0, z: 0 } });
+    queue.applyDue(w, 0);
+    // Draining (or not) changes nothing about the world or the queue's
+    // pending set — it is pure observation.
+    expect(queue.pendingCount()).toBe(0);
+    expect(w.entities.length).toBe(1);
+    queue.drainResults();
+    expect(queue.pendingCount()).toBe(0);
+    expect(w.entities.length).toBe(1);
+  });
 });

@@ -155,9 +155,9 @@ describe('guardGameFrame', () => {
 /** Headless frame deps: real session + real EntityRenderer, stub HUD. */
 function makeDeps(world: World, entities: EntityRenderer): {
   deps: GameFrameDeps;
-  hooks: { hudUpdates: number; renders: number };
+  hooks: { hudUpdates: number; renders: number; demolishPolls: number };
 } {
-  const hooks = { hudUpdates: 0, renders: 0 };
+  const hooks = { hudUpdates: 0, renders: 0, demolishPolls: 0 };
   let lastAdvisorRefresh = 0;
   const deps: GameFrameDeps = {
     session: undefined as never, // filled below
@@ -200,6 +200,10 @@ function makeDeps(world: World, entities: EntityRenderer): {
       hooks.hudUpdates++;
     },
     pollAudioEvents: () => {},
+    // 2026-10-05 (Fix 2): the demolish-result toast drain.
+    pollDemolishResults: () => {
+      hooks.demolishPolls++;
+    },
     pollCampaign: () => {},
     updateAudioListener: () => {},
     renderFrame: () => {
@@ -277,6 +281,9 @@ describe('runGameFrame over a live session', () => {
     // Every frame reached the HUD and the renderer.
     expect(hooks.hudUpdates).toBe(12);
     expect(hooks.renders).toBe(12);
+    // 2026-10-05 (Fix 2): every unpaused frame drains applied demolish
+    // results (after the tick step, before the audio poll).
+    expect(hooks.demolishPolls).toBe(12);
   });
 
   it('a throwing entity sync does not stop later frames (loop survives)', () => {

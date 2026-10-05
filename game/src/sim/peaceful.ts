@@ -58,7 +58,12 @@ import { detLog10 } from './deterministic';
 
 /** Status view for the peaceful-mode UI panel. */
 export interface PeacefulStatus {
-  /** The owner's current housed population (`player.population`). */
+  /**
+   * The owner's current HOUSED population — `player.population` minus
+   * `player.unhousedPopulation` (Fix 3, 2026-10-05: population is
+   * housed + unhoused; the status panel's "housed population"
+   * contract counts only people with homes).
+   */
   population: number;
   /** True when the treasury is non-negative. */
   treasuryOk: boolean;
@@ -77,7 +82,9 @@ export interface PeacefulStatus {
 export function peacefulStatus(world: World, owner: number): PeacefulStatus {
   const player = getPlayer(world.city, owner);
   return {
-    population: player?.population ?? 0,
+    // Fix 3 (2026-10-05): housed = population − unhoused (the UI
+    // contract is "housed population"; the unhoused still want homes).
+    population: Math.max(0, (player?.population ?? 0) - (player?.unhousedPopulation ?? 0)),
     treasuryOk: (player?.funds ?? -1) >= 0,
   };
 }
@@ -108,8 +115,7 @@ export interface PeacefulScore {
   /** The derived score (rounded integer). */
   score: number;
   /** Housed population (the score's base). */
-  population: number;
-  /** Treasury component 0..1. */
+  population: number;  /** Treasury component 0..1. */
   treasury: number;
   /** Employment component 0..1. */
   employmentRate: number;
@@ -125,7 +131,9 @@ export function peacefulScore(
   avgDesirability = 0,
 ): PeacefulScore {
   const player = getPlayer(world.city, owner);
-  const population = player?.population ?? 0;
+  // Fix 3 (2026-10-05): the score's base is HOUSED population (the UI
+  // contract), not the housed+unhoused total.
+  const population = Math.max(0, (player?.population ?? 0) - (player?.unhousedPopulation ?? 0));
   const funds = player?.funds ?? 0;
   const treasury =
     funds >= 0 ? Math.min(1, detLog10(1 + funds / 1000) / 3) : 0;

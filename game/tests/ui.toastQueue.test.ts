@@ -112,3 +112,52 @@ describe('ToastQueue', () => {
     expect(advance(200)).toBe('again');
   });
 });
+
+describe('ToastQueue persistent toast (2026-10-05, Fix 2)', () => {
+  it('a persistent toast holds the slot when the transient queue is idle', () => {
+    const { queue, advance } = makeQueue();
+    queue.persist('Water Pump destroyed.');
+    expect(queue.poll()).toBe('Water Pump destroyed.');
+    // No timeout: still there long after the transient duration passed.
+    expect(advance(60_000)).toBe('Water Pump destroyed.');
+    expect(queue.persistentMessage).toBe('Water Pump destroyed.');
+  });
+
+  it('newest persistent toast wins', () => {
+    const { queue } = makeQueue();
+    queue.persist('House destroyed.');
+    queue.persist('Barracks destroyed.');
+    expect(queue.poll()).toBe('Barracks destroyed.');
+  });
+
+  it('transient toasts cycle through on top, then the persistent one returns', () => {
+    const { queue, advance } = makeQueue({ durationMs: 1000, gapMs: 200 });
+    queue.persist('Water Pump destroyed.');
+    expect(advance(0)).toBe('Water Pump destroyed.');
+    queue.push('Not enough funds');
+    expect(advance(0)).toBe('Not enough funds'); // displaces the persistent one
+    expect(advance(1000)).toBe('Water Pump destroyed.'); // and it returns
+  });
+
+  it('unpersist() clears the persistent toast', () => {
+    const { queue } = makeQueue();
+    queue.persist('Water Pump destroyed.');
+    queue.unpersist();
+    expect(queue.poll()).toBeNull();
+    expect(queue.persistentMessage).toBeNull();
+  });
+
+  it('clear() drops the persistent toast too', () => {
+    const { queue } = makeQueue();
+    queue.persist('Water Pump destroyed.');
+    queue.clear();
+    expect(queue.poll()).toBeNull();
+  });
+
+  it('ignores empty persistent messages', () => {
+    const { queue } = makeQueue();
+    queue.persist('');
+    expect(queue.poll()).toBeNull();
+    expect(queue.persistentMessage).toBeNull();
+  });
+});

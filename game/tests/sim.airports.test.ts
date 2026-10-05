@@ -59,6 +59,7 @@ import {
   cellIndex,
   CITY_GRID_CELLS,
 } from '../src/sim/city';
+import { emptyUtilityModel } from './sim.housing-fixtures';
 import { createCommandQueue, registerCoreCommands } from '../src/sim/commands';
 import { registerCityCommands } from '../src/sim/city';
 import {
@@ -260,9 +261,12 @@ describe('airport zone (ZoneType.AIRPORT)', () => {
       for (let dx = 0; dx < 16; dx++) airportCells.add(cellIndex(rect.cx + dx, rect.cz + dz));
     }
     // runGrowth only pulses on tick % 300 === 0; drive many pulses.
+    // Fix 3: the airport zone is not residential, so the demand gate
+    // is moot — the empty model suffices.
+    const model = emptyUtilityModel(ctx.world);
     for (let s = 0; s < 20; s++) {
       ctx.world.tick = 300 * (s + 1);
-      runGrowth(ctx.terrain, ctx.world, [100000], [100000]);
+      runGrowth(ctx.terrain, ctx.world, [100000], [100000], model);
     }
     // No building footprint may touch the airport zoning.
     for (const b of ctx.world.city.buildings) {

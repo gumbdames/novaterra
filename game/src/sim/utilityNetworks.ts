@@ -208,6 +208,14 @@ export interface UtilitySideModel {
   /** plantId -> networkId, for online plants that joined a network. */
   plantNetwork: Map<number, number>;
   /**
+   * Per zone-region (getZoneRegions order): true when any region cell is
+   * a network tile or adjacent to one — the "underground pipes" rule.
+   * Persisted here (rather than recomputed per query) so the housing
+   * demand gate (Fix 3, 2026-10-05) is an O(1) lookup per sample.
+   * DERIVED DATA ONLY — never snapshotted, never digested.
+   */
+  regionServed: boolean[];
+  /**
    * Completed demand-building ids reached by NO network, id order —
    * these use the AD2 pool fallback (existing pool allocator).
    */
@@ -362,6 +370,41 @@ function getZoneRegions(city: CityState): {
   }
   regionCache = { city, epoch: city.utilityEpoch, regions, cellToRegion };
   return regionCache;
+}
+
+/**
+ * The epoch-cached cell → zone-region map (Fix 3, 2026-10-05). Exported
+ * so `cellServedByUtility` can resolve a cell's region without
+ * recomputing components — the cache is shared with `getUtilityModel`'s
+ * build, so this is ~free when the model is fresh.
+ */
+export function getRegionCellMap(city: CityState): Map<number, number> {
+  return getZoneRegions(city).cellToRegion;
+}
+
+/**
+ * Is `cell`'s zone region served by `owner`'s `utility` network?
+ * (Fix 3, 2026-10-05 — the residential growth gate.) O(1): one map
+ * lookup for the region index, one array lookup for the persisted
+ * `regionServed` flag. Cells in no zone region (or an unknown owner)
+ * are never served. NO road term — the region rule conducts via
+ * underground pipes, so zero-road growth keeps working (user
+ * directive 2026-09-30).
+ */
+export function cellServedByUtility(
+  model: UtilityModel,
+  city: CityState,
+  owner: number,
+  utility: UtilityKind,
+  cell: number,
+): boolean {
+  const ri = getRegionCellMap(city).get(cell);
+  if (ri === undefined) return false;
+  const pi = city.players.findIndex((p) => p.id === owner);
+  if (pi < 0 || pi >= model.players.length) return false;
+  const side = utility === 'power' ? model.players[pi]?.power : model.players[pi]?.water;
+  if (!side) return false;
+  return side.regionServed[ri] === true;
 }
 
 // ---------------------------------------------------------------------------
@@ -660,7 +703,12 @@ function buildSide(
   for (const n of networks) for (const pid of n.plantIds) inNetwork.add(pid);
   const poolPlants = onlinePlantIds.filter((pid) => !inNetwork.has(pid));
 
-  return { networks, reached, networkMembers, plantNetwork, unreached, poolPlants };
+  // Fix 3 (demand-gated housing, 2026-10-05): persist the per-region
+  // served flag (regionBest was already computed above) so the housing
+  // gate is an O(1) lookup per growth sample.
+  const regionServed = regions.map((_, ri) => regionBest[ri] !== null);
+
+  return { networks, reached, networkMembers, plantNetwork, regionServed, unreached, poolPlants };
 }
 
 // ---------------------------------------------------------------------------

@@ -252,6 +252,47 @@ no-military mode. Roster: 103 units / 100 buildings / 21 upgrades.
   - Fair-AI: `thinkNuclearUpgrades` gives the AI the same upgrade when
     rich (funds > 3000, materials > 800).
   - 21 new tests in `game/tests/sim.building-upgrades.test.ts`.
+- ✅ **Phase 10 — Playtest bug fixes: fog sight, building-loss toasts,
+  demand-gated housing, placement on units, AI nuclear plants
+  (COMPLETE 2026-10-05)**:
+  - **Per-building sight (fog):** every building now grants vision —
+    new optional `BuildingDef.sight` (cells, default 14; houses 8,
+    industrial 12, towers/sensor buildings 20), gated on completed +
+    operational + unsabotaged, consumed by `buildingSightCoverage` so
+    the fog shroud, minimap, entity filter, threat meter, and AI
+    perception all agree. `perceptionHash` hardened with FNV-1a (the
+    old lossy sum could collide and skip the explored fold forever).
+  - **Building-loss toasts (UI-only):** a persistent toast now names
+    any friendly building destroyed (AI siege, storm strike) — "Water
+    Pump destroyed" — and demolitions toast "Demolished X (no
+    refund)"; the demolish tool disarms after one successful click.
+  - **Demand + utility-gated housing:** new `PlayerState.unhousedPopulation`
+    (AD9) fed by immigration (`1/30 × migrationPullFor(desirability) ×
+    foodSurplusFactor` per tick, filling free capacity first);
+    `recomputeOccupancy` distributes the housed pool instead of
+    conjuring residents; residential auto-develop now requires (1)
+    unhoused demand, (2) the plot's region served by power AND water
+    (`UtilitySideModel.regionServed`, derived — never snapshotted),
+    (3) headroom > 0. No road term — zero-road growth keeps working.
+    Peaceful AI housing gated on the same rule.
+  - **Buildings can't land on units:** `validatePlacement` rejects
+    unit-occupied footprints loudly (`<name>: footprint occupied by a
+    unit`); threaded through the placeBuilding command,
+    tryAutoDevelop, mayor/delegate planners, and the demo/trailer
+    directors.
+  - **Sabotage blinds satelliteUplink:** `intelBuildingSightBonus`
+    now skips sabotaged buildings (inline check, no intel.ts import);
+    sight-bonus cache bumped on sabotage and tick-validated.
+  - **AI builds real nuclear plants:** commander+ AI constructs
+    physical nuclear plants when rich (funds > 6000, materials >
+    2500, Industry age, cap 2) through the real `placeBuilding`
+    command — same costs and rules as the player — which makes the
+    previously-dead `thinkNuclearUpgrades` live. Fair-AI contract
+    kept; `thinkUtilityConnections` no-op comment updated.
+  - **Reactor panel digest:** new `br:` segment covers reactors /
+    upgrade-in-flight / affordability so the selection panel refreshes
+    (shared `reactorUpgradeBlockReason` helper, `ui/reactor.ts`).
+  - Full suite 3,176 tests green (67 new), tsc + check:cycles clean.
 
 ## Decisions (resolved with user 2026-09-28)
 

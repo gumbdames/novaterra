@@ -84,6 +84,8 @@ import type { CommandQueue } from './commands';
 import {
   BUILDING_DEFS,
   CELL_WORLD_SIZE,
+  DEFAULT_BUILDING_SIGHT_CELLS,
+  bumpSightBonusCache,
   cellCenterWorld,
   getPlayer,
 } from './city';
@@ -399,8 +401,8 @@ export interface BuildingSightCoverage {
 
 /**
  * The S6 hook spec's building sight term: completed, operational,
- * unsabotaged buildings of `owner` with detection/surveillance output
- * extend perception (building id order — deterministic). Two flavors:
+ * unsabotaged buildings of `owner` extend perception (building id
+ * order — deterministic). Three flavors:
  *
  *  - SIGINT (`detectionRadius`: listeningPost, signalsStation) — sees
  *    everything inside, including stealthed units (consistent with
@@ -409,10 +411,19 @@ export interface BuildingSightCoverage {
  *  - Conventional radar (`radarRadius`: radarStation) — non-stealthed
  *    enemies only, by design: a cheap Connectivity-age radar must not
  *    obsolete the Information-age SIGINT counter-spy game.
+ *  - Per-building sight (2026-10-05): appended after the SIGINT/radar
+ *    terms — EVERY qualifying building contributes a plain-vision
+ *    disc, its def's `sight` radius in city cells (default
+ *    `DEFAULT_BUILDING_SIGHT_CELLS`), converted to world units. The
+ *    building's "eyes", like a unit's sight disc: `seesStealth: true`,
+ *    consistent with unit discs (a burned spy the detection net has
+ *    already exposed is visible to buildings too — spies still need
+ *    `isDetected` to become visible at all).
  *
- * satelliteUplink needs no geometric term: its `sightBonus` already
- * flows through the `effectiveSight` hook as a standing unit-sight
- * bonus. reconTeam / reconUAV / reconPlane contribute through their
+ * satelliteUplink keeps flowing through the `intelSightBonus`→
+ * `effectiveSight` hook as a standing unit-sight bonus (its geometric
+ * term is the plain-vision disc above, like any building).
+ * reconTeam / reconUAV / reconPlane contribute through their
  * high platform sight via the existing unit-sight path in
  * `getVisibleEnemies` (verified by test — no separate term needed).
  *
@@ -427,16 +438,31 @@ export function buildingSightCoverage(world: World, owner: number): BuildingSigh
   for (const b of world.city.buildings) {
     if (b.owner !== owner || b.progress < 1 || !b.operational) continue;
     if (isSabotaged(b, world.tick)) continue;
+    const def = BUILDING_DEFS[b.kind];
     const c = buildingCenterWorld(b);
-    const sigint = BUILDING_DEFS[b.kind]?.detectionRadius ?? 0;
+    const sigint = def?.detectionRadius ?? 0;
     if (sigint > 0) {
       out.push({ x: c.x, z: c.z, radius: sigint + radiusBonus, seesStealth: true });
-      continue;
+    } else {
+      const radar = def?.radarRadius ?? 0;
+      if (radar > 0) {
+        out.push({ x: c.x, z: c.z, radius: radar, seesStealth: false });
+      }
     }
-    const radar = BUILDING_DEFS[b.kind]?.radarRadius ?? 0;
-    if (radar > 0) {
-      out.push({ x: c.x, z: c.z, radius: radar, seesStealth: false });
-    }
+    // Per-building sight (2026-10-05): appended after the SIGINT/radar
+    // terms — every qualifying building grants plain vision, its def's
+    // sight radius in city cells (default
+    // DEFAULT_BUILDING_SIGHT_CELLS), converted to world units. This is
+    // the building's "eyes", like a unit's sight disc: seesStealth is
+    // true, consistent with unit discs (a burned spy the detection net
+    // has already exposed is visible to buildings too — spies still
+    // need isDetected to become visible at all).
+    out.push({
+      x: c.x,
+      z: c.z,
+      radius: (def?.sight ?? DEFAULT_BUILDING_SIGHT_CELLS) * CELL_WORLD_SIZE,
+      seesStealth: true,
+    });
   }
   // Grand-expansion Phase 7 (AI intel play): the AI's virtual SIGINT
   // detectors (base-anchored) see everything inside, including
@@ -888,6 +914,12 @@ const sabotageSpec = {
     spendIntelAsset(world, owner, 'operational', SABOTAGE_COST_OPERATIONAL);
     const durationTicks = Math.round(sabotageDurationSec(world, building.owner) * 30);
     building.sabotagedUntil = world.tick + durationTicks;
+    // Bug A (2026-10-05): sabotage mutates the record in place, so the
+    // intel sight-bonus cache (upgrades.ts) needs an explicit bump —
+    // otherwise the sabotaged satelliteUplink keeps its +12 until the
+    // next tick boundary. (Expiry needs no bump: the cache entry is
+    // tick-validated.)
+    bumpSightBonusCache(world.city);
     // Detection jitter: the act may burn the spy. Rolled on the VICTIM's
     // stream — it is their counter-intelligence apparatus that spots it.
     // Their stockpiled counter-intel sharpens the check (sabotageSpotChance).

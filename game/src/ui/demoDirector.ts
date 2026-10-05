@@ -164,6 +164,11 @@ export function createDemoSession(): GameSession {
   // (no AI, no orders) — drop it so it can't grow stray organic buildings
   // or fall behind the age curve and skew the movie's economy.
   session.world.city.players = session.world.city.players.filter((p) => p.id === DEMO_OWNER);
+  // Fix 3 (demand-gated housing, 2026-10-05): the demo is a scripted
+  // movie — organic growth fragments the site and breaks the scripted
+  // placements (the growth pattern changed with demand gating). Suppress
+  // it; the director places every building explicitly.
+  session.world.city.suppressOrganicGrowth = true;
   return session;
 }
 
@@ -409,13 +414,21 @@ export class DemoDirector {
             continue dxLoop;
           }
         }
-        const reason = validatePlacement(terrain, world.city, {
-          kind,
-          owner: DEMO_OWNER,
-          cx,
-          cz,
-          facing: 0,
-        });
+        const reason = validatePlacement(
+          terrain,
+          world.city,
+          {
+            kind,
+            owner: DEMO_OWNER,
+            cx,
+            cz,
+            facing: 0,
+          },
+          // 2026-10-05 (Fix 4): the planner must agree with the
+          // placeBuilding command's unit check — otherwise it picks a
+          // site the command rejects at enqueue.
+          world.units,
+        );
         if (reason === null) return { cx, cz };
       }
     }

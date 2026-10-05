@@ -66,7 +66,7 @@ function building(
   owner: number,
   cx: number,
   cz: number,
-  overrides: Partial<{ hp: number; progress: number }> = {},
+  overrides: Partial<{ hp: number; progress: number; kind: string }> = {},
 ) {
   return { id, owner, cx, cz, hp: 500, ...overrides };
 }
@@ -124,6 +124,13 @@ describe('snapshotForAudio', () => {
     expect(snap.units.get(1)!.inCombat).toBe(true);
     expect(snap.units.get(2)!.inCombat).toBe(false);
   });
+
+  it('carries the building kind for the building-loss toast (Fix 2)', () => {
+    const snap = snapshot({
+      buildings: [{ ...building(7, PLAYER, 2, 3), kind: 'waterPump' }],
+    });
+    expect(snap.buildings.get(7)?.kind).toBe('waterPump');
+  });
 });
 
 describe('AudioEventTracker', () => {
@@ -165,6 +172,27 @@ describe('AudioEventTracker', () => {
     expect(events.destroyed).toHaveLength(1);
     expect(events.destroyed[0]!.friendly).toBe(true);
     expect(events.destroyed[0]!.x).toBe(25);
+  });
+
+  it('destroyed events carry kind + id for the building-loss toast (Fix 2)', () => {
+    const tracker = new AudioEventTracker(PLAYER);
+    tracker.observe(
+      snapshot({ buildings: [{ ...building(7, PLAYER, 2, 3), kind: 'waterPump' }] }),
+    );
+    const events = tracker.observe(snapshot({ buildings: [] }));
+    expect(events.destroyed).toHaveLength(1);
+    expect(events.destroyed[0]?.kind).toBe('waterPump');
+    expect(events.destroyed[0]?.id).toBe(7);
+    expect(events.destroyed[0]?.friendly).toBe(true);
+  });
+
+  it('unit deaths leave kind/id unset', () => {
+    const tracker = new AudioEventTracker(PLAYER);
+    tracker.observe(snapshot({ units: [unit(1, PLAYER, 10, 20)] }));
+    const events = tracker.observe(snapshot({ units: [] }));
+    expect(events.deaths).toHaveLength(1);
+    expect(events.deaths[0]?.kind).toBeUndefined();
+    expect(events.deaths[0]?.id).toBeUndefined();
   });
 
   it('counts damage events only for the player (under-attack cue)', () => {

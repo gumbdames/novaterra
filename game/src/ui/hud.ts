@@ -62,8 +62,6 @@ import {
   ROAD_CLASS_STATS,
   BUILDING_DEFS,
   NUCLEAR_MAX_REACTORS,
-  NUCLEAR_UPGRADE_COST_FUNDS,
-  NUCLEAR_UPGRADE_COST_MATERIALS,
   buildingOccupancy,
   type BuildingRecord,
   type RoadClass,
@@ -213,6 +211,9 @@ import {
   resupplyBlockReason,
   serviceTogglesOf,
 } from './logistics';
+// Bug C (2026-10-05): the Add Reactor button's disabled reason lives in
+// the shared reactor contract module — the same helper the digest uses.
+import { reactorUpgradeBlockReason } from './reactor';
 // Grand-expansion Phase 5 (hangar/carrier shelter, workstream B): the
 // embark / base / launch contract — the panel reads the sim through
 // this module, never the records directly.
@@ -3118,27 +3119,20 @@ export class HUD {
         // unaffordable; the sim re-validates at enqueue and the
         // controller toasts any rejection loudly.
         if (b.kind === 'nuclearPlant' && b.progress >= 1) {
-          const reactors = b.reactors ?? 1;
           const upBtn = document.createElement('button');
           upBtn.className = 'sel-action';
           upBtn.textContent = loc(sel.addReactorVerb);
           upBtn.title = loc(sel.addReactorTitle);
-          if (b.upgradeProgress !== undefined) {
+          // Bug C (2026-10-05): the disabled reason comes from the
+          // shared reactorUpgradeBlockReason helper (ui/reactor.ts) —
+          // the same helper the selection digest uses, so the panel
+          // and the digest can never disagree about the button state.
+          // The sim re-validates at enqueue and the controller toasts
+          // any rejection loudly.
+          const blockReason = reactorUpgradeBlockReason(world, b);
+          if (blockReason !== null) {
             upBtn.disabled = true;
-            upBtn.title = loc(sel.reactorUpgradeInProgress);
-          } else if (reactors >= NUCLEAR_MAX_REACTORS) {
-            upBtn.disabled = true;
-            upBtn.title = loc(sel.reactorMaxed);
-          } else {
-            const player = getPlayer(world.city, HUMAN_PLAYER_ID);
-            if (
-              player === undefined ||
-              player.funds < NUCLEAR_UPGRADE_COST_FUNDS ||
-              player.materials < NUCLEAR_UPGRADE_COST_MATERIALS
-            ) {
-              upBtn.disabled = true;
-              upBtn.title = loc(sel.reactorCannotAfford);
-            }
+            upBtn.title = blockReason;
           }
           upBtn.addEventListener('click', () => this.actions.onUpgradeBuilding(b.id));
           actions.append(upBtn);
@@ -3446,6 +3440,24 @@ export class HUD {
   /** One-line transient feedback — queued, shown in turn. */
   toast(message: string): void {
     this.toastQueue.push(message);
+  }
+
+  /**
+   * 2026-10-05 (Fix 2): a persistent toast — it holds the toast slot
+   * whenever the transient queue is idle, so a building-loss notice
+   * ("Water Pump destroyed") or a demolition confirmation stays on
+   * screen instead of vanishing in 2.2s of battle noise. Transient
+   * toasts still cycle through on top and it returns afterwards;
+   * the next persistentToast call replaces it. Same element as the
+   * transient toasts (pointer-events:none) — never blocks map input.
+   */
+  persistentToast(message: string): void {
+    this.toastQueue.persist(message);
+  }
+
+  /** Clear the persistent toast; the slot goes back to transient-only. */
+  clearPersistentToast(): void {
+    this.toastQueue.unpersist();
   }
 
   /**

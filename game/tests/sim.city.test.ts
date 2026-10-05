@@ -341,6 +341,30 @@ describe('demolish', () => {
     expect(ctx.world.city.buildings).toHaveLength(1);
   });
 
+  it('demolish result carries the kind for the UI toast (Fix 2)', () => {
+    const ctx = setup();
+    const { cx, cz } = findLandRect(ctx.terrain, 12, 6);
+    enqueue(ctx, [
+      { kind: 'paintZone', issuer: 'p', payload: { owner: 0, zone: ZoneType.RESIDENTIAL, x0: cx, z0: cz + 3, x1: cx + 11, z1: cz + 5 } },
+    ]);
+    runTicks(ctx, 1);
+    enqueue(ctx, [
+      { kind: 'placeBuilding', issuer: 'p', payload: { kind: 'house', owner: 0, cx, cz: cz + 3, facing: 0 } },
+    ]);
+    runTicks(ctx, 1);
+    expect(ctx.world.city.buildings).toHaveLength(1);
+    ctx.queue.drainResults(); // clear build results
+    enqueue(ctx, [{ kind: 'demolish', issuer: 'p', payload: { cx, cz: cz + 3 } }]);
+    runTicks(ctx, 1);
+    const drained = ctx.queue.drainResults();
+    expect(drained).toHaveLength(1);
+    expect(drained[0]?.command.kind).toBe('demolish');
+    const result = drained[0]?.result as { removed?: string; id?: number; kind?: string };
+    expect(result.removed).toBe('building');
+    expect(result.kind).toBe('house');
+    expect(typeof result.id).toBe('number');
+  });
+
   it('demolish removes roads and rejects empty cells', () => {
     const ctx = setup();
     const { cx, cz } = findLandRect(ctx.terrain, 6, 2);

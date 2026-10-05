@@ -54,7 +54,10 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   Building upgrades (2026-10-05): nuclear plants carry `reactors`
   (built with 1, max 4) and `upgradeProgress`; the `upgradeBuilding`
   command validates loudly and the economy tick completes the 40s
-  upgrade. Grand-expansion Phase 8
+  upgrade. Per-building sight (2026-10-05): `BuildingDef.sight?`
+  (vision radius in city cells, default 14 — houses 8, industrial 12,
+  towers/sensor-ish 20) feeds the per-building disc in
+  `buildingSightCoverage`. Grand-expansion Phase 8
   (peaceful mode, workstream A, 2026-09-30): `BuildingDef.military?:
   boolean` — true on the 21 war-apparatus buildings (the full 100-kind
   classification is pinned in tests/sim.peaceful.test.ts);
@@ -508,8 +511,10 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   upgrade hook, veterancy sight, and — grand-expansion Phase 7 (S6 intel,
   workstream 3, 2026-09-30) — the building sight term from
   `buildingSightCoverage` (sim/intel.ts): completed, operational,
-  unsabotaged listeningPost/signalsStation SIGINT coverage and
-  radarStation radar. The building term runs at AI think cadence only;
+  unsabotaged listeningPost/signalsStation SIGINT coverage,
+  radarStation radar, plus (2026-10-05) a per-building plain-vision
+  disc for every qualifying building (`BuildingDef.sight`, default 14
+  cells). The building term runs at AI think cadence only;
   combat's `acquireTarget` never consults it, so a radar contact the AI
   "knows about" still has to be engaged by a unit that can reach it.
   Transport (grand-expansion Phase 4): `thinkCivilianTransport` is a
@@ -520,14 +525,17 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   digest-unchanged tests).
   Utility networks (grand-expansion Phase 2, §AD2): `thinkConstruction`
   runs the `thinkUtilityConnections` sub-phase, a documented no-op in
-  0.1 Alpha — the AI owns no physical PLANTS (its production buildings
-  are all virtual, no footprint; C1, 2026-10-02, adds physical
-  forward-base depots/radar — logistics/sensor, not plants), so no AI
-  plant can be stranded and virtual buildings stay on the global pool
-  fallback. The hook's comment records the exact contract for wiring
-  it to the sim's network diagnostics if the AI ever gains physical
-  plants (think cadence only, `ai-<owner>` stream draws only, orders
-  through the queue).
+  0.1 Alpha — the AI owns no physical PLANTS except Bug-B nuclear
+  plants (commander+ builds real ones through the real placeBuilding
+  command, 2026-10-05; everything else production is virtual, no
+  footprint; C1, 2026-10-02, adds physical forward-base depots/radar
+  — logistics/sensor, not plants). A stranded nuclear plant joins the
+  AD2 pool as a supplier, so the stranded condition needs no line
+  orders and the hook stays a no-op; virtual buildings stay on the
+  global pool fallback. The hook's comment records the exact contract
+  for wiring it to the sim's network diagnostics if the AI ever gains
+  more physical plants (think cadence only, `ai-<owner>` stream draws
+  only, orders through the queue).
   Air/naval (grand-expansion Phase 5/6, workstream D): `canTrain` is
   hangar-aware — infrastructure aircraft (a `requiredBuilding` AND a
   `hangarClass`) train only while the AI holds a free virtual hangar
@@ -694,9 +702,11 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `UnitDef.recon` (units.ts — reconTeam, reconUAV, reconPlane),
   `buildingSightCoverage(world, owner)` (the building sight term consumed
   by `getVisibleEnemies` at AI think cadence — SIGINT sees everything
-  incl. spies, radar sees non-stealthed only, both gated on completed +
-  operational + unsabotaged; satelliteUplink keeps flowing through the
-  `intelSightBonus`→`effectiveSight` hook, no geometric term), and the
+  incl. spies, radar sees non-stealthed only, plus a 2026-10-05
+  per-building plain-vision disc for every qualifying building, all
+  gated on completed + operational + unsabotaged; satelliteUplink keeps
+  its `intelSightBonus`→`effectiveSight` standing bonus AND gains the
+  geometric disc like any building), and the
   mixed-airport discovery lifecycle (`isMixedAirportAnchor`,
   `airportObservedBy` — three observation sources: embedded unburned
   spy, SIGINT coverage, recon overflight — `runAirportDiscovery`,

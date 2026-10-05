@@ -7,7 +7,11 @@
  * sight model (`getSightDiscs` in sim/ai.ts — the same discs that gate
  * `getVisibleEnemies`/`getVisibleEnemyBuildings`), so the render shroud,
  * the minimap, entity hiding, and the threat meter all agree with what
- * the AI itself can perceive. No omniscience anywhere.
+ * the AI itself can perceive. No omniscience anywhere. Every
+ * completed, operational, unsabotaged building contributes its own
+ * sight disc (per-kind radius in city cells — `BuildingDef.sight`,
+ * default 14), alongside unit sight and the intel roster's
+ * SIGINT/radar coverage.
  *
  * Determinism: explored is monotonic (bits only ever turn on) and the
  * update is pure arithmetic over sim state — no RNG, no banned
@@ -108,29 +112,49 @@ export function computeVisibleCells(world: World, owner: number): Uint8Array {
 
 /**
  * Cheap change-detection hash for one owner's perception inputs:
- * living unit count + integer-rounded positions, plus the count of
- * operational buildings (coverage changes on construction/sabotage/
- * demolition). A collision only delays a shroud refresh by one cadence
- * — never a correctness issue, since explored is monotonic display
- * memory. Costs O(units + buildings); the rasterization it skips is
- * O(cells × discs).
+ * living-unit identities + integer-rounded positions folded through
+ * FNV-1a, plus per-building coverage state (completed, operational,
+ * sabotaged). The old lossy sum (`round(x)*31 + round(z)*17`) could
+ * collide — a unit moving (+17,-31) left the sum unchanged, and then
+ * the hashCache skipped the explored fold forever. Folding each
+ * unit's (id, x, z) into FNV-1a makes that cancellation impossible:
+ * any move changes the hashed bytes. A collision only delays a shroud
+ * refresh by one cadence — never a correctness issue, since explored
+ * is monotonic display memory. Costs O(units + buildings); the
+ * rasterization it skips is O(cells × discs).
  */
 function perceptionHash(world: World, owner: number): string {
+  // FNV-1a 32-bit. Math.imul keeps the multiply exact in 32-bit int
+  // land — no banned transcendentals, deterministic across engines.
+  let h = 0x811c9dc5;
+  const mix = (v: number): void => {
+    h ^= v | 0;
+    h = Math.imul(h, 0x01000193);
+  };
   let n = 0;
-  let h = 0;
   for (const u of world.units) {
     if (u.owner !== owner || u.hp <= 0) continue;
     n++;
-    h = (h + Math.round(u.x) * 31 + Math.round(u.z) * 17) | 0;
+    mix(u.id);
+    mix(Math.round(u.x));
+    mix(Math.round(u.z));
   }
+  mix(n);
   let b = 0;
   for (const bd of world.city.buildings) {
-    if (bd.owner !== owner || bd.progress < 1 || !bd.operational) continue;
+    if (bd.owner !== owner || bd.progress < 1) continue;
     b++;
+    // The sight discs gate on completed + operational + unsabotaged,
+    // so the hash must move when any of those flip — the old count
+    // stayed put on sabotage and the shroud went stale.
+    mix(bd.id);
+    mix(bd.operational ? 1 : 0);
+    mix((bd.sabotagedUntil ?? 0) > world.tick ? 1 : 0);
   }
+  mix(b);
   // Sight upgrades change the discs without moving anything.
-  const up = world.upgrades[owner]?.length ?? 0;
-  return `${n}:${h}:${b}:${up}`;
+  mix(world.upgrades[owner]?.length ?? 0);
+  return `${n}:${(h >>> 0).toString(36)}:${b}`;
 }
 
 /**

@@ -57,6 +57,12 @@ export interface AudioBuildingState {
    * standing — a pre-B11 snapshot never fires a false completion).
    */
   progress?: number;
+  /**
+   * 2026-10-05 (Fix 2): the building kind — carried so the destroyed
+   * event can name the lost building ("Water Pump destroyed"). Optional
+   * and additive; older callers simply report no kind.
+   */
+  kind?: string;
 }
 
 /** One poll's audio-relevant world snapshot. */
@@ -83,6 +89,17 @@ export interface AudioDeathEvent {
   z: number;
   /** True when the lost asset belonged to the human player. */
   friendly: boolean;
+  /**
+   * 2026-10-05 (Fix 2): the destroyed building's kind (deaths leave
+   * this unset) — lets the game loop name the loss in a toast.
+   */
+  kind?: string;
+  /**
+   * 2026-10-05 (Fix 2): the destroyed building's id — lets the game
+   * loop tell a player demolition (its own toast) apart from a combat
+   * loss. Deaths leave this unset.
+   */
+  id?: number;
 }
 
 /** What changed since the previous poll. */
@@ -180,7 +197,10 @@ export class AudioEventTracker {
     for (const [id, st] of this.prevBuildings) {
       const now = snap.buildings.get(id);
       if (now === undefined) {
-        destroyed.push({ x: st.x, z: st.z, friendly: st.owner === this.playerId });
+        // 2026-10-05 (Fix 2): carry the kind + id so the game loop can
+        // name a lost friendly building ("Water Pump destroyed") and
+        // tell demolitions apart from combat losses.
+        destroyed.push({ x: st.x, z: st.z, friendly: st.owner === this.playerId, kind: st.kind, id });
       } else {
         // Roadmap B11 (2026-10-02): a construction-completion event is
         // a standing building crossing progress 1. A building that
@@ -240,7 +260,7 @@ export class AudioEventTracker {
  */
 export function snapshotForAudio(world: {
   units: Array<{ id: number; owner: number; hp: number; x: number; z: number; targetId: number; embeddedIn?: number }>;
-  city: { buildings: Array<{ id: number; owner: number; hp?: number; cx: number; cz: number; progress?: number }> };
+  city: { buildings: Array<{ id: number; owner: number; hp?: number; cx: number; cz: number; progress?: number; kind?: string }> };
   upgrades: Record<number, string[]>;
 }, playerId: number, cellToWorld: (c: number) => number): AudioWorldSnapshot {
   const units = new Map<number, AudioUnitState>();
@@ -270,6 +290,8 @@ export function snapshotForAudio(world: {
         // Roadmap B11 (2026-10-02): progress feeds the buildComplete
         // transition detector. Missing = 1 = already standing.
         progress: b.progress ?? 1,
+        // 2026-10-05 (Fix 2): kind feeds the building-loss toast.
+        kind: b.kind,
       });
     }
   }

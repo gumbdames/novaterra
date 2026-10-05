@@ -118,8 +118,12 @@ describe('buildingSightCoverage', () => {
     const ids = getVisibleEnemies(world, 0).map((u) => u.id);
     expect(ids).toContain(near.id);
     expect(ids).not.toContain(far.id);
-    expect(buildingSightCoverage(world, 0)).toHaveLength(1);
-    expect(buildingSightCoverage(world, 0)[0]!.radius).toBe(45);
+    // 2026-10-05 (Fix 1): the SIGINT disc comes first, then the
+    // per-building sight disc (default 14 cells = 28 world units).
+    const coverage = buildingSightCoverage(world, 0);
+    expect(coverage).toHaveLength(2);
+    expect(coverage[0]!.radius).toBe(45);
+    expect(coverage[1]!.radius).toBe(28);
   });
 
   it('radarStation (90) reveals non-stealthed enemies but never spies', () => {
@@ -165,7 +169,7 @@ describe('buildingSightCoverage', () => {
     expect(buildingSightCoverage(world, 0)).toHaveLength(0);
   });
 
-  it('satelliteUplink contributes through the effectiveSight hook (no geometric term)', () => {
+  it('satelliteUplink contributes through the effectiveSight hook AND a geometric sight disc', () => {
     const world = setup();
     setDoctrine(world, 0, 'kestrel'); // base sight (Republic multiplies by 1.2)
     const def = UNIT_DEFS['rifles' as UnitKind];
@@ -173,9 +177,12 @@ describe('buildingSightCoverage', () => {
     place(world, 'satelliteUplink', 0, 10, 10);
     // +12 intelSightBonus, the existing hook — pinned, unchanged.
     expect(effectiveSight(world, 0, def)).toBe(base + 12);
-    // And no coverage entry: the uplink never becomes a geometric
-    // "sees everything" disc.
-    expect(buildingSightCoverage(world, 0)).toHaveLength(0);
+    // 2026-10-05 (Fix 1): every building also grants plain vision —
+    // the uplink's def sight (20 cells = 40 world units) as a
+    // geometric disc, on top of the standing unit-sight bonus.
+    const coverage = buildingSightCoverage(world, 0);
+    expect(coverage).toHaveLength(1);
+    expect(coverage[0]!.radius).toBe(40);
   });
 
   it('recon units see through their high platform sight on the unit path', () => {

@@ -247,8 +247,6 @@ export const STRINGS = {
     },
     reactorLine: { en: 'Reactors {current}/{max}' },
     reactorUpgradeInProgress: { en: 'Reactor upgrade in progress…' },
-    reactorMaxed: { en: 'Maximum reactors reached' },
-    reactorCannotAfford: { en: 'Cannot afford reactor (1,200 funds + 500 materials)' },
     operational: { en: 'Operational' },
     notOperational: { en: 'Not operational' },
     // Naval-building model (2026-10-01): the unit detail panel shows
@@ -440,6 +438,14 @@ export const STRINGS = {
     cancelled: { en: 'Cancelled.' },
     stormEngineFiring: { en: 'Storm Engine firing.' },
     researchComplete: { en: 'Research complete: {name}.' },
+    /**
+     * 2026-10-05 (Fix 2): building-loss feedback. {name} is the
+     * localized building name. buildingDestroyed fires for friendly
+     * buildings lost to combat (AI sieges, storm strikes) — never for
+     * the player's own demolitions, which get demolishedBuilding.
+     */
+    buildingDestroyed: { en: '{name} destroyed.' },
+    demolishedBuilding: { en: 'Demolished {name} (no refund).' },
     warCoreFallen: { en: 'Your war core has fallen — defeat is imminent.' },
     /**
      * Fun-audit B2 (2026-10-02): the wonder countdown. {leader} is

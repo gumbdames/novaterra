@@ -71,6 +71,10 @@ describe('phase 1.5 resources', () => {
       progress: 1, operational: true, powered: true, watered: true,
     } as any);
     player.manpower = 0;
+    // Fix 3: occupancy distributes the demand pool — inject it so the
+    // house fills (manpower accrues on total population, housed +
+    // unhoused, by design).
+    player.population = 6;
     const popBefore = player.population;
     runEconomyTick(world, terrain);
     // House gives 6 population; manpower = 6 * 0.02 = 0.12

@@ -479,16 +479,21 @@ export function intelSightBonus(world: World, owner: number): number {
  * array identity + length + last element (placements, demolitions,
  * direct fixture pushes, snapshot restore) and by the explicit
  * `bumpSightBonusCache` version (construction completions in
- * economy.ts, which mutate `progress` in place). The signalsIntel
- * upgrade term stays uncached — `hasUpgrade` scans a tiny per-owner
- * list. The cache is never iterated for sim logic (pure per-owner
- * lookup), so it has no determinism footprint.
+ * economy.ts and sabotage applications in intel.ts, which mutate
+ * `progress` / `sabotagedUntil` in place). Bug A (2026-10-05): the
+ * entry is ALSO tick-validated — sabotage state is a pure function of
+ * (`sabotagedUntil`, tick) and flips silently when the timer expires,
+ * with no version bump; recompute when `world.tick !== cachedTick`.
+ * The signalsIntel upgrade term stays uncached — `hasUpgrade` scans a
+ * tiny per-owner list. The cache is never iterated for sim logic (pure
+ * per-owner lookup), so it has no determinism footprint.
  */
 interface IntelBuildingSightCache {
   buildings: BuildingRecord[];
   n: number;
   last: BuildingRecord | undefined;
   version: number;
+  tick: number;
   perOwner: Map<number, number>;
 }
 const intelBuildingSightCache = new WeakMap<World, IntelBuildingSightCache>();
@@ -504,9 +509,14 @@ function intelBuildingSightBonus(world: World, owner: number): number {
     e.buildings !== buildings ||
     e.n !== buildings.length ||
     e.last !== last ||
-    e.version !== version
+    e.version !== version ||
+    e.tick !== world.tick
   ) {
-    e = { buildings, n: buildings.length, last, version, perOwner: new Map() };
+    // A new tick invalidates the per-owner sums: sabotage expiry is
+    // silent (no bump), so the first query of each tick recomputes.
+    // Still O(buildings) per tick per owner — the R3 L7 win stands
+    // (uncached, this runs per sight query: O(buildings×units)).
+    e = { buildings, n: buildings.length, last, version, tick: world.tick, perOwner: new Map() };
     intelBuildingSightCache.set(world, e);
   }
   const hit = e.perOwner.get(owner);
@@ -514,6 +524,11 @@ function intelBuildingSightBonus(world: World, owner: number): number {
   let bonus = 0;
   for (const b of buildings) {
     if (b.owner !== owner || b.progress < 1) continue;
+    // Bug A (2026-10-05): a sabotaged satelliteUplink grants no sight
+    // bonus — a dark building is blind. Inlined (never value-import
+    // intel.ts: the units→upgrades→intel→units value cycle is
+    // deliberately avoided).
+    if ((b.sabotagedUntil ?? 0) > world.tick) continue;
     bonus += BUILDING_DEFS[b.kind]?.sightBonus ?? 0;
   }
   e.perOwner.set(owner, bonus);

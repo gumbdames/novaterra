@@ -575,13 +575,21 @@ export class TrailerDirector {
             continue dxLoop;
           }
         }
-        const reason = validatePlacement(terrain, world.city, {
-          kind,
-          owner: TRAILER_OWNER,
-          cx,
-          cz,
-          facing: 0,
-        });
+        const reason = validatePlacement(
+          terrain,
+          world.city,
+          {
+            kind,
+            owner: TRAILER_OWNER,
+            cx,
+            cz,
+            facing: 0,
+          },
+          // 2026-10-05 (Fix 4): the planner must agree with the
+          // placeBuilding command's unit check — otherwise it picks a
+          // site the command rejects at enqueue.
+          world.units,
+        );
         if (reason === null) return { cx, cz };
       }
     }

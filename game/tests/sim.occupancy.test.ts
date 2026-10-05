@@ -69,11 +69,16 @@ describe('per-building occupancy', () => {
     const house = built(world, 'house', 0);
     const apt = built(world, 'apartment', 0);
     const site = placeBuilding(world.city, { kind: 'house', owner: 0, cx: 60, cz: 60, facing: 0 }, world.seed);
+    // Fix 3: occupancy distributes the demand pool (player.population).
+    // Inject demand so the houses fill.
+    getPlayer(world.city, 0)!.population = 100;
     runEconomyTick(world, terrain);
     expect(house.residents).toBe(BUILDING_DEFS.house.population); // 6
     expect(apt.residents).toBe(BUILDING_DEFS.apartment.population); // 30
     expect(site.residents).toBe(0);
     expect(site.workers).toBe(0);
+    // The spillover is unhoused; the invariant holds.
+    expect(getPlayer(world.city, 0)!.unhousedPopulation).toBe(100 - 6 - 30);
   });
 
   it('Σresidents == player.population after the tick', () => {
@@ -82,6 +87,8 @@ describe('per-building occupancy', () => {
     built(world, 'house', 0);
     built(world, 'apartment', 0);
     built(world, 'factory', 0); // no residents
+    // Fix 3: inject the demand pool; capacity exactly covers it.
+    getPlayer(world.city, 0)!.population = 6 + 6 + 30;
     runEconomyTick(world, terrain);
     const pop = getPlayer(world.city, 0)!.population;
     const sum = world.city.buildings
@@ -96,6 +103,8 @@ describe('per-building occupancy', () => {
     built(world, 'house', 0); // 6 residents
     const factory = built(world, 'factory', 0); // jobs 25
     const shop = built(world, 'shop', 0); // jobs 4
+    // Fix 3: inject demand so the house fills.
+    getPlayer(world.city, 0)!.population = 6;
     runEconomyTick(world, terrain);
     // Population is 6: factory (lower id) takes all 6, shop gets none.
     expect(factory.workers).toBe(6);
@@ -109,6 +118,8 @@ describe('per-building occupancy', () => {
     for (let i = 0; i < 4; i++) built(world, 'apartment', 0); // 120 residents
     const factory = built(world, 'factory', 0); // jobs 25
     const shop = built(world, 'shop', 0); // jobs 4
+    // Fix 3: inject the demand pool so housing fills.
+    getPlayer(world.city, 0)!.population = 120;
     runEconomyTick(world, terrain);
     expect(factory.workers).toBe(25);
     expect(shop.workers).toBe(4);
@@ -125,6 +136,8 @@ describe('per-building occupancy', () => {
     p.materials = 1e9;
     const house = built(world, 'house', 0);
     const factory = built(world, 'factory', 0);
+    // Fix 3: inject the demand pool so the house fills.
+    p.population = 6;
     runEconomyTick(world, terrain);
     runEconomyTick(world, terrain);
     expect(factory.operational).toBe(false);
@@ -137,6 +150,8 @@ describe('per-building occupancy', () => {
     const { world, terrain } = richWorld();
     const apt = built(world, 'apartment', 0);
     const factory = built(world, 'factory', 0);
+    // Fix 3: inject the demand pool so the apartment fills.
+    getPlayer(world.city, 0)!.population = 30;
     runEconomyTick(world, terrain);
     const occ = buildingOccupancy(world, apt.id)!;
     expect(occ).toEqual({

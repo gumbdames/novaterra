@@ -93,8 +93,11 @@ function setupRival(difficulty: AIDifficulty): {
   ai.forwardBase = { x: spawn.x, z: spawn.z };
   const queue = createCommandQueue();
   registerCityCommands(queue, terrain);
+  // 2026-10-05 (Fix 4): park the army 30 cells east of the anchor —
+  // the gate under test is the army COUNT, and buildings can no
+  // longer land on units.
   for (let i = 0; i < FORWARD_DEPOT_MIN_ARMY; i++) {
-    spawnUnit(world, 'rifles', AI, spawn.x + i * 2, spawn.z);
+    spawnUnit(world, 'rifles', AI, spawn.x + 60 + i * 2, spawn.z);
   }
   const driver = createTickDriver({ queue, systems: [] });
   return { world, ai, terrain, queue, driver };

@@ -14,6 +14,10 @@ land, sea and air — or play a fully peaceful game with war disabled.
   type selection on screen, Attack-Move advance mode, and Generals in Cabinet
   with theatre assignments — Northern, Southern, Naval, Central — supported
   in the sim; player UI for assigning theatres is not in 0.1 Alpha yet).
+  Playtest-driven fixes 2026-10-05: buildings grant fog-of-war sight,
+  persistent building-loss toasts, demand + utility-gated housing growth,
+  no placements on units, sabotage blinds satellite uplinks, and the
+  commander+ AI builds real nuclear plants.
   Dual AI Modes
   (Mode 1 Classic Engine vs Mode 2 Muse Engine with live tactical
   taunts, commentary, and dialogue across all 5 difficulties). AAA visual polish

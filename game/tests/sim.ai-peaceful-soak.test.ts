@@ -181,13 +181,15 @@ function cityStats(world: World, owner: number): { pop: number; funds: number; b
 // well underway: this floor was measured, not chosen (see the
 // workstream C section of docs/research/phase8-civilian-peaceful.md).
 const SOAK_TICKS = 3600;
-// Measured 2026-09-30: the AI reaches 6-18 pop in 120s (3600 ticks)
-// across seeds 7/8/9. The 8000-resident victory is a long game (the
-// income engine needs ~15 minutes to fund the housing wave); the soak
-// verifies the AI builds a working city and population grows from
-// zero, not the full victory. Threshold 5 keeps the test green across
-// the measured seed variance.
-const SOAK_MIN_POPULATION = 5;
+// Measured 2026-10-05 (Fix 3): the AI reaches 4-5 pop in 120s (3600
+// ticks) across seeds 7/8/9. Population now comes from immigration
+// (≈1/30/s × migration pull — the demand engine behind demand-gated
+// housing), not from house completions. The 8000-resident victory is
+// a long game (the income engine needs ~15 minutes to fund the
+// housing wave); the soak verifies the AI builds a working city and
+// population grows from zero via immigration, not the full victory.
+// Threshold 3 keeps the test green across the measured seed variance.
+const SOAK_MIN_POPULATION = 3;
 
 describe('peaceful AI soak (marshal vs marshal)', () => {
   it('grows both cities with zero rejected AI orders', () => {

@@ -27,6 +27,17 @@
  * Pure: no DOM, no timers — the clock is injectable, so the whole
  * behavior is unit-tested in `tests/ui.toastQueue.test.ts`. The HUD
  * pumps it from its per-frame `update()` and owns the DOM element.
+ *
+ * 2026-10-05 (Fix 2): the queue also carries ONE persistent toast
+ * (`persist`/`unpersist`). A persistent toast holds the toast slot
+ * whenever the transient queue is idle — it survives transient
+ * interruptions (they cycle through, then it returns) and stays on
+ * screen until replaced or unpersisted, newest wins. Building-loss
+ * and demolition feedback uses this so a lost Water Pump cannot
+ * vanish in 2.2s of battle noise. It is still the same toast slot
+ * (same DOM element, pointer-events:none — never blocks map input),
+ * so transient feedback is never starved: any transient toast
+ * displaces the persistent one for its normal duration.
  */
 
 export interface ToastQueueOptions {
@@ -48,6 +59,12 @@ export class ToastQueue {
   /** When the last toast hid (0 = never — no gap before the first). */
   private lastHideAt = 0;
   private hiddenOnce = false;
+  /**
+   * 2026-10-05 (Fix 2): the persistent toast — shown by poll() whenever
+   * the transient queue is idle. Never times out; replaced by the next
+   * persist() call, cleared by unpersist()/clear().
+   */
+  private persistent: string | null = null;
 
   constructor(opts: ToastQueueOptions = {}) {
     this.durationMs = opts.durationMs ?? 2200;
@@ -64,8 +81,31 @@ export class ToastQueue {
   }
 
   /**
+   * 2026-10-05 (Fix 2): pin a persistent toast. It holds the toast slot
+   * whenever the transient queue is idle — surviving transient
+   * interruptions and staying on screen until replaced or unpersisted.
+   * Newest wins. Empty messages are ignored.
+   */
+  persist(message: string): void {
+    if (message === '') return;
+    this.persistent = message;
+  }
+
+  /** Clear the persistent toast; the slot goes back to transient-only. */
+  unpersist(): void {
+    this.persistent = null;
+  }
+
+  /** The currently pinned persistent toast, if any. */
+  get persistentMessage(): string | null {
+    return this.persistent;
+  }
+
+  /**
    * Advance the queue; call every frame. Returns the message that
-   * should be visible right now, or null when the toast should hide.
+   * should be visible right now, the persistent toast when the
+   * transient queue is idle (2026-10-05, Fix 2), or null when the
+   * toast should hide.
    */
   poll(): string | null {
     const now = this.now();
@@ -89,7 +129,10 @@ export class ToastQueue {
         return this.visible;
       }
     }
-    return null;
+    // 2026-10-05 (Fix 2): idle and a persistent toast is pinned — it
+    // holds the slot (no timeout). Transient toasts displace it while
+    // they run and it returns afterwards.
+    return this.persistent;
   }
 
   /** Messages waiting behind the visible one. */
@@ -102,9 +145,10 @@ export class ToastQueue {
     return this.visible;
   }
 
-  /** Drop everything (e.g. on game exit). */
+  /** Drop everything (e.g. on game exit) — including the persistent toast. */
   clear(): void {
     this.pending.length = 0;
     this.visible = null;
+    this.persistent = null;
   }
 }

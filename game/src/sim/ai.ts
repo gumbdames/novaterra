@@ -220,6 +220,8 @@ import {
   buildingAtCell,
   DEFAULT_TAX_RATE,
   NUCLEAR_MAX_REACTORS,
+  NUCLEAR_UPGRADE_COST_FUNDS,
+  NUCLEAR_UPGRADE_COST_MATERIALS,
   type BuildingKind,
   type BuildingRecord,
   type HangarClass,
@@ -233,6 +235,17 @@ import { isWater } from './terrain';
 // module init (the market.ts precedent — economy reads city at module
 // scope via SPEC_ZONE/ZoneType).
 import { SEA_ROUTE_SETUP_COST } from './seaTrade';
+// Fix 3 (demand-gated housing, 2026-10-05): the AI reads the derived
+// utility-network model for its served-region siting preference.
+// utilityNetworks touches city's exports inside functions only (never
+// at module-eval time), so this edge is safe — unlike the forbidden
+// ai→economy edge (economy reads city at module scope via SPEC_ZONE).
+import {
+  cellServedByUtility,
+  getUtilityModel,
+  type UtilityModel,
+  type UtilityModelInput,
+} from './utilityNetworks';
 import { STORM_RADIUS, isAegisReady, isStormReady } from './superweapons';
 import { CommandRejectedError } from './commands';
 // R1 final-review C2 (2026-10-01): the AI's virtual economy converts
@@ -1564,16 +1577,24 @@ function thinkConstruction(world: World, ai: AIPlayerState): void {
 /**
  * Utility-connection sub-phase (grand-expansion Phase 2, §AD2).
  *
- * 0.1 Alpha verdict: the Classic AI owns no physical PLANTS — every
- * production building is virtual (a kind name in
- * `ai.virtualBuildings.completed`, no footprint, no grid position).
- * C1 (2026-10-02) gives it physical forward-base depots/radar, but
- * those are logistics/sensor buildings, not power/water plants, and
- * the AI still places no plants anywhere (see the module header and
- * game/src/sim/AGENTS.md). A "stranded plant" is a
- * physical plant touching no conductor; with no physical plants, the
- * stranded condition cannot arise for the AI, so there is nothing to
- * connect and no line order to issue.
+ * 0.1 Alpha verdict (UPDATED 2026-10-05, Bug B): the Classic AI owns
+ * no physical PLANTS except nuclear plants — every production
+ * building is virtual (a kind name in
+ * `ai.virtualBuildings.completed`, no footprint, no grid position),
+ * and C1 (2026-10-02) adds physical forward-base depots/radar
+ * (logistics/sensor, not plants). Bug B teaches commander+ to build
+ * REAL nuclear plants through the real `placeBuilding` command (see
+ * thinkNuclearConstruction), so "the AI owns no physical plants" is
+ * no longer exactly true.
+ *
+ * The hook STAYS a no-op anyway: a plant that touches no conductor is
+ * a stranded plant, and stranded plants join the AD2 pool as SUPPLIERS
+ * (`poolPlants`) — their power is never wasted — while the AI's
+ * forward-base consumers draw from the same pool fallback by design.
+ * There is no stranded condition that a line order would fix: the AI
+ * builds no conductors and its plants feed the pool either way. The
+ * extension contract below is kept for the day the AI lays its own
+ * lines — the signature stays the hook.
  *
  * Virtual buildings stay on the global utility pool (the §AD2 fallback):
  * `creditVirtualEconomy` credits their def.output unconditionally, and
@@ -1825,6 +1846,10 @@ function findForwardDepotSite(
       }
     }
     if (taken) continue;
+    // 2026-10-05 (Fix 4): the units param is intentionally omitted —
+    // the AI keeps its legacy site search; the placeBuilding command
+    // re-validates with units at enqueue/apply and rejects loudly
+    // there if a unit wandered onto the site.
     const err = validatePlacement(terrain, world.city, {
       kind,
       owner: ai.owner,
@@ -1895,6 +1920,10 @@ export function thinkForwardDepots(
   ai: AIPlayerState,
   terrain: TerrainData | undefined,
   armySize: number,
+  // Bug B coordination (2026-10-05): per-think claimed cells from
+  // thinkCommander (via thinkLogistics), shared with
+  // thinkNuclearConstruction. Merged with the local claims below.
+  sharedClaimed?: Set<number>,
 ): void {
   if (world.peaceful === true) return;
   const roster = FORWARD_DEPOT_ROSTER[ai.difficulty];
@@ -1909,6 +1938,11 @@ export function thinkForwardDepots(
   // overlaps them (validatePlacement would reject anyway; the claim
   // just skips the wasted check).
   const claimed = new Set<number>();
+  // Bug B coordination: merge the shared per-think claims (nuclear
+  // plant footprint) so depot siting never overlaps it.
+  if (sharedClaimed !== undefined) {
+    for (const cell of sharedClaimed) claimed.add(cell);
+  }
   for (const e of tracked) {
     if (e.buildingId === 0) continue;
     const b = world.city.buildings.find((x) => x.id === e.buildingId);
@@ -2291,9 +2325,9 @@ function thinkNavalSupply(world: World, queue: CommandQueue, ai: AIPlayerState):
  *   peaceful: civilian AI trader rival is a later feature"). The think
  *   function that will actually run civilian transit belongs to that
  *   future rival, not to this one.
- * - The AI owns no physical buildings (C1 forward depots excepted),
- *   roads or rails in 0.1 Alpha (all virtual), so it cannot lay the
- *   networks civilian transport needs. railStation / busDepot / ferryTerminal / marina stay off
+ * - The AI owns no physical buildings (C1 forward depots and Bug-B
+ *   nuclear plants excepted), roads or rails in 0.1 Alpha (all
+ *   virtual), so it cannot lay the networks civilian transport needs. railStation / busDepot / ferryTerminal / marina stay off
  *   CONSTRUCTION_PRIORITY for the same reason — and so do the seven
  *   tiered transit stops/stations (busStop, taxiStand, tramStop,
  *   ferryPier, neighborhoodStation, centralStation,
@@ -2343,6 +2377,10 @@ function thinkLogistics(
   queue: CommandQueue,
   ai: AIPlayerState,
   terrain?: TerrainData,
+  // Bug B coordination (2026-10-05): per-think claimed cells from
+  // thinkCommander, shared with thinkNuclearConstruction. Merged with
+  // the local forward-depot claims below.
+  sharedClaimed?: Set<number>,
 ): void {
   let ammoConsumers = 0;
   let fuelConsumers = 0;
@@ -2361,7 +2399,7 @@ function thinkLogistics(
   // land-depot path no longer serves fuelDepot/ordnanceDepot — the
   // physical buildings are the single source of truth (no
   // double-building, no double-crediting).
-  thinkForwardDepots(world, queue, ai, terrain, n);
+  thinkForwardDepots(world, queue, ai, terrain, n, sharedClaimed);
   // Completed physical depots yield abstract stocks each think, at
   // honest production economics (creditVirtualDepotStocks): physical
   // rates, physical input costs, storage-capped — never from nothing.
@@ -3933,22 +3971,173 @@ function clampWaypoint(x: number, z: number): { x: number; z: number } {
 
 /** Commander think: scout, balanced force, full counters, expansion. */
 /**
+ * Bug B (AI nuclear plants, 2026-10-05): the military AI builds REAL
+ * nuclear plants through the real `placeBuilding` command when rich —
+ * this is what makes `thinkNuclearUpgrades` (below) live instead of
+ * dead. Fair-AI contract: the AI pays the SAME costs (2500 funds +
+ * 1000 materials, 100s build) through the same
+ * validate-at-enqueue-and-apply command the player uses; rejections
+ * are swallowed per AI convention (`issue`).
+ *
+ * Gates (all must hold):
+ * - commander+ only — cadet/citizen keep their existing power
+ *   behavior (their virtual buildings stay on the pool fallback);
+ * - the Industry age (the plant's `minAge`; the command would reject
+ *   anyway — the pre-check avoids futile orders);
+ * - comfort wealth: funds AND materials comfortably exceed the cost
+ *   (6000 / 2500 — the plant is a luxury, never a rush). Ledger-
+ *   guarded, so a same-think spend can't push the order stale;
+ * - fewer than AI_NUCLEAR_PLANT_CAP (2) AI-owned nuclear plants
+ *   standing or under construction.
+ *
+ * STATELESS by design: the plant count is re-read from the world each
+ * think — no new AI state fields, no snapshot/digest changes. A
+ * destroyed plant simply frees the cap next think (no rebuild
+ * cooldown: at these wealth gates the AI can afford patience).
+ *
+ * Siting: base-centered deterministic scan (the findForwardDepotSite
+ * pattern — nearest-first ring around the AI's main base,
+ * validatePlacement as the acceptance test). One order per think at
+ * most. Exported for tests.
+ */
+export const AI_NUCLEAR_PLANT_CAP = 2;
+/** Comfort wealth gates (funds / materials) — the plant is a luxury. */
+export const AI_NUCLEAR_FUNDS_THRESHOLD = 6000;
+export const AI_NUCLEAR_MATERIALS_THRESHOLD = 2500;
+/** Base-centered site search radius, in cells. */
+const AI_NUCLEAR_SITE_RADIUS = 24;
+
+function findNuclearSite(
+  world: World,
+  terrain: TerrainData,
+  ai: AIPlayerState,
+  claimed?: Set<number>,
+): { cx: number; cz: number } | null {
+  const def = BUILDING_DEFS.nuclearPlant;
+  const ccx = worldToCell(ai.baseX);
+  const ccz = worldToCell(ai.baseZ);
+  const cands: Array<{ cx: number; cz: number; d2: number }> = [];
+  for (let dz = -AI_NUCLEAR_SITE_RADIUS; dz <= AI_NUCLEAR_SITE_RADIUS; dz++) {
+    for (let dx = -AI_NUCLEAR_SITE_RADIUS; dx <= AI_NUCLEAR_SITE_RADIUS; dx++) {
+      cands.push({ cx: ccx + dx, cz: ccz + dz, d2: dx * dx + dz * dz });
+    }
+  }
+  cands.sort((a, b) => a.d2 - b.d2 || a.cz - b.cz || a.cx - b.cx);
+  for (const c of cands) {
+    // Skip sites claimed by an earlier sub-phase this think (Bug B
+    // coordination — the cells aren't in world.city.buildings yet).
+    if (claimed !== undefined) {
+      let taken = false;
+      for (let dz = 0; dz < def.footprintH; dz++) {
+        for (let dx = 0; dx < def.footprintW; dx++) {
+          if (claimed.has(cellIndex(c.cx + dx, c.cz + dz))) {
+            taken = true;
+            break;
+          }
+        }
+        if (taken) break;
+      }
+      if (taken) continue;
+    }
+    // 2026-10-05 (Fix 4 precedent): the units param is intentionally
+    // omitted — the AI keeps its legacy site search; the placeBuilding
+    // command re-validates with units at enqueue/apply and rejects
+    // loudly there if a unit wandered onto the site.
+    const err = validatePlacement(terrain, world.city, {
+      kind: 'nuclearPlant',
+      owner: ai.owner,
+      cx: c.cx,
+      cz: c.cz,
+      facing: 0,
+    });
+    // placePeaceful precedent: accept on clean validation; affordability
+    // is ledger-guarded by the caller and the command re-validates at
+    // apply (loud rejection, never silent).
+    if (err === null || err.includes('cannot afford')) {
+      return { cx: c.cx, cz: c.cz };
+    }
+  }
+  return null;
+}
+
+export function thinkNuclearConstruction(
+  world: World,
+  queue: CommandQueue,
+  ai: AIPlayerState,
+  terrain: TerrainData | undefined,
+  // Bug B coordination (2026-10-05): per-think claimed cells shared
+  // with thinkLogistics. Both sub-phases enqueue placeBuilding
+  // commands that apply next tick; without shared claims, a nuclear
+  // site and a depot site can overlap, and the second apply goes
+  // stale (loud rejection). The set holds footprint cells of
+  // buildings enqueued earlier this think.
+  claimed?: Set<number>,
+): void {
+  if (world.peaceful === true) return;
+  if (ai.difficulty !== 'commander' && ai.difficulty !== 'general' && ai.difficulty !== 'marshal') return;
+  if (!terrain) return; // no siting without terrain — retry next think
+  const def = BUILDING_DEFS.nuclearPlant;
+  // The placeBuilding command enforces the age gate at validate; the
+  // pre-check avoids futile orders (the thinkForwardDepots precedent).
+  if (!isBuildingAgeMet(getAgeState(world, ai.owner).age, def.minAge)) return;
+  let plants = 0;
+  for (const b of world.city.buildings) {
+    if (b.owner === ai.owner && b.kind === 'nuclearPlant' && (b.hp ?? 0) > 0) plants++;
+  }
+  if (plants >= AI_NUCLEAR_PLANT_CAP) return;
+  const player = getPlayer(world.city, ai.owner);
+  if (!player) return;
+  const ledger = thinkLedger(ai);
+  if (player.funds - ledger.funds <= AI_NUCLEAR_FUNDS_THRESHOLD) return;
+  if (player.materials - ledger.materials <= AI_NUCLEAR_MATERIALS_THRESHOLD) return;
+  const site = findNuclearSite(world, terrain, ai, claimed);
+  if (!site) return; // unsuitable terrain — retry next think
+  const ok = issue(world, queue, 'placeBuilding', {
+    kind: 'nuclearPlant',
+    owner: ai.owner,
+    cx: site.cx,
+    cz: site.cz,
+    facing: 0,
+  });
+  if (!ok) return; // rejected at enqueue — retry next think
+  ledger.funds += def.costFunds;
+  ledger.materials += def.costMaterials;
+  // Claim the footprint so a later sub-phase this think never overlaps
+  // it (Bug B coordination).
+  if (claimed !== undefined) {
+    for (const cell of footprintCells(site.cx, site.cz, def.footprintW, def.footprintH)) {
+      claimed.add(cell);
+    }
+  }
+}
+
+/**
  * Building upgrades (2026-10-05): fair-AI reactor upgrades. When the
  * AI is comfortably rich it upgrades its first eligible nuclear plant
  * (owned, completed, below max reactors, no upgrade in flight) — the
  * same upgrade the player gets, keeping the fair-AI contract. One
  * upgrade per think at most; the command's own validation is the
- * backstop (issue() swallows rejections).
+ * backstop (issue() swallows rejections). Bug B (2026-10-05): the
+ * plants this upgrades are the REAL ones built by
+ * thinkNuclearConstruction above — the rule is live now, not dead.
+ * The upgrade cost is ledger-reserved like every other same-think
+ * spend (the ThinkLedger double-spend discipline).
  */
 export function thinkNuclearUpgrades(world: World, queue: CommandQueue, ai: AIPlayerState): void {
   const player = getPlayer(world.city, ai.owner);
   if (player === undefined) return;
-  if (player.funds < 3000 || player.materials < 800) return;
+  const ledger = thinkLedger(ai);
+  if (player.funds - ledger.funds < 3000 || player.materials - ledger.materials < 800) return;
   for (const b of world.city.buildings) {
     if (b.owner !== ai.owner || b.kind !== 'nuclearPlant' || b.progress < 1) continue;
     if (b.upgradeProgress !== undefined) return;
     if ((b.reactors ?? 1) >= NUCLEAR_MAX_REACTORS) continue;
-    issue(world, queue, 'upgradeBuilding', { owner: ai.owner, buildingId: b.id });
+    if (!issue(world, queue, 'upgradeBuilding', { owner: ai.owner, buildingId: b.id })) return;
+    // Reserve the upgrade cost: the command deducts at apply, so an
+    // unreserved same-think spend could push it stale (the R1
+    // final-review H2 discipline — the facility precedent).
+    ledger.funds += NUCLEAR_UPGRADE_COST_FUNDS;
+    ledger.materials += NUCLEAR_UPGRADE_COST_MATERIALS;
     return;
   }
 }
@@ -3964,13 +4153,25 @@ function thinkCommander(
   const visible = getVisibleEnemies(world, ai.owner);
   thinkUpkeep(world, ai, visible);
   thinkResearch(world, queue, ai, counts);
+  // Bug B coordination (2026-10-05): per-think claimed cells shared by
+  // the building-placing sub-phases. Commands apply next tick, so a
+  // site search can't see this think's earlier placements in
+  // world.city.buildings — without shared claims, two sub-phases can
+  // enqueue overlapping footprints and the second apply goes stale.
+  const claimed = new Set<number>();
+  // Bug B (AI nuclear plants, 2026-10-05): build REAL nuclear plants
+  // through the real placeBuilding command when rich (commander+) —
+  // the fair-AI contract: same costs, same validation as the player.
+  // Runs BEFORE thinkNuclearUpgrades so a fresh plant and an upgrade
+  // order never race the same think's ledger.
+  thinkNuclearConstruction(world, queue, ai, terrain, claimed);
   // Building upgrades (2026-10-05): upgrade nuclear plants when rich
   // (fair-AI — the player gets the same upgrade).
   thinkNuclearUpgrades(world, queue, ai);
 
   // Phase 3 logistics (workstream 3): physical forward depots (C1),
   // truck ratios, abstract resupply, ammo-dry retreats.
-  thinkLogistics(world, queue, ai, terrain);
+  thinkLogistics(world, queue, ai, terrain, claimed);
 
   // Phase 4 transport (S7): civilian-transport AI hook — a documented
   // no-op in 0.1 Alpha (see thinkCivilianTransport).
@@ -4720,6 +4921,37 @@ function peacefulSiteFouls(
   return false;
 }
 
+/**
+ * The derived utility-network model for the AI's siting decisions
+ * (Fix 3, 2026-10-05). The input is built from the buildings the
+ * economy tick currently has online (completed + operational — the
+ * upkeep/sabotage state allocateUtilities maintains); the model
+ * itself is key-cached in utilityNetworks, so this is ~free when
+ * nothing structural changed. An approximation (it skips the
+ * cross-utility hooks and the meltdown set) — good enough for a
+ * siting preference, never for allocation.
+ */
+function aiUtilityModel(world: World): UtilityModel {
+  const city = world.city;
+  const input: UtilityModelInput = {
+    power: city.players.map(() => []),
+    water: city.players.map(() => []),
+    foulers: [],
+    treatments: [],
+  };
+  for (const b of city.buildings) {
+    if (b.progress < 1 || !b.operational) continue;
+    const def = BUILDING_DEFS[b.kind];
+    const pi = city.players.findIndex((p) => p.id === b.owner);
+    if (pi < 0) continue;
+    const pp = input.power[pi];
+    const wp = input.water[pi];
+    if (def.powerSupply > 0 && pp !== undefined) pp.push(b.id);
+    if (def.waterSupply > 0 && wp !== undefined) wp.push(b.id);
+  }
+  return getUtilityModel(city, input);
+}
+
 function findPeacefulSite(
   world: World,
   terrain: TerrainData,
@@ -4727,20 +4959,40 @@ function findPeacefulSite(
   kind: BuildingKind,
   rect: { x0: number; z0: number; x1: number; z1: number },
   claimed: Map<number, BuildingKind>,
+  // Fix 3 (demand-gated housing, 2026-10-05): when given, served sites
+  // are preferred (first pass), with the legacy scan as fallback
+  // (second pass). A preference, never a requirement — the AI builds
+  // no conductors, so a hard requirement would block its housing
+  // forever; its buildings are pool-served by design (AD2).
+  servedModel?: UtilityModel,
 ): { cx: number; cz: number } | null {
   const def = BUILDING_DEFS[kind];
-  for (let cz = rect.z0; cz <= rect.z1 - def.footprintH + 1; cz++) {
-    for (let cx = rect.x0; cx <= rect.x1 - def.footprintW + 1; cx++) {
-      const cells = footprintCells(cx, cz, def.footprintW, def.footprintH);
-      let taken = false;
-      for (const c of cells) if (claimed.has(c)) { taken = true; break; }
-      if (taken) continue;
-      const p: Placement = { kind, owner: ai.owner, cx, cz, facing: 0 };
-      const err = validatePlacement(terrain, world.city, p);
-      if (err === null || err.includes('cannot afford')) {
-        // Don't foul your own water (or plant a well next to a fouler).
-        if (peacefulSiteFouls(world, kind, cx, cz, claimed)) continue;
-        return { cx, cz };
+  const passes = servedModel !== undefined ? 2 : 1;
+  for (let pass = 0; pass < passes; pass++) {
+    for (let cz = rect.z0; cz <= rect.z1 - def.footprintH + 1; cz++) {
+      for (let cx = rect.x0; cx <= rect.x1 - def.footprintW + 1; cx++) {
+        if (pass === 0 && servedModel !== undefined) {
+          const cell = cellIndex(cx, cz);
+          const served =
+            cellServedByUtility(servedModel, world.city, ai.owner, 'power', cell) &&
+            cellServedByUtility(servedModel, world.city, ai.owner, 'water', cell);
+          if (!served) continue;
+        }
+        const cells = footprintCells(cx, cz, def.footprintW, def.footprintH);
+        let taken = false;
+        for (const c of cells) if (claimed.has(c)) { taken = true; break; }
+        if (taken) continue;
+        const p: Placement = { kind, owner: ai.owner, cx, cz, facing: 0 };
+        // 2026-10-05 (Fix 4): the units param is intentionally omitted —
+        // the AI keeps its legacy site search; the placeBuilding command
+        // re-validates with units at enqueue/apply and rejects loudly
+        // there if a unit wandered onto the site.
+        const err = validatePlacement(terrain, world.city, p);
+        if (err === null || err.includes('cannot afford')) {
+          // Don't foul your own water (or plant a well next to a fouler).
+          if (peacefulSiteFouls(world, kind, cx, cz, claimed)) continue;
+          return { cx, cz };
+        }
       }
     }
   }
@@ -4788,6 +5040,8 @@ function placePeaceful(
   rect: { x0: number; z0: number; x1: number; z1: number },
   claimed: Map<number, BuildingKind>,
   terrain: TerrainData,
+  // Fix 3 (2026-10-05): served-region siting preference for houses.
+  servedModel?: UtilityModel,
 ): boolean {
   const player = getPlayer(world.city, ai.owner);
   if (!player) return false;
@@ -4795,7 +5049,7 @@ function placePeaceful(
   const l = thinkLedger(ai);
   if (player.funds - l.funds - def.costFunds < peacefulTreasuryFloor(world, ai.owner)) return false;
   if (player.materials - l.materials < def.costMaterials) return false;
-  const site = findPeacefulSite(world, terrain, ai, kind, rect, claimed);
+  const site = findPeacefulSite(world, terrain, ai, kind, rect, claimed, servedModel);
   if (!site) return false;
   issue(world, queue, 'placeBuilding', {
     kind,
@@ -4982,7 +5236,7 @@ function peacefulKindAvailable(world: World, ai: AIPlayerState, kind: BuildingKi
  * sink and always "wanted", so a built-out city grows housing every
  * slot it can afford.
  */
-function thinkPeacefulConstruction(
+export function thinkPeacefulConstruction(
   world: World,
   queue: CommandQueue,
   ai: AIPlayerState,
@@ -5004,6 +5258,13 @@ function thinkPeacefulConstruction(
     (counts.get(kind) ?? 0) < max;
   const player = getPlayer(world.city, ai.owner);
   const rich = player !== undefined && player.funds >= PEACEFUL_HOUSING_FUNDS;
+  // Fix 3 (demand-gated housing, 2026-10-05): the AI builds houses for
+  // unhoused demand — the same demand rule as organic growth. The
+  // served-region model feeds the siting preference (built once per
+  // think; the strict served requirement is softened for the AI —
+  // see findPeacefulSite).
+  const houseDemand = player !== undefined && (player.unhousedPopulation ?? 0) > 0;
+  const servedModel = houseDemand ? aiUtilityModel(world) : undefined;
   // `claimed` is the thinkPeaceful-shared claim map (Half A) — no local
   // redeclaration.
   for (let slot = 0; slot < PEACEFUL_PLACEMENTS_PER_THINK; slot++) {
@@ -5042,8 +5303,10 @@ function thinkPeacefulConstruction(
     // of relying on organic growth. Houses are cheap (120 funds) and
     // ensure the city grows even if organic builds slowly. Built when
     // the treasury has a comfortable buffer (500+) — not the full rich
-    // threshold, which takes too long to reach.
-    if (engineDone && player !== undefined && player.funds >= 500) {
+    // threshold, which takes too long to reach. Fix 3 (2026-10-05):
+    // demand-gated — houses only rise for unhoused demand, like
+    // organic growth.
+    if (engineDone && player !== undefined && player.funds >= 500 && houseDemand) {
       if (wanted('house', 10)) candidates.push('house');
     }
     if (engineDone && rich) {
@@ -5056,7 +5319,8 @@ function thinkPeacefulConstruction(
       if (!peacefulKindAvailable(world, ai, kind)) continue;
       const rect = peacefulSearchRect(world, terrain, ai, kind);
       if (!rect) continue;
-      if (placePeaceful(world, queue, ai, kind, rect, claimed, terrain)) {
+      // Fix 3: houses prefer served regions in the siting search.
+      if (placePeaceful(world, queue, ai, kind, rect, claimed, terrain, kind === 'house' ? servedModel : undefined)) {
         counts.set(kind, (counts.get(kind) ?? 0) + 1);
         placed = true;
         break;

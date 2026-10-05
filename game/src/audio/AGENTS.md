@@ -37,7 +37,11 @@ state. Pause = ctx.suspend(); settings persist to localStorage.
   so pre-B11 snapshots never false-fire) and `observe` emits one event
   per `prev.progress < 1 → now.progress >= 1` transition on standing
   buildings; game.ts plays the `buildComplete` cue positionally for
-  friendly completions only.
+  friendly completions only. 2026-10-05 (Fix 2): the snapshot also
+  carries each building's `kind`, and `destroyed` events carry the
+  building's `kind` + `id` — game.ts toasts the named loss for friendly
+  buildings destroyed in combat ("Water Pump destroyed"); player
+  demolitions are told apart by id and get their own toast instead.
 - `music.ts` — adaptive music: `selectMood({playerUnitsInCombat,
   enemiesNear})` is a pure function (`war` when fighting, `tension`
   when sighted enemies are near but no fight has started, `peace`

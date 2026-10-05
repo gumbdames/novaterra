@@ -94,6 +94,10 @@ import {
   serviceTogglesOf,
   emergencyRefuelBlockReason,
 } from './logistics';
+// Bug C (2026-10-05): the reactor-upgrade digest segment reads the
+// affordability gate through the shared reactor contract module — the
+// same helper the Add Reactor button uses.
+import { canAffordReactorUpgrade } from './reactor';
 // Grand-expansion Phase 5 (hangar/carrier shelter): the parked-aircraft
 // manifest on building selections reads through the ui/hangars contract.
 import { parkedAircraft } from './hangars';
@@ -406,6 +410,21 @@ export function selectionDigest(
       );
     } else {
       parts.push('tq:x');
+    }
+    // Bug C (2026-10-05): the building detail panel renders the Add
+    // Reactor button for owned, completed nuclear plants — disabled
+    // with a reason when an upgrade is in flight, at max reactors, or
+    // unaffordable. br: carries the reactor count, the in-flight flag,
+    // and the affordability bit (via the shared canAffordReactorUpgrade
+    // helper — the same gate the panel's reactorUpgradeBlockReason
+    // uses), so the panel repaints exactly when the button state would
+    // change. 'br:x' for non-nuclear plants, which render no button.
+    // Always emitted.
+    if (b.kind === 'nuclearPlant') {
+      const affordable = canAffordReactorUpgrade(world, b.owner) ? 1 : 0;
+      parts.push(`br:${b.reactors ?? 1}:${b.upgradeProgress === undefined ? 0 : 1}:${affordable}`);
+    } else {
+      parts.push('br:x');
     }
   } else {
     // No selection: the train/build palettes render the active tab's
@@ -831,7 +850,10 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     // 2026-10-02): queue entries + paused flag + rally point +
     // per-kind train-button availability; 'tq:x' when the section
     // does not render.
-    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:', 'bv:', 'bo:', 'bh:', 'bw:', 'sh:', 'tq:'],
+    // br: the Add Reactor button state (Bug C, 2026-10-05): reactor
+    // count + upgrade-in-flight flag + affordability bit for nuclear
+    // plants; 'br:x' when the button does not render.
+    digestLabels: ['b:', 'bs:', 'bl:', 'bu:', 'bq:', 'bv:', 'bo:', 'bh:', 'bw:', 'sh:', 'tq:', 'br:'],
   },
   {
     id: 'train-palette',
@@ -1069,7 +1091,7 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
     domClasses: ['hud-toast'],
     digestLabels: [],
     noDigestReason:
-      'Transient one-line feedback; textContent set imperatively, never rebuilt on a digest.',
+      'One-line feedback (transient queue + the persistent loss-notice slot); textContent set imperatively, never rebuilt on a digest.',
   },
   {
     // Roadmap B12 (2026-10-02): the tactical minimap canvas.

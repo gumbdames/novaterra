@@ -71,6 +71,16 @@ import {
   landValueTier,
   migrationPullFor,
 } from './desirability';
+// Fix 3 (demand-gated housing, 2026-10-05): the residential growth
+// gate reads the derived network model's per-region served flags.
+// Value import — the city ⇄ utilityNetworks edge mirrors the
+// intentional city ⇄ desirability cycle (runtime use only, never at
+// module-eval time; utilityNetworks touches city's exports inside
+// functions only).
+import {
+  cellServedByUtility,
+  type UtilityModel,
+} from './utilityNetworks';
 
 // ---------------------------------------------------------------------------
 // Grid
@@ -965,6 +975,28 @@ export interface BuildingDef {
    */
   radarRadius?: number;
   /**
+   * Vision radius in CITY cells (2 world units each — `CELL_WORLD_SIZE`)
+   * granted by a completed, operational, unsabotaged building; default
+   * 14. Consumed by `buildingSightCoverage` (sim/intel.ts), which
+   * appends one sight disc per qualifying building (radius
+   * `sight * CELL_WORLD_SIZE` world units) to the same coverage the AI
+   * perception model and the fog-of-war rasterizer share — every
+   * building is a pair of eyes, not just the intel roster. The gate
+   * (completed + operational + unsabotaged) mirrors `runIntelAccrual`.
+   *
+   * Scale (cells; ×2 for world units — compare unit sight, e.g.
+   * rifles 18, tank 26, awacs 40, all world units):
+   *  - ~8: houses / residential (a house sees ~16 world units, like a
+   *    rifles squad);
+   *  - ~12: factories / industrial;
+   *  - ~14: the default — power plants and most civilian buildings;
+   *  - ~20-24: towers, outposts, military sensor-ish buildings.
+   * Intel buildings keep their existing `detectionRadius` /
+   * `radarRadius` behavior — those discs are additional, never
+   * replaced (their SIGINT/radar radii subsume this disc).
+   */
+  sight?: number;
+  /**
    * Grand-expansion Phase 8 (peaceful mode, 2026-09-30): true when this
    * building is war apparatus — military production (barracks,
    * warFactory, militaryAcademy, airfield, navalYard, shipyard,
@@ -986,6 +1018,14 @@ export interface BuildingDef {
    */
   military?: boolean;
 }
+
+/**
+ * Default `BuildingDef.sight` in city cells: every completed,
+ * operational, unsabotaged building grants this vision radius unless
+ * its def sets `sight` explicitly. Consumed by `buildingSightCoverage`
+ * (sim/intel.ts) as `def.sight ?? DEFAULT_BUILDING_SIGHT_CELLS`.
+ */
+export const DEFAULT_BUILDING_SIGHT_CELLS = 14;
 
 /**
  * Intel asset kinds (grand-expansion §3.8 / §4 S6, workstream 2,
@@ -1127,6 +1167,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   house: {
     kind: 'house', name: 'House', zone: ZoneType.RESIDENTIAL,
     hp: 200,
+    sight: 8,
     footprintW: 2, footprintH: 2, costFunds: 120, costMaterials: 40,
     buildSeconds: 10, upkeepFundsPerSec: 0.15,
     powerDemand: 1, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1136,6 +1177,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   apartment: {
     kind: 'apartment', name: 'Apartment Block', zone: ZoneType.RESIDENTIAL,
     hp: 300,
+    sight: 8,
     footprintW: 3, footprintH: 3, costFunds: 450, costMaterials: 160,
     buildSeconds: 30, upkeepFundsPerSec: 0.7,
     powerDemand: 3, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -1165,6 +1207,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   factory: {
     kind: 'factory', name: 'Factory', zone: ZoneType.INDUSTRIAL,
     hp: 450,
+    sight: 12,
     footprintW: 3, footprintH: 3, costFunds: 550, costMaterials: 220,
     buildSeconds: 40, upkeepFundsPerSec: 1.6,
     powerDemand: 5, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -1175,6 +1218,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   farm: {
     kind: 'farm', name: 'Farm', zone: ZoneType.INDUSTRIAL,
     hp: 250,
+    sight: 12,
     footprintW: 3, footprintH: 3, costFunds: 300, costMaterials: 80,
     buildSeconds: 15, upkeepFundsPerSec: 0.6,
     powerDemand: 1, powerSupply: 0, waterDemand: 4, waterSupply: 0,
@@ -1518,6 +1562,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   quarry: {
     kind: 'quarry', name: 'Quarry', zone: ZoneType.INDUSTRIAL,
     hp: 400,
+    sight: 12,
     footprintW: 3, footprintH: 3, costFunds: 350, costMaterials: 100,
     buildSeconds: 25, upkeepFundsPerSec: 0.7,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -1528,6 +1573,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   oilRefinery: {
     kind: 'oilRefinery', name: 'Oil Refinery', zone: ZoneType.INDUSTRIAL,
     hp: 500,
+    sight: 12,
     footprintW: 4, footprintH: 3, costFunds: 900, costMaterials: 350,
     buildSeconds: 50, upkeepFundsPerSec: 1.4,
     powerDemand: 4, powerSupply: 0, waterDemand: 3, waterSupply: 0,
@@ -1538,6 +1584,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   recyclingCenter: {
     kind: 'recyclingCenter', name: 'Recycling Center', zone: ZoneType.INDUSTRIAL,
     hp: 400,
+    sight: 12,
     footprintW: 3, footprintH: 3, costFunds: 500, costMaterials: 180,
     buildSeconds: 35, upkeepFundsPerSec: 0.9,
     powerDemand: 3, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1823,6 +1870,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   fireStation: {
     kind: 'fireStation', name: 'Fire Station', zone: UTILITY_ZONE,
     hp: 300,
+    sight: 20,
     footprintW: 2, footprintH: 2, costFunds: 350, costMaterials: 120,
     buildSeconds: 25, upkeepFundsPerSec: 0.4,
     powerDemand: 2, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -1917,6 +1965,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   waterTower: {
     kind: 'waterTower', name: 'Water Tower', zone: UTILITY_ZONE,
     hp: 300,
+    sight: 20,
     footprintW: 2, footprintH: 2, costFunds: 350, costMaterials: 120,
     buildSeconds: 25, upkeepFundsPerSec: 0.3,
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -2012,6 +2061,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   oilWell: {
     kind: 'oilWell', name: 'Oil Well', zone: UTILITY_ZONE,
     hp: 350,
+    sight: 12,
     footprintW: 2, footprintH: 2, costFunds: 300, costMaterials: 120,
     buildSeconds: 25, upkeepFundsPerSec: 0.5,
     powerDemand: 1, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -2022,6 +2072,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   oilRig: {
     kind: 'oilRig', name: 'Offshore Oil Rig', zone: UTILITY_ZONE,
     hp: 450,
+    sight: 12,
     footprintW: 3, footprintH: 3, costFunds: 1400, costMaterials: 600,
     buildSeconds: 60, upkeepFundsPerSec: 2.0,
     powerDemand: 4, powerSupply: 0, waterDemand: 0, waterSupply: 0,
@@ -2033,6 +2084,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   munitionsFactory: {
     kind: 'munitionsFactory', name: 'Munitions Factory', zone: ZoneType.INDUSTRIAL,
     hp: 800,
+    sight: 12,
     footprintW: 4, footprintH: 3, costFunds: 1200, costMaterials: 500,
     buildSeconds: 55, upkeepFundsPerSec: 1.6,
     powerDemand: 6, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -2046,6 +2098,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   missilePlant: {
     kind: 'missilePlant', name: 'Missile Plant', zone: ZoneType.INDUSTRIAL,
     hp: 900,
+    sight: 12,
     footprintW: 4, footprintH: 3, costFunds: 2200, costMaterials: 900,
     buildSeconds: 80, upkeepFundsPerSec: 2.5,
     powerDemand: 10, powerSupply: 0, waterDemand: 4, waterSupply: 0,
@@ -2186,6 +2239,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   controlTower: {
     kind: 'controlTower', name: 'Control Tower', zone: ZoneType.AIRPORT,
     hp: 350,
+    sight: 20,
     footprintW: 2, footprintH: 2, costFunds: 500, costMaterials: 200,
     buildSeconds: 30, upkeepFundsPerSec: 0.4,
     powerDemand: 2, powerSupply: 0, waterDemand: 1, waterSupply: 0,
@@ -2444,6 +2498,7 @@ export const BUILDING_DEFS: Record<BuildingKind, BuildingDef> = {
   satelliteUplink: {
     kind: 'satelliteUplink', name: 'Satellite Uplink', zone: UTILITY_ZONE,
     hp: 500,
+    sight: 20,
     footprintW: 3, footprintH: 3, costFunds: 2500, costMaterials: 900,
     buildSeconds: 90, upkeepFundsPerSec: 2.0,
     powerDemand: 8, powerSupply: 0, waterDemand: 2, waterSupply: 0,
@@ -2749,9 +2804,12 @@ export interface BuildingRecord {
   /**
    * Phase 4 occupancy (2026-09-30): people living/working here right
    * now. Recomputed every economy tick by `recomputeOccupancy`
-   * (economy.ts) — never simulated per-individual:
-   * `residents` = def.population when completed (progress >= 1),
-   * `workers` = filled jobs (id-order from the owner's population).
+   * (economy.ts) — never simulated per-individual. Fix 3
+   * (2026-10-05): `residents` is the building's share of the owner's
+   * housed pool — completed residential buildings fill in id order up
+   * to def.population from the total wanting housing
+   * (population = housed + unhoused); `workers` = filled jobs
+   * (id-order from the owner's housed residents).
    * Optional so pre-Phase-4 record literals keep compiling; every read
    * uses `?? 0` (AD9 — the veterancy precedent). Snapshotted and
    * digest-covered (the selection panel refreshes on digest change).
@@ -2857,6 +2915,27 @@ export interface PlayerState {
   /** Derived each economy tick from residential capacity. */
   population: number;
   /**
+   * Fix 3 (demand-gated housing, 2026-10-05): residents wanting homes
+   * with no housed capacity for them. `population` = housed (Σ
+   * `residents` over completed residential buildings) + unhoused —
+   * the unhoused still eat and still want homes. Recomputed each
+   * economy tick in `recomputeOccupancy` (economy.ts): immigration
+   * arrivals fill free capacity first, the spillover lands here, and
+   * residential auto-development only fires while this is positive.
+   * Snapshotted (AD9 additive — legacy saves decode to 0, stays v8)
+   * and digest-covered (it gates growth).
+   */
+  unhousedPopulation: number;
+  /**
+   * Fix 3 (immigration, 2026-10-05): fractional arrival accumulator.
+   * Immigration runs per economy tick at ~1 person / 30 sim-seconds
+   * at pull 1.0 — far below one whole person per tick — so the
+   * fractional remainder carries here until it makes a whole arrival.
+   * Behavior-affecting (it decides future arrival ticks) ⇒
+   * snapshotted (AD9, `?? 0`) and digest-covered. Never negative.
+   */
+  immigrationCarry: number;
+  /**
    * Fun-audit B3 (2026-10-02): lifetime peak of `population`, for the
    * end-of-game statistics. Updated in recountPopulation (economy
    * tick); never read by the sim — display data, but snapshotted so
@@ -2929,14 +3008,28 @@ export interface CityState {
    * saves (no version bump — additive field, neutral default).
    */
   utilityEpoch: number;
-  /** Painted cells, sorted by cell. */
-  zones: Array<{ cell: number; zone: ZoneType }>;
+  /**
+   * Painted cells, sorted by cell. `by` is the owner who painted the
+   * cell (Fix 3, 2026-10-05) — immigration attributes residential
+   * demand per painter, so the classic military AI (which paints no
+   * zones) keeps its zero-population behavior even when another owner
+   * zones. AD9: optional; legacy records decode to undefined (no
+   * immigration from unowned cells).
+   */
+  zones: Array<{ cell: number; zone: ZoneType; by?: number }>;
   /** Placed buildings, placement (id) order. */
   buildings: BuildingRecord[];
   nextBuildingId: number;
   players: PlayerState[];
   /** Set by the economy tick when food demand outruns supply. */
   foodShortage: boolean;
+  /**
+   * Demo sessions only (2026-10-05): suppress organic growth
+   * (tryAutoDevelop). The menu demo is a scripted movie — organic
+   * buildings fragment the site and break scripted placements. Never
+   * set in real games. AD9 optional, defaults to false.
+   */
+  suppressOrganicGrowth?: boolean;
   /**
    * Grand-expansion Phase 5 (S5, 2026-09-30): active civilian airline
    * routes (established via the `establishAirlineRoute` command).
@@ -2986,6 +3079,10 @@ function createPlayer(id: number, name: string): PlayerState {
     manpower: STARTING_STOCKS.manpower,
     taxRates: [DEFAULT_TAX_RATE, DEFAULT_TAX_RATE, DEFAULT_TAX_RATE, DEFAULT_TAX_RATE],
     population: 0,
+    // Fix 3 (demand-gated housing, 2026-10-05): nobody starts unhoused
+    // and the immigration accumulator starts empty.
+    unhousedPopulation: 0,
+    immigrationCarry: 0,
     specialization: 'balanced',
     // Grand-expansion intel roster (workstream 2, 2026-09-30): every
     // player starts with zero intel assets.
@@ -3169,8 +3266,20 @@ export interface Placement {
 /**
  * Validate a building placement. Returns null when legal, else the reason.
  * Pure — does not mutate. Used at command enqueue AND apply time.
+ *
+ * `units` (optional, world coords): when provided, a unit standing on any
+ * footprint cell rejects loudly (`footprint occupied by a unit`) —
+ * buildings can never land on units. Callers that own units pass them
+ * (the `placeBuilding` command spec, `tryAutoDevelop`); callers without
+ * unit visibility (the AI's site search) omit it and keep legacy
+ * behavior — the command re-validates with units at enqueue/apply.
  */
-export function validatePlacement(t: TerrainData, city: CityState, p: Placement): string | null {
+export function validatePlacement(
+  t: TerrainData,
+  city: CityState,
+  p: Placement,
+  units?: ReadonlyArray<{ x: number; z: number }>,
+): string | null {
   const def = BUILDING_DEFS[p.kind];
   if (!def) return `unknown building kind '${p.kind}'`;
   if (!Number.isInteger(p.owner) || !getPlayer(city, p.owner)) {
@@ -3195,6 +3304,19 @@ export function validatePlacement(t: TerrainData, city: CityState, p: Placement)
         // reject loudly anywhere but airport zoning.
         const want = def.zone === ZoneType.RESIDENTIAL ? 'residential' : def.zone === ZoneType.COMMERCIAL ? 'commercial' : def.zone === ZoneType.AIRPORT ? 'airport' : 'industrial';
         return `${def.name}: needs ${want} zoning`;
+      }
+    }
+  }
+  // Buildings can never land on units (2026-10-05): a unit standing on
+  // any footprint cell rejects loudly, like every other overlap. Units
+  // arrive in world coords; cellAtWorld mirrors pathfinding.worldToCell
+  // (with clamp). Dead units are already spliced out of world.units by
+  // killUnit, so no hp filter is needed.
+  if (units !== undefined && units.length > 0) {
+    const footprint = new Set(cells);
+    for (const u of units) {
+      if (footprint.has(cellAtWorld(u.x, u.z))) {
+        return `${def.name}: footprint occupied by a unit`;
       }
     }
   }
@@ -3728,6 +3850,14 @@ export function densityDefForZone(
 /**
  * Try to auto-develop one building near a zoned cell for a player.
  * Deterministic: RNG from the 'city' stream, fixed scan order.
+ *
+ * Fix 3 (demand-gated housing, 2026-10-05): residential samples pass
+ * an extra gate after the desirability roll — houses only rise where
+ * (1) there is unhoused demand, (2) the sampled cell's zone region is
+ * served by the owner's power AND water networks, and (3) both
+ * networks have headroom. Commercial/industrial keep today's roll.
+ * A gated sample is a failed attempt (the desirability-roll
+ * precedent): it does NOT consume the 2-developments-per-pulse budget.
  */
 function tryAutoDevelop(
   t: TerrainData,
@@ -3735,6 +3865,7 @@ function tryAutoDevelop(
   owner: number,
   powerHeadroom: number,
   waterHeadroom: number,
+  model: UtilityModel,
 ): boolean {
   const city = world.city;
   const player = getPlayer(city, owner);
@@ -3784,6 +3915,21 @@ function tryAutoDevelop(
       desirability = Math.min(1, desirability * migrationPullFor(world, owner, d01));
     }
     if (bank.next('city') >= desirability) continue;
+    // Fix 3 (demand-gated housing, 2026-10-05): after the desirability
+    // roll passes, a residential sample develops ONLY when all three
+    // hold — unhoused demand, the sampled cell's zone region served by
+    // BOTH utility networks, and headroom on both. No road term: the
+    // region rule conducts via underground pipes, so zero-road growth
+    // keeps working (user directive 2026-09-30). A failed gate is
+    // `continue` (next sample), not `return false` — like a failed
+    // desirability roll, it never burns the pulse budget.
+    if (zrec.zone === ZoneType.RESIDENTIAL) {
+      const demand = (player.unhousedPopulation ?? 0) > 0;
+      const served =
+        cellServedByUtility(model, city, owner, 'power', zrec.cell) &&
+        cellServedByUtility(model, city, owner, 'water', zrec.cell);
+      if (!demand || !served || powerHeadroom <= 0 || waterHeadroom <= 0) continue;
+    }
     // Phase 4 building variety: desirability picks the density
     // (apartments/labs in nice areas, houses/shops in modest ones).
     const def = densityDefForZone(world, zrec.zone, owner, zrec.cell, desirModel);
@@ -3803,7 +3949,10 @@ function tryAutoDevelop(
     for (let oz = cz - def.footprintH + 1; oz <= cz; oz++) {
       for (let ox = cx - def.footprintW + 1; ox <= cx; ox++) {
         const placement: Placement = { kind: def.kind, owner, cx: ox, cz: oz, facing: 0 };
-        if (validatePlacement(t, city, placement) === null) {
+        // Organic growth never builds on a unit (2026-10-05): pass the
+        // world's units so a unit-occupied site is skipped like any
+        // other illegal site.
+        if (validatePlacement(t, city, placement, world.units) === null) {
           // Phase 4 building variety: variant/sizeTier hash from the
           // world seed + anchor cell (same seed + same cell = same look).
           placeBuilding(city, placement, world.seed);
@@ -3820,16 +3969,23 @@ function tryAutoDevelop(
  * sim-seconds (not every second — a building every few seconds is the
  * genre's pace); each pulse allows up to two developments per player while
  * food isn't short.
+ *
+ * Fix 3 (2026-10-05): takes the economy tick's derived utility `model`
+ * (built by `allocateUtilities` — key-cached, ~free) and threads it to
+ * `tryAutoDevelop` for the residential served-region gate.
  */
-export function runGrowth(t: TerrainData, world: World, powerHeadroom: number[], waterHeadroom: number[]): void {
+export function runGrowth(t: TerrainData, world: World, powerHeadroom: number[], waterHeadroom: number[], model: UtilityModel): void {
   if (world.tick % 300 !== 0) return;
   const city = world.city;
   if (city.foodShortage) return;
+  // Demo suppression (2026-10-05): the menu demo is a scripted movie;
+  // organic growth fragments the site and breaks scripted placements.
+  if (city.suppressOrganicGrowth === true) return;
   for (const player of city.players) {
     const ph = powerHeadroom[player.id] as number;
     const wh = waterHeadroom[player.id] as number;
     for (let n = 0; n < 2; n++) {
-      if (!tryAutoDevelop(t, world, player.id, ph, wh)) break;
+      if (!tryAutoDevelop(t, world, player.id, ph, wh, model)) break;
     }
   }
 }
@@ -4329,12 +4485,12 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
           // Keep zones sorted by cell: remove then sorted-insert.
           const zi = world.city.zones.findIndex((z) => z.cell === cell);
           if (zi !== -1) world.city.zones.splice(zi, 1);
-          const rec = { cell, zone };
+          const rec = { cell, zone, by: owner };
           let lo = 0;
           let hi = world.city.zones.length;
           while (lo < hi) {
             const mid = (lo + hi) >> 1;
-            if ((world.city.zones[mid] as { cell: number; zone: ZoneType }).cell < cell) lo = mid + 1;
+            if ((world.city.zones[mid] as { cell: number }).cell < cell) lo = mid + 1;
             else hi = mid;
           }
           world.city.zones.splice(lo, 0, rec);
@@ -4393,7 +4549,9 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
         return `placeBuilding: ${bdef.name} requires the ${bdef.requiredUpgrade} upgrade`;
       }
       if (facing < 0 || facing > 3) return 'placeBuilding: facing must be 0..3';
-      return validatePlacement(t, world.city, { kind, owner, cx, cz, facing: facing as 0 | 1 | 2 | 3 });
+      // Buildings can never land on units (2026-10-05): the command
+      // re-validates with the world's units at enqueue AND apply.
+      return validatePlacement(t, world.city, { kind, owner, cx, cz, facing: facing as 0 | 1 | 2 | 3 }, world.units);
     },
     apply(cmd, world): unknown {
       const kind = payloadStr(cmd.payload, 'kind') as BuildingKind;
@@ -4436,7 +4594,10 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
         // Final-review R2: the full destroy path (resupply-release +
         // hangar-link cleanup) lives in destroyBuilding now — the
         // demolish command and combat destruction share it.
-        return { removed: 'building', id: destroyBuilding(world, b) ? b.id : -1 };
+        // 2026-10-05 (Fix 2): the kind travels with the result so the
+        // UI can name the demolished building in its toast; the shape
+        // stays backward-compatible (id-only readers are unaffected).
+        return { removed: 'building', id: destroyBuilding(world, b) ? b.id : -1, kind: b.kind };
       }
       // demolishBuilding bumps the epoch for buildings; cell removal
       // below bumps it for conductors (Phase 2 structural changes).

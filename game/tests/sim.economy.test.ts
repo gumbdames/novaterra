@@ -35,6 +35,7 @@ import {
   type CityState,
   type Placement,
 } from '../src/sim/city';
+import { emptyUtilityModel, serveRegionForTest } from './sim.housing-fixtures';
 import {
   createEconomySystem,
   registerEconomyCommands,
@@ -282,9 +283,10 @@ describe('food shortage stalls growth', () => {
     const { cx, cz } = findLandRect(ctx.terrain, 20, 8);
     pave(ctx.world.city, roadCells(cx, cz + 3, 20));
     // Paint a residential zone directly (no command round-trip needed).
+    // Fix 3: `by: 0` attributes the demand to owner 0 (immigration).
     for (let dz = 4; dz <= 6; dz++) {
       for (let dx = 0; dx < 20; dx++) {
-        ctx.world.city.zones.push({ cell: cellIndex(cx + dx, cz + dz), zone: ZoneType.RESIDENTIAL });
+        ctx.world.city.zones.push({ cell: cellIndex(cx + dx, cz + dz), zone: ZoneType.RESIDENTIAL, by: 0 });
       }
     }
     ctx.world.city.zones.sort((a, b) => a.cell - b.cell);
@@ -308,7 +310,9 @@ describe('food shortage stalls growth', () => {
     const ctx = growthWorld(31, 1000);
     ctx.world.city.foodShortage = true;
     const before = ctx.world.city.buildings.length;
-    runGrowth(ctx.terrain, ctx.world, [100], [100]);
+    // The shortage gate fires before the Fix-3 gates; the model is
+    // irrelevant here (empty = unserved).
+    runGrowth(ctx.terrain, ctx.world, [100], [100], emptyUtilityModel(ctx.world));
     expect(ctx.world.city.buildings).toHaveLength(before);
   });
 });
@@ -324,6 +328,12 @@ describe('auto-development', () => {
     runTicks(ctx, 1);
     ctx.world.city.players[0]!.funds = 100000;
     ctx.world.city.players[0]!.materials = 100000;
+    // Fix 3: the zone region must be served (power + water) for
+    // residential growth; demand arrives via immigration.
+    const zoneCells = ctx.world.city.zones
+      .filter((z) => z.zone === ZoneType.RESIDENTIAL)
+      .map((z) => z.cell);
+    serveRegionForTest(ctx.world, 0, zoneCells);
     runTicks(ctx, 7200); // 240 s of growth pulses
     expect(ctx.world.city.buildings.length).toBeGreaterThan(0);
   });
@@ -337,6 +347,13 @@ describe('auto-development', () => {
     runTicks(ctx, 1);
     ctx.world.city.players[0]!.funds = 100000;
     ctx.world.city.players[0]!.materials = 100000;
+    // Fix 3: served via lines/pipes (no roads) — the standing
+    // directive's honest re-baseline: zero-road growth works when the
+    // region is served.
+    const zoneCells = ctx.world.city.zones
+      .filter((z) => z.zone === ZoneType.RESIDENTIAL)
+      .map((z) => z.cell);
+    serveRegionForTest(ctx.world, 0, zoneCells);
     runTicks(ctx, 7200); // 240 s of growth pulses
     expect(ctx.world.city.roads).toHaveLength(0);
     expect(ctx.world.city.buildings.length).toBeGreaterThan(0);

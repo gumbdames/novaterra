@@ -59,6 +59,17 @@ export interface PointRef {
   z: number;
 }
 
+/**
+ * 2026-10-05 (Fix 2): order kinds whose build tool disarms after ONE
+ * successfully enqueued order. Demolish is single-use — the tool must
+ * not stay armed after a successful click (one click, one demolition,
+ * no accidental second demolish). Pure and headless-testable (game.ts
+ * itself is never imported by headless tests).
+ */
+export function isSingleUseOrderKind(intentKind: string): boolean {
+  return intentKind === 'demolish';
+}
+
 /** What a placement click means: an order to enqueue, or a hint to toast. */
 export type PlacementResolution =
   | { kind: 'order'; intent: OrderIntent }

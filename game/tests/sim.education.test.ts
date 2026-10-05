@@ -39,6 +39,7 @@ import {
   type Placement,
 } from '../src/sim/city';
 import { generateTerrain, MERIDIAN_PLAINS, type TerrainData } from '../src/sim/terrain';
+import { injectDemand, serveRegionForTest } from './sim.housing-fixtures';
 
 describe('education ladder definitions', () => {
   it('researches 0.1 / 0.25 / 0.5 / 1.0 per second', () => {
@@ -161,11 +162,15 @@ describe('education bonus in auto-development', () => {
     const world = createWorld(2);
     world.tick = 300; // growth pulse tick
     world.time = 10;
+    const zoneCells: number[] = [];
     for (let dz = 0; dz < 6; dz++) {
       for (let dx = 0; dx < 10; dx++) {
+        const cell = cellIndex(cx + dx, cz + dz);
+        zoneCells.push(cell);
         world.city.zones.push({
-          cell: cellIndex(cx + dx, cz + dz),
+          cell,
           zone: ZoneType.RESIDENTIAL,
+          by: 0, // Fix 3: painter attribution for immigration
         });
       }
     }
@@ -184,7 +189,11 @@ describe('education bonus in auto-development', () => {
       });
       b.progress = 1;
     }
-    runGrowth(terrain, world, [100], [100]);
+    // Fix 3: demand + served region + headroom, so the desirability
+    // roll (with the education bonus) is what decides.
+    injectDemand(world, 0, 50);
+    const model = serveRegionForTest(world, 0, zoneCells);
+    runGrowth(terrain, world, [100], [100], model);
     return world;
   }
 
@@ -193,11 +202,12 @@ describe('education bonus in auto-development', () => {
     // base desirability at max tax, but below 0.0034 + 0.25 (the capped
     // education bonus). The uneducated city develops nothing; the
     // five-school city develops two houses in the pulse.
+    // (Fix 3: the served-region fixture adds 2 utility plants — count
+    // houses, not total buildings.)
     const plain = pulseWorld(0);
-    expect(plain.city.buildings).toHaveLength(0);
+    expect(plain.city.buildings.filter((b) => b.kind === 'house')).toHaveLength(0);
 
     const educated = pulseWorld(5);
-    expect(educated.city.buildings).toHaveLength(7);
     const kinds = educated.city.buildings.map((b) => b.kind);
     expect(kinds.filter((k) => k === 'school')).toHaveLength(5);
     expect(kinds.filter((k) => k === 'house')).toHaveLength(2);

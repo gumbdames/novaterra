@@ -630,10 +630,20 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   enqueues) or a human-readable hint. Nothing fails silently: zone-tool
   clicks hint "drag a rectangle", off-grid/sky clicks hint train/build
   failed. `game.ts` enqueues orders / toasts hints via `placeResolution`.
+  `isSingleUseOrderKind` (2026-10-05): demolish is the single-use tool —
+  it disarms after one successfully enqueued order.
   Invariants: a drag in train/building mode places at the release point
   (never becomes a box-select); a linear-network drag-paint is owned by
   `linearNetworkDrag.ts` from canvas pointerdown and finishes on pointerup
   before the select path.
+- `reactor.ts` — **nuclear reactor-upgrade UI contract (pure, tested,
+  `tests/ui.reactor.test.ts`, 2026-10-05).** The UI-side mirror of the
+  sim's `upgradeBuilding` validation: `reactorUpgradeBlockReason(world,
+  b)` (null exactly when the sim would accept — the
+  `emergencyRefuelBlockReason` precedent) feeds the Add Reactor button's
+  disabled reason in hud.ts, and `canAffordReactorUpgrade` (the
+  funds/materials gate) feeds the `br:` digest segment in
+  paletteDigest.ts — panel and digest can never disagree.
 - `pointer.ts` — **pointer-gesture classification (pure, tested).**
   `classifyPointerUp` decides click vs drag vs ignore for the
   controller's `pointerup` handler. The click rule is anchored on the
@@ -740,6 +750,16 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   every frame. SFX on select/orders/placement/age-advance/rejections/
   deaths/buildings/advisor changes; pause = `audio.suspend()` and the
   frame loop never polls audio events while paused (no SFX pile-up).
+  2026-10-05 (Fix 2): `pollAudioEvents` posts a PERSISTENT named-loss
+  toast for every friendly building destroyed in combat ("Water Pump
+  destroyed" — the destroyed audio event carries kind + id, and the
+  player's own demolitions are excluded via the demolishedAt window);
+  `pollDemolishResults` drains applied demolish results (`drainResults`
+  on the command queue) into persistent "Demolished X (no refund)"
+  toasts, and the demolish tool disarms after one successful click
+  (`isSingleUseOrderKind`). Persistent = the toast holds the toast slot
+  until replaced (`ToastQueue.persist` — transient toasts still cycle
+  through on top), so a loss can't vanish in 2.2s of battle noise.
   Victory/defeat stingers fire through `EndScreen`'s `onShow`.
   `menus.ts` SettingsPanel has master/music/SFX sliders + mute (persisted,
   live-applied in game). The menu itself has its own engine playing the

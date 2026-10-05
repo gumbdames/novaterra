@@ -359,6 +359,9 @@ ammo, and materials. A damaged ship moored at a friendly yard shows
   sails over them safely.
 - Big armies need manpower, which grows with population. Grow your
   city to grow your army.
+- On Commander difficulty and above, a rich AI builds its own nuclear
+  plants (up to two) — scout for them and sabotage or siege them like
+  any other power source.
 
 ## Sound
 

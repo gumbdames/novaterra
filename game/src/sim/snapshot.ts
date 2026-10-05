@@ -401,6 +401,12 @@ function copyPlayer(p: PlayerState): PlayerState {
       (p.taxRates[3] as number | undefined) ?? DEFAULT_TAX_RATE,
     ],
     population: p.population,
+    // Fix 3 (demand-gated housing, 2026-10-05): the unhoused headcount
+    // and the fractional immigration carry — purely additive, legacy
+    // saves decode to 0 (AD9, no version bump — the peakPopulation
+    // precedent).
+    unhousedPopulation: p.unhousedPopulation ?? 0,
+    immigrationCarry: p.immigrationCarry ?? 0,
     // Fun-audit B3 (2026-10-02): lifetime peak population — legacy
     // saves decode to 0 (AD9, no version bump).
     peakPopulation: p.peakPopulation ?? 0,
@@ -457,11 +463,14 @@ function copyCity(city: CityState, legacy = false): CityState {
     powerLines: [...(city.powerLines ?? [])],
     pipes: [...(city.pipes ?? [])],
     utilityEpoch: city.utilityEpoch ?? 0,
-    zones: city.zones.map((z) => ({ cell: z.cell, zone: z.zone })),
+    zones: city.zones.map((z) => ({ cell: z.cell, zone: z.zone, by: z.by })),
     buildings: city.buildings.map((b) => copyBuilding(b, legacy)),
     nextBuildingId: city.nextBuildingId,
     players: city.players.map(copyPlayer),
     foodShortage: city.foodShortage,
+    // Demo suppression (2026-10-05): AD9 optional — legacy snapshots
+    // decode to undefined (falsy), growth enabled as before.
+    suppressOrganicGrowth: city.suppressOrganicGrowth ?? false,
     // Fun-audit C2c (land-trade deletion, 2026-10-02): trade routes
     // are gone — legacy snapshots carrying them decode by ignoring
     // the field (extra JSON fields are skipped by the decoders).
