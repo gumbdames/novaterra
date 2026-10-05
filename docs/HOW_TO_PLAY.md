@@ -153,7 +153,12 @@ plant — without a connection, a building shows **Disconnected**; when a
 plant can't meet demand it shows **Shortage**. Select any building to
 see its Power/Water status, or hit the **Utilities** button in the top
 bar for the full overlay: green = powered areas, blue = watered areas,
-and marker flags over buildings in trouble. Water pipes run just under
+and marker flags over buildings in trouble. **Upgrading:** a nuclear
+plant can grow instead of being replaced — select it and press **Add
+Reactor** (1,200 funds + 500 materials, 40 seconds) to add up to 4
+reactors total. Each extra reactor adds +45 power but also +3 water
+demand, and the plant keeps running while the upgrade builds. Water
+pipes run just under
 the surface and are easy to lose — hit the **X-ray** button in the top
 bar to ghost the terrain and see them as bright blue lines (it also
 switches on automatically while you paint with the water-pipe tool).

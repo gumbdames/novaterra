@@ -238,6 +238,17 @@ export const STRINGS = {
     /** Building detail view: arm the demolish tool for the selected building. */
     demolishVerb: { en: 'Demolish' },
     demolishTitle: { en: 'Arm the demolish tool — demolition is pure loss, no refund' },
+    // Building upgrades (2026-10-05): the nuclear plant's Add Reactor
+    // button — {current}/{max} reactors, the upgrade cost, and the
+    // reasons the button can be disabled.
+    addReactorVerb: { en: 'Add Reactor' },
+    addReactorTitle: {
+      en: 'Add one reactor: +45 power, +3 water demand (1,200 funds + 500 materials, 40s)',
+    },
+    reactorLine: { en: 'Reactors {current}/{max}' },
+    reactorUpgradeInProgress: { en: 'Reactor upgrade in progress…' },
+    reactorMaxed: { en: 'Maximum reactors reached' },
+    reactorCannotAfford: { en: 'Cannot afford reactor (1,200 funds + 500 materials)' },
     operational: { en: 'Operational' },
     notOperational: { en: 'Not operational' },
     // Naval-building model (2026-10-01): the unit detail panel shows

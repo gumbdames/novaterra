@@ -90,6 +90,13 @@ reaches, which gets underground pipes for free).
   attack path) — never at random. A meltdown takes the plant offline for
   3 minutes; the 1-in-20 risk per attack is seeded and reproducible.
   Advanced Nuclear (research) cuts the risk 4x.
+- **Upgrade the atom.** A nuclear plant is built with 1 reactor (60
+  power) and can be upgraded to 4: select it and press **Add Reactor**
+  (1,200 funds + 500 materials, 40 seconds). Each extra reactor adds
+  +45 power but also +3 water demand — a 4-reactor plant makes 195
+  power and drinks 15 water. The plant keeps running during the
+  upgrade. The AI upgrades its own plants when rich, so the playing
+  field stays level.
 - **Mind the sky.** Solar farms only produce by day (4-minute day);
   wind farms rise and fall with the wind.
 - **Respect line capacity.** Each power-line cell carries a fixed

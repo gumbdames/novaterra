@@ -284,6 +284,19 @@ export function buildDemolishOrder(owner: number, cx: number, cz: number): Order
 }
 
 /**
+ * Building upgrades (2026-10-05): add one reactor to an owned,
+ * completed nuclear plant. The sim validates (kind, max reactors,
+ * construction done, no upgrade in flight, affordability) and rejects
+ * loudly.
+ */
+export function buildUpgradeBuildingOrder(owner: number, buildingId: number): OrderIntent {
+  return {
+    kind: 'upgradeBuilding',
+    payload: { owner, buildingId },
+  };
+}
+
+/**
  * Phase 2 (utilities): paint a power line run. The sim's `buildPowerLine`
  * command is committed by the Phase 2 sim workstream — until then the
  * command is rejected at enqueue with a loud toast (never silent).

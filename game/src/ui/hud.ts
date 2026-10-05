@@ -61,6 +61,9 @@ import {
   ROAD_CLASS_ORDER,
   ROAD_CLASS_STATS,
   BUILDING_DEFS,
+  NUCLEAR_MAX_REACTORS,
+  NUCLEAR_UPGRADE_COST_FUNDS,
+  NUCLEAR_UPGRADE_COST_MATERIALS,
   buildingOccupancy,
   type BuildingRecord,
   type RoadClass,
@@ -350,6 +353,12 @@ export interface HUDActions {
   onBaseAircraft(unitId: number, buildingId: number): void;
   /** Phase 5 (hangar/carrier shelter): launch a parked/embarked aircraft. */
   onLaunchAircraft(unitId: number): void;
+  /**
+   * Building upgrades (2026-10-05): add one reactor to an owned,
+   * completed nuclear plant. The sim validates and rejects loudly;
+   * the controller toasts the reason.
+   */
+  onUpgradeBuilding(buildingId: number): void;
   /** Grand-expansion Phase 7 (intel): select a unit on the map (intel panel spy list). */
   onSelectUnit(unitId: number): void;
   /**
@@ -2966,6 +2975,17 @@ export class HUD {
       stats.append(el('div', 'stat-row', fillLoc(sel.hpLine, { hp: hpPct })));
       // Crew training level (economy.ts levels thriving buildings 1→3).
       stats.append(el('div', 'stat-row', fillLoc(sel.levelLine, { level: b.level })));
+      // Building upgrades (2026-10-05): the reactor line for nuclear
+      // plants ("Reactors 2/4", or the in-progress state). Uses the
+      // 'stat-row' class; digest-covered by the b: segment (AD11).
+      if (b.kind === 'nuclearPlant') {
+        const reactors = b.reactors ?? 1;
+        const rline =
+          b.upgradeProgress !== undefined
+            ? loc(sel.reactorUpgradeInProgress)
+            : fillLoc(sel.reactorLine, { current: reactors, max: NUCLEAR_MAX_REACTORS });
+        stats.append(el('div', 'stat-row', rline));
+      }
       // Phase 2 (utilities): power/water diagnosis for the selected
       // building — uses the 'stat-row' class; digest-covered by the bu:
       // segment.
@@ -3092,6 +3112,37 @@ export class HUD {
       // and the HUD already surfaces it in Civilian → Tools). Owned
       // buildings only.
       if (b.owner === HUMAN_PLAYER_ID) {
+        // Building upgrades (2026-10-05): the Add Reactor button for
+        // owned, completed nuclear plants below max reactors with no
+        // upgrade in flight. Disabled with a reason when maxed or
+        // unaffordable; the sim re-validates at enqueue and the
+        // controller toasts any rejection loudly.
+        if (b.kind === 'nuclearPlant' && b.progress >= 1) {
+          const reactors = b.reactors ?? 1;
+          const upBtn = document.createElement('button');
+          upBtn.className = 'sel-action';
+          upBtn.textContent = loc(sel.addReactorVerb);
+          upBtn.title = loc(sel.addReactorTitle);
+          if (b.upgradeProgress !== undefined) {
+            upBtn.disabled = true;
+            upBtn.title = loc(sel.reactorUpgradeInProgress);
+          } else if (reactors >= NUCLEAR_MAX_REACTORS) {
+            upBtn.disabled = true;
+            upBtn.title = loc(sel.reactorMaxed);
+          } else {
+            const player = getPlayer(world.city, HUMAN_PLAYER_ID);
+            if (
+              player === undefined ||
+              player.funds < NUCLEAR_UPGRADE_COST_FUNDS ||
+              player.materials < NUCLEAR_UPGRADE_COST_MATERIALS
+            ) {
+              upBtn.disabled = true;
+              upBtn.title = loc(sel.reactorCannotAfford);
+            }
+          }
+          upBtn.addEventListener('click', () => this.actions.onUpgradeBuilding(b.id));
+          actions.append(upBtn);
+        }
         // Fun-audit C1 (production queues, 2026-10-02): the training
         // section — train buttons, the visible queue (progress +
         // per-entry cancel with full refund), pause/resume, and the

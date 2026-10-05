@@ -162,6 +162,11 @@ land, sea and air — or play a fully peaceful game with war disabled.
   utility networks (power-line capacity, ×1.25 road-frontage
   throughput bonus, data-driven adjacency synergies — roads stay
   purely optional).
+  Building upgrades (2026-10-05) are in too: nuclear plants are built
+  with 1 reactor and can be upgraded to 4 via **Add Reactor** (1,200
+  funds + 500 materials, 40s; +45 power and +3 water demand per extra
+  reactor — 195 power at 4 reactors, plant stays online during the
+  upgrade), and the AI upgrades its own plants when rich.
   See the live plan:
   [`docs/grand-expansion/PLAN.md`](docs/grand-expansion/PLAN.md).
 

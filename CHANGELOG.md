@@ -3,6 +3,21 @@
 All notable changes to the 0.1 Alpha. Commit hashes are the local `main`
 history (`gumbdames/novaterra`).
 
+## 2026-10-05 — Building upgrades: nuclear reactor upgrades
+
+- **Nuclear reactor upgrades**: nuclear plants are built with 1 reactor
+  and can be upgraded to 4 via the new `upgradeBuilding` command —
+  select the plant and press **Add Reactor** (1,200 funds + 500
+  materials, 40s of game time). Each extra reactor adds +45 power and
+  +3 water demand (195 power / 15 water at 4 reactors); the plant stays
+  operational during the upgrade. The existing passive level 1→3 system
+  is untouched; the two tracks multiply.
+- **Fair-AI**: the AI upgrades its own nuclear plants when rich, so the
+  upgrade is not a player-only advantage.
+- Sim plumbing: `BuildingRecord.reactors` / `upgradeProgress` (AD9),
+  reactor math in `economy.ts` (composes with Smart Grid / level /
+  day-night), snapshot + digest coverage, 21 new tests.
+
 ## 2026-10-04 — Art fixes (portrait, baked text, suffixes, provenance)
 
 - **Muse portrait**: replaced the sci-fi cybernetic android portrait with

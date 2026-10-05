@@ -216,6 +216,11 @@ function pendingEnvoyDigest(d: World['diplomacy'] | undefined): string {
     out += `${b.reservedAmmo ?? 0},${b.reservedFuel ?? 0},`;
     // Workstream M: meltdown outage state (legacy decode default 0).
     out += `${b.meltdownUntilTick ?? 0},`;
+    // Building upgrades (2026-10-05): reactor count and upgrade
+    // progress. Behavior-affecting (reactors change power/water) ⇒
+    // digest-covered (PLAN §11). Legacy decode default is 1 reactor,
+    // no upgrade in flight ('-' = absent, keeps it a single token).
+    out += `${b.reactors ?? 1},${b.upgradeProgress === undefined ? '-' : canonicalNumber(b.upgradeProgress)},`;
     // Grand-expansion Phase 6 (S6 intel): sabotage outage state
     // (legacy decode default 0). Behavior-affecting (sabotaged
     // buildings produce nothing) ⇒ digest-covered (PLAN §11).

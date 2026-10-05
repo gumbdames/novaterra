@@ -50,7 +50,11 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   only); the reverse edge is forbidden, see `city.ts` below.
 - `city.ts` — city grid, roads, zones, buildings, players, placement
   validation, growth. Registers `buildRoad`, `paintZone`,
-  `placeBuilding`, `demolish`, `setTaxRate`. Grand-expansion Phase 8
+  `placeBuilding`, `demolish`, `upgradeBuilding`, `setTaxRate`.
+  Building upgrades (2026-10-05): nuclear plants carry `reactors`
+  (built with 1, max 4) and `upgradeProgress`; the `upgradeBuilding`
+  command validates loudly and the economy tick completes the 40s
+  upgrade. Grand-expansion Phase 8
   (peaceful mode, workstream A, 2026-09-30): `BuildingDef.military?:
   boolean` — true on the 21 war-apparatus buildings (the full 100-kind
   classification is pinned in tests/sim.peaceful.test.ts);

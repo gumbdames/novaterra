@@ -200,6 +200,8 @@ import {
   buildSupplyTogglesOrder,
   buildUnloadCargoOrder,
   buildUpgradeRoadOrder,
+  // Building upgrades (2026-10-05): the nuclear reactor upgrade order.
+  buildUpgradeBuildingOrder,
   // Fun-audit C1 (production queues, 2026-10-02): the training orders.
   buildTrainUnitOrder,
   buildCancelTrainOrder,
@@ -1329,6 +1331,10 @@ class GameController {
       // fossil-fuel aircraft. Same loud-rejection path as resupply.
       onEmergencyRefuel: (unitId) =>
         this.enqueue(buildEmergencyRefuelOrder(unitId, HUMAN_PLAYER_ID)),
+      // Building upgrades (2026-10-05): the nuclear reactor upgrade.
+      // Same loud-rejection path as the other building orders.
+      onUpgradeBuilding: (buildingId) =>
+        this.enqueue(buildUpgradeBuildingOrder(HUMAN_PLAYER_ID, buildingId)),
       onSetSupplyToggles: (unitId, services) =>
         this.enqueue(buildSupplyTogglesOrder(unitId, HUMAN_PLAYER_ID, services)),
       // Grand-expansion Phase 5 (hangar/carrier shelter, workstream B):

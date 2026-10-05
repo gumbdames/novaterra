@@ -219,6 +219,7 @@ import {
   peacefulTreasuryFloor,
   buildingAtCell,
   DEFAULT_TAX_RATE,
+  NUCLEAR_MAX_REACTORS,
   type BuildingKind,
   type BuildingRecord,
   type HangarClass,
@@ -3931,6 +3932,27 @@ function clampWaypoint(x: number, z: number): { x: number; z: number } {
 }
 
 /** Commander think: scout, balanced force, full counters, expansion. */
+/**
+ * Building upgrades (2026-10-05): fair-AI reactor upgrades. When the
+ * AI is comfortably rich it upgrades its first eligible nuclear plant
+ * (owned, completed, below max reactors, no upgrade in flight) — the
+ * same upgrade the player gets, keeping the fair-AI contract. One
+ * upgrade per think at most; the command's own validation is the
+ * backstop (issue() swallows rejections).
+ */
+export function thinkNuclearUpgrades(world: World, queue: CommandQueue, ai: AIPlayerState): void {
+  const player = getPlayer(world.city, ai.owner);
+  if (player === undefined) return;
+  if (player.funds < 3000 || player.materials < 800) return;
+  for (const b of world.city.buildings) {
+    if (b.owner !== ai.owner || b.kind !== 'nuclearPlant' || b.progress < 1) continue;
+    if (b.upgradeProgress !== undefined) return;
+    if ((b.reactors ?? 1) >= NUCLEAR_MAX_REACTORS) continue;
+    issue(world, queue, 'upgradeBuilding', { owner: ai.owner, buildingId: b.id });
+    return;
+  }
+}
+
 function thinkCommander(
   world: World,
   queue: CommandQueue,
@@ -3942,6 +3964,9 @@ function thinkCommander(
   const visible = getVisibleEnemies(world, ai.owner);
   thinkUpkeep(world, ai, visible);
   thinkResearch(world, queue, ai, counts);
+  // Building upgrades (2026-10-05): upgrade nuclear plants when rich
+  // (fair-AI — the player gets the same upgrade).
+  thinkNuclearUpgrades(world, queue, ai);
 
   // Phase 3 logistics (workstream 3): physical forward depots (C1),
   // truck ratios, abstract resupply, ammo-dry retreats.

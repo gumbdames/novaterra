@@ -2723,6 +2723,22 @@ export interface BuildingRecord {
    */
   meltdownUntilTick?: number;
   /**
+   * Building upgrades (2026-10-05): reactor count for upgradeable power
+   * plants. Nuclear plants are built with 1 reactor and can be upgraded
+   * to 4 via the `upgradeBuilding` command (+45 power and +3 water
+   * demand per reactor beyond the first). Optional — every read uses
+   * `?? 1` (AD9); snapshotted and digested.
+   */
+  reactors?: number;
+  /**
+   * Building upgrades (2026-10-05): upgrade construction progress 0..1.
+   * Set when `upgradeBuilding` is applied; the economy tick advances it
+   * (40s of game time) and completes the upgrade at 1. undefined = no
+   * upgrade in progress. Optional, reads use `?? 0` (AD9); snapshotted
+   * and digested.
+   */
+  upgradeProgress?: number;
+  /**
    * Phase 3: stock reserved by in-flight `resupply` orders (see
    * commands.ts). Reservations are atomic at apply time and released on
    * fulfillment or timeout — validate≡apply agreement (AD6 lesson).
@@ -3260,6 +3276,9 @@ export function placeBuilding(city: CityState, p: Placement, seed = 0): Building
     progress: 0,
     level: 1,
     operational: false,
+    // Building upgrades (2026-10-05): nuclear plants start with a
+    // single reactor; `upgradeBuilding` adds more (max 4).
+    reactors: 1,
     // Final-review R2 (2026-10-01): buildings are destructible — fresh
     // buildings start at full structural HP (def.hp).
     hp: def.hp,
@@ -4027,6 +4046,41 @@ function countsAsProduction(buildingKind: BuildingKind, gateKind: BuildingKind):
   return buildingCountsAs(buildingKind, gateKind);
 }
 
+/**
+ * Building upgrades (2026-10-05): nuclear reactor upgrade tuning.
+ * Nuclear plants are built with 1 reactor; each upgrade adds one more
+ * (max NUCLEAR_MAX_REACTORS), +NUCLEAR_REACTOR_POWER_MW power and
+ * +NUCLEAR_REACTOR_WATER_DEMAND water demand per reactor beyond the
+ * first. The upgrade costs funds + materials and takes
+ * NUCLEAR_UPGRADE_SECONDS of game time (progress tracked on
+ * `BuildingRecord.upgradeProgress`); the plant stays operational
+ * throughout.
+ */
+export const NUCLEAR_MAX_REACTORS = 4;
+export const NUCLEAR_REACTOR_POWER_MW = 45;
+export const NUCLEAR_REACTOR_WATER_DEMAND = 3;
+export const NUCLEAR_UPGRADE_COST_FUNDS = 1200;
+export const NUCLEAR_UPGRADE_COST_MATERIALS = 500;
+export const NUCLEAR_UPGRADE_SECONDS = 40;
+
+/**
+ * Building upgrades (2026-10-05): extra power from a nuclear plant's
+ * reactors beyond the first. Pure (test seam); the economy's
+ * powerSupplyOf applies it.
+ */
+export function reactorPowerBonus(reactors: number): number {
+  return Math.max(0, reactors - 1) * NUCLEAR_REACTOR_POWER_MW;
+}
+
+/**
+ * Building upgrades (2026-10-05): extra water demand from a nuclear
+ * plant's reactors beyond the first. Pure (test seam); the economy's
+ * waterDemandOf applies it.
+ */
+export function reactorWaterDemandBonus(reactors: number): number {
+  return Math.max(0, reactors - 1) * NUCLEAR_REACTOR_WATER_DEMAND;
+}
+
 function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
   /**
    * Phase 4 (S7): buildRoad takes a class payload (`cls`, one of
@@ -4414,6 +4468,49 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
     },
   };
 
+  /**
+   * Building upgrades (2026-10-05): add one reactor to a completed
+   * nuclear plant (max 4). Validate is loud: unknown owner, unknown
+   * building, wrong kind, already at max reactors, still constructing,
+   * upgrade already in progress, or insufficient funds/materials all
+   * reject with a plain-English reason. Apply deducts the cost and
+   * starts the upgrade (`upgradeProgress = 0`); the economy tick
+   * advances it over NUCLEAR_UPGRADE_SECONDS and completes it. The
+   * plant stays operational at its current output throughout.
+   */
+  const upgradeBuilding: CommandSpec = {
+    validate(cmd, world): string | null {
+      const owner = payloadInt(cmd.payload, 'owner');
+      if (owner === null || !getPlayer(world.city, owner)) return 'upgradeBuilding: unknown owner';
+      const buildingId = payloadInt(cmd.payload, 'buildingId');
+      if (buildingId === null) return 'upgradeBuilding: payload needs an integer buildingId';
+      const b = world.city.buildings.find((x) => x.id === buildingId);
+      if (b === undefined) return `upgradeBuilding: no building with id ${buildingId}`;
+      if (b.owner !== owner) return 'upgradeBuilding: you can only upgrade your own buildings';
+      if (b.kind !== 'nuclearPlant') return `upgradeBuilding: ${b.kind} cannot be upgraded (only nuclearPlant)`;
+      if (b.progress < 1) return 'upgradeBuilding: the plant must finish construction first';
+      if (b.upgradeProgress !== undefined) return 'upgradeBuilding: an upgrade is already in progress';
+      if ((b.reactors ?? 1) >= NUCLEAR_MAX_REACTORS) {
+        return `upgradeBuilding: already at the maximum of ${NUCLEAR_MAX_REACTORS} reactors`;
+      }
+      const player = getPlayer(world.city, owner) as PlayerState;
+      if (player.funds < NUCLEAR_UPGRADE_COST_FUNDS || player.materials < NUCLEAR_UPGRADE_COST_MATERIALS) {
+        return `upgradeBuilding: cannot afford (needs ${NUCLEAR_UPGRADE_COST_FUNDS} funds + ${NUCLEAR_UPGRADE_COST_MATERIALS} materials)`;
+      }
+      return null;
+    },
+    apply(cmd, world): unknown {
+      const owner = payloadInt(cmd.payload, 'owner') as number;
+      const buildingId = payloadInt(cmd.payload, 'buildingId') as number;
+      const b = world.city.buildings.find((x) => x.id === buildingId) as BuildingRecord;
+      const player = getPlayer(world.city, owner) as PlayerState;
+      player.funds -= NUCLEAR_UPGRADE_COST_FUNDS;
+      player.materials -= NUCLEAR_UPGRADE_COST_MATERIALS;
+      b.upgradeProgress = 0;
+      return { buildingId, reactors: (b.reactors ?? 1) + 1 };
+    },
+  };
+
   const setTaxRate: CommandSpec = {
     validate(cmd, world): string | null {
       const owner = payloadInt(cmd.payload, 'owner');
@@ -4499,7 +4596,7 @@ function makeSpecs(t: TerrainData): Record<string, CommandSpec> {
     },
   };
 
-  return { buildRoad, upgradeRoad, buildRail, buildPowerLine, buildPipe, paintZone, placeBuilding: placeBuildingSpec, demolish, setTaxRate, setSpecialization, setPolicy };
+  return { buildRoad, upgradeRoad, buildRail, buildPowerLine, buildPipe, paintZone, placeBuilding: placeBuildingSpec, demolish, upgradeBuilding, setTaxRate, setSpecialization, setPolicy };
 }
 
 /** Register the city-building command kinds on a queue. Needs the terrain for placement rules. */

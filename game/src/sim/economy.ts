@@ -119,6 +119,10 @@ import {
   type SeaRoute,
   type SeaRoutePolicy,
   LOGISTICS_RADIUS,
+  NUCLEAR_MAX_REACTORS,
+  NUCLEAR_UPGRADE_SECONDS,
+  reactorPowerBonus,
+  reactorWaterDemandBonus,
 } from './city';
 
 /** Economy ticks run once per sim-second (30 sim ticks). */
@@ -444,6 +448,9 @@ function allocateUtilities(world: World, city: CityState): UtilityAllocation {
     const powerSupplyOf = (b: BuildingRecord): number => {
       const def = BUILDING_DEFS[b.kind];
       let s = effectivePowerSupply(world, player.id, b.kind, def.powerSupply);
+      // Building upgrades (2026-10-05): each reactor beyond the first
+      // adds NUCLEAR_REACTOR_POWER_MW to a nuclear plant's output.
+      if (b.kind === 'nuclearPlant') s += reactorPowerBonus(b.reactors ?? 1);
       // Solar is day-only (240-second day); wind is a seeded wobble.
       if (b.kind === 'solarFarm') s *= daylightFactor(world.tick);
       if (b.kind === 'windFarm') s *= windFactor(world.seed, eIdx);
@@ -457,8 +464,13 @@ function allocateUtilities(world: World, city: CityState): UtilityAllocation {
       return s;
     };
     const powerDemandOf = (b: BuildingRecord): number => BUILDING_DEFS[b.kind].powerDemand;
-    const waterDemandOf = (b: BuildingRecord): number =>
-      effectiveWaterDemand(world, player.id, b.kind, BUILDING_DEFS[b.kind].waterDemand);
+    const waterDemandOf = (b: BuildingRecord): number => {
+      let d = effectiveWaterDemand(world, player.id, b.kind, BUILDING_DEFS[b.kind].waterDemand);
+      // Building upgrades (2026-10-05): each reactor beyond the first
+      // adds NUCLEAR_REACTOR_WATER_DEMAND to a nuclear plant's demand.
+      if (b.kind === 'nuclearPlant') d += reactorWaterDemandBonus(b.reactors ?? 1);
+      return d;
+    };
 
     const allocateSide = (utility: UtilityKind, side: UtilitySideModel): number => {
       const supplyOf = utility === 'power' ? powerSupplyOf : waterSupplyOf;
@@ -1735,6 +1747,22 @@ function runConstruction(world: World): void {
         const repairRate =
           ENGINEER_REPAIR_HP_PER_SEC * DOCTRINES[getDoctrine(world, b.owner)].engineerRepairMult;
         b.hp = Math.min(maxHp, (b.hp ?? BUILDING_DEFS[b.kind].hp) + repairRate);
+      }
+    }
+    // Building upgrades (2026-10-05): advance a reactor upgrade in
+    // progress. Completed buildings only; the plant stays operational
+    // at its current output throughout (progress is untouched). At 1
+    // the reactor comes online. No engineer speedup — the 40s is flat
+    // and predictable. The utility allocator reads b.reactors live
+    // every tick, so no epoch bump is needed.
+    const up = b.upgradeProgress;
+    if (b.progress >= 1 && up !== undefined && up < 1) {
+      const next = Math.min(1, up + 1 / NUCLEAR_UPGRADE_SECONDS);
+      if (next >= 1) {
+        b.reactors = Math.min(NUCLEAR_MAX_REACTORS, (b.reactors ?? 1) + 1);
+        b.upgradeProgress = undefined;
+      } else {
+        b.upgradeProgress = next;
       }
     }
   }

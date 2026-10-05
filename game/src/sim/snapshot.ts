@@ -350,6 +350,15 @@ function copyBuilding(b: BuildingRecord, legacy = false): BuildingRecord {
     // stays v8 (the sabotagedUntil precedent). Take is faithful
     // (absent stays absent); restore deep-copies the records.
     discovery: b.discovery?.map((d) => ({ ...d })),
+    // Building upgrades (2026-10-05): reactor count + in-progress
+    // upgrade state. ?? 1 / absent = single reactor, no upgrade in
+    // flight (legacy saves never upgraded — no version bump, stays
+    // v8; the sabotagedUntil precedent).
+    reactors: b.reactors ?? 1,
+    // Faithful take: absent stays absent (the discovery precedent) so
+    // undefined ("no upgrade") survives the round-trip — `?? 0` here
+    // would resurrect a phantom just-started upgrade on restore.
+    upgradeProgress: b.upgradeProgress,
     // Phase 4 occupancy + variety (2026-09-30). AD9 ?? defaults: legacy
     // v6/v7 saves decode to empty buildings with the default look —
     // no version bump (the veterancy ?? 0 precedent).

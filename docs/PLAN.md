@@ -239,6 +239,19 @@ no-military mode. Roster: 103 units / 100 buildings / 21 upgrades.
   - Docs corrected: key bindings, five ages, settings key list, theatre
     claim qualified (sim support only, no player UI yet), `REVERSALS.md`
     §7 records the marquee-as-default decision.
+- ✅ **Phase 9 — Building Upgrades: Nuclear Reactor Upgrades (COMPLETE 2026-10-05)**:
+  - Nuclear plants are built with 1 reactor (60 power, 6 water demand)
+    and upgradeable to 4 via the new `upgradeBuilding` command: select
+    the plant, press **Add Reactor** (1,200 funds + 500 materials, 40s
+    of game time). Each extra reactor adds +45 power and +3 water
+    demand (195 power / 15 water at 4 reactors); the plant stays
+    operational during the upgrade.
+  - `BuildingRecord.reactors` / `upgradeProgress` (AD9, `?? 1` /
+    absent); reactor math in `economy.ts` composes with Smart Grid,
+    level, and day/night factors; snapshotted and digest-covered.
+  - Fair-AI: `thinkNuclearUpgrades` gives the AI the same upgrade when
+    rich (funds > 3000, materials > 800).
+  - 21 new tests in `game/tests/sim.building-upgrades.test.ts`.
 
 ## Decisions (resolved with user 2026-09-28)
 
