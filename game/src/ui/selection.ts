@@ -136,6 +136,32 @@ export function nearestUnit(
   return best;
 }
 
+/** What a map click resolves to under the click-priority rule. */
+export type ClickPick =
+  | { kind: 'unit'; unit: PickableUnit }
+  | { kind: 'building'; id: number }
+  | null;
+
+/**
+ * Click-target priority (2026-10-05): a click landing inside a building
+ * footprint selects the BUILDING — units loitering within click tolerance
+ * no longer steal building clicks (the reported "can't select buildings"
+ * bug). Units in the open still select normally via nearestUnit. Pure;
+ * the controller supplies the footprint lookup. Deterministic.
+ */
+export function resolveClickPick(
+  units: PickableUnit[],
+  buildingIdAt: (x: number, z: number) => number | null,
+  x: number,
+  z: number,
+  tolerance: number,
+): ClickPick {
+  const buildingId = buildingIdAt(x, z);
+  if (buildingId !== null) return { kind: 'building', id: buildingId };
+  const unit = nearestUnit(units, x, z, tolerance);
+  return unit === null ? null : { kind: 'unit', unit };
+}
+
 /**
  * Remove ids that no longer exist (units died, buildings demolished).
  * Returns a new selection; the input is untouched.

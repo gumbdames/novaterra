@@ -44,6 +44,15 @@
  * (bounded counts, transient), and buildings under construction keep the
  * legacy per-view fade path (per-instance transparency is not a thing).
  *
+ * Entity ids are namespaced by kind (`'unit' | 'building'`): unit and
+ * building id spaces both start at 1 (`world.nextId`,
+ * `city.nextBuildingId`), so the entity map, pool owner lists, and
+ * `addEntity`/`removeEntity`/`writeTransform`/`recolorEntity` all take
+ * the kind and key on `entityKey(kind, id)`. Without this, a building
+ * completing as `addEntity(5)` replaced unit #5's record and the unit's
+ * per-frame writes then overwrote the building's matrices (the
+ * person-becomes-a-building bug).
+ *
  * Ownership: pool geometries/materials are caller-owned (the models map,
  * the renderer's procedural cache) and are NEVER disposed here —
  * `dispose()` releases only instance attributes plus the geometries and
@@ -125,6 +134,22 @@ export interface InstancedPiece {
   pool: string;
   /** Entity-local offset (piece dx/dy/dz); yaw is applied at write time. */
   offset: THREE.Matrix4;
+}
+
+/**
+ * Instanced-entity namespace: unit and building id spaces BOTH start at
+ * 1 (`world.nextId`, `city.nextBuildingId`), so a bare numeric id is
+ * ambiguous — unit #5 and building #5 would share one record and each
+ * other's per-frame matrix writes (a unit visually becoming a building
+ * on completion). Every instancer id is namespaced by kind; the entity
+ * map, pool owner lists, and selection rings are all keyed on
+ * `entityKey(kind, id)`.
+ */
+export type InstancedEntityKind = 'unit' | 'building';
+
+/** The canonical key for one instanced entity: `unit:5`, `building:5`. */
+export function entityKey(kind: InstancedEntityKind, id: number): string {
+  return `${kind}:${id}`;
 }
 
 /**
@@ -238,7 +263,7 @@ interface ModelPool {
   /** Live instance count; instances are dense in [0, count). */
   count: number;
   /** owners[i] = entity id owning instance i (for swap-compaction). */
-  owners: number[];
+  owners: string[];
   /** True when matrices/colors changed since the last upload. */
   dirty: boolean;
   /** True when the pool uses per-instance colors. */
@@ -247,6 +272,8 @@ interface ModelPool {
 
 /** Slot bookkeeping for one instanced entity. */
 interface InstancedEntity {
+  /** Namespace: unit and building id spaces both start at 1. */
+  kind: InstancedEntityKind;
   id: number;
   modelSlots: Array<{ pool: ModelPool; index: number }>;
   /** Entity-local piece offsets, parallel to modelSlots. */
@@ -294,7 +321,8 @@ function barColorFor(frac: number): number {
 export class EntityInstancer {
   private readonly group = new THREE.Group();
   private readonly pools = new Map<string, ModelPool>();
-  private readonly entities = new Map<number, InstancedEntity>();
+  /** Keyed on `entityKey(kind, id)` — never a bare numeric id. */
+  private readonly entities = new Map<string, InstancedEntity>();
   /**
    * Owned overlay layers (stripe / pennant / health bars), created lazily
    * on first use so an empty instancer (or one driving only complete
@@ -385,12 +413,32 @@ export class EntityInstancer {
   /**
    * Add an entity's instance slots. Every piece pool must have been
    * registered with definePool first. Re-adding an existing id replaces
-   * it (remove + add).
+   * it (remove + add). The kind namespaces the record: unit #5 and
+   * building #5 are different entities. A re-add with a DIFFERENT kind
+   * than the existing record is warned about — it means a caller is
+   * mixing namespaces, which used to silently swap the entity's body
+   * for the other kind's (the person-becomes-a-building bug).
    */
-  addEntity(id: number, pieces: InstancedPiece[], opts: AddEntityOpts): void {
+  addEntity(
+    kind: InstancedEntityKind,
+    id: number,
+    pieces: InstancedPiece[],
+    opts: AddEntityOpts,
+  ): void {
     this.assertLive();
-    if (this.entities.has(id)) this.removeEntity(id);
+    const key = entityKey(kind, id);
+    const existing = this.entities.get(key);
+    if (existing !== undefined) {
+      if (existing.kind !== kind) {
+        console.warn(
+          `EntityInstancer: addEntity kind mismatch for id ${id}: ` +
+            `existing '${existing.kind}', re-adding as '${kind}' — caller bug?`,
+        );
+      }
+      this.removeEntity(kind, id);
+    }
     const entity: InstancedEntity = {
+      kind,
       id,
       modelSlots: [],
       pieceOffsets: [],
@@ -404,7 +452,7 @@ export class EntityInstancer {
       // piece contributes one instance to EACH of its key's pools.
       for (const pool of this.pools.values()) {
         if (!pool.key.startsWith(`${piece.pool}#`)) continue;
-        const index = this.alloc(pool, id);
+        const index = this.alloc(pool, key);
         entity.modelSlots.push({ pool, index });
         entity.pieceOffsets.push(piece.offset.clone());
       }
@@ -427,25 +475,25 @@ export class EntityInstancer {
     }
     if (opts.stripe) {
       const stripePool = this.stripeLayer();
-      const index = this.alloc(stripePool, id);
+      const index = this.alloc(stripePool, key);
       stripePool.mesh.setColorAt(index, _color);
       entity.stripe = { pool: stripePool, index };
     }
     const pennantPool = this.pennantLayer();
-    const pennantIndex = this.alloc(pennantPool, id);
+    const pennantIndex = this.alloc(pennantPool, key);
     pennantPool.mesh.setColorAt(pennantIndex, _color);
     entity.pennant = { pool: pennantPool, index: pennantIndex };
-    this.entities.set(id, entity);
+    this.entities.set(key, entity);
   }
 
   /** Release an entity's slots (swap-compacted; unknown ids are ignored). */
-  removeEntity(id: number): void {
-    const entity = this.entities.get(id);
+  removeEntity(kind: InstancedEntityKind, id: number): void {
+    const entity = this.entities.get(entityKey(kind, id));
     if (entity === undefined) return;
     for (const slot of entity.modelSlots) this.free(slot.pool, slot.index);
     if (entity.stripe !== null) this.free(entity.stripe.pool, entity.stripe.index);
     if (entity.pennant !== null) this.free(entity.pennant.pool, entity.pennant.index);
-    this.entities.delete(id);
+    this.entities.delete(entityKey(kind, id));
   }
 
   /**
@@ -454,8 +502,8 @@ export class EntityInstancer {
    * live-refresh path so EXISTING instanced views pick up the new team
    * colors without being rebuilt. Unknown ids are ignored.
    */
-  recolorEntity(id: number, color: THREE.ColorRepresentation): void {
-    const entity = this.entities.get(id);
+  recolorEntity(kind: InstancedEntityKind, id: number, color: THREE.ColorRepresentation): void {
+    const entity = this.entities.get(entityKey(kind, id));
     if (entity === undefined) return;
     _color.set(color);
     if (entity.stripe !== null) {
@@ -483,8 +531,8 @@ export class EntityInstancer {
    * Must be called every frame for every visible entity; call
    * beginFrame() first and endFrame(camera) after the last write.
    */
-  writeTransform(id: number, w: InstanceWrite): void {
-    const entity = this.entities.get(id);
+  writeTransform(kind: InstancedEntityKind, id: number, w: InstanceWrite): void {
+    const entity = this.entities.get(entityKey(kind, id));
     if (entity === undefined) return;
     // Entity matrix: world position (with hover lift) × yaw, plus the
     // B21 juice rotations (pitch/roll) in yaw→pitch→roll order.
@@ -773,10 +821,10 @@ export class EntityInstancer {
     };
   }
 
-  private alloc(pool: ModelPool, entityId: number): number {
+  private alloc(pool: ModelPool, key: string): number {
     if (pool.count >= pool.capacity) this.grow(pool);
     const index = pool.count++;
-    pool.owners[index] = entityId;
+    pool.owners[index] = key;
     pool.dirty = true;
     return index;
   }
@@ -792,9 +840,9 @@ export class EntityInstancer {
         pool.mesh.getColorAt(last, _color);
         pool.mesh.setColorAt(index, _color);
       }
-      const movedId = pool.owners[last] as number;
-      pool.owners[index] = movedId;
-      const moved = this.entities.get(movedId);
+      const movedKey = pool.owners[last] as string;
+      pool.owners[index] = movedKey;
+      const moved = this.entities.get(movedKey);
       if (moved !== undefined) {
         for (const slot of moved.modelSlots) {
           if (slot.pool === pool && slot.index === last) slot.index = index;

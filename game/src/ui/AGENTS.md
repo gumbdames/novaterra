@@ -439,6 +439,11 @@ command structs to sim/commands.ts — it never mutates sim state directly.
   `overflow-y: auto`) so every map/difficulty stays clickable on short
   viewports.
 - `camera.ts` / `selection.ts` — pure state + transitions, fully tested.
+  2026-10-05: `resolveClickPick` — building-first click priority (a click
+  inside a building footprint selects the building; units loitering
+  within click tolerance no longer steal building clicks; units in the
+  open select normally). Pure and headless-tested; game.ts feeds it the
+  footprint lookup.
   Roadmap B13 (2026-10-02): screen-shake math lives here —
   `addShakeTrauma` / `decayShakeTrauma` / `shakeOffset` (trauma 0..1,
   offset ∝ trauma², deterministic sin/cos noise, zero below 0.02). The

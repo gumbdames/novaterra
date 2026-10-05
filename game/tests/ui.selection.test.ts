@@ -29,6 +29,7 @@ import {
   isSelectionEmpty,
   nearestUnit,
   pruneSelection,
+  resolveClickPick,
   selectBuilding,
   selectUnits,
   toggleUnit,
@@ -168,3 +169,33 @@ describe('multi-cell building selection hit-testing', () => {
   });
 });
 
+
+describe('resolveClickPick (2026-10-05 building-first priority)', () => {
+  // Building id 7 covers the point (100, 100); nothing covers (0, 0).
+  const buildingIdAt = (x: number, z: number): number | null =>
+    Math.abs(x - 100) < 2 && Math.abs(z - 100) < 2 ? 7 : null;
+  const TOL = 4;
+
+  it('prefers the building when a unit loiters within tolerance', () => {
+    const units = [unit(3, 101, 101)]; // 1.4 world units from the click
+    const pick = resolveClickPick(units, buildingIdAt, 100, 100, TOL);
+    expect(pick).toEqual({ kind: 'building', id: 7 });
+  });
+
+  it('selects a unit in the open normally', () => {
+    const units = [unit(3, 10, 10)];
+    const pick = resolveClickPick(units, buildingIdAt, 10, 10, TOL);
+    expect(pick?.kind).toBe('unit');
+    if (pick?.kind === 'unit') expect(pick.unit.id).toBe(3);
+  });
+
+  it('returns null on empty ground', () => {
+    expect(resolveClickPick([], buildingIdAt, 0, 0, TOL)).toBeNull();
+    expect(resolveClickPick([unit(3, 50, 50)], buildingIdAt, 0, 0, TOL)).toBeNull();
+  });
+
+  it('ignores dead units', () => {
+    const units = [unit(3, 10, 10, 0, 0)];
+    expect(resolveClickPick(units, buildingIdAt, 10, 10, TOL)).toBeNull();
+  });
+});

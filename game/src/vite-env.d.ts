@@ -15,3 +15,6 @@
  */
 
 /// <reference types="vite/client" />
+
+/** Build identifier stamped by vite.config.ts (git SHA + UTC timestamp). */
+declare const __BUILD_ID__: string;

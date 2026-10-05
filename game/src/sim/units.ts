@@ -46,7 +46,7 @@ import type { DoctrineId } from './doctrine';
 import { DOCTRINES, getDoctrine, doctrineTrainCostMult } from './doctrine';
 import type { TerrainData } from './terrain';
 import { isWater } from './terrain';
-import { getPlayer, MAP_HALF_SIZE, BUILDING_DEFS, hasProductionBuilding, cellCenterWorld, cellIndex, defaultHangarSlots, findBuildingHangarSlot, buildingCountsAs, buildingCenterWorld, buildingAtCell, CELL_WORLD_SIZE } from './city';
+import { getPlayer, MAP_HALF_SIZE, BUILDING_DEFS, hasProductionBuilding, cellCenterWorld, cellIndex, defaultHangarSlots, findBuildingHangarSlot, buildingCountsAs, buildingCenterWorld, buildingAtCell, CELL_WORLD_SIZE, findFreeSpawnPoint, cellIsWater } from './city';
 import type { BuildingKind, BuildingRecord, CityState, HangarClass, ResourceKey } from './city';
 import type { CommandQueue } from './commands';
 import type { Age } from './ages';
@@ -2616,12 +2616,31 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
         player.funds -= costFunds;
         player.materials -= costMaterials;
       }
+      // Unit/building-overlap guard (2026-10-05, Fix 5): nudge the
+      // requested spawn point to the nearest free cell (deterministic
+      // spiral — the findFreeSpawnPoint idiom in city.ts) instead of
+      // rejecting — the AI swallows rejections, so a loud reject here
+      // would silently eat AI armies. "Free" is domain-aware (ships
+      // stay on water). A requested cell that is already free keeps its
+      // exact coordinates (positions are digested — no gratuitous
+      // shifts). Null (nowhere free) keeps the request as-is.
+      const reqX = cmd.payload['x'] as number;
+      const reqZ = cmd.payload['z'] as number;
+      const spot = findFreeSpawnPoint(
+        world.city,
+        reqX,
+        reqZ,
+        (cx, cz) => cellIsWater(t, cx, cz),
+        def.domain,
+      );
+      const spawnX = spot === null ? reqX : spot.x;
+      const spawnZ = spot === null ? reqZ : spot.z;
       const unit = spawnUnit(
         world,
         cmd.payload['kind'] as string,
         cmd.payload['owner'] as number,
-        cmd.payload['x'] as number,
-        cmd.payload['z'] as number,
+        spawnX,
+        spawnZ,
       );
       return unit.id;
     },

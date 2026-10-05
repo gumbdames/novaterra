@@ -50,7 +50,7 @@ import type { TerrainData } from './terrain';
 import type { AIPlayerState } from './ai';
 import { canTrain, getVisibleEnemies, getVisibleEnemyBuildings } from './ai';
 import { UNIT_DEFS, type UnitKind } from './units';
-import { getPlayer, cellCenterWorld } from './city';
+import { getPlayer, cellCenterWorld, findFreeSpawnPoint, cellIsWater } from './city';
 import { getAgeState, AGE_PROGRESSION } from './ages';
 
 export interface PlayerForceProfile {
@@ -166,7 +166,7 @@ export function thinkMuse(
   world: World,
   queue: CommandQueue,
   ai: AIPlayerState,
-  _terrain?: TerrainData,
+  terrain?: TerrainData,
 ): void {
   const humanOwner = 0;
   const profile = analyzePlayerForces(world, ai.owner, humanOwner);
@@ -181,7 +181,7 @@ export function thinkMuse(
     for (const kind of roster) {
       if (canTrain(world, ai.owner, kind)) {
         // Find suitable spawn position near base
-        const spawnPos = findSpawnSpot(world, ai.owner);
+        const spawnPos = findSpawnSpot(world, ai.owner, kind, terrain);
         if (spawnPos) {
           try {
             queue.enqueue(world, {
@@ -266,19 +266,49 @@ export function thinkMuse(
   }
 }
 
-/** Helper to find a spawn position near base. */
-function findSpawnSpot(world: World, owner: number): { x: number; z: number } | null {
+/**
+ * Helper to find a spawn position near base. Exported for tests.
+ *
+ * Unit/building-overlap guard (2026-10-05, Fix 5): the anchor-building
+ * spot (center + 2 world units) sits INSIDE any ≥2×2 footprint, so the
+ * requested spot is routed through the shared footprint-aware
+ * findFreeSpawnPoint (deterministic spiral, domain-aware — ships stay
+ * on water). Without terrain the legacy spot stands: the spawnUnit
+ * command re-nudges at apply whenever it has terrain.
+ */
+export function findSpawnSpot(
+  world: World,
+  owner: number,
+  kind: UnitKind,
+  terrain?: TerrainData,
+): { x: number; z: number } | null {
   const anchorBuilding = world.city.buildings.find((b) => b.owner === owner && (b.hp ?? 0) > 0);
+  let spot: { x: number; z: number };
   if (anchorBuilding) {
     // Canonical cell→world mapping (city.ts): cellCenterWorld, not a
     // hand-rolled scale (CELL_WORLD_SIZE = 2, map is 512 units wide).
-    return { x: cellCenterWorld(anchorBuilding.cx) + 2, z: cellCenterWorld(anchorBuilding.cz) + 2 };
+    spot = { x: cellCenterWorld(anchorBuilding.cx) + 2, z: cellCenterWorld(anchorBuilding.cz) + 2 };
+  } else {
+    const anchorUnit = world.units.find((u) => u.owner === owner && u.hp > 0);
+    if (anchorUnit) {
+      spot = { x: anchorUnit.x + 4, z: anchorUnit.z + 4 };
+    } else {
+      spot = { x: 80, z: 80 };
+    }
   }
-  const anchorUnit = world.units.find((u) => u.owner === owner && u.hp > 0);
-  if (anchorUnit) {
-    return { x: anchorUnit.x + 4, z: anchorUnit.z + 4 };
-  }
-  return { x: 80, z: 80 };
+  if (terrain === undefined) return spot;
+  const domain = UNIT_DEFS[kind].domain;
+  const free = findFreeSpawnPoint(
+    world.city,
+    spot.x,
+    spot.z,
+    (cx, cz) => cellIsWater(terrain, cx, cz),
+    domain,
+  );
+  // Null (nowhere free within 24 rings) keeps the legacy spot — a
+  // stuck unit beats a swallowed spawn, and the spawnUnit command is
+  // the final backstop.
+  return free ?? spot;
 }
 
 export type MuseDialogueEvent =

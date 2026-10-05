@@ -121,12 +121,13 @@ describe('B26 draw-call ceiling (max diversity)', () => {
       for (const p of resolved.pieces) instancer.definePool(p.pool, p.model);
       const isUnit = (UNIT_DEFS as Record<string, unknown>)[kind] !== undefined;
       instancer.addEntity(
+        isUnit ? 'unit' : 'building',
         id,
         resolved.pieces.map((p) => ({ pool: p.pool, offset: new THREE.Matrix4() })),
         { stripe: isUnit, stripeScale: 1, team: '#ffffff' },
       );
       // Damaged-unit health bars are part of the late-game worst case.
-      instancer.writeTransform(id, {
+      instancer.writeTransform(isUnit ? 'unit' : 'building', id, {
         x: 0, y: 0, z: 0, yaw: 0, baseY: 0,
         modelTop: resolved.top, hpFrac: 0.5, showBar: isUnit,
       });

@@ -645,7 +645,7 @@ export function createSession(options: SessionOptions): GameSession {
   // Phase 3 logistics (workstream 3): resupply + supply toggles.
   registerLogisticsCommands(queue, terrain);
   registerAgeCommands(queue);
-  registerCheatCommands(queue);
+  registerCheatCommands(queue, terrain);
   registerDelegationCommands(queue);
   registerSuperweaponCommands(queue);
   // Roster expansion: the researchUpgrade command is wired here (the sim
@@ -748,9 +748,11 @@ export function createSession(options: SessionOptions): GameSession {
         // foundation would be invisible. On conflict the building is
         // nudged to the nearest free anchor (deterministic spiral; the
         // M1 "fix a disconnected building" beat survives a nudge of a
-        // few cells). Nowhere to go is a broken mission def — fail
-        // loudly so it is caught, never silently shipped. (A test pins
-        // that the shipped missions place cleanly.)
+        // few cells). The anchor search is unit-aware (Fix 6): it never
+        // lands on a DIFFERENT starting unit either. Nowhere to go is a
+        // broken mission def — fail loudly so it is caught, never
+        // silently shipped. (A test pins that the shipped missions
+        // place cleanly.)
         let ax = cx;
         let az = cz;
         if (def !== undefined && unitsOnFootprint(world.units, cx, cz, def.footprintW, def.footprintH)) {
@@ -761,6 +763,7 @@ export function createSession(options: SessionOptions): GameSession {
             def.footprintW,
             def.footprintH,
             (x, z) => cellIsWater(terrain, x, z),
+            world.units,
           );
           if (anchor === null) {
             throw new Error(`mission preplaced building has nowhere to go (${pb.kind})`);

@@ -66,9 +66,11 @@ import {
   CITY_GRID_CELLS,
   CELL_WORLD_SIZE,
   MAP_HALF_SIZE,
+  BUILDING_DEFS,
   cellCoords,
   cellIndex,
   cellIsWater,
+  footprintCells,
   inBounds,
   roadClassAt,
   ROAD_CLASS_STATS,
@@ -185,6 +187,41 @@ export function passabilityMask(t: TerrainData): Uint8Array {
   return mask;
 }
 
+/**
+ * Building-blocked cells for pathing (2026-10-05): COMPLETED buildings
+ * are pathing obstacles — ordered/chasing units route around them instead
+ * of clipping through. In-construction buildings do NOT block (the
+ * eject-on-completion rescue handles stragglers on those sites).
+ *
+ * Cached per city object; rebuilt only when the completed-building set
+ * changes. The signature scan is O(buildings) per call (microseconds at
+ * real city sizes); a rebuild is O(total footprint cells). Derived data
+ * only: never snapshotted, rebuilds deterministically after load, and
+ * the terrain mask above is untouched (sea pathing never consults it).
+ */
+const blockCache = new WeakMap<CityState, { sig: number; mask: Uint8Array }>();
+export function buildingBlockMask(city: CityState): Uint8Array {
+  // Defensive: headless tests pass partial city fakes ({ roads } only).
+  const buildings = city.buildings ?? [];
+  let completed = 0;
+  for (const b of buildings) if (b.progress >= 1) completed++;
+  // completed <= buildings.length < 65537 in practice: the signature is
+  // unique per (count, completed-count) pair.
+  const sig = buildings.length * 65537 + completed;
+  const cached = blockCache.get(city);
+  if (cached !== undefined && cached.sig === sig) return cached.mask;
+  const mask = new Uint8Array(gridCells());
+  for (const b of buildings) {
+    if (b.progress < 1) continue;
+    const def = BUILDING_DEFS[b.kind];
+    for (const cell of footprintCells(b.cx, b.cz, def.footprintW, def.footprintH)) {
+      mask[cell] = 1;
+    }
+  }
+  blockCache.set(city, { sig, mask });
+  return mask;
+}
+
 /** Sea passability mask: 1 = water (passable for ships), 0 = land. */
 const seaMaskCache = new WeakMap<TerrainData, Uint8Array>();
 export function seaPassabilityMask(t: TerrainData): Uint8Array {
@@ -206,11 +243,32 @@ export function seaPassabilityMask(t: TerrainData): Uint8Array {
  * class's moveCost on roads (dirt 1.0 / country 0.75 / paved 0.5 /
  * highway 0.35 — ROAD_CLASS_STATS), 1.0 otherwise. Hot path — pure
  * array lookups, no height math.
+ *
+ * `blocked` (2026-10-05): optional building-block mask from
+ * `buildingBlockMask` — blocked cells are Infinity, except `exempt1` /
+ * `exempt2` (a search's start/goal cells, which must stay enterable even
+ * inside a footprint: attack-move targets a building's own cell).
  */
-function moveCost(mask: Uint8Array, roads: RoadCell[], cx: number, cz: number): number {
+function moveCost(
+  mask: Uint8Array,
+  roads: RoadCell[],
+  cx: number,
+  cz: number,
+  blocked?: Uint8Array,
+  exempt1: number = -1,
+  exempt2: number = -1,
+): number {
   if (!inBounds(cx, cz)) return Infinity;
   const cell = cellIndex(cx, cz);
   if ((mask[cell] as number) === 0) return Infinity;
+  if (
+    blocked !== undefined &&
+    cell !== exempt1 &&
+    cell !== exempt2 &&
+    (blocked[cell] as number) === 1
+  ) {
+    return Infinity;
+  }
   const cls = roadClassAt(roads, cell);
   return cls === undefined ? 1 : ROAD_CLASS_STATS[cls].moveCost;
 }
@@ -552,17 +610,21 @@ export function findPath(
   // Mask lookup (no height math) in the hot loop; terrain is static.
   const mask = passabilityMask(t);
   const roads = city.roads;
+  // 2026-10-05: completed buildings are pathing obstacles. The search's
+  // own start/goal cells stay enterable (attack-move targets a building's
+  // own cell; a unit transiently inside a footprint must still path out).
+  const blocked = buildingBlockMask(city);
   // Cross-component queries are impossible — answer without exploring.
   // (Both cells are land here in practice; water has component -1.)
   if (landComponents(t)[start] !== landComponents(t)[goal]) {
     return { path: null, expanded: 0, capped: false };
   }
   const goalCoords = cellCoords(goal);
-  if (moveCost(mask, roads, goalCoords.cx, goalCoords.cz) === Infinity) {
+  if (moveCost(mask, roads, goalCoords.cx, goalCoords.cz, blocked, start, goal) === Infinity) {
     return { path: null, expanded: 0, capped: false };
   }
   const startCoords = cellCoords(start);
-  if (moveCost(mask, roads, startCoords.cx, startCoords.cz) === Infinity) {
+  if (moveCost(mask, roads, startCoords.cx, startCoords.cz, blocked, start, goal) === Infinity) {
     return { path: null, expanded: 0, capped: false };
   }
 
@@ -598,13 +660,13 @@ export function findPath(
       const [dx, dz] = DIRS[d] as readonly [number, number];
       const nx = cx + dx;
       const nz = cz + dz;
-      const stepBase = moveCost(mask, roads, nx, nz);
+      const stepBase = moveCost(mask, roads, nx, nz, blocked, start, goal);
       if (stepBase === Infinity) continue;
       // No corner cutting: both orthogonal neighbors must be passable.
       if (dx !== 0 && dz !== 0) {
         if (
-          moveCost(mask, roads, cx + dx, cz) === Infinity ||
-          moveCost(mask, roads, cx, cz + dz) === Infinity
+          moveCost(mask, roads, cx + dx, cz, blocked, start, goal) === Infinity ||
+          moveCost(mask, roads, cx, cz + dz, blocked, start, goal) === Infinity
         ) {
           continue;
         }
@@ -748,6 +810,10 @@ export function beginFieldBuild(
   roads: RoadCell[],
   comps: Int32Array,
   earlyExit: boolean,
+  // 2026-10-05: optional building-block mask — blocked cells flood as
+  // unreachable, except the destination cell itself (attack-move targets
+  // a building's own cell; units close to the edge from there).
+  blocked?: Uint8Array,
 ): FieldBuild {
   const build: FieldBuild = {
     fieldId,
@@ -764,7 +830,7 @@ export function beginFieldBuild(
     earlyExit,
   };
   const dc = cellCoords(destCell);
-  if (moveCost(mask, roads, dc.cx, dc.cz) === Infinity) {
+  if (moveCost(mask, roads, dc.cx, dc.cz, blocked, destCell) === Infinity) {
     return build; // destination blocked: finishes immediately, all unreachable
   }
   build.dist[destCell] = 0;
@@ -789,6 +855,9 @@ export function stepFieldBuild(
   mask: Uint8Array,
   roads: RoadCell[],
   popsBudget: number,
+  // 2026-10-05: building-block mask (see beginFieldBuild). The flood
+  // source (destination) cell is exempt via build.destCell.
+  blocked?: Uint8Array,
 ): boolean {
   // Nothing to wait for (e.g. every unit was cross-component and got
   // filtered out of the wait set): finish without flooding.
@@ -810,18 +879,18 @@ export function stepFieldBuild(
     // via `cell`, i.e. dist[cell] + the cost of ENTERING `cell` (node-entry
     // costs) in the forward direction — not the cost of entering the
     // neighbor, which would charge the reverse edge instead.
-    const enterCurrent = moveCost(mask, roads, cc.cx, cc.cz);
+    const enterCurrent = moveCost(mask, roads, cc.cx, cc.cz, blocked, build.destCell);
     for (let d = 0; d < 8; d++) {
       const [dx, dz] = DIRS[d] as readonly [number, number];
       const nx = cc.cx + dx;
       const nz = cc.cz + dz;
       // The neighbor itself must be enterable (bounds + land); its own
       // move cost is irrelevant to this edge.
-      if (moveCost(mask, roads, nx, nz) === Infinity) continue;
+      if (moveCost(mask, roads, nx, nz, blocked, build.destCell) === Infinity) continue;
       if (dx !== 0 && dz !== 0) {
         if (
-          moveCost(mask, roads, cc.cx + dx, cc.cz) === Infinity ||
-          moveCost(mask, roads, cc.cx, cc.cz + dz) === Infinity
+          moveCost(mask, roads, cc.cx + dx, cc.cz, blocked, build.destCell) === Infinity ||
+          moveCost(mask, roads, cc.cx, cc.cz + dz, blocked, build.destCell) === Infinity
         ) {
           continue;
         }
@@ -852,7 +921,14 @@ export function stepFieldBuild(
  * corner-cut rule as the flood and A*. Unreached cells are UNREACHABLE,
  * the destination is DESTINATION.
  */
-export function finishFieldBuild(build: FieldBuild, mask: Uint8Array, roads: RoadCell[]): FlowField {
+export function finishFieldBuild(
+  build: FieldBuild,
+  mask: Uint8Array,
+  roads: RoadCell[],
+  // 2026-10-05: building-block mask (see beginFieldBuild); the
+  // destination cell is exempt.
+  blocked?: Uint8Array,
+): FlowField {
   const dirs = new Array<number>(gridCells());
   for (let cz = 0; cz < CITY_GRID_CELLS; cz++) {
     for (let cx = 0; cx < CITY_GRID_CELLS; cx++) {
@@ -873,12 +949,12 @@ export function finishFieldBuild(build: FieldBuild, mask: Uint8Array, roads: Roa
         const nx = cx + dx;
         const nz = cz + dz;
         if (!inBounds(nx, nz)) continue;
-        const enterCost = moveCost(mask, roads, nx, nz);
+        const enterCost = moveCost(mask, roads, nx, nz, blocked, build.destCell);
         if (enterCost === Infinity) continue;
         if (dx !== 0 && dz !== 0) {
           if (
-            moveCost(mask, roads, cx + dx, cz) === Infinity ||
-            moveCost(mask, roads, cx, cz + dz) === Infinity
+            moveCost(mask, roads, cx + dx, cz, blocked, build.destCell) === Infinity ||
+            moveCost(mask, roads, cx, cz + dz, blocked, build.destCell) === Infinity
           ) {
             continue;
           }
@@ -905,9 +981,10 @@ export function finishFieldBuild(build: FieldBuild, mask: Uint8Array, roads: Roa
  */
 export function computeFlowField(t: TerrainData, city: CityState, destCell: number): FlowField {
   const mask = passabilityMask(t);
-  const build = beginFieldBuild(0, destCell, [], [], mask, city.roads, landComponents(t), false);
-  stepFieldBuild(build, mask, city.roads, Number.MAX_SAFE_INTEGER);
-  return finishFieldBuild(build, mask, city.roads);
+  const blocked = buildingBlockMask(city);
+  const build = beginFieldBuild(0, destCell, [], [], mask, city.roads, landComponents(t), false, blocked);
+  stepFieldBuild(build, mask, city.roads, Number.MAX_SAFE_INTEGER, blocked);
+  return finishFieldBuild(build, mask, city.roads, blocked);
 }
 
 
@@ -1092,6 +1169,7 @@ function beginFieldRequest(world: World, t: TerrainData, req: FieldRequest): Fie
   const mask = passabilityMask(t);
   return beginFieldBuild(
     req.fieldId, req.destCell, live, cells, mask, world.city.roads, landComponents(t), true,
+    buildingBlockMask(world.city),
   );
 }
 
@@ -1105,7 +1183,7 @@ function buildStillWanted(world: World, build: FieldBuild): boolean {
 
 /** Publish a finished build: store the field, move reachable units, fail the rest. */
 function finishFieldRequest(world: World, t: TerrainData, build: FieldBuild): void {
-  const field = finishFieldBuild(build, passabilityMask(t), world.city.roads);
+  const field = finishFieldBuild(build, passabilityMask(t), world.city.roads, buildingBlockMask(world.city));
   world.pathfinding.fields.push(field);
   for (const id of build.unitIds) {
     const unit = findUnit(world, id);
@@ -1175,7 +1253,7 @@ export function runPathfinding(world: World, t: TerrainData): void {
       pf.activeBuild = null; // everyone re-tasked/stopped mid-build
     } else {
       const mask = passabilityMask(t);
-      const done = stepFieldBuild(build, mask, world.city.roads, FIELD_POPS_PER_TICK);
+      const done = stepFieldBuild(build, mask, world.city.roads, FIELD_POPS_PER_TICK, buildingBlockMask(world.city));
       if (done) {
         finishFieldRequest(world, t, build);
         pf.activeBuild = null;

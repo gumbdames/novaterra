@@ -52,8 +52,10 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   pure and unit-tested in `tests/render.fog.test.ts`.
 - `FogShroud`: one height-conforming 64×64-quad plane
   (y = max(terrain, waterLevel) + 0.6), one 64×64 RGBA `DataTexture`,
-  `MeshBasicMaterial` with `mat.fog = false` (scene fog and day/night
-  exposure must not lift the black), `depthWrite: false`,
+  `MeshBasicMaterial` with `mat.fog = false` AND `mat.toneMapped = false`
+  (scene fog and day/night exposure must not lift the black — the night
+  exposure floor was raised 2026-10-05, so tone-mapping immunity is what
+  keeps the shroud dark), `depthWrite: false`,
   `renderOrder = 4`, `frustumCulled = false`. Exactly **+1 draw call**;
   repainted at fog cadence from the sim tick, never per frame. Reads
   `world.fog` only — never mutates sim state.
@@ -82,12 +84,15 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   rig makes it visible. `sunParams(tick)` is pure (same pattern as
   `daylightFactor` — Node-testable, deterministic); the per-scene
   `DayNightRig` lerps the noon rig every frame from the sim tick: sun
-  2.0→0.06, hemi 1.1→0.22, sky/fog colors, exposure 1.0→0.45, env
+  2.0→0.18, hemi 1.1→0.45, sky/fog colors, exposure 1.0→0.62, env
   intensity 0.5→0.06, water TSL dim, night-window emissive on the
   shared `glassBlue` registry, one `THREE.Points` star field (+1 draw
   call, hidden by day), blob shadows fading to 0.3. +0 draw calls
-  otherwise. Pause ⇒ frozen sky (tick static); save/load ⇒ zero new
-  fields (phase derives from the snapshotted tick). The trailer pins
+  otherwise. Night floors were raised 2026-10-05 (sun 0.06→0.18,
+  hemi 0.22→0.45, exposure 0.45→0.62 — the old night was unreadably
+  dark); day values and the deep-blue-never-black feel are unchanged.
+  Pause ⇒ frozen sky (tick static); save/load ⇒ zero new fields (phase
+  derives from the snapshotted tick). The trailer pins
   `GOLDEN_HOUR_TICK` with `keepBackground` (its baked sunset gradient
   stays; ~7,400 captured ticks ≈ one full cycle would otherwise
   strobe). Gameplay-critical overlay materials (selection rings,
@@ -470,8 +475,15 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   vertex-colored geometry — 4 instanced layers max, all-or-nothing
   upgrade; a plain-`Map` test harness keeps capsules forever). Density
   scales with city population (1 walker per 4 residents, 1 car per 20).
-  Poses are pure functions of (seed, index, tick) — ping-pong tracks
-  with no per-agent state, so pause/seek/rebuild are exact.
+  Pedestrians walk AROUND buildings: completed and in-progress
+  footprints are excluded from the walkable tiles
+  (`buildAmbientModel(…, isBlockedCell)`, blocked cells are part of
+  `ambientModelDigest`). Rebuilds preserve agents whose home/target
+  cells are still walkable (`mergeAmbientModels` — pure in (prev,
+  next)), so a building completing no longer makes the whole crowd
+  blink; only walkers on the new building's own cells take fresh
+  tracks. Poses are pure functions of (seed, index, tick) — ping-pong
+  tracks with no per-agent state, so pause/seek/rebuild are exact.
   `EntityRenderer` constructs the overlay + crowd in its constructor,
   syncs both in `sync()`, and disposes them in `dispose()`.
 - Transit hooks for Phases 4–6: `ambientTransitDensity(pop)` sizes
@@ -499,11 +511,13 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   (`unregisterAmbientTransitProvider` + `dispose()` — the crowd never
   disposes provider assets). Tested in
   `tests/render.transitProviders.test.ts` (12 tests).
-- Tested in `tests/render.cityLife.test.ts` (29 tests): paving
+- Tested in `tests/render.cityLife.test.ts` (44 tests): paving
   geometry/digest/rebuild contract, density scaling (0 pop ⇒ 0
   agents), zone-weighted homes, direction-biased targets, road-bound
-  cars, pose purity/determinism, the no-sim-leakage rule, transit
-  density pins + provider registry round-trip, and a 500/150 worst-
+  cars, building-footprint exclusion + digest keying + the rebuild
+  merge (valid agents preserved, blocked ones re-derived, no crowd
+  teleport on completion), pose purity/determinism, the no-sim-leakage
+  rule, transit density pins + provider registry round-trip, and a 500/150 worst-
   case perf sync with headroom.
 - Parking buildings (same workstream): `proceduralModels.ts` has
   `buildParkingLot` / `buildParkingGarage` (registered in
@@ -865,7 +879,18 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   `removeEntity` manage dense swap-compacted slots (the moved instance's
   owner record is updated, including its stripe/pennant slot indices);
   pools double capacity preserving order. Frame protocol:
-  `beginFrame()` → `writeTransform(id, …)` per entity → `endFrame(camera)`.
+  `beginFrame()` → `writeTransform(kind, id, …)` per entity →
+  `endFrame(camera)`.
+- **Kind namespacing (2026-10-05):** unit and building id spaces both
+  start at 1, so every instancer call takes `kind: 'unit' | 'building'`
+  first and the entity map + pool owner lists key on
+  `` `${kind}:${id}` `` — unit #5 and building #5 coexist without
+  colliding (before, a building completing as `addEntity(5)` replaced
+  the person's record and the person's per-frame writes overwrote the
+  building's matrices). A re-add with a different kind than the existing
+  record `console.warn`s (caller bug). Selection rings are namespaced
+  the same way (`setSelected(ids, kind?)`, default `'unit'` — only unit
+  ids flow today).
   Health-bar jobs accumulate per frame and flush as billboards in
   `endFrame` (two draw calls total when any damaged unit is shown, zero
   otherwise). All overlay layer pools (stripe/pennant/bars) are created
@@ -885,7 +910,7 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
   `debugColors(poolKey)` (B19: per-instance tint readback),
   `drawCallCount()` (pools with count > 0). `EntityRenderer.debugInstancer`
   exposes the instancer (null in legacy mode). Covered by
-  `tests/render.entityInstancing.test.ts` (22 tests).
+  `tests/render.entityInstancing.test.ts` (26 tests).
 - Roadmap B19 (2026-10-02): per-instance building hull tint — blocks of
   identical housing read clone-stamped at city scale. `buildingHullTint`
   (pure, splitmix32-seeded by building id: full hue wheel, 0–6%

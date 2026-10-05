@@ -5,11 +5,12 @@ import {
   determineMuseDoctrine,
   thinkMuse,
   getMuseOpponentDialogue,
+  findSpawnSpot,
 } from '../src/sim/aiMuse';
 import { addAIPlayer, createAISystem } from '../src/sim/ai';
 import { createCommandQueue, registerCoreCommands } from '../src/sim/commands';
 import { registerUnitCommands } from '../src/sim/units';
-import { getPlayer } from '../src/sim/city';
+import { getPlayer, BUILDING_DEFS, footprintCells, cellIndex, cellIsWater } from '../src/sim/city';
 import { generateTerrain } from '../src/sim/terrain';
 import { registerAgeCommands } from '../src/sim/ages';
 
@@ -134,5 +135,54 @@ describe('aiMuse — Mode 2: Playing Against Muse', () => {
     expect(world.ai.players.length).toBeGreaterThan(0);
     const museAi = world.ai.players[0];
     expect(museAi?.owner).toBe(1);
+  });
+
+  it('findSpawnSpot nudges the anchor-building spot out of ≥2×2 footprints (Fix 5)', () => {
+    const world = createWorld(78);
+    const terrain = generateTerrain(78);
+    // Dry land for the anchor (the nudge needs dry cells nearby).
+    let ax = 128;
+    let az = 128;
+    let found = false;
+    for (let r = 0; r < 40 && !found; r++) {
+      for (let dz = -r; dz <= r && !found; dz++) {
+        for (let dx = -r; dx <= r && !found; dx++) {
+          if (!cellIsWater(terrain, 128 + dx, 128 + dz)) {
+            ax = 128 + dx;
+            az = 128 + dz;
+            found = true;
+          }
+        }
+      }
+    }
+    expect(found).toBe(true);
+    // AI-owned 3×3 barracks as the spawn anchor.
+    const def = BUILDING_DEFS['barracks'];
+    world.city.buildings.push({
+      id: 1,
+      kind: 'barracks',
+      owner: 1,
+      cx: ax,
+      cz: az,
+      facing: 0,
+      progress: 1,
+      level: 1,
+      operational: true,
+      powered: true,
+      watered: true,
+      hp: def.hp,
+    } as never);
+    const cells = new Set(footprintCells(ax, az, def.footprintW, def.footprintH));
+    const cellOf = (p: { x: number; z: number }): number =>
+      cellIndex(Math.floor((p.x + 256) / 2), Math.floor((p.z + 256) / 2));
+    // Without terrain the legacy spot stands (inside the 3×3 footprint)
+    // — the spawnUnit command is the backstop there.
+    const legacy = findSpawnSpot(world, 1, 'rifles');
+    expect(legacy).not.toBeNull();
+    expect(cells.has(cellOf(legacy!))).toBe(true);
+    // With terrain the spot is nudged outside the footprint.
+    const spot = findSpawnSpot(world, 1, 'rifles', terrain);
+    expect(spot).not.toBeNull();
+    expect(cells.has(cellOf(spot!))).toBe(false);
   });
 });

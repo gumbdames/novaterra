@@ -34,11 +34,17 @@
  *
  * Headless (node env): `document` is stubbed for the health-bar canvas
  * texture; everything else is pure three.js scene graph work.
+ *
+ * Instanced-entity ids are namespaced by kind (`'unit' | 'building'`):
+ * unit and building id spaces both start at 1, so `addEntity` /
+ * `removeEntity` / `writeTransform` / `recolorEntity` take the kind first
+ * and key the entity map on `unit:<id>` / `building:<id>`.
  */
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import * as THREE from 'three';
 
 import { EntityInstancer, buildingHullTint } from '../src/render/entityInstancing';
+import type { InstancedEntityKind } from '../src/render/entityInstancing';
 import { EntityRenderer } from '../src/render/entities';
 import type { LoadedModel } from '../src/render/models';
 import { UNIT_DEFS, type UnitKind, type UnitRecord } from '../src/sim/units';
@@ -93,9 +99,10 @@ function addBoxEntity(
   id: number,
   pool = 'tank',
   model?: LoadedModel,
+  kind: InstancedEntityKind = 'unit',
 ): void {
   inst.definePool(pool, model ?? boxModel());
-  inst.addEntity(id, [{ pool, offset: OFFSET.clone() }], {
+  inst.addEntity(kind, id, [{ pool, offset: OFFSET.clone() }], {
     stripe: true,
     stripeScale: 1,
     team: '#3aa0ff',
@@ -107,8 +114,9 @@ function writeAt(
   id: number,
   x: number,
   showBar = false,
+  kind: InstancedEntityKind = 'unit',
 ): void {
-  inst.writeTransform(id, {
+  inst.writeTransform(kind, id, {
     x,
     y: 0,
     z: 0,
@@ -217,7 +225,7 @@ describe('EntityInstancer pools', () => {
     inst.endFrame();
 
     // Remove the middle entity: entity 3's instance must move into slot 1.
-    inst.removeEntity(2);
+    inst.removeEntity('unit', 2);
     expect(inst.entityCount).toBe(2);
     const stats = inst.poolStats().find((s) => s.key === 'tank#0');
     expect(stats?.count).toBe(2);
@@ -289,7 +297,7 @@ describe('EntityInstancer pools', () => {
       const scene = new THREE.Scene();
       const inst = new EntityInstancer(scene);
       for (const id of [7, 3, 9]) addBoxEntity(inst, id, 'tank');
-      inst.removeEntity(3);
+      inst.removeEntity('unit', 3);
       inst.beginFrame();
       writeAt(inst, 7, 1.5, true);
       writeAt(inst, 9, -2.25, false);
@@ -332,7 +340,7 @@ describe('EntityInstancer pools', () => {
     // slot count, never the allocated capacity (stale slots render as
     // ghost geometry at the origin).
     expect(findMesh().count).toBe(3);
-    inst.removeEntity(2);
+    inst.removeEntity('unit', 2);
     inst.beginFrame();
     writeAt(inst, 1, 0);
     writeAt(inst, 3, 0);
@@ -358,7 +366,7 @@ describe('EntityInstancer pools', () => {
     expect(sharedDisposed).toBe(false);
     expect(inst.entityCount).toBe(0);
     // Use after dispose throws loudly instead of corrupting state.
-    expect(() => inst.addEntity(2, [], { stripe: false, stripeScale: 0, team: '#fff' })).toThrow();
+    expect(() => inst.addEntity('unit', 2, [], { stripe: false, stripeScale: 0, team: '#fff' })).toThrow();
   });
 });
 
@@ -558,7 +566,7 @@ describe('buildingHullTint', () => {
 describe('EntityInstancer hull tint', () => {
   function addTintedBuilding(inst: EntityInstancer, id: number): void {
     inst.definePool('house', boxModel(), { colored: true });
-    inst.addEntity(id, [{ pool: 'house', offset: OFFSET.clone() }], {
+    inst.addEntity('building', id, [{ pool: 'house', offset: OFFSET.clone() }], {
       stripe: false,
       stripeScale: 0,
       team: '#3aa0ff',
@@ -613,7 +621,7 @@ describe('EntityInstancer hull tint', () => {
     addTintedBuilding(inst, 11);
     addTintedBuilding(inst, 22);
     addTintedBuilding(inst, 33);
-    inst.removeEntity(11); // entity 33's slot moves into slot 0
+    inst.removeEntity('building', 11); // entity 33's slot moves into slot 0
     const colors = inst.debugColors('house');
     expect(colors).not.toBeNull();
     expect(colors!.length).toBe(2 * 3);
@@ -621,6 +629,115 @@ describe('EntityInstancer hull tint', () => {
     expect(colors![0]).toBeCloseTo(t33.r, 5);
     expect(colors![1]).toBeCloseTo(t33.g, 5);
     expect(colors![2]).toBeCloseTo(t33.b, 5);
+    inst.dispose();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Kind namespacing: unit and building id spaces both start at 1.
+// ---------------------------------------------------------------------------
+
+describe('EntityInstancer kind namespacing', () => {
+  it('unit #5 and building #5 coexist; per-frame writes never cross namespaces', () => {
+    const scene = new THREE.Scene();
+    const inst = new EntityInstancer(scene);
+    inst.definePool('tank', boxModel());
+    inst.definePool('house', boxModel());
+    inst.addEntity('unit', 5, [{ pool: 'tank', offset: OFFSET.clone() }], {
+      stripe: true,
+      stripeScale: 1,
+      team: '#3aa0ff',
+    });
+    inst.addEntity('building', 5, [{ pool: 'house', offset: OFFSET.clone() }], {
+      stripe: false,
+      stripeScale: 0,
+      team: '#ff3a3a',
+    });
+    expect(inst.entityCount).toBe(2);
+
+    inst.beginFrame();
+    writeAt(inst, 5, 10, false, 'unit'); // the person walks to x=10
+    writeAt(inst, 5, 50, false, 'building'); // the building is written at x=50
+    inst.endFrame();
+
+    // Before the fix, the building's addEntity replaced the person's
+    // record and the person's writeTransform overwrote the building's
+    // matrices — the person visually became a building.
+    const tank = inst.debugMatrices('tank');
+    const house = inst.debugMatrices('house');
+    expect(tank).not.toBeNull();
+    expect(house).not.toBeNull();
+    expect(tank![12]).toBeCloseTo(10, 5); // unit slot untouched by the building write
+    expect(house![12]).toBeCloseTo(50, 5); // building slot untouched by the unit write
+    inst.dispose();
+  });
+
+  it("removeEntity('building', 5) leaves unit #5's slots alive", () => {
+    const scene = new THREE.Scene();
+    const inst = new EntityInstancer(scene);
+    inst.definePool('tank', boxModel());
+    inst.definePool('house', boxModel());
+    addBoxEntity(inst, 5, 'tank', undefined, 'unit');
+    inst.addEntity('building', 5, [{ pool: 'house', offset: OFFSET.clone() }], {
+      stripe: false,
+      stripeScale: 0,
+      team: '#ff3a3a',
+    });
+    inst.removeEntity('building', 5);
+    expect(inst.entityCount).toBe(1);
+
+    inst.beginFrame();
+    writeAt(inst, 5, 10, false, 'unit');
+    inst.endFrame();
+    const tank = inst.debugMatrices('tank');
+    expect(tank![12]).toBeCloseTo(10, 5);
+    // The house pool is empty — no ghost instance at the origin.
+    expect(inst.poolStats().find((s) => s.key === 'house#0')?.count).toBe(0);
+    inst.dispose();
+  });
+
+  it('re-adding the same kind replaces silently; unknown-kind writes are no-ops', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const scene = new THREE.Scene();
+      const inst = new EntityInstancer(scene);
+      addBoxEntity(inst, 5); // unit
+      addBoxEntity(inst, 5); // re-add, same kind — replace, no warning
+      expect(warn).not.toHaveBeenCalled();
+      expect(inst.entityCount).toBe(1);
+      // A write for a (kind, id) that was never added is a silent no-op.
+      inst.beginFrame();
+      writeAt(inst, 5, 99, false, 'building'); // no building:5 — no-op
+      writeAt(inst, 5, 10, false, 'unit');
+      inst.endFrame();
+      const tank = inst.debugMatrices('tank');
+      expect(tank![12]).toBeCloseTo(10, 5);
+      inst.dispose();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('swap-compaction updates the namespaced owner records', () => {
+    const scene = new THREE.Scene();
+    const inst = new EntityInstancer(scene);
+    inst.definePool('tank', boxModel());
+    addBoxEntity(inst, 1, 'tank', undefined, 'unit');
+    addBoxEntity(inst, 2, 'tank', undefined, 'unit');
+    addBoxEntity(inst, 3, 'tank', undefined, 'building');
+    inst.removeEntity('unit', 1); // building:3's slot moves into slot 0
+    expect(inst.entityCount).toBe(2);
+    // Both survivors still receive their writes after the move.
+    inst.beginFrame();
+    writeAt(inst, 2, 20, false, 'unit');
+    writeAt(inst, 3, 30, false, 'building');
+    inst.endFrame();
+    const tank = inst.debugMatrices('tank');
+    expect(tank).not.toBeNull();
+    // Slot 0 holds the moved building:3 (x=30), slot 1 the untouched
+    // unit:2 (x=20) — the namespaced owner records survived the move.
+    expect(tank![12]).toBeCloseTo(30, 5);
+    expect(tank![28]).toBeCloseTo(20, 5);
     inst.dispose();
   });
 });

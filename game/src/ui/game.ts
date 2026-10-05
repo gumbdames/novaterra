@@ -154,6 +154,7 @@ import {
   militaryUnitIds,
   nearestUnit,
   pruneSelection,
+  resolveClickPick,
   selectBuilding,
   selectUnits,
   toggleUnit,
@@ -3117,15 +3118,29 @@ class GameController {
       return;
     }
 
-    const clicked = nearestUnit(world.units, point.x, point.z, CLICK_TOLERANCE);
+    // 2026-10-05: building-first click priority (resolveClickPick) — a
+    // click landing inside a building footprint selects the building;
+    // units loitering within click tolerance no longer steal building
+    // clicks. Units in the open still select normally.
+    const pick = resolveClickPick(
+      world.units,
+      (x, z) => this.buildingAt(x, z)?.id ?? null,
+      point.x,
+      point.z,
+      CLICK_TOLERANCE,
+    );
+    if (pick?.kind === 'building') {
+      this.lastClickedUnitId = null;
+      if (!shift) {
+        this.selection = selectBuilding(pick.id);
+        this.audio.playSfx('select');
+      }
+      return;
+    }
+    const clicked = pick?.kind === 'unit' ? pick.unit : null;
     if (!clicked) {
       this.lastClickedUnitId = null;
-      // Clicked open ground: maybe a building.
-      const building = this.buildingAt(point.x, point.z);
-      if (building && !shift) {
-        this.selection = selectBuilding(building.id);
-        this.audio.playSfx('select');
-      } else if (!shift) {
+      if (!shift) {
         this.selection = clearSelection();
       }
       return;

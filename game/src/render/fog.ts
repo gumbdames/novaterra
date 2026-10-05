@@ -128,8 +128,12 @@ export class FogShroud {
       depthWrite: false,
     });
     // The shroud is cartography, not scenery: scene fog and day/night
-    // exposure must not lift the black.
+    // exposure must not lift the black. toneMapped: false opts out of
+    // the renderer's ACES + exposure lerp (the night exposure floor was
+    // raised 2026-10-05 — without this the shroud would visibly lighten
+    // at night).
     mat.fog = false;
+    mat.toneMapped = false;
     this.mesh = new THREE.Mesh(geo, mat);
     this.mesh.name = 'fogShroud';
     this.mesh.renderOrder = 4; // after terrain, before entities/billboards

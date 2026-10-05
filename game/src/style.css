@@ -340,12 +340,14 @@ body {
   flex: 1;
 }
 
-/* advisor: worst problems first, left edge below the top bar */
+/* advisor: worst problems first. 2026-10-05: the menu rail now owns the
+ * full left edge, so the advisor sits just right of it. */
 .hud-advisor {
   position: absolute;
   top: 64px;
-  left: 12px;
+  left: 404px;
   width: 264px;
+  max-width: calc(100vw - 416px);
   background: var(--panel);
   border: 1px solid var(--panel-border);
   border-radius: 6px;
@@ -569,18 +571,18 @@ body {
   color: var(--ink-dim);
 }
 
-/* selection + train/build panel, bottom-left */
+/* selection + train/build panel — FIXED full-height left rail
+ * (2026-10-05): the panel always spans the left edge (topbar to bottom)
+ * and never resizes with content; overflowing content scrolls inside.
+ * The menu rail is sticky so the tab buttons stay put while the
+ * content column scrolls. */
 .hud-selection {
   position: absolute;
   left: 12px;
+  top: 64px;
   bottom: 12px;
-  /* Wide enough for 3-tab menu content without cramping; capped to the
-   * viewport so narrow windows never get a horizontal scrollbar (the
-   * panel scrolls vertically instead — the menu's own overflow-y rule
-   * above is the pattern to preserve). */
-  width: 360px;
+  width: 380px;
   max-width: calc(100vw - 24px);
-  max-height: 44vh;
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--panel-border);
@@ -590,14 +592,21 @@ body {
   backdrop-filter: blur(6px);
 }
 
-/* Narrow windows: the selection panel hugs the corner and can grow
- * taller instead of ever causing a horizontal scrollbar. */
+/* Narrow windows: the menu becomes a fixed bottom sheet; the advisor
+ * takes the upper-left slot back. */
 @media (max-width: 700px) {
   .hud-selection {
     left: 8px;
+    right: 8px;
+    width: auto;
+    top: auto;
     bottom: 8px;
+    max-height: 55vh;
+  }
+  .hud-advisor {
+    left: 8px;
+    top: 56px;
     max-width: calc(100vw - 16px);
-    max-height: 60vh;
   }
 }
 

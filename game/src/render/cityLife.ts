@@ -28,7 +28,11 @@
  *     tiles and simple cars driving on roads. Density scales with the
  *     city's population: a booming residential area visibly bustles,
  *     an empty zone does not. Pedestrians stream toward commercial and
- *     industrial tiles (direction bias by zone type — cosmetic only).
+ *     industrial tiles (direction bias by zone type — cosmetic only)
+ *     and walk AROUND buildings: completed and in-progress footprints
+ *     are excluded from the walkable tiles. Rebuilds preserve agents
+ *     whose tracks stay valid (`mergeAmbientModels`) so the crowd
+ *     doesn't blink when a building completes.
  *     Nothing for the player to manage, ever.
  *  3. Ambient transit hooks — population-scaled target counts for
  *     buses, trams, ferries, and airliners. Phases 4–6 wire real
@@ -64,6 +68,7 @@ import {
   cellCenterWorld,
   cellCoords,
   cellIndex,
+  footprintCells,
 } from '../sim/city';
 import { ROAD_CLASS_ORDER } from '../sim/city';
 import type { RoadCell } from '../sim/city';
@@ -383,11 +388,17 @@ export interface CarAgent {
 }
 
 export interface AmbientModel {
-  /** Rebuild key (zone digest + roads + completed-building ids + seed). */
+  /** Rebuild key (zone digest + roads + completed-building ids + blocked cells + seed). */
   digest: number;
   seed: number;
   peds: PedAgent[];
   cars: CarAgent[];
+  /**
+   * Cells that are walkable in this model (zone tiles minus blocked
+   * ones). Used by the crowd's rebuild diff to decide which existing
+   * agents survive a rebuild.
+   */
+  walkableCells: number[];
 }
 
 /** Pedestrian tile weight by zone: residential streets are the busiest. */
@@ -428,21 +439,29 @@ export const CAR_PAINT_COLORS = [
 
 /**
  * Build the ambient agent model: pure function of (zones, roads, seed,
- * population). Deterministic — same inputs ⇒ identical agents. Rebuilt
- * only when the digest changes (zone painted, road built, building
- * completed/demolished); the caller computes that digest with
- * `ambientModelDigest` and stores it on the returned model.
+ * population, blocked cells). Deterministic — same inputs ⇒ identical
+ * agents. Rebuilt only when the digest changes (zone painted, road
+ * built, building placed/completed/demolished); the caller computes that
+ * digest with `ambientModelDigest` and stores it on the returned model.
+ *
+ * `isBlockedCell` excludes building footprints from the walkable tile
+ * pool — pedestrians never stroll through houses (they walk on the
+ * paved cells around them). Completed AND in-progress buildings block:
+ * the site is reserved from placement, not just from completion.
  */
 export function buildAmbientModel(
   zones: ReadonlyArray<ZoneAssignment>,
   roads: ReadonlyArray<RoadCell>,
   seed: number,
   cityPop: number,
+  isBlockedCell?: (cell: number) => boolean,
 ): AmbientModel {
-  // Tile lookup: only the three classic zone types are paved-walkable.
+  // Tile lookup: only the three classic zone types are paved-walkable,
+  // and tiles under building footprints are excluded.
   const tileByCell = new Map<number, AmbientTile>();
   const poolByZone = new Map<ZoneType, AmbientTile[]>();
   const weightedHomes: AmbientTile[] = [];
+  const walkableCells: number[] = [];
   for (const z of zones) {
     if (
       z.zone !== ZoneType.RESIDENTIAL &&
@@ -451,9 +470,11 @@ export function buildAmbientModel(
     ) {
       continue;
     }
+    if (isBlockedCell !== undefined && isBlockedCell(z.cell)) continue;
     const { cx, cz } = cellCoords(z.cell);
     const tile: AmbientTile = { cell: z.cell, x: cellCenterWorld(cx), z: cellCenterWorld(cz), zone: z.zone };
     tileByCell.set(z.cell, tile);
+    walkableCells.push(z.cell);
     let pool = poolByZone.get(z.zone);
     if (pool === undefined) {
       pool = [];
@@ -548,7 +569,7 @@ export function buildAmbientModel(
     });
   }
 
-  return { digest: 0, seed: seed >>> 0, peds, cars };
+  return { digest: 0, seed: seed >>> 0, peds, cars, walkableCells };
 }
 
 /**
@@ -674,16 +695,24 @@ export function carPoseAt(car: CarAgent, tick: number): AgentPose {
 
 /**
  * Rebuild key for the ambient model: zone assignments (the zone
- * digest), road cells, completed-building ids (placement order), and
- * the map seed. Changes when a zone is painted, a road is built or
- * demolished, or a building is placed/completed/demolished; stable
- * otherwise — the crowd rebuilds only on structural change.
+ * digest), road cells, completed-building ids (placement order),
+ * blocked footprint cells (sorted — placement order would churn the
+ * key), and the map seed. Changes when a zone is painted, a road is
+ * built or demolished, a building is placed (in-progress footprints
+ * block immediately), completed, or demolished; stable otherwise — the
+ * crowd rebuilds only on structural change.
+ *
+ * The blocked cells must be part of the key: a fresh footprint
+ * invalidates agents walking there, and completion changes nothing in
+ * the blocked set but changes density (pop), so the completed ids stay
+ * in the key too.
  */
 export function ambientModelDigest(
   zones: ReadonlyArray<ZoneAssignment>,
   roads: ReadonlyArray<RoadCell>,
   completedBuildingIds: ReadonlyArray<number>,
   seed: number,
+  blockedCells?: ReadonlyArray<number>,
 ): number {
   let h = zoneDigest(zones) | 0;
   for (const c of roads) {
@@ -698,9 +727,74 @@ export function ambientModelDigest(
     h ^= id | 0;
     h = Math.imul(h, 16777619);
   }
+  if (blockedCells !== undefined) {
+    for (const cell of blockedCells) {
+      h ^= cell | 0;
+      h = Math.imul(h, 16777619);
+    }
+  }
   h ^= seed | 0;
   h = Math.imul(h, 16777619);
   return h | 0;
+}
+
+/**
+ * Rebuild diff: merge a freshly built ambient model with the previous
+ * one, preserving existing agents whose tracks are still valid instead
+ * of regenerating everyone. This kills the crowd "blink" that used to
+ * fire on every building completion: an agent keeps its exact pose
+ * (poses are pure in (agent, tick)) whenever its home and target cells
+ * are still walkable in the new model; only agents whose cells got
+ * blocked — plus genuinely new slots from population growth — take the
+ * new model's tracks.
+ *
+ * Deterministic: pure in (prev, next) — no RNG, no wall clock. Cars
+ * keep the old agent whenever the new model regenerated the identical
+ * track (same segment, phase, and speed).
+ *
+ * Remaining limitation (documented, not fixable within the zero-state
+ * contract): an agent whose home or target cell became blocked still
+ * teleports to a fresh track — the crowd holds no per-agent state, so
+ * there is no way to walk it out of the footprint gradually. In
+ * practice this affects only the walkers on the new building's own
+ * cells; everyone else keeps strolling uninterrupted.
+ */
+export function mergeAmbientModels(prev: AmbientModel, next: AmbientModel): AmbientModel {
+  const walkable = new Set<number>(next.walkableCells);
+  const peds: PedAgent[] = new Array<PedAgent>(next.peds.length);
+  const sharedPeds = Math.min(prev.peds.length, next.peds.length);
+  for (let i = 0; i < next.peds.length; i++) {
+    const fresh = next.peds[i] as PedAgent;
+    const old = i < sharedPeds ? (prev.peds[i] as PedAgent) : undefined;
+    peds[i] =
+      old !== undefined && walkable.has(old.cell) && walkable.has(old.targetCell)
+        ? old
+        : fresh;
+  }
+  const cars: CarAgent[] = new Array<CarAgent>(next.cars.length);
+  const sharedCars = Math.min(prev.cars.length, next.cars.length);
+  for (let i = 0; i < next.cars.length; i++) {
+    const fresh = next.cars[i] as CarAgent;
+    const old = i < sharedCars ? (prev.cars[i] as CarAgent) : undefined;
+    cars[i] =
+      old !== undefined &&
+      old.ax === fresh.ax &&
+      old.az === fresh.az &&
+      old.dirX === fresh.dirX &&
+      old.dirZ === fresh.dirZ &&
+      old.dist === fresh.dist &&
+      old.phase === fresh.phase &&
+      old.speed === fresh.speed
+        ? old
+        : fresh;
+  }
+  return {
+    digest: next.digest,
+    seed: next.seed,
+    peds,
+    cars,
+    walkableCells: next.walkableCells,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -881,17 +975,34 @@ export class AmbientCrowd {
     const roads = city.roads ?? [];
     const pop = ambientCityPopulation(world);
     const completedIds: number[] = [];
+    // Building footprints (completed AND in-progress) are not walkable:
+    // pedestrians stroll around buildings, never through them.
+    const blockedCells = new Set<number>();
     for (const b of city.buildings) {
       if (b.progress >= 1) completedIds.push(b.id);
+      const def = BUILDING_DEFS[b.kind];
+      if (def === undefined) continue;
+      for (const cell of footprintCells(b.cx, b.cz, def.footprintW, def.footprintH)) {
+        blockedCells.add(cell);
+      }
     }
+    const isBlockedCell = (cell: number): boolean => blockedCells.has(cell);
     const seed = world.seed >>> 0;
-    const digest = ambientModelDigest(zones, roads, completedIds, seed);
+    const digest = ambientModelDigest(
+      zones,
+      roads,
+      completedIds,
+      seed,
+      [...blockedCells].sort((a, b) => a - b),
+    );
     if (digest !== this.lastDigest) {
       this.lastDigest = digest;
       this.rebuilds += 1;
-      const model = buildAmbientModel(zones, roads, seed, pop);
-      model.digest = digest;
-      this.model = model;
+      const next = buildAmbientModel(zones, roads, seed, pop, isBlockedCell);
+      next.digest = digest;
+      // Rebuild diff: keep agents whose tracks are still valid so the
+      // crowd doesn't blink on every building completion.
+      this.model = this.model !== null ? mergeAmbientModels(this.model, next) : next;
       this.applyAgentColors();
     }
     this.maybeBuildPersonLayers();

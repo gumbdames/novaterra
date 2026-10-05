@@ -17,7 +17,7 @@ import * as THREE from 'three';
 import { createWorld, type World } from '../src/sim/world';
 import { PERSON_MODEL_KEYS } from '../src/render/people';
 import type { LoadedModel } from '../src/render/models';
-import { cellIndex, ZoneType, type BuildingKind, type BuildingRecord } from '../src/sim/city';
+import { cellIndex, ZoneType, footprintCells, type BuildingKind, type BuildingRecord } from '../src/sim/city';
 import { BUILDING_DEFS } from '../src/sim/city';
 import { digestWorld } from '../src/sim/digest';
 import {
@@ -37,6 +37,7 @@ import {
   pedPoseAt,
   carPoseAt,
   ambientModelDigest,
+  mergeAmbientModels,
   ambientTransitDensity,
   MAX_AMBIENT_BUS,
   MAX_AMBIENT_TRAM,
@@ -362,6 +363,201 @@ describe('buildAmbientModel', () => {
     expect(ambientModelDigest([], world.city.roads, ids, world.seed)).not.toBe(d0);
     expect(ambientModelDigest(world.city.zones, [], ids, world.seed)).not.toBe(d0);
     expect(ambientModelDigest(world.city.zones, world.city.roads, [999999], world.seed)).not.toBe(d0);
+  });
+
+  it('digest keys on blocked cells too (fresh footprints rebuild the crowd)', () => {
+    const world = makeCityWorld();
+    const ids = world.city.buildings.map((b) => b.id);
+    const none = ambientModelDigest(world.city.zones, world.city.roads, ids, world.seed, []);
+    const one = ambientModelDigest(
+      world.city.zones, world.city.roads, ids, world.seed,
+      [cellIndex(11, 11)],
+    );
+    const two = ambientModelDigest(
+      world.city.zones, world.city.roads, ids, world.seed,
+      [cellIndex(11, 11), cellIndex(12, 12)],
+    );
+    expect(one).not.toBe(none);
+    expect(two).not.toBe(one);
+    // Sorted order is the caller's contract — same set, any order.
+    const reordered = ambientModelDigest(
+      world.city.zones, world.city.roads, ids, world.seed,
+      [cellIndex(12, 12), cellIndex(11, 11)].sort((a, b) => a - b),
+    );
+    expect(reordered).toBe(two);
+    // Omitting the param keeps the legacy 4-arg digest stable.
+    expect(none).toBe(ambientModelDigest(world.city.zones, world.city.roads, ids, world.seed));
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Pedestrians avoid buildings; rebuilds preserve valid agents
+// ---------------------------------------------------------------------------
+
+describe('buildings block pedestrians', () => {
+  /** Footprint cells of one building record. */
+  function blockedOf(b: BuildingRecord): Set<number> {
+    const def = BUILDING_DEFS[b.kind];
+    return new Set(footprintCells(b.cx, b.cz, def.footprintW, def.footprintH));
+  }
+
+  it('no ped home or target sits on a blocked cell', () => {
+    const world = makeCityWorld();
+    const pop = ambientCityPopulation(world);
+    const blocked = new Set<number>();
+    for (const b of world.city.buildings) {
+      for (const c of blockedOf(b)) blocked.add(c);
+    }
+    expect(blocked.size).toBeGreaterThan(0);
+    const model = buildAmbientModel(
+      world.city.zones, world.city.roads, world.seed, pop,
+      (cell) => blocked.has(cell),
+    );
+    expect(model.peds.length).toBeGreaterThan(0);
+    for (const ped of model.peds) {
+      expect(blocked.has(ped.cell)).toBe(false);
+      expect(blocked.has(ped.targetCell)).toBe(false);
+    }
+    // walkableCells mirrors the exclusion (used by the rebuild diff).
+    for (const cell of model.walkableCells) {
+      expect(blocked.has(cell)).toBe(false);
+    }
+  });
+
+  it('blocking every tile leaves no walkable cells and no peds', () => {
+    const world = makeCityWorld();
+    const pop = ambientCityPopulation(world);
+    const model = buildAmbientModel(
+      world.city.zones, world.city.roads, world.seed, pop,
+      () => true,
+    );
+    expect(model.walkableCells).toHaveLength(0);
+    expect(model.peds).toHaveLength(0);
+  });
+
+  it('without the callback the model is unchanged (legacy behavior)', () => {
+    const world = makeCityWorld();
+    const pop = ambientCityPopulation(world);
+    const a = buildAmbientModel(world.city.zones, world.city.roads, world.seed, pop);
+    const b = buildAmbientModel(
+      world.city.zones, world.city.roads, world.seed, pop,
+      () => false, // nothing blocked
+    );
+    expect(a.peds).toEqual(b.peds);
+    expect(a.cars).toEqual(b.cars);
+  });
+});
+
+describe('mergeAmbientModels', () => {
+  it('preserves agents whose cells stay walkable; replaces blocked ones', () => {
+    const world = makeCityWorld();
+    const pop = ambientCityPopulation(world);
+    const prev = buildAmbientModel(world.city.zones, world.city.roads, world.seed, pop);
+    expect(prev.peds.length).toBeGreaterThan(1);
+    // Block the first ped's home cell in the new model.
+    const victim = prev.peds[0] as PedAgent;
+    const next = buildAmbientModel(
+      world.city.zones, world.city.roads, world.seed, pop,
+      (cell) => cell === victim.cell,
+    );
+    const merged = mergeAmbientModels(prev, next);
+    // The victim's track changed (its home is gone); everyone else kept
+    // the exact same agent object (identical poses, no blink).
+    expect(merged.peds[0]).not.toBe(victim);
+    expect((merged.peds[0] as PedAgent).cell).not.toBe(victim.cell);
+    let preserved = 0;
+    for (let i = 1; i < merged.peds.length; i++) {
+      if (merged.peds[i] === prev.peds[i]) preserved++;
+    }
+    expect(preserved).toBeGreaterThan(0);
+    // The digest/seed/walkable set come from the new model.
+    expect(merged.digest).toBe(next.digest);
+    expect(merged.seed).toBe(next.seed);
+    expect(merged.walkableCells).toEqual(next.walkableCells);
+  });
+
+  it('keeps identical car tracks; drops changed ones', () => {
+    const world = makeCityWorld();
+    const pop = ambientCityPopulation(world);
+    const prev = buildAmbientModel(world.city.zones, world.city.roads, world.seed, pop);
+    const next = buildAmbientModel(world.city.zones, world.city.roads, world.seed, pop);
+    const merged = mergeAmbientModels(prev, next);
+    // Same inputs ⇒ identical tracks ⇒ every car preserved by identity.
+    expect(merged.cars.length).toBe(prev.cars.length);
+    for (let i = 0; i < merged.cars.length; i++) {
+      expect(merged.cars[i]).toBe(prev.cars[i]);
+    }
+  });
+
+  it('is deterministic: same models ⇒ same merge', () => {
+    const world = makeCityWorld();
+    const pop = ambientCityPopulation(world);
+    const prev = buildAmbientModel(world.city.zones, world.city.roads, world.seed, pop);
+    const next = buildAmbientModel(
+      world.city.zones, world.city.roads, world.seed, pop,
+      (cell) => cell === (prev.peds[0] as PedAgent).cell,
+    );
+    const a = mergeAmbientModels(prev, next);
+    const b = mergeAmbientModels(prev, next);
+    expect(a.peds).toEqual(b.peds);
+    expect(a.cars).toEqual(b.cars);
+  });
+});
+
+describe('AmbientCrowd — building completion keeps the crowd', () => {
+  it('placing a building clears its footprint; unaffected agents keep their poses', () => {
+    const world = makeCityWorld();
+    const scene = new THREE.Scene();
+    crowd = new AmbientCrowd(scene);
+    crowd.sync(world, () => 0);
+    const before = crowd.debugAgentCounts();
+    expect(before.peds).toBeGreaterThan(0);
+    // Snapshot poses of every agent before the placement.
+    const modelBefore = (crowd as unknown as { model: { peds: PedAgent[] } }).model;
+    const posesBefore = modelBefore.peds.map((p) => pedPoseAt(p, 100));
+
+    // Place a new house mid-zone (in-progress — footprints block from
+    // placement, not just from completion).
+    const house = makeBuilding('house', 12, 13, 0.1);
+    world.city.buildings.push(house);
+    crowd.sync(world, () => 0);
+    const modelAfter = (crowd as unknown as { model: { peds: PedAgent[] } }).model;
+    const blocked = new Set(
+      footprintCells(house.cx, house.cz, BUILDING_DEFS.house.footprintW, BUILDING_DEFS.house.footprintH),
+    );
+    for (const ped of modelAfter.peds) {
+      expect(blocked.has(ped.cell)).toBe(false);
+      expect(blocked.has(ped.targetCell)).toBe(false);
+    }
+    // Agents whose cells stayed valid kept their exact poses (no blink).
+    let kept = 0;
+    const n = Math.min(posesBefore.length, modelAfter.peds.length);
+    for (let i = 0; i < n; i++) {
+      const after = pedPoseAt(modelAfter.peds[i] as PedAgent, 100);
+      if (after.x === posesBefore[i]!.x && after.z === posesBefore[i]!.z) kept++;
+    }
+    expect(kept).toBeGreaterThan(0);
+    expect(kept).toBeGreaterThan(n / 2);
+  });
+
+  it('completing a building does not teleport the crowd', () => {
+    const world = makeCityWorld();
+    const house = makeBuilding('house', 12, 13, 0.1);
+    world.city.buildings.push(house);
+    const scene = new THREE.Scene();
+    crowd = new AmbientCrowd(scene);
+    crowd.sync(world, () => 0);
+    const before = (crowd as unknown as { model: { peds: PedAgent[] } }).model;
+    const posesBefore = before.peds.map((p) => pedPoseAt(p, 77));
+    house.progress = 1; // construction finishes
+    crowd.sync(world, () => 0);
+    const after = (crowd as unknown as { model: { peds: PedAgent[] } }).model;
+    // The footprint was already blocked at placement, so completion
+    // changes nothing walkable: every shared agent keeps its pose.
+    const n = Math.min(before.peds.length, after.peds.length);
+    for (let i = 0; i < n; i++) {
+      expect(pedPoseAt(after.peds[i] as PedAgent, 77)).toEqual(posesBefore[i]);
+    }
   });
 });
 

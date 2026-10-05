@@ -18,7 +18,7 @@
  * NOVATERRA — sim/cheats.ts — cheat command specs (Phase 1, step 11).
  *
  * Responsibilities:
- *  - `registerCheatCommands(queue)`: registers `cheatGrantResources`
+ *  - `registerCheatCommands(queue, terrain)`: registers `cheatGrantResources`
  *    (`prosperity now`) and `cheatInstantBuild` (`fast build`) as ordinary
  *    command specs. They validate at enqueue AND apply, reject loudly,
  *    and run through the same tick-aligned queue as everything else —
@@ -37,9 +37,10 @@
  */
 
 import type { CommandQueue } from './commands';
-import { getPlayer, type ResourceKey } from './city';
+import { getPlayer, ejectUnitsFromFootprints, cellIsWater, type ResourceKey } from './city';
 import { addStock } from './economy';
 import type { World } from './world';
+import type { TerrainData } from './terrain';
 
 /** Fixed `prosperity now` grant: funds, materials, food, fuel. */
 export const CHEAT_GRANT_AMOUNTS: Record<ResourceKey, number> = {
@@ -63,10 +64,23 @@ export function cheatGrantResources(world: World, owner: number): void {
   }
 }
 
-/** Finish every unfinished building owned by a player. Deterministic. */
-export function cheatInstantBuild(world: World, owner: number): void {
+/**
+ * Finish every unfinished building owned by a player. Deterministic.
+ *
+ * Unit/building-overlap rescue (2026-10-05, Fix 4): instant completion
+ * skips runConstruction's eject-on-completion, so anyone standing on a
+ * finished site is displaced to the nearest free cell — the same
+ * deterministic spiral as the normal path (ejectUnitsFromFootprints).
+ * Terrain is threaded from the cheat spec (registerCheatCommands);
+ * direct callers without terrain get the legacy complete-only
+ * behavior.
+ */
+export function cheatInstantBuild(world: World, owner: number, terrain?: TerrainData): void {
   for (const b of world.city.buildings) {
     if (b.owner === owner && b.progress < 1) b.progress = 1;
+  }
+  if (terrain !== undefined) {
+    ejectUnitsFromFootprints(world.city, world.units, (cx, cz) => cellIsWater(terrain, cx, cz));
   }
 }
 
@@ -77,7 +91,7 @@ function payloadOwner(cmd: { payload: Record<string, unknown> }): number | null 
 }
 
 /** Register the sim-affecting cheat command specs. */
-export function registerCheatCommands(queue: CommandQueue): void {
+export function registerCheatCommands(queue: CommandQueue, terrain: TerrainData): void {
   queue.register('cheatGrantResources', {
     validate(cmd, world): string | null {
       if (cmd.issuer !== 'cheat') {
@@ -107,7 +121,7 @@ export function registerCheatCommands(queue: CommandQueue): void {
       return null;
     },
     apply(cmd, world): unknown {
-      cheatInstantBuild(world, payloadOwner(cmd) as number);
+      cheatInstantBuild(world, payloadOwner(cmd) as number, terrain);
       return null;
     },
   });

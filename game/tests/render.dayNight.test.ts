@@ -132,9 +132,11 @@ describe('sunParams(tick) — pure', () => {
 
   it('never goes fully dark: readability floors hold at deep night', () => {
     const p = sunParams((3 * DAY_NIGHT_TICKS) / 4);
-    expect(p.sunIntensity).toBeGreaterThanOrEqual(0.06);
-    expect(p.hemiIntensity).toBeGreaterThanOrEqual(0.22);
-    expect(p.exposure).toBeGreaterThanOrEqual(0.45);
+    // Floors raised 2026-10-05 (the old 0.06/0.22/0.45 night was
+    // unreadably dark on real displays).
+    expect(p.sunIntensity).toBeGreaterThanOrEqual(0.18);
+    expect(p.hemiIntensity).toBeGreaterThanOrEqual(0.45);
+    expect(p.exposure).toBeGreaterThanOrEqual(0.62);
     expect(p.envIntensity).toBeGreaterThanOrEqual(0.06);
     // Night sky is deep blue, never black.
     const lum = 0.2126 * p.sky[0] + 0.7152 * p.sky[1] + 0.0722 * p.sky[2];
@@ -152,7 +154,7 @@ describe('sunParams(tick) — pure', () => {
     expect(d).toBeLessThan(0.5);
     const p = sunParams(GOLDEN_HOUR_TICK);
     expect(p.stars).toBeCloseTo(0, 6); // no stars at golden hour
-    expect(p.sunIntensity).toBeGreaterThan(0.06);
+    expect(p.sunIntensity).toBeGreaterThan(0.18);
     expect(p.sunIntensity).toBeLessThan(2.0);
   });
 
@@ -198,9 +200,9 @@ describe('DayNightRig — headless three.js', () => {
     const { rig, renderer, setBlobShadowStrength } = setup();
     const nightTick = (3 * DAY_NIGHT_TICKS) / 4;
     applyDayNight(rig, nightTick, 0, 0);
-    expect(rig.sun.intensity).toBeCloseTo(0.06, 4);
-    expect(rig.hemi.intensity).toBeCloseTo(0.22, 4);
-    expect(renderer.toneMappingExposure).toBeCloseTo(0.45, 4);
+    expect(rig.sun.intensity).toBeCloseTo(0.18, 4);
+    expect(rig.hemi.intensity).toBeCloseTo(0.45, 4);
+    expect(renderer.toneMappingExposure).toBeCloseTo(0.62, 4);
     const p = sunParams(nightTick);
     expect(rig.scene.environmentIntensity).toBeCloseTo(p.envIntensity, 6);
     expect((rig.stars.material as THREE.PointsMaterial).opacity).toBeCloseTo(1, 4);

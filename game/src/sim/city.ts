@@ -175,10 +175,11 @@ export function footprintCells(cx: number, cz: number, w: number, h: number): nu
  * True when any living unit stands on a w×h footprint anchored at
  * (cx, cz). The unit half of the placement-time occupancy check,
  * exported for callers (like mission setup) that place buildings
- * without going through validatePlacement.
+ * without going through validatePlacement. Read-only over the unit
+ * list, so callers may pass a ReadonlyArray.
  */
 export function unitsOnFootprint(
-  units: UnitRecord[],
+  units: ReadonlyArray<UnitRecord>,
   cx: number,
   cz: number,
   w: number,
@@ -250,6 +251,11 @@ export function ejectUnitsFromFootprints(
  * null when nothing fits. Used to nudge mission-preplaced buildings
  * off starting units (2026-10-05) — the mission beat survives a nudge
  * of a few cells, but not a unit entombed in the foundation.
+ *
+ * The optional `units` closes the Fix-6 hole: without it the spiral
+ * could land the nudged building on a DIFFERENT unit standing nearby.
+ * When provided, anchors whose footprint any living unit stands on are
+ * skipped (via unitsOnFootprint).
  */
 export function findFreeFootprintAnchor(
   city: CityState,
@@ -258,6 +264,7 @@ export function findFreeFootprintAnchor(
   w: number,
   h: number,
   isWaterCell: (cx: number, cz: number) => boolean,
+  units?: ReadonlyArray<UnitRecord>,
 ): { cx: number; cz: number } | null {
   const fits = (ax: number, az: number): boolean => {
     for (let dz = 0; dz < h; dz++) {
@@ -269,6 +276,9 @@ export function findFreeFootprintAnchor(
         if (buildingAtCell(city, cellIndex(x, z)) !== undefined) return false;
       }
     }
+    // Unit/building-overlap guard (2026-10-05, Fix 6): the nudge must
+    // not entomb a unit either — skip anchors any living unit stands on.
+    if (units !== undefined && unitsOnFootprint(units, ax, az, w, h)) return false;
     return true;
   };
   if (fits(cx, cz)) return { cx, cz };
@@ -319,6 +329,59 @@ function nearestFreeCell(
       if (isWaterCell(cx, cz)) continue;
       if (buildingAtCell(city, cellIndex(cx, cz)) !== undefined) continue;
       return { cx, cz };
+    }
+  }
+  return null;
+}
+
+/**
+ * Footprint-aware spawn spot (2026-10-05, Fix 5): the world position a
+ * unit of `domain` may spawn at for a requested (x, z). "Free" =
+ * in-bounds, not inside any building footprint, and water-ruled by
+ * domain — land spawns on dry cells, sea on water cells, air on either
+ * (the trainSpotOk precedent in units.ts; nudging a ship onto dry land
+ * would be worse than the entombment). A requested cell that is
+ * already free keeps its EXACT coordinates (spawn positions are
+ * digested — no gratuitous shifts); otherwise the nearest free cell's
+ * center wins, found by a deterministic outward spiral (rings 1..24,
+ * compass order per ring — the ejectUnitsFromFootprints /
+ * findFreeFootprintAnchor idiom). Returns null when nothing within 24
+ * rings is free — the caller keeps the requested position (a stuck
+ * unit beats a swallowed spawn, and the AI tolerates the odd
+ * placement). No new state (AD9-safe). Used by the `spawnUnit`
+ * command apply and the AI spawn-spot helpers.
+ */
+export function findFreeSpawnPoint(
+  city: CityState,
+  x: number,
+  z: number,
+  isWaterCell: (cx: number, cz: number) => boolean,
+  domain: 'land' | 'sea' | 'air',
+): { x: number; z: number } | null {
+  const ccx = Math.floor((x + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+  const ccz = Math.floor((z + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+  const free = (cx: number, cz: number): boolean => {
+    if (cx < 0 || cz < 0 || cx >= CITY_GRID_CELLS || cz >= CITY_GRID_CELLS) return false;
+    const water = isWaterCell(cx, cz);
+    if (domain === 'land' && water) return false;
+    if (domain === 'sea' && !water) return false;
+    if (buildingAtCell(city, cellIndex(cx, cz)) !== undefined) return false;
+    return true;
+  };
+  if (free(ccx, ccz)) return { x, z };
+  for (let ring = 1; ring <= 24; ring++) {
+    const pts: Array<[number, number]> = [
+      [ccx + ring, ccz],
+      [ccx + ring, ccz - ring],
+      [ccx, ccz - ring],
+      [ccx - ring, ccz - ring],
+      [ccx - ring, ccz],
+      [ccx - ring, ccz + ring],
+      [ccx, ccz + ring],
+      [ccx + ring, ccz + ring],
+    ];
+    for (const [cx, cz] of pts) {
+      if (free(cx, cz)) return { x: cellCenterWorld(cx), z: cellCenterWorld(cz) };
     }
   }
   return null;

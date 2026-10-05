@@ -36,7 +36,20 @@ import {
 } from '../src/sim/cheats';
 import { parseCheatCommand } from '../src/ui/cheatConsole';
 import { CommandRejectedError } from '../src/sim/commands';
-import { getPlayer, type BuildingRecord } from '../src/sim/city';
+import {
+  getPlayer,
+  placeBuilding,
+  BUILDING_DEFS,
+  cellCenterWorld,
+  footprintCells,
+  cellIndex,
+  cellIsWater,
+  CELL_WORLD_SIZE,
+  MAP_HALF_SIZE,
+  type BuildingRecord,
+} from '../src/sim/city';
+import { spawnUnit } from '../src/sim/units';
+import type { TerrainData } from '../src/sim/terrain';
 
 function enqueueCheat(session: ReturnType<typeof createSession>, kind: string): void {
   session.queue.enqueue(session.world, {
@@ -44,6 +57,20 @@ function enqueueCheat(session: ReturnType<typeof createSession>, kind: string): 
     issuer: 'cheat',
     payload: { owner: HUMAN_PLAYER_ID },
   });
+}
+
+/** Nearest dry cell to a starting cell (the sim.construction-eject idiom). */
+function findLandCell(terrain: TerrainData, fromCx: number, fromCz: number): { cx: number; cz: number } {
+  for (let r = 0; r < 40; r++) {
+    for (let dz = -r; dz <= r; dz++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const cx = fromCx + dx;
+        const cz = fromCz + dz;
+        if (!cellIsWater(terrain, cx, cz)) return { cx, cz };
+      }
+    }
+  }
+  throw new Error('no land');
 }
 
 describe('cheat commands', () => {
@@ -79,6 +106,33 @@ describe('cheat commands', () => {
     enqueueCheat(session, 'cheatInstantBuild');
     session.tick();
     expect(unfinished.progress).toBe(1);
+  });
+
+  it('fast build ejects a unit standing on the finished site (Fix 4)', () => {
+    const session = createSession({ seed: 21 });
+    const { world, terrain } = session;
+    const site = findLandCell(terrain, 120, 120);
+    const def = BUILDING_DEFS['house'];
+    const b = placeBuilding(
+      world.city,
+      { kind: 'house', owner: HUMAN_PLAYER_ID, cx: site.cx, cz: site.cz, facing: 0 },
+      21,
+    );
+    expect(b.progress).toBeLessThan(1);
+    // An engineer standing in the middle of the construction site.
+    const fx = cellCenterWorld(site.cx + Math.floor(def.footprintW / 2));
+    const fz = cellCenterWorld(site.cz + Math.floor(def.footprintH / 2));
+    const eng = spawnUnit(world, 'engineer', HUMAN_PLAYER_ID, fx, fz);
+    enqueueCheat(session, 'cheatInstantBuild');
+    session.tick();
+    // The building completed AND the engineer is outside the footprint.
+    expect(b.progress).toBe(1);
+    const cells = new Set(footprintCells(b.cx, b.cz, def.footprintW, def.footprintH));
+    const ecx = Math.floor((eng.x + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+    const ecz = Math.floor((eng.z + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+    expect(cells.has(cellIndex(ecx, ecz))).toBe(false);
+    expect(eng.state).toBe('idle');
+    expect(eng.hp).toBeGreaterThan(0);
   });
 
   it('rejects cheat commands not issued by the cheat console', () => {

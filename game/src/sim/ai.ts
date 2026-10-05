@@ -2753,7 +2753,19 @@ function nearestLand(
 /** How far the forward-base water check searches for dry land. */
 const FORWARD_BASE_WATER_SEARCH_RADIUS = 48;
 
-/** Where a new unit spawns: sea kinds at the probed water, else base. */
+/**
+ * Where a new unit spawns: sea kinds at the probed water, else base.
+ *
+ * Unit/building-overlap guard (2026-10-05, Fix 5): this is a pure
+ * position heuristic — it CAN land inside the AI's own densifying base
+ * (physical forward depots/radar, Bug-B nuclear plants, peaceful-mode
+ * physical buildings). The footprint nudge is applied centrally in the
+ * `spawnUnit` command apply (units.ts — deterministic spiral,
+ * domain-aware, terrain-backed), which is the funnel for EVERY AI spawn
+ * (`spawn` / `trySpawn` both issue the `spawnUnit` command; ai.ts never
+ * calls the plain spawnUnit function), so a second nudge here would be
+ * dead code.
+ */
 function spawnPoint(ai: AIPlayerState, kind: UnitKind, n: number): { x: number; z: number } {
   if (UNIT_DEFS[kind].domain === 'sea' && ai.navalWater) {
     return { x: ai.navalWater.x, z: ai.navalWater.z };

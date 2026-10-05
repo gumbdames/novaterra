@@ -41,12 +41,16 @@
  *    cycling sky would strobe through day/night mid-movie.
  *
  * Readability contract (acceptance criteria):
- *  - Never fully dark: sun floors at 0.06, hemisphere at 0.22, exposure
- *    at 0.45, and the night sky is deep blue, never black.
+ *  - Never fully dark: sun floors at 0.18, hemisphere at 0.45, exposure
+ *    at 0.62 (raised 2026-10-05 — the old 0.06/0.22/0.45 floors were
+ *    unreadably dark on real displays), and the night sky is deep blue,
+ *    never black.
  *  - Emissive UI elements stay bright: gameplay-critical overlay
  *    materials (selection rings, chevrons, health bars, damage numbers,
  *    placement ghost) set `toneMapped: false` at creation — immune to
- *    the exposure lerp, zero per-frame cost.
+ *    the exposure lerp, zero per-frame cost. The fog shroud is
+ *    `toneMapped: false` too: it is cartography, not scenery, and the
+ *    brighter night exposure must not lift its black.
  *  - Blob shadows fade with darkness (they're fake AO decals; full
  *    strength at night would look painted on).
  *
@@ -65,11 +69,11 @@ export type LinearRGB = [number, number, number];
 export interface SunParams {
   /** 0..1 from daylightFactor(tick) — 0 = night, 1 = full day. */
   readonly daylight: number;
-  /** Directional "sun" intensity: 2.0 (noon) → 0.06 (night). */
+  /** Directional "sun" intensity: 2.0 (noon) → 0.18 (night). */
   readonly sunIntensity: number;
   /** Directional light color (linear). */
   readonly sunColor: LinearRGB;
-  /** Hemisphere intensity: 1.1 → 0.22. */
+  /** Hemisphere intensity: 1.1 → 0.45. */
   readonly hemiIntensity: number;
   /** Hemisphere sky/ground colors (linear). */
   readonly hemiSky: LinearRGB;
@@ -77,7 +81,7 @@ export interface SunParams {
   /** Scene background + fog color (linear; kept equal so the horizon blends). */
   readonly sky: LinearRGB;
   readonly fog: LinearRGB;
-  /** Renderer exposure: 1.0 → 0.45 (never fully dark). */
+  /** Renderer exposure: 1.0 → 0.62 (never fully dark). */
   readonly exposure: number;
   /** scene.environmentIntensity: 0.5 → 0.06. */
   readonly envIntensity: number;
@@ -163,13 +167,13 @@ const SUN_COLOR_STOPS: ReadonlyArray<readonly [number, number]> = [
 ];
 
 const SUN_INTENSITY_STOPS: ReadonlyArray<readonly [number, number]> = [
-  [0.0, 0.06],
+  [0.0, 0.18],
   [0.35, 1.35],
   [1.0, 2.0], // noon (pre-C7 look)
 ];
 
 const HEMI_INTENSITY_STOPS: ReadonlyArray<readonly [number, number]> = [
-  [0.0, 0.22],
+  [0.0, 0.45],
   [1.0, 1.1], // noon (pre-C7 look)
 ];
 
@@ -199,7 +203,7 @@ export function sunParams(tick: number): SunParams {
     hemiGround: rampColor(HEMI_GROUND_STOPS, d),
     sky: rampColor(SKY_STOPS, d),
     fog: rampColor(SKY_STOPS, d),
-    exposure: lerp(0.45, 1.0, smooth(d)),
+    exposure: lerp(0.62, 1.0, smooth(d)),
     envIntensity: lerp(0.06, 0.5, smooth(d)),
     stars: 1 - smooth(d / 0.15),
     windows: 1 - smooth(d / 0.3),

@@ -753,6 +753,34 @@ describe('phase 9 long AI-vs-AI soaks', () => {
       });
       grantAllTrainingResources(world);
       for (let i = 0; i < 15000; i++) driver.step(world, TICK_MS);
+      // Quiescence gate (2026-10-05): the save/load digest pin holds
+      // only with no live pathfinding state — live flow fields, queued
+      // requests, or an in-progress chunked build are digest-covered
+      // but v9 snapshots slim them (see the digest.ts v9 note). A
+      // mid-war snapshot tick usually has a field live, so whether the
+      // old fixed-tick-15000 snapshot passed was trajectory luck — any
+      // sim change that perturbs spawns/movement could flip it. Step
+      // forward (bounded) to the next lull instead; the pin then holds
+      // by construction, and the test still covers a real mid-game
+      // save/load.
+      let quietAt = -1;
+      for (let i = 0; i < 3000 && quietAt < 0; i++) {
+        const pf = world.pathfinding;
+        if (
+          pf.fields.length === 0 &&
+          pf.fieldQueue.length === 0 &&
+          pf.queue.length === 0 &&
+          pf.activeBuild === null
+        ) {
+          quietAt = world.tick;
+        } else {
+          driver.step(world, TICK_MS);
+        }
+      }
+      expect(
+        quietAt,
+        'no quiescent pathfinding tick within 3000 ticks of tick 15000',
+      ).toBeGreaterThanOrEqual(0);
       const midDigest = digestWorld(world);
       const mid = takeSnapshot(world);
       for (let i = 0; i < 15000; i++) driver.step(world, TICK_MS);

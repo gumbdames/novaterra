@@ -27,6 +27,9 @@ import {
   footprintCells,
   placeBuilding,
   validatePlacement,
+  findFreeSpawnPoint,
+  findFreeFootprintAnchor,
+  unitsOnFootprint,
   type BuildingKind,
   type Placement,
 } from '../src/sim/city';
@@ -292,5 +295,212 @@ describe('mission preplaced validation (Optional 1)', () => {
       world.units,
     );
     expect(err).toContain('footprint occupied by a unit');
+  });
+});
+
+describe('spawnUnit footprint nudge (Fix 5)', () => {
+  function setupSpawn() {
+    const terrain = getTerrain();
+    const world = createWorld(48);
+    grantAllTrainingResources(world);
+    const queue = createCommandQueue();
+    registerCoreCommands(queue);
+    registerUnitCommands(queue, terrain);
+    const driver = createTickDriver({ queue, systems: [] });
+    return { terrain, world, queue, driver };
+  }
+
+  it('a spawn requested inside a building footprint is nudged outside it', () => {
+    const { terrain, world, queue, driver } = setupSpawn();
+    const site = findLand(terrain, 90, 90);
+    const b = placeBuilding(
+      world.city,
+      { kind: 'barracks', owner: 0, cx: site.cx, cz: site.cz, facing: 0 },
+      48,
+    );
+    b.progress = 1;
+    // Barracks is 3×3: its center sits inside its own footprint.
+    const def = BUILDING_DEFS['barracks' as BuildingKind];
+    const fx = cellCenterWorld(site.cx + Math.floor(def.footprintW / 2));
+    const fz = cellCenterWorld(site.cz + Math.floor(def.footprintH / 2));
+    queue.enqueue(world, {
+      issuer: 'player',
+      kind: 'spawnUnit',
+      payload: { kind: 'engineer', owner: 0, x: fx, z: fz },
+    });
+    driver.step(world, TICK_MS);
+    const spawned = world.units[world.units.length - 1]!;
+    const cells = footprintSet(b, 'barracks' as BuildingKind);
+    expect(cells.has(unitCellOf(spawned))).toBe(false);
+  });
+
+  it('a spawn on a free cell keeps its exact coordinates (no digest churn)', () => {
+    const { world, queue, driver } = setupSpawn();
+    const terrain = getTerrain();
+    const site = findLand(terrain, 90, 90);
+    const x = cellCenterWorld(site.cx) + 0.25;
+    const z = cellCenterWorld(site.cz) - 0.5;
+    queue.enqueue(world, {
+      issuer: 'player',
+      kind: 'spawnUnit',
+      payload: { kind: 'engineer', owner: 0, x, z },
+    });
+    driver.step(world, TICK_MS);
+    const spawned = world.units[world.units.length - 1]!;
+    expect(spawned.x).toBe(x);
+    expect(spawned.z).toBe(z);
+  });
+});
+
+describe('findFreeSpawnPoint (Fix 5)', () => {
+  /** A dry cell adjacent to water (for the domain water-rule tests). */
+  function findCoast(terrain: TerrainData): { cx: number; cz: number; wx: number; wz: number } {
+    for (let cz = 60; cz < 200; cz++) {
+      for (let cx = 60; cx < 200; cx++) {
+        if (cellIsWater(terrain, cx, cz)) continue;
+        const wet: Array<[number, number]> = [
+          [cx + 1, cz],
+          [cx - 1, cz],
+          [cx, cz + 1],
+          [cx, cz - 1],
+        ];
+        for (const [wx, wz] of wet) {
+          if (cellIsWater(terrain, wx, wz)) return { cx, cz, wx, wz };
+        }
+      }
+    }
+    throw new Error('no coast');
+  }
+
+  function spotCell(terrain: TerrainData, spot: { x: number; z: number }): { cx: number; cz: number; wet: boolean } {
+    const cx = Math.floor((spot.x + 256) / 2);
+    const cz = Math.floor((spot.z + 256) / 2);
+    return { cx, cz, wet: cellIsWater(terrain, cx, cz) };
+  }
+
+  it('nudges a land spawn off water onto dry land', () => {
+    const terrain = getTerrain();
+    const world = createWorld(49);
+    const coast = findCoast(terrain);
+    const spot = findFreeSpawnPoint(
+      world.city,
+      cellCenterWorld(coast.wx),
+      cellCenterWorld(coast.wz),
+      (x, z) => cellIsWater(terrain, x, z),
+      'land',
+    );
+    expect(spot).not.toBeNull();
+    expect(spotCell(terrain, spot!).wet).toBe(false);
+  });
+
+  it('keeps a sea spawn on water (never beaches the ship)', () => {
+    const terrain = getTerrain();
+    const world = createWorld(50);
+    const coast = findCoast(terrain);
+    const spot = findFreeSpawnPoint(
+      world.city,
+      cellCenterWorld(coast.cx),
+      cellCenterWorld(coast.cz),
+      (x, z) => cellIsWater(terrain, x, z),
+      'sea',
+    );
+    expect(spot).not.toBeNull();
+    expect(spotCell(terrain, spot!).wet).toBe(true);
+  });
+
+  it('nudges a spawn out of a building footprint', () => {
+    const terrain = getTerrain();
+    const world = createWorld(51);
+    const site = findLand(terrain, 90, 90);
+    const b = placeBuilding(
+      world.city,
+      { kind: 'barracks', owner: 0, cx: site.cx, cz: site.cz, facing: 0 },
+      51,
+    );
+    b.progress = 1;
+    const def = BUILDING_DEFS['barracks' as BuildingKind];
+    const fx = cellCenterWorld(site.cx + Math.floor(def.footprintW / 2));
+    const fz = cellCenterWorld(site.cz + Math.floor(def.footprintH / 2));
+    const spot = findFreeSpawnPoint(
+      world.city,
+      fx,
+      fz,
+      (x, z) => cellIsWater(terrain, x, z),
+      'land',
+    );
+    expect(spot).not.toBeNull();
+    const cells = footprintSet(b, 'barracks' as BuildingKind);
+    const sc = spotCell(terrain, spot!);
+    expect(cells.has(cellIndex(sc.cx, sc.cz))).toBe(false);
+  });
+
+  it('returns the exact requested position when its cell is already free', () => {
+    const terrain = getTerrain();
+    const world = createWorld(52);
+    const site = findLand(terrain, 90, 90);
+    const x = cellCenterWorld(site.cx) + 0.25;
+    const z = cellCenterWorld(site.cz) - 0.5;
+    const spot = findFreeSpawnPoint(
+      world.city,
+      x,
+      z,
+      (x2, z2) => cellIsWater(terrain, x2, z2),
+      'land',
+    );
+    expect(spot).toEqual({ x, z });
+  });
+
+  it('returns null when no free cell exists (the caller keeps the request)', () => {
+    const world = createWorld(53);
+    const spot = findFreeSpawnPoint(world.city, 0, 0, () => true, 'land');
+    expect(spot).toBeNull();
+  });
+});
+
+describe('findFreeFootprintAnchor unit-awareness (Fix 6)', () => {
+  it('the anchor search never lands a nudged building on another unit', () => {
+    const terrain = getTerrain();
+    const world = createWorld(54);
+    const site = findLand(terrain, 40, 40);
+    const def = BUILDING_DEFS['house' as BuildingKind]; // 2×2
+    // Unit A sits on the original anchor (the nudge trigger); unit B
+    // stands one cell east — the old spiral's first ring-1 candidate
+    // (cx+1, cz) would have entombed B.
+    spawnUnit(world, 'engineer', 0, cellCenterWorld(site.cx), cellCenterWorld(site.cz));
+    spawnUnit(world, 'engineer', 0, cellCenterWorld(site.cx + 1), cellCenterWorld(site.cz));
+    expect(unitsOnFootprint(world.units, site.cx, site.cz, def.footprintW, def.footprintH)).toBe(true);
+    const anchor = findFreeFootprintAnchor(
+      world.city,
+      site.cx,
+      site.cz,
+      def.footprintW,
+      def.footprintH,
+      (x, z) => cellIsWater(terrain, x, z),
+      world.units,
+    );
+    expect(anchor).not.toBeNull();
+    // The anchor moved off the occupied original...
+    expect(anchor!.cx !== site.cx || anchor!.cz !== site.cz).toBe(true);
+    // ...and no living unit stands inside the nudged footprint.
+    const cells = new Set(footprintCells(anchor!.cx, anchor!.cz, def.footprintW, def.footprintH));
+    for (const u of world.units) {
+      expect(cells.has(unitCellOf(u))).toBe(false);
+    }
+  });
+
+  it('without units the search behaves as before (the param is optional)', () => {
+    const terrain = getTerrain();
+    const world = createWorld(55);
+    const site = findLand(terrain, 40, 40);
+    const def = BUILDING_DEFS['house' as BuildingKind];
+    const anchor = findFreeFootprintAnchor(
+      world.city,
+      site.cx,
+      site.cz,
+      def.footprintW,
+      def.footprintH,
+      (x, z) => cellIsWater(terrain, x, z),
+    );
+    expect(anchor).toEqual({ cx: site.cx, cz: site.cz });
   });
 });

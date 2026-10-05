@@ -61,7 +61,15 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   `ejectUnitsFromFootprints` (deterministic spiral displacement, no new
   state) is called on construction completion, mission placement
   (via `findFreeFootprintAnchor` nudge), and save-load repair;
-  `unitsOnFootprint` is the shared occupancy check. Grand-expansion Phase 8
+  `unitsOnFootprint` is the shared occupancy check. Fixes 4–6
+  (2026-10-05): `cheatInstantBuild` ejects after its completion loop
+  too (terrain threaded through `registerCheatCommands`); the
+  `spawnUnit` command apply nudges the requested point through the new
+  `findFreeSpawnPoint` (deterministic spiral, domain-aware — ships
+  stay on water; a free requested cell keeps its exact coordinates, so
+  no digest churn); `findFreeFootprintAnchor` takes an optional
+  `units` param so the nudge spiral never lands on another living
+  unit. Grand-expansion Phase 8
   (peaceful mode, workstream A, 2026-09-30): `BuildingDef.military?:
   boolean` — true on the 21 war-apparatus buildings (the full 100-kind
   classification is pinned in tests/sim.peaceful.test.ts);
@@ -262,7 +270,14 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   is pinned by tests in sim.ai-forward-base.test.ts.
 - `terrain.ts` — seeded mapgen (not snapshotted); `spatial.ts` — hash grid.
 - `units.ts` — `UnitRecord` store (stable ids, owner/kind/speed/state),
-  `spawnUnit` command. Final-review R2 (2026-10-01):
+  `spawnUnit` command. Unit/building-overlap guard (2026-10-05, Fix 5):
+  the command's apply nudges the requested spawn point through
+  `findFreeSpawnPoint` (city.ts — deterministic spiral, domain-aware)
+  instead of rejecting, since the AI swallows rejections; a free
+  requested cell keeps its exact coordinates (no digest churn). This
+  is the single funnel for every AI spawn (classic `spawn`/`trySpawn`
+  and Mode 2 both issue the command), so the AI needs no second nudge.
+  Final-review R2 (2026-10-01):
   `UnitRecord.buildingTargetId?: number` (0/undefined = no siege target —
   the siege-target linkage for `attackBuilding`; separate id space from
   `targetId`, and `chasing` covers both). `movement.ts` `orderMoveTo` /
@@ -591,6 +606,16 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   The armed scout `drone` is military (gated); the peaceful AI has
   no scouts and needs none. `createAISystem(queue, terrain?)` takes
   the optional terrain; `ui/session.ts:381` passes it.
+- `aiMuse.ts` — Mode 2 ("Playing Against Muse"): the `muse` opponent
+  mode's thinker (`thinkMuse`, wired via `createAISystem(queue,
+  terrain, 'muse', thinkMuse)`), counter-doctrine rosters driven by
+  `analyzePlayerForces` / `determineMuseDoctrine`, plus the Muse
+  dialogue lines. Unit/building-overlap guard (2026-10-05, Fix 5):
+  `findSpawnSpot` (exported for tests) routes the anchor-building
+  spawn spot through `findFreeSpawnPoint` (city.ts — the anchor
+  center sits inside any ≥2×2 footprint); terrain threads from the
+  thinker's optional param, and the `spawnUnit` command apply is the
+  backstop when terrain is absent. No new AI state, no RNG.
 - `ages.ts` — Ages (Foundation → Ascendance) + National Program choice
   (Step 8). **Per-side ages (roadmap A1, 2026-10-01):** `World.ages` is a
   per-owner map (`PerSideAges = Record<number, AgeState>`), NOT one shared
@@ -877,6 +902,15 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   flood per field, load-time only. Behavior-preserving: the only dirs
   consumer (movement.ts) reads cells on the descent path, all reached
   in the original truncated flood.
+  Building-aware pathing (2026-10-05): `buildingBlockMask(city)` marks
+  completed-building footprint cells as blocked (cached per city,
+  rebuilt only when the completed set changes — derived data, never
+  snapshotted). A* and the flow-field flood consult it via the optional
+  `blocked` param on the internal `moveCost`; a search's start/goal
+  cells (A*) and the flood source cell stay enterable so attack-move
+  onto a building still routes. In-construction buildings do NOT block
+  (the eject-on-completion rescue owns those sites). Sea pathing is
+  untouched.
 - `movement.ts` — the pathfinding + movement systems (registered in that
   order), `moveUnit` / `moveGroup` / `stopUnit` commands, waypoint and
   field following, arrival slowdown, formation slots, spatial-hash
@@ -887,7 +921,12 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 - `cheats.ts` — cheat command specs (step 11): `cheatGrantResources`
   (`prosperity now`) and `cheatInstantBuild` (`fast build`). Ordinary
   tick-aligned command specs, `issuer: 'cheat'` enforced at validate;
-  deterministic fixed effects, no RNG. The `cheated` metadata flag is
+  deterministic fixed effects, no RNG. Unit/building-overlap rescue
+  (2026-10-05, Fix 4): `cheatInstantBuild` ejects units standing on the
+  finished sites after its completion loop (the `runConstruction`
+  eject it skips); terrain is threaded through
+  `registerCheatCommands(queue, terrain)` (`World` never carries
+  terrain). The `cheated` metadata flag is
   UI-owned (ui/session.ts), never sim state.
 
 ## Hangars & carrier wings (grand-expansion Phase 5, workstream B)

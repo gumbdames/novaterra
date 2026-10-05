@@ -220,7 +220,9 @@ export class MainMenu {
     }).show(), false, menuIcon('settings'));
     buttons.append(skirmish, loadGame, missions, settings);
     menu.append(buttons);
-    menu.append(el('div', 'version', s.version));
+    // Build stamp (2026-10-05): "which build are you on" must be
+    // answerable — stale tabs keep old JS in memory indefinitely.
+    menu.append(el('div', 'version', `${s.version} · build ${__BUILD_ID__}`));
     this.root.append(menu);
     this.menuEl = menu;
   }
@@ -696,6 +698,9 @@ export class SettingsPanel {
       keys.append(row);
     }
     panel.append(keys);
+    // Build stamp (2026-10-05): mirrors the menu footer — the one place
+    // a player can read which build is actually running.
+    panel.append(el('div', 'settings-build', `Build ${__BUILD_ID__}`));
     panel.append(menuButton(s.close, () => this.onClose()));
     overlay.append(panel);
     this.root.append(overlay);

@@ -36,7 +36,7 @@ import { describe, expect, it } from 'vitest';
 import { createWorld } from '../src/sim/world';
 import { createCommandQueue } from '../src/sim/commands';
 import { generateTerrain, getMapPreset } from '../src/sim/terrain';
-import { getPlayer, placeBuilding, BUILDING_DEFS } from '../src/sim/city';
+import { getPlayer, placeBuilding, BUILDING_DEFS, footprintCells, cellIndex } from '../src/sim/city';
 import {
   getMission,
   type MissionDef,
@@ -228,6 +228,34 @@ describe('session preplaced buildings', () => {
     const hz = dark!.cz * 2 - 256;
     const dist2 = (hx + 180) * (hx + 180) + (hz - 180) * (hz - 180);
     expect(dist2).toBeLessThan(80 * 80);
+  });
+
+  it('a preplaced building overlapping a starter is nudged without entombing anyone (Fix 6)', () => {
+    const m1 = getMission('first-day')!;
+    // Park the preplaced house on the (-4, -4) starting engineer: the
+    // preplaced block targets the same findLandNear cell the starter
+    // was spawned on, so the nudge must fire.
+    const session = createSession({
+      seed: 4242,
+      campaignMission: {
+        ...m1,
+        id: 'nudge-test',
+        preplacedBuildings: [{ kind: 'house', dx: -4, dz: -4 }],
+      },
+    });
+    const { world } = session;
+    const houses = world.city.buildings.filter(
+      (b) => b.owner === HUMAN_PLAYER_ID && b.kind === 'house' && b.progress >= 1,
+    );
+    expect(houses.length).toBe(1);
+    const house = houses[0]!;
+    const def = BUILDING_DEFS['house'];
+    const cells = new Set(footprintCells(house.cx, house.cz, def.footprintW, def.footprintH));
+    for (const u of world.units) {
+      const ux = Math.floor((u.x + 256) / 2);
+      const uz = Math.floor((u.z + 256) / 2);
+      expect(cells.has(cellIndex(ux, uz))).toBe(false);
+    }
   });
 });
 

@@ -3,6 +3,87 @@
 All notable changes to the 0.1 Alpha. Commit hashes are the local `main`
 history (`gumbdames/novaterra`).
 
+## 2026-10-05 — Pathfinding avoids buildings, building-first clicks, build stamp, fixed menu rail
+
+- **Building-aware pathfinding** (Fix 7): completed buildings are now
+  pathing obstacles — `buildingBlockMask(city)` (cached per city,
+  rebuilt only when the completed-building set changes; derived data,
+  never snapshotted) feeds the A* and flow-field flood through the
+  internal `moveCost`. A search's start/goal cells stay enterable so
+  attack-move onto a building still routes; in-construction buildings
+  do NOT block (the eject-on-completion rescue owns those sites); sea
+  pathing untouched. Perf: one extra array lookup per neighbor
+  expansion; the 1000-unit p95 budget stays green.
+- **Left-click selects buildings** (Fix 8): `resolveClickPick`
+  (ui/selection.ts, pure + tested) gives the building priority when
+  the click lands inside a footprint — units loitering within click
+  tolerance no longer steal building clicks. Units in the open select
+  normally; shift-toggle and double-click behavior unchanged.
+- **Build stamp** (Fix 3): the menu footer and Settings now show the
+  build id (`__BUILD_ID__` — short git SHA + UTC timestamp via a Vite
+  define), so "which build are you on" is answerable even with stale
+  cached tabs.
+- **Fixed full-height menu rail** (Fix 10): `.hud-selection` is now a
+  fixed full-left-edge panel (topbar to bottom) that never resizes
+  with content and scrolls internally; the advisor panel moved just
+  right of it. Narrow viewports keep a bottom-sheet layout.
+
+## 2026-10-05 — Unit/building-overlap fixes, round 2 (fixes 4–6)
+
+- **`fast build` ejects units** (Fix 4): `cheatInstantBuild` used to set
+  `progress = 1` directly, skipping `runConstruction`'s
+  eject-on-completion — an engineer standing on the site was entombed.
+  It now runs the same `ejectUnitsFromFootprints` displacement after
+  the completion loop (terrain is threaded through
+  `registerCheatCommands(queue, terrain)`; `World` never carries
+  terrain).
+- **Footprint-aware spawning** (Fix 5): the `spawnUnit` command apply
+  nudges the requested point to the nearest free cell via a
+  deterministic outward spiral (`findFreeSpawnPoint` in city.ts —
+  domain-aware, so ships stay on water) instead of rejecting, since
+  the AI swallows rejections. A free requested cell keeps its exact
+  coordinates (no digest churn). Mode 2's `findSpawnSpot` (aiMuse.ts)
+  is routed through the same selection; the classic AI's `spawnPoint`
+  needs no second nudge — every AI spawn flows through the
+  `spawnUnit` command, which is the single funnel.
+- **Preplaced nudge checks units** (Fix 6): `findFreeFootprintAnchor`
+  takes an optional `units` param — the anchor spiral now skips
+  footprints any living unit stands on, so a nudged mission building
+  can't entomb a *different* starter. Threaded through from the
+  session.ts preplaced caller.
+
+## 2026-10-05 — Render-side bug fixes (instancer id collision, pedestrians, night brightness)
+
+- **Instancer ids namespaced by kind**: `world.nextId` and
+  `city.nextBuildingId` both start at 1, so unit #5 and building #5
+  shared one `EntityInstancer` record — a building completing called
+  `addEntity(5)`, replaced the person's slots, and the person's
+  per-frame `writeTransform(5)` then overwrote the building's matrices
+  (the person visually became a building). `addEntity` /
+  `removeEntity` / `writeTransform` / `recolorEntity` now take
+  `kind: 'unit' | 'building'` first and key on `unit:<id>` /
+  `building:<id>` (pool owner lists namespaced too); a re-add with a
+  different kind than the existing record `console.warn`s. Selection
+  rings are namespaced the same way. All other id-keyed render
+  consumers re-audited: blob shadows, chevrons, luminary markers are
+  rebuilt per-sync from sim records (no persistent id maps); damage
+  state and ship wakes are single-kind. Render-only, no sim/save
+  impact.
+- **Pedestrians avoid buildings**: `buildAmbientModel` takes an
+  `isBlockedCell` predicate and excludes building footprints
+  (completed AND in-progress) from the walkable tiles, homes, and
+  targets; the blocked cells join `ambientModelDigest` so fresh
+  footprints rebuild the crowd. Rebuilds now preserve agents whose
+  home/target cells stay valid (`mergeAmbientModels`, pure in
+  (prev, next)) — a building completing no longer makes the whole
+  crowd blink. Render-only, deterministic.
+- **Night is brighter**: the day/night readability floors raised
+  (sun 0.06→0.18, hemisphere 0.22→0.45, exposure 0.45→0.62) — day
+  values and the deep-blue-never-black feel unchanged. The fog shroud
+  is now `toneMapped: false` so the brighter night exposure can't
+  lift its black (the documented contract; previously only
+  `mat.fog = false` was set).
+
 ## 2026-10-05 — Unit/building-overlap fixes (construction-window hole)
 
 - **Eject on completion**: a unit that walks onto a construction site is

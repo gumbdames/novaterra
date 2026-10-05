@@ -85,6 +85,7 @@ import {
   bobPhase,
   shipBob,
   wrapAngle,
+  type InstancedEntityKind,
   type InstancedPiece,
 } from './entityInstancing';
 import { ShipWakes } from './shipWakes';
@@ -1256,7 +1257,16 @@ export class EntityRenderer {
   private roadMesh: THREE.Mesh | null = null;
   private roadDashMesh: THREE.Mesh | null = null;
   private roadDigest = -1;
-  private readonly selectionRings = new Map<number, THREE.Mesh>();
+  /**
+   * Selection rings, keyed on `selectionRingKey(kind, id)` — the same
+   * latent unit/building id collision the instancer had (both id spaces
+   * start at 1). Only unit ids flow today; the kind parameter keeps the
+   * map safe if buildings ever become selectable.
+   */
+  private readonly selectionRings = new Map<
+    string,
+    { id: number; kind: InstancedEntityKind; ring: THREE.Mesh }
+  >();
   // Fun-audit C1 (production queues, 2026-10-02): the rally-point
   // flag — created lazily on first show and parked in fxGroup (never
   // a permanent scene object, so the pinned scene-object counts in
@@ -1599,23 +1609,35 @@ export class EntityRenderer {
     return (x: number, z: number): number => heightAt(t, x, z);
   }
 
+  /** Selection-ring key: `unit:5` and `building:5` are different rings. */
+  private static ringKey(kind: InstancedEntityKind, id: number): string {
+    return `${kind}:${id}`;
+  }
+
   /** Update which units show selection rings. */
-  setSelected(ids: Iterable<number>): void {    const wanted = new Set(ids);
-    for (const [id, ring] of this.selectionRings) {
-      if (!wanted.has(id)) {
-        this.fxGroup.remove(ring);
-        this.selectionRings.delete(id);
+  setSelected(ids: Iterable<number>, kind: InstancedEntityKind = 'unit'): void {
+    const wanted = new Set<string>();
+    const idsArr: number[] = [];
+    for (const id of ids) {
+      wanted.add(EntityRenderer.ringKey(kind, id));
+      idsArr.push(id);
+    }
+    for (const [key, rec] of this.selectionRings) {
+      if (!wanted.has(key)) {
+        this.fxGroup.remove(rec.ring);
+        this.selectionRings.delete(key);
       }
     }
-    for (const id of wanted) {
-      if (this.selectionRings.has(id)) continue;
+    for (const id of idsArr) {
+      const key = EntityRenderer.ringKey(kind, id);
+      if (this.selectionRings.has(key)) continue;
       const ring = new THREE.Mesh(this.ringGeo, this.ringMat);
       ring.rotation.x = -Math.PI / 2;
       // Correct per-unit height lands on the next updateSelectionRings
       // pass; this just keeps the ring off the exact ground plane.
       ring.position.y = SELECTION_RING_OFFSET;
       this.fxGroup.add(ring);
-      this.selectionRings.set(id, ring);
+      this.selectionRings.set(key, { id, kind, ring });
     }
   }
 
@@ -1634,7 +1656,7 @@ export class EntityRenderer {
     for (const view of this.units.values()) {
       const team = teamColors()[view.owner] ?? '#aaaaaa';
       if (view.instanced) {
-        this.instancer?.recolorEntity(view.id, team);
+        this.instancer?.recolorEntity('unit', view.id, team);
       } else {
         if (view.stripe !== null) view.stripe.material = this.stripeMatFor(team);
         if (view.pennant !== null) tintPennantMesh(view.pennant, team);
@@ -1643,7 +1665,7 @@ export class EntityRenderer {
     for (const view of this.buildings.values()) {
       const team = teamColors()[view.owner] ?? '#aaaaaa';
       if (view.instanced) {
-        this.instancer?.recolorEntity(view.id, team);
+        this.instancer?.recolorEntity('building', view.id, team);
       } else if (view.pennant !== null) {
         tintPennantMesh(view.pennant, team);
       }
@@ -1690,15 +1712,15 @@ export class EntityRenderer {
   }
 
   /** Move selection rings onto their units each frame. */
-  updateSelectionRings(units: Map<number, UnitRecord>): void {    for (const [id, ring] of this.selectionRings) {
-      const u = units.get(id);
+  updateSelectionRings(units: Map<number, UnitRecord>): void {    for (const rec of this.selectionRings.values()) {
+      const u = units.get(rec.id);
       if (!u) continue;
       // Rings ride on the ground under the unit (terrain for land/air,
       // water level for sea) so they never sink into a hillside.
-      ring.position.set(u.x, this.unitGroundY(u) + SELECTION_RING_OFFSET, u.z);
+      rec.ring.position.set(u.x, this.unitGroundY(u) + SELECTION_RING_OFFSET, u.z);
       const s = hullSizeFor(u.kind);
       const scale = Math.max(s.x, s.z) / 4;
-      ring.scale.set(scale, scale, 1);
+      rec.ring.scale.set(scale, scale, 1);
     }
   }
 
@@ -2845,12 +2867,12 @@ export class EntityRenderer {
         offset: new THREE.Matrix4().makeTranslation(p.dx, p.dy, p.dz),
       };
     });
-    instancer.addEntity(u.id, pieces, {
+    instancer.addEntity('unit', u.id, pieces, {
       stripe: true,
       stripeScale: size.x * 0.32,
       team,
     });
-    instancer.writeTransform(u.id, {
+    instancer.writeTransform('unit', u.id, {
       x: u.x,
       y: this.unitGroundY(u),
       z: u.z,
@@ -2904,7 +2926,7 @@ export class EntityRenderer {
     if (isDegradedResolution(u.kind, resolved) || resolved === null) return;
     const instancer = this.instancer;
     if (instancer !== null) {
-      if (view.instanced) instancer.removeEntity(u.id);
+      if (view.instanced) instancer.removeEntity('unit', u.id);
       this.addUnitInstance(view, u, resolved);
     } else {
       this.rebuildUnitHull(view, u);
@@ -2948,7 +2970,7 @@ export class EntityRenderer {
 
     if (instancer !== null && view.instanced) {
       const frac = def ? Math.max(0, Math.min(1, u.hp / def.hp)) : 1;
-      instancer.writeTransform(u.id, {
+      instancer.writeTransform('unit', u.id, {
         x: u.x,
         y: this.unitGroundY(u) + lift,
         z: u.z,
@@ -2989,7 +3011,7 @@ export class EntityRenderer {
    */
   private disposeUnitView(view: UnitView): void {
     if (view.instanced) {
-      this.instancer?.removeEntity(view.id);
+      this.instancer?.removeEntity('unit', view.id);
     }
     for (const o of view.owned) o.dispose();
     view.owned.length = 0;
@@ -3163,14 +3185,14 @@ export class EntityRenderer {
         ),
       };
     });
-    instancer.addEntity(view.id, pieces, {
+    instancer.addEntity('building', view.id, pieces, {
       stripe: false,
       stripeScale: 0,
       team,
       hullTintSeed: view.id,
     });
     const scaledTop = resolved.top * s;
-    instancer.writeTransform(view.id, {
+    instancer.writeTransform('building', view.id, {
       x: view.group.position.x,
       y: view.group.position.y,
       z: view.group.position.z,
@@ -3255,7 +3277,7 @@ export class EntityRenderer {
     const resolved = this.resolveVisualPieces(view.kind, view.variant, view.sizeTier);
     if (isDegradedResolution(view.kind, resolved) || resolved === null) return;
     if (this.instancer !== null && b.progress >= 1) {
-      if (view.instanced) this.instancer.removeEntity(view.id);
+      if (view.instanced) this.instancer.removeEntity('building', view.id);
       else this.clearLegacyBuildingModel(view);
       this.addBuildingInstance(view, resolved);
     } else {
@@ -3332,7 +3354,7 @@ export class EntityRenderer {
   /** Release per-view objects: pennant + any construction clones. */
   private disposeBuildingView(view: BuildingView): void {
     if (view.instanced) {
-      this.instancer?.removeEntity(view.id);
+      this.instancer?.removeEntity('building', view.id);
     }
     for (const m of view.owned) m.dispose();
     view.owned.length = 0;

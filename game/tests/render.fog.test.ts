@@ -131,6 +131,9 @@ describe('FogShroud (headless)', () => {
     expect(mat.transparent).toBe(true);
     expect(mat.depthWrite).toBe(false);
     expect(mat.fog).toBe(false);
+    // Cartography, not scenery: the day/night exposure lerp (night
+    // floor raised 2026-10-05) must not lift the shroud's black.
+    expect(mat.toneMapped).toBe(false);
     shroud.dispose();
   });
 

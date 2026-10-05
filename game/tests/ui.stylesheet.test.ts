@@ -45,9 +45,13 @@ function blockFor(selector: string): string {
 }
 
 describe('menu panel width', () => {
-  it('.hud-selection is widened but viewport-capped (no h-scroll)', () => {
+  it('.hud-selection is a fixed full-height left rail (no resize, no h-scroll)', () => {
     const block = blockFor('.hud-selection');
-    expect(block).toMatch(/width:\s*360px/);
+    // 2026-10-05: fixed full-height rail — top+bottom pin the height so
+    // the panel never resizes with content; it scrolls internally.
+    expect(block).toMatch(/width:\s*380px/);
+    expect(block).toMatch(/top:\s*64px/);
+    expect(block).toMatch(/bottom:\s*12px/);
     expect(block).toMatch(/max-width:\s*calc\(100vw - 24px\)/);
     expect(block).toMatch(/overflow-y:\s*auto/);
   });
