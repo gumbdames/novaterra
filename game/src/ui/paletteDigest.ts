@@ -672,6 +672,8 @@ export const HUD_PANEL_BRANCHES: readonly HudPanelBranch[] = [
       'hud-rate',
       'hud-rate-pos',
       'hud-rate-neg',
+      // Game-time clock (2026-10-05): built-once chip, write-on-change.
+      'hud-clock',
       'hud-age',
       'hud-age-btn',
       'hud-spacer',

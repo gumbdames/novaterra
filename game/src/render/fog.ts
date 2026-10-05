@@ -24,15 +24,20 @@ export type FogCellColor = [number, number, number, number];
 
 /** Unexplored: near-black shroud, mostly opaque. */
 export const FOG_UNEXPLORED: FogCellColor = [2, 2, 8, 235];
-/** Explored but not currently visible: dim "memory" tint. */
-export const FOG_EXPLORED: FogCellColor = [6, 8, 18, 110];
 /** Currently visible: fully transparent. */
 export const FOG_VISIBLE: FogCellColor = [0, 0, 0, 0];
 
-/** Pure color lookup — the single source of truth for shroud styling. */
+/**
+ * Pure color lookup — the single source of truth for shroud styling.
+ *
+ * 2026-10-05: once the player's units or buildings have seen ground, it
+ * stays fully clear — darkness never re-appears over explored terrain.
+ * Only never-seen ground is shrouded. (Enemy units/buildings are still
+ * hidden unless currently visible — that filter keys on the live
+ * visibility sets, not the explored grid.)
+ */
 export function fogCellColor(explored: boolean, visible: boolean): FogCellColor {
-  if (visible) return FOG_VISIBLE;
-  if (explored) return FOG_EXPLORED;
+  if (visible || explored) return FOG_VISIBLE;
   return FOG_UNEXPLORED;
 }
 

@@ -46,10 +46,10 @@ interpolation alpha. No gameplay logic here, ever. See docs/ARCHITECTURE.md §6.
 
 - Fun-audit C3 (2026-10-02): the player fog of war's render side.
   `fogCellColor` is the single source of truth for shroud styling
-  (visible = transparent, explored = dim memory tint, unexplored = dark
-  shroud); `paintFogTexture` paints the 64×64 RGBA grid from explored
-  memory + the visibility grid — both pure and unit-tested in
-  `tests/render.fog.test.ts`.
+  (2026-10-05: visible = transparent, explored = transparent — once seen,
+  ground stays clear; unexplored = dark shroud); `paintFogTexture` paints
+  the 64×64 RGBA grid from explored memory + the visibility grid — both
+  pure and unit-tested in `tests/render.fog.test.ts`.
 - `FogShroud`: one height-conforming 64×64-quad plane
   (y = max(terrain, waterLevel) + 0.6), one 64×64 RGBA `DataTexture`,
   `MeshBasicMaterial` with `mat.fog = false` (scene fog and day/night

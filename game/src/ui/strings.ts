@@ -204,6 +204,12 @@ export const STRINGS = {
     menu: 'Menu',
     // Roadmap B12 (2026-10-02): the minimap's hover tooltip.
     minimapTitle: { en: 'Minimap — click or drag to move the camera' },
+    // Game-time clock (2026-10-05): the topbar chip shows the day number,
+    // the 24-hour game time, a day/night glyph, and the countdown to the
+    // next transition — e.g. "Day 3 · 14:20 · ☀ dusk in 1m 05s".
+    clockDay: { en: 'Day' },
+    clockDawnIn: { en: 'dawn in' },
+    clockDuskIn: { en: 'dusk in' },
   },
   selection: {
     noSelection: 'Nothing selected',

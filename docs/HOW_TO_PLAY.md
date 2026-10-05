@@ -237,7 +237,10 @@ own. Nuclear ships are never refueled, and the refuel/rearm toggles
 let you specialize each hull.
 
 Watch the top bar: Funds, Materials, Food, Fuel, Goods, Influence,
-Manpower, Population, and your age. Your advisor (left side) warns you
+Manpower, Population, your age — and the game-time clock
+("Day 3 · 14:20 · ☀ dusk in 1m 05s"), which shows the day number, the
+24-hour game time, and how long until the next dawn or dusk (solar
+farms only produce in daylight). Your advisor (left side) warns you
 before things go wrong — listen to it.
 
 Advance through five ages — **Foundation → Connectivity → Industry →

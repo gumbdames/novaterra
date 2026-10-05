@@ -82,6 +82,7 @@ import type { Selection } from './selection';
 import type { AdvisorItem } from './advisor';
 import { STRINGS, loc, fillLoc, type LocalizedString } from './strings';
 import { vetXpLine } from './veterancy';
+import { gameClock, formatCountdown } from './clock';
 // Fun-audit Tier 4 (E3, 2026-10-02): the Combine trade-panel section.
 import {
   COMBINE_RESOURCES,
@@ -533,6 +534,11 @@ export class HUD {
   private readonly ageEl: HTMLElement;
   private readonly ageBtn: HTMLButtonElement;
   private currentAge: string = 'foundation';
+  /**
+   * Game-time clock (2026-10-05): the topbar chip's value span — built
+   * once, text written on change like the resource chips.
+   */
+  private clockValueEl: HTMLElement | undefined;
   private readonly pauseBtn: HTMLButtonElement;
   private readonly speedBtns: HTMLButtonElement[] = [];
   /** Phase 2 (utilities): overlay toggle, flipped write-on-change. */
@@ -721,6 +727,17 @@ export class HUD {
     this.ageBtn.textContent = s.advanceAge;
     this.ageBtn.addEventListener('click', () => this.onAgeButton());
     this.topbar.append(this.ageBtn);
+
+    // Game-time clock (2026-10-05): day number, 24-hour game time, a
+    // day/night glyph, and the countdown to the next dawn/dusk — e.g.
+    // "Day 3 · 14:20 · ☀ dusk in 1m 05s". Built once, write-on-change
+    // (the text only changes once per sim-second), never rebuilt.
+    const clockChip = el('div', 'hud-chip');
+    clockChip.classList.add('hud-clock');
+    const clockValue = el('span', 'hud-chip-value', '');
+    clockChip.append(clockValue);
+    this.clockValueEl = clockValue;
+    this.topbar.append(clockChip);
 
     const spacer = el('div', 'hud-spacer');
     this.topbar.append(spacer);
@@ -2398,6 +2415,17 @@ export class HUD {
         : `${ageNames[myAge.age]} · ${programNames[myAge.program ?? ''] ?? ''}`;
     this.setText('age', ageName, this.ageEl);
     this.currentAge = myAge.age;
+    // Game-time clock (2026-10-05): "Day 3 · 14:20 · ☀ dusk in 1m 05s"
+    // — write-on-change, so the DOM only updates once per sim-second.
+    const c = gameClock(world.tick);
+    const hh = String(c.hour).padStart(2, '0');
+    const mm = String(c.minute).padStart(2, '0');
+    const transition = c.isDay ? loc(s.clockDuskIn) : loc(s.clockDawnIn);
+    this.setText(
+      'clock',
+      `${loc(s.clockDay)} ${c.day} · ${hh}:${mm} · ${c.isDay ? '☀' : '☾'} ${transition} ${formatCountdown(c.untilTransitionSec)}`,
+      this.clockValueEl,
+    );
 
     // Advance-age button: visible when a next age exists; shows cost and programs.
     const prog = AGE_PROGRESSION[myAge.age];

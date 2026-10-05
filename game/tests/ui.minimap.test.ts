@@ -199,9 +199,9 @@ describe('minimapFogCellStyle (fun-audit C3)', () => {
     expect(minimapFogCellStyle(true, true)).toBeNull();
   });
 
-  it('dims explored-but-unseen, near-blacks unexplored', async () => {
+  it('keeps explored cells fully clear, near-blacks unexplored (2026-10-05)', async () => {
     const { minimapFogCellStyle } = await import('../src/ui/minimap');
-    expect(minimapFogCellStyle(true, false)).toBe('rgba(4,6,14,0.55)');
+    expect(minimapFogCellStyle(true, false)).toBeNull();
     expect(minimapFogCellStyle(false, false)).toBe('rgba(2,2,8,0.92)');
   });
 });

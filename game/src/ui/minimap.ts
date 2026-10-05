@@ -281,10 +281,10 @@ export class Minimap {
 
   /**
    * Fun-audit C3 (2026-10-02): paint the fog shroud onto the minimap
-   * canvas. Unexplored cells go near-black, explored-but-unseen get a
-   * dim veil; currently visible cells are untouched. No fog data (or a
-   * null grid) means no shroud — the trailer and pre-fog saves render
-   * exactly as before.
+   * canvas. 2026-10-05: explored cells stay fully clear (paint nothing)
+   * — darkness never re-appears over explored terrain. Unexplored cells
+   * go near-black. No fog data (or a null grid) means no shroud — the
+   * trailer and pre-fog saves render exactly as before.
    */
   private paintFogShroud(world: World, fogCells: Uint8Array | null): void {
     const explored = world.fog?.explored[HUMAN_PLAYER_ID];
@@ -361,14 +361,14 @@ export class Minimap {
 
 /**
  * Fun-audit C3 (2026-10-02): minimap shroud styling — the single source
- * of truth for how fog reads on the tactical overview. Unexplored goes
- * near-black, explored-but-unseen gets a dim veil, visible cells are
- * untouched (null = paint nothing).
+ * of truth for how fog reads on the tactical overview. 2026-10-05: once
+ * explored, cells stay fully clear (paint nothing) — darkness never
+ * re-appears over explored terrain; only unexplored goes near-black.
  */
 export function minimapFogCellStyle(
   explored: boolean,
   visible: boolean,
 ): string | null {
-  if (visible) return null;
-  return explored ? 'rgba(4,6,14,0.55)' : 'rgba(2,2,8,0.92)';
+  if (visible || explored) return null;
+  return 'rgba(2,2,8,0.92)';
 }

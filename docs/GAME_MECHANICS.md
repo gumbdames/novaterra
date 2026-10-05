@@ -819,9 +819,9 @@ airport reads as mixed-use on your map and may be treated as a
 military target. No ambushes: the warning always comes first.
 
 **Fog of war.** The map is not yours by default: unexplored ground is
-black shroud, ground you have visited but cannot currently see is
-dimmed, and only the ground your units and buildings can see right
-now is fully clear. Every completed, operational, unsabotaged building
+black shroud, and ground your units or buildings have ever seen stays
+fully clear — darkness never re-appears over explored terrain. Every
+completed, operational, unsabotaged building
 is a pair of eyes — its vision radius depends on the kind: houses see
 about 8 cells out, factories about 12, most buildings 14, towers and
 sensor posts 20 or more (cells are 2 world units each). A building

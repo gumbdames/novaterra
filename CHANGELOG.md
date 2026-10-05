@@ -3,6 +3,17 @@
 All notable changes to the 0.1 Alpha. Commit hashes are the local `main`
 history (`gumbdames/novaterra`).
 
+## 2026-10-05 — Game-time clock; fog stays clear over explored terrain
+
+- **Game-time clock**: the top bar now shows the day number, the 24-hour
+  game time, and a countdown to the next dawn/dusk
+  ("Day 3 · 14:20 · ☀ dusk in 1m 05s") — one full day is 240
+  sim-seconds, and solar farms only produce in daylight.
+- **Fog of war**: explored terrain now stays fully clear — darkness
+  never re-appears over ground your units or buildings have seen. Only
+  never-seen ground is shrouded. Enemy units/buildings are still hidden
+  unless currently visible.
+
 ## 2026-10-05 — Playtest bug fixes (fog sight, loss toasts, housing demand, AI nuclear plants)
 
 - **Per-building sight**: every building now grants fog-of-war vision —

@@ -35,7 +35,6 @@
 import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import {
-  FOG_EXPLORED,
   FOG_UNEXPLORED,
   FOG_VISIBLE,
   fogCellColor,
@@ -56,10 +55,9 @@ describe('fogCellColor', () => {
     expect(FOG_VISIBLE[3]).toBe(0);
   });
 
-  it('explored-but-unseen is a dim memory tint', () => {
-    expect(fogCellColor(true, false)).toEqual(FOG_EXPLORED);
-    expect(FOG_EXPLORED[3]).toBeGreaterThan(0);
-    expect(FOG_EXPLORED[3]).toBeLessThan(FOG_UNEXPLORED[3]);
+  it('explored-but-unseen stays fully clear (2026-10-05)', () => {
+    // Darkness never re-appears over explored terrain.
+    expect(fogCellColor(true, false)).toEqual(FOG_VISIBLE);
   });
 
   it('unexplored is the dark shroud', () => {
@@ -81,7 +79,7 @@ describe('paintFogTexture', () => {
     return { world, out: new Uint8Array(FOG_GRID * FOG_GRID * 4) };
   }
 
-  it('paints visible transparent, explored dim, unexplored dark', () => {
+  it('paints visible transparent, explored clear, unexplored dark', () => {
     const { world, out } = worldWithFog();
     const visible = computeVisibleCells(world, 0);
     paintFogTexture(world, 0, visible, out);
@@ -91,8 +89,8 @@ describe('paintFogTexture', () => {
     };
     // Currently visible (under the moved tank): transparent.
     expect(at(200, 0)).toEqual([...FOG_VISIBLE]);
-    // Explored earlier, not visible now: dim memory tint.
-    expect(at(0, 0)).toEqual([...FOG_EXPLORED]);
+    // Explored earlier, not visible now: stays fully clear (2026-10-05).
+    expect(at(0, 0)).toEqual([...FOG_VISIBLE]);
     // Never seen: dark shroud.
     expect(at(-200, -200)).toEqual([...FOG_UNEXPLORED]);
   });
