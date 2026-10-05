@@ -58,7 +58,7 @@
  */
 
 import type { TerrainData } from './terrain';
-import type { TrainQueueEntry } from './units';
+import type { TrainQueueEntry, UnitRecord } from './units';
 import { isWater } from './terrain';
 import type { World } from './world';
 import { rngBank } from './world';
@@ -169,6 +169,159 @@ export function footprintCells(cx: number, cz: number, w: number, h: number): nu
     }
   }
   return cells;
+}
+
+/**
+ * True when any living unit stands on a w×h footprint anchored at
+ * (cx, cz). The unit half of the placement-time occupancy check,
+ * exported for callers (like mission setup) that place buildings
+ * without going through validatePlacement.
+ */
+export function unitsOnFootprint(
+  units: UnitRecord[],
+  cx: number,
+  cz: number,
+  w: number,
+  h: number,
+): boolean {
+  for (const u of units) {
+    if (u.hp <= 0) continue;
+    const ux = Math.floor((u.x + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+    const uz = Math.floor((u.z + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+    if (ux >= cx && ux < cx + w && uz >= cz && uz < cz + h) return true;
+  }
+  return false;
+}
+
+/**
+ * Unit/building-overlap rescue (2026-10-05): displace every living
+ * non-air unit standing inside a building footprint to the nearest free
+ * cell. Units are visited in array (id) order and the scan is a
+ * deterministic outward spiral from the unit's own cell (compass order
+ * E, NE, N, NW, W, SW, S, SE — the findTrainSpawnSpot idiom), so the
+ * same world always yields the same result. "Free" = in-bounds, not
+ * water, and not inside any building footprint. Displaced units are
+ * stopped (their old destination was inside a footprint): position,
+ * destination and arrival all become the new cell, the path/field are
+ * cleared, attack state is dropped. Air units are skipped — they fly
+ * above the mesh. No new state (AD9-safe); returns the displaced count.
+ * Used by construction completion, mission placement, and load-time
+ * repair — the three ways a unit can end up inside a footprint.
+ */
+export function ejectUnitsFromFootprints(
+  city: CityState,
+  units: UnitRecord[],
+  isWaterCell: (cx: number, cz: number) => boolean,
+): number {
+  let moved = 0;
+  for (const u of units) {
+    if (u.hp <= 0 || u.domain === 'air') continue;
+    if (buildingAtCell(city, cellAtWorld(u.x, u.z)) === undefined) continue;
+    const spot = nearestFreeCell(city, u.x, u.z, isWaterCell);
+    if (spot === null) continue; // nowhere to go — leave the unit (rare)
+    u.x = cellCenterWorld(spot.cx);
+    u.z = cellCenterWorld(spot.cz);
+    // Stop the unit: drop path, field, and attack state; destination =
+    // the new position. (Mirrors clearUnitOrder in units.ts, which
+    // city.ts cannot value-import — units.ts value-imports this module.)
+    u.path = [];
+    u.pathAt = 0;
+    u.fieldId = 0;
+    u.destX = u.x;
+    u.destZ = u.z;
+    u.arriveX = u.x;
+    u.arriveZ = u.z;
+    u.state = 'idle';
+    u.targetId = 0;
+    u.chasing = false;
+    u.buildingTargetId = 0;
+    u.attackMoving = false;
+    u.attackMoveDestX = undefined;
+    u.attackMoveDestZ = undefined;
+    moved++;
+  }
+  return moved;
+}
+
+/**
+ * Nearest anchor cell for a w×h footprint starting at (cx, cz) whose
+ * whole footprint is in-bounds, not water, and free of buildings.
+ * Deterministic outward spiral (compass order per ring, rings 1..24);
+ * null when nothing fits. Used to nudge mission-preplaced buildings
+ * off starting units (2026-10-05) — the mission beat survives a nudge
+ * of a few cells, but not a unit entombed in the foundation.
+ */
+export function findFreeFootprintAnchor(
+  city: CityState,
+  cx: number,
+  cz: number,
+  w: number,
+  h: number,
+  isWaterCell: (cx: number, cz: number) => boolean,
+): { cx: number; cz: number } | null {
+  const fits = (ax: number, az: number): boolean => {
+    for (let dz = 0; dz < h; dz++) {
+      for (let dx = 0; dx < w; dx++) {
+        const x = ax + dx;
+        const z = az + dz;
+        if (x < 0 || z < 0 || x >= CITY_GRID_CELLS || z >= CITY_GRID_CELLS) return false;
+        if (isWaterCell(x, z)) return false;
+        if (buildingAtCell(city, cellIndex(x, z)) !== undefined) return false;
+      }
+    }
+    return true;
+  };
+  if (fits(cx, cz)) return { cx, cz };
+  for (let ring = 1; ring <= 24; ring++) {
+    const pts: Array<[number, number]> = [
+      [cx + ring, cz],
+      [cx + ring, cz - ring],
+      [cx, cz - ring],
+      [cx - ring, cz - ring],
+      [cx - ring, cz],
+      [cx - ring, cz + ring],
+      [cx, cz + ring],
+      [cx + ring, cz + ring],
+    ];
+    for (const [ax, az] of pts) {
+      if (fits(ax, az)) return { cx: ax, cz: az };
+    }
+  }
+  return null;
+}
+
+/**
+ * Nearest cell to a world position that is in-bounds, not water, and
+ * not inside any building footprint. Deterministic outward spiral
+ * (rings 1..24, compass order per ring); null when nothing is found.
+ */
+function nearestFreeCell(
+  city: CityState,
+  x: number,
+  z: number,
+  isWaterCell: (cx: number, cz: number) => boolean,
+): { cx: number; cz: number } | null {
+  const ccx = Math.floor((x + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+  const ccz = Math.floor((z + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+  for (let ring = 1; ring <= 24; ring++) {
+    const pts: Array<[number, number]> = [
+      [ccx + ring, ccz],
+      [ccx + ring, ccz - ring],
+      [ccx, ccz - ring],
+      [ccx - ring, ccz - ring],
+      [ccx - ring, ccz],
+      [ccx - ring, ccz + ring],
+      [ccx, ccz + ring],
+      [ccx + ring, ccz + ring],
+    ];
+    for (const [cx, cz] of pts) {
+      if (cx < 0 || cz < 0 || cx >= CITY_GRID_CELLS || cz >= CITY_GRID_CELLS) continue;
+      if (isWaterCell(cx, cz)) continue;
+      if (buildingAtCell(city, cellIndex(cx, cz)) !== undefined) continue;
+      return { cx, cz };
+    }
+  }
+  return null;
 }
 
 /** Binary search on a sorted number array. */

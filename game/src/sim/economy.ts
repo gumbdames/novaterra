@@ -123,6 +123,8 @@ import {
   NUCLEAR_UPGRADE_SECONDS,
   reactorPowerBonus,
   reactorWaterDemandBonus,
+  ejectUnitsFromFootprints,
+  cellIsWater,
 } from './city';
 
 /** Economy ticks run once per sim-second (30 sim ticks). */
@@ -1792,7 +1794,7 @@ export const ENGINEER_CONSTRUCTION_MULT = 2;
 export const ENGINEER_REPAIR_HP_PER_SEC = 1;
 
 /** Advance construction progress by one economy tick (one sim-second). */
-function runConstruction(world: World): void {
+function runConstruction(world: World, t: TerrainData): void {
   const city = world.city;
   // Fun-audit C2a (engineer triage, 2026-10-02): collect the living
   // engineers once per tick — their aura doubles nearby construction
@@ -1831,7 +1833,16 @@ function runConstruction(world: World): void {
       // building-sight sum (satelliteUplink) — invalidate its cache.
       // Completions are rare, so the bump costs one O(buildings)
       // recompute on the next sight query, not per query.
-      if (b.progress >= 1) bumpSightBonusCache(city);
+      if (b.progress >= 1) {
+        bumpSightBonusCache(city);
+        // Unit/building-overlap rescue (2026-10-05): a unit may have
+        // walked onto the site during the construction window (sites
+        // are not pathing obstacles and move destinations were never
+        // footprint-checked). Eject anyone inside the finished
+        // footprint to the nearest free cell — completions are rare,
+        // so the scan costs ~nothing.
+        ejectUnitsFromFootprints(city, world.units, (cx, cz) => cellIsWater(t, cx, cz));
+      }
     } else if (
       hasEngineers &&
       (b.hp ?? BUILDING_DEFS[b.kind].hp) < (b.maxHp ?? BUILDING_DEFS[b.kind].hp)
@@ -1936,7 +1947,7 @@ export function runEconomyTick(world: World, t: TerrainData): void {
   // either way) and is smoothed into world.economyFlows per player.
   const before = new Map<number, Record<FlowResource, number>>();
   for (const p of city.players) before.set(p.id, readStocks(p));
-  runConstruction(world);
+  runConstruction(world, t);
   const { powerHeadroom, waterHeadroom, model } = allocateUtilities(world, city);
   // Fix 3 (demand-gated housing, 2026-10-05): immigration runs BEFORE
   // occupancy, so this tick's arrivals join the housed pool below.

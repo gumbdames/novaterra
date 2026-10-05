@@ -57,7 +57,11 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
   upgrade. Per-building sight (2026-10-05): `BuildingDef.sight?`
   (vision radius in city cells, default 14 — houses 8, industrial 12,
   towers/sensor-ish 20) feeds the per-building disc in
-  `buildingSightCoverage`. Grand-expansion Phase 8
+  `buildingSightCoverage`. Unit/building-overlap rescue (2026-10-05):
+  `ejectUnitsFromFootprints` (deterministic spiral displacement, no new
+  state) is called on construction completion, mission placement
+  (via `findFreeFootprintAnchor` nudge), and save-load repair;
+  `unitsOnFootprint` is the shared occupancy check. Grand-expansion Phase 8
   (peaceful mode, workstream A, 2026-09-30): `BuildingDef.military?:
   boolean` — true on the 21 war-apparatus buildings (the full 100-kind
   classification is pinned in tests/sim.peaceful.test.ts);
@@ -876,7 +880,10 @@ tests and the perf harness. See docs/ARCHITECTURE.md §1–§5.
 - `movement.ts` — the pathfinding + movement systems (registered in that
   order), `moveUnit` / `moveGroup` / `stopUnit` commands, waypoint and
   field following, arrival slowdown, formation slots, spatial-hash
-  separation.
+  separation. Unit/building-overlap guard (2026-10-05):
+  `validateDestination` rejects land/sea destinations inside a building
+  footprint (air exempt — it flies over); the AI's `issue()` treats the
+  loud rejection as non-fatal.
 - `cheats.ts` — cheat command specs (step 11): `cheatGrantResources`
   (`prosperity now`) and `cheatInstantBuild` (`fast build`). Ordinary
   tick-aligned command specs, `issuer: 'cheat'` enforced at validate;

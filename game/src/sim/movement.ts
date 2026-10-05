@@ -58,6 +58,7 @@ import { dist, dist2 } from './deterministic';
 import {
   CITY_GRID_CELLS,
   MAP_HALF_SIZE,
+  buildingAtCell,
   cellCenterWorld,
   cellCoords,
   cellIsWater,
@@ -65,7 +66,7 @@ import {
   nearestRailStation,
   railSortedHas,
 } from './city';
-import type { SeaRoute } from './city';
+import type { CityState, SeaRoute } from './city';
 // Civilian sea trade (Half A, 2026-10-01): the movement-side sea-trade
 // loop calls the port action from the seaTrade LEAF module
 // (sim/seaTrade.ts) — never from economy.ts directly: economy.ts
@@ -729,7 +730,13 @@ function payloadUnitIds(payload: Record<string, unknown>): number[] | null {
   return out;
 }
 
-function validateDestination(t: TerrainData, x: unknown, z: unknown, domain: string = 'land'): string | null {
+function validateDestination(
+  t: TerrainData,
+  city: CityState,
+  x: unknown,
+  z: unknown,
+  domain: string = 'land',
+): string | null {
   if (typeof x !== 'number' || !Number.isFinite(x)) return 'payload.x must be a finite number';
   if (typeof z !== 'number' || !Number.isFinite(z)) return 'payload.z must be a finite number';
   if (Math.abs(x) > MAP_HALF_SIZE || Math.abs(z) > MAP_HALF_SIZE) {
@@ -740,6 +747,18 @@ function validateDestination(t: TerrainData, x: unknown, z: unknown, domain: str
   const destIsWater = isWater(t, x, z);
   if (domain === 'land' && destIsWater) return `destination (${x}, ${z}) is water`;
   if (domain === 'sea' && !destIsWater) return `destination (${x}, ${z}) is land (sea units need water)`;
+  // Unit/building-overlap guard (2026-10-05): land and sea units may not
+  // be ordered to a destination inside a building footprint — a unit that
+  // walks onto a construction site is swallowed when the building
+  // completes around it (ejectUnitsFromFootprints is the backstop, this
+  // is the prevention). Air units fly above the mesh: exempt.
+  if (domain !== 'air') {
+    const b = buildingAtCell(city, worldToCell(x, z));
+    if (b !== undefined) {
+      const name = BUILDING_DEFS[b.kind]?.name ?? b.kind;
+      return `destination (${x}, ${z}) is inside the ${name} footprint`;
+    }
+  }
   return null;
 }
 
@@ -979,7 +998,7 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
       const unit = validateOwnedUnit(world, cmd.payload['unitId'], cmd.payload['owner'], 'moveUnit');
       if (typeof unit === 'string') return unit;
       // Air units fly over water; ground units can't be ordered into it.
-      return validateDestination(t, cmd.payload['x'], cmd.payload['z'], unit.domain);
+      return validateDestination(t, world.city, cmd.payload['x'], cmd.payload['z'], unit.domain);
     },
     apply(cmd, world): unknown {
       const unit = findUnit(world, cmd.payload['unitId'] as number) as UnitRecord;
@@ -1014,7 +1033,7 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
       // member cannot reach the destination.
       for (const id of ids) {
         const unit = findUnit(world, id) as UnitRecord;
-        const err = validateDestination(t, cmd.payload['x'], cmd.payload['z'], unit.domain);
+        const err = validateDestination(t, world.city, cmd.payload['x'], cmd.payload['z'], unit.domain);
         if (err) return `moveGroup: unit ${id} (${err})`;
       }
       return null;
@@ -1043,7 +1062,7 @@ export function registerMovementCommands(queue: CommandQueue, t: TerrainData): v
       }
       for (const id of ids) {
         const unit = findUnit(world, id) as UnitRecord;
-        const err = validateDestination(t, cmd.payload['x'], cmd.payload['z'], unit.domain);
+        const err = validateDestination(t, world.city, cmd.payload['x'], cmd.payload['z'], unit.domain);
         if (err) return `attackMove: unit ${id} (${err})`;
       }
       return null;

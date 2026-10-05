@@ -3,6 +3,22 @@
 All notable changes to the 0.1 Alpha. Commit hashes are the local `main`
 history (`gumbdames/novaterra`).
 
+## 2026-10-05 — Unit/building-overlap fixes (construction-window hole)
+
+- **Eject on completion**: a unit that walks onto a construction site is
+  now displaced to the nearest free cell (deterministic spiral, unit
+  stopped) when the building completes, instead of being entombed in
+  the mesh. Also applied on save-load for pre-fix saves.
+- **Move destinations** inside building footprints are rejected loudly
+  (`moveUnit` / `moveGroup` / `attackMove`; air units exempt — they fly
+  over). The AI tolerates the rejection (its `issue()` treats it as
+  non-fatal).
+- **Train spawns** no longer land inside footprints (the ring scan
+  started inside large producers' own mesh); `setRallyPoint` inside a
+  footprint is rejected.
+- **Mission preplaced buildings** are checked against starting units and
+  nudged to a free anchor on conflict.
+
 ## 2026-10-05 — Game-time clock; fog stays clear over explored terrain
 
 - **Game-time clock**: the top bar now shows the day number, the 24-hour

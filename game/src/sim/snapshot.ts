@@ -43,7 +43,8 @@ import { createWorld, isSkirmishVictoryKind } from './world';
 import type { RngState } from './rng';
 import type { BuildingRecord, CityState, PlayerState } from './city';
 import type { RailCell, RoadCell } from './city';
-import { migrateRoadsV6ToV7, defaultHangarSlots, DEFAULT_TAX_RATE, BUILDING_DEFS } from './city';
+import { migrateRoadsV6ToV7, defaultHangarSlots, DEFAULT_TAX_RATE, BUILDING_DEFS, ejectUnitsFromFootprints, cellIsWater } from './city';
+import type { TerrainData } from './terrain';
 import type { UnitRecord } from './units';
 import type { FieldBuild, FieldRequest, FlowField, PathfindingState, PathRequest } from './pathfinding';
 import { initPathfinding } from './pathfinding';
@@ -690,7 +691,7 @@ export function takeSnapshot(world: World): Snapshot {
  * decodes via `?? false` — pre-flag saves were never peaceful, so the
  * neutral default reproduces the old behavior exactly (no version bump).
  */
-export function restoreSnapshot(snap: Snapshot): World {
+export function restoreSnapshot(snap: Snapshot, t?: TerrainData): World {
   if (snap === null || typeof snap !== 'object') {
     throw new SnapshotVersionError(SNAPSHOT_VERSION, snap);
   }
@@ -701,14 +702,14 @@ export function restoreSnapshot(snap: Snapshot): World {
   // must surface as CorruptSaveError (graceful "save is broken" UI),
   // never as a raw TypeError escaping into the fatal screen.
   try {
-    return restoreSnapshotInner(snap);
+    return restoreSnapshotInner(snap, t);
   } catch (err) {
     if (err instanceof SnapshotVersionError || err instanceof CorruptSaveError) throw err;
     throw new CorruptSaveError(err instanceof Error ? err.message : String(err));
   }
 }
 
-function restoreSnapshotInner(snap: Snapshot): World {
+function restoreSnapshotInner(snap: Snapshot, t?: TerrainData): World {
   const world = createWorld(snap.seed);
   world.tick = snap.tick;
   world.time = snap.time;
@@ -817,6 +818,14 @@ function restoreSnapshotInner(snap: Snapshot): World {
   // had doctrines; unset owners play 'republic' (AD9 neutral default,
   // no version bump). Defensive: only the two known ids survive.
   world.doctrines = decodeDoctrines(snap.doctrines);
+  // Unit/building-overlap repair (2026-10-05): pre-fix saves can hold
+  // units swallowed by buildings (the construction-window hole). Eject
+  // anyone inside a footprint on load — deterministic, no new state.
+  // Terrain is optional (bare restores in tests skip the repair); the
+  // session always passes its terrain.
+  if (t !== undefined) {
+    ejectUnitsFromFootprints(world.city, world.units, (cx, cz) => cellIsWater(t, cx, cz));
+  }
   return world;
 }
 

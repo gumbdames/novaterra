@@ -57,7 +57,7 @@ import { createTickDriver, TICK_MS } from '../sim/tick';
 import type { TerrainData } from '../sim/terrain';
 import { generateTerrain, getMapPreset, isWater } from '../sim/terrain';
 import { digestWorld } from '../sim/digest';
-import { registerCityCommands, getPlayer, BUILDING_DEFS, placeBuilding, CELL_WORLD_SIZE, MAP_HALF_SIZE } from '../sim/city';
+import { registerCityCommands, getPlayer, BUILDING_DEFS, placeBuilding, unitsOnFootprint, findFreeFootprintAnchor, cellIsWater, CELL_WORLD_SIZE, MAP_HALF_SIZE } from '../sim/city';
 import { createEconomySystem, registerEconomyCommands } from '../sim/economy';
 import { registerUnitCommands } from '../sim/units';
 import {
@@ -564,7 +564,9 @@ export function createSession(options: SessionOptions): GameSession {
 
   const terrain = generateTerrain(preset.seed, preset);
   // Restored games resume the exact saved world; fresh games start empty.
-  const world = options.snapshot ? restoreSnapshot(options.snapshot) : createWorld(seed);
+  // The terrain is passed so restore can repair pre-fix saves (units
+  // swallowed by buildings are ejected from footprints on load).
+  const world = options.snapshot ? restoreSnapshot(options.snapshot, terrain) : createWorld(seed);
   if (options.snapshot) {
     // Roadmap B25 (2026-10-02): v9+ snapshots store flow fields as
     // identities only (direction grids are derived data, dropped to keep
@@ -738,14 +740,41 @@ export function createSession(options: SessionOptions): GameSession {
           Math.max(Math.floor((pos.z + MAP_HALF_SIZE) / CELL_WORLD_SIZE), 0),
           255,
         );
+        const def = BUILDING_DEFS[pb.kind];
+        // Unit/building-overlap guard (2026-10-05): preplaced buildings
+        // are a mission grant that deliberately bypasses the normal
+        // placement rules (zoning, cost), so only the unit-occupancy
+        // aspect is checked here — a starting unit entombed in the
+        // foundation would be invisible. On conflict the building is
+        // nudged to the nearest free anchor (deterministic spiral; the
+        // M1 "fix a disconnected building" beat survives a nudge of a
+        // few cells). Nowhere to go is a broken mission def — fail
+        // loudly so it is caught, never silently shipped. (A test pins
+        // that the shipped missions place cleanly.)
+        let ax = cx;
+        let az = cz;
+        if (def !== undefined && unitsOnFootprint(world.units, cx, cz, def.footprintW, def.footprintH)) {
+          const anchor = findFreeFootprintAnchor(
+            world.city,
+            cx,
+            cz,
+            def.footprintW,
+            def.footprintH,
+            (x, z) => cellIsWater(terrain, x, z),
+          );
+          if (anchor === null) {
+            throw new Error(`mission preplaced building has nowhere to go (${pb.kind})`);
+          }
+          ax = anchor.cx;
+          az = anchor.cz;
+        }
         const rec = placeBuilding(world.city, {
           kind: pb.kind,
           owner: HUMAN_PLAYER_ID,
-          cx,
-          cz,
+          cx: ax,
+          cz: az,
           facing: 0,
         });
-        const def = BUILDING_DEFS[pb.kind];
         const human = world.city.players[HUMAN_PLAYER_ID];
         if (def !== undefined && human !== undefined) {
           human.funds += def.costFunds;

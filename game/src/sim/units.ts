@@ -46,8 +46,8 @@ import type { DoctrineId } from './doctrine';
 import { DOCTRINES, getDoctrine, doctrineTrainCostMult } from './doctrine';
 import type { TerrainData } from './terrain';
 import { isWater } from './terrain';
-import { getPlayer, MAP_HALF_SIZE, BUILDING_DEFS, hasProductionBuilding, cellCenterWorld, defaultHangarSlots, findBuildingHangarSlot, buildingCountsAs, buildingCenterWorld, CELL_WORLD_SIZE } from './city';
-import type { BuildingKind, BuildingRecord, HangarClass, ResourceKey } from './city';
+import { getPlayer, MAP_HALF_SIZE, BUILDING_DEFS, hasProductionBuilding, cellCenterWorld, cellIndex, defaultHangarSlots, findBuildingHangarSlot, buildingCountsAs, buildingCenterWorld, buildingAtCell, CELL_WORLD_SIZE } from './city';
+import type { BuildingKind, BuildingRecord, CityState, HangarClass, ResourceKey } from './city';
 import type { CommandQueue } from './commands';
 import type { Age } from './ages';
 import { isUnitAvailableForAge } from './ages';
@@ -2408,10 +2408,23 @@ export function producibleKinds(buildingKind: BuildingKind): UnitKind[] {
 }
 
 /** True when a unit of `domain` may spawn at world (x, z). */
-function trainSpotOk(t: TerrainData, domain: UnitDomain, x: number, z: number): boolean {
+function trainSpotOk(
+  city: CityState,
+  t: TerrainData,
+  domain: UnitDomain,
+  x: number,
+  z: number,
+): boolean {
   if (Math.abs(x) > MAP_HALF_SIZE || Math.abs(z) > MAP_HALF_SIZE) return false;
-  if (domain === 'land') return !isWater(t, x, z);
-  if (domain === 'sea') return isWater(t, x, z);
+  if (domain === 'land' && isWater(t, x, z)) return false;
+  if (domain === 'sea' && !isWater(t, x, z)) return false;
+  // Unit/building-overlap guard (2026-10-05): never spawn inside a
+  // building footprint. The ring scan below starts at the producer's
+  // own center, so without this check large buildings spawn their
+  // units inside their own mesh.
+  const cx = Math.floor((x + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+  const cz = Math.floor((z + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+  if (buildingAtCell(city, cellIndex(cx, cz)) !== undefined) return false;
   return true; // air units fly — no terrain gate (the spawnUnit rule)
 }
 
@@ -2425,13 +2438,14 @@ function trainSpotOk(t: TerrainData, domain: UnitDomain, x: number, z: number): 
  * retries rather than eating a paid-for unit.
  */
 function findTrainSpawnSpot(
+  city: CityState,
   t: TerrainData,
   b: BuildingRecord,
   domain: UnitDomain,
 ): { x: number; z: number } | null {
   const rx = b.rallyX;
   const rz = b.rallyZ;
-  if (rx !== undefined && rz !== undefined && trainSpotOk(t, domain, rx, rz)) {
+  if (rx !== undefined && rz !== undefined && trainSpotOk(city, t, domain, rx, rz)) {
     return { x: rx, z: rz };
   }
   const c = buildingCenterWorld(b);
@@ -2448,7 +2462,7 @@ function findTrainSpawnSpot(
       [c.x + r, c.z + r],
     ];
     for (const [x, z] of pts) {
-      if (trainSpotOk(t, domain, x, z)) return { x, z };
+      if (trainSpotOk(city, t, domain, x, z)) return { x, z };
     }
   }
   return null;
@@ -2475,7 +2489,7 @@ export function runTraining(world: World, t: TerrainData): void {
     head.ticksLeft -= 30;
     if (head.ticksLeft > 0) continue;
     const def = UNIT_DEFS[head.kind];
-    const spot = findTrainSpawnSpot(t, b, def.domain);
+    const spot = findTrainSpawnSpot(world.city, t, b, def.domain);
     if (spot === null) {
       head.ticksLeft = 30; // no room — retry next economy tick
       continue;
@@ -3119,6 +3133,15 @@ export function registerUnitCommands(queue: CommandQueue, t: TerrainData): void 
       if (typeof z !== 'number' || !Number.isFinite(z)) return 'setRallyPoint: payload.z must be a finite number';
       if (Math.abs(x) > MAP_HALF_SIZE || Math.abs(z) > MAP_HALF_SIZE) {
         return `setRallyPoint: position (${x}, ${z}) is outside the map`;
+      }
+      // Unit/building-overlap guard (2026-10-05): a rally inside a
+      // building footprint would spawn trained units inside the mesh.
+      const rcx = Math.floor((x + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+      const rcz = Math.floor((z + MAP_HALF_SIZE) / CELL_WORLD_SIZE);
+      const rb = buildingAtCell(world.city, cellIndex(rcx, rcz));
+      if (rb !== undefined) {
+        const rname = BUILDING_DEFS[rb.kind]?.name ?? rb.kind;
+        return `setRallyPoint: position (${x}, ${z}) is inside the ${rname} footprint`;
       }
       return null;
     },
